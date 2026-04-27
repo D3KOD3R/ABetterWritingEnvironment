@@ -38,3 +38,5 @@
 ## Anchored Author Notes
 
 Tasks, inspiration notes, and research notes are documented in [Anchored Editor Notes](./anchored-editor-notes.md). Tasks save with selected manuscript text as recovery evidence, but they behave as location-first markers that should return the user to the same manuscript area even if the selected text changes. Inspiration and research use a draft-only blue inline bubble first; the note is not persisted until the user types the related verse in the bubble's normal manuscript field and explicitly saves the note against the inserted typed range.
+
+Scrivener package import requirements are tracked in [Scrivener Import Plan](./scrivener-import-plan.md). The import path must treat Scrivener comments as tasks, preserve manuscript/worldbuilding provenance, and support media-aware research cards before the imported project can fully replace the seeded demo workspace.
