@@ -238,59 +238,20 @@ select {
   flex: 1 1 440px;
   min-width: 388px;
   max-width: 504px;
-  gap: 12px;
-  padding: 14px 16px 12px;
+  gap: 4px;
+  padding: 8px 10px 8px;
   border: 1px solid rgba(31, 36, 48, 0.1);
-  border-radius: 16px;
-  background:
-    radial-gradient(circle at top right, rgba(113, 215, 177, 0.08), transparent 30%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(250, 247, 241, 0.94));
-  box-shadow: 0 14px 28px rgba(28, 35, 44, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 8px 18px rgba(28, 35, 44, 0.08);
   overflow: hidden;
 }
 
-.session-tracker-panel__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-width: 0;
-}
-
-.session-tracker-panel__brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.session-tracker-panel__badge {
-  display: inline-grid;
-  place-items: center;
-  width: 56px;
-  height: 56px;
-  border-radius: 16px;
-  background: linear-gradient(180deg, rgba(248, 243, 235, 0.98), rgba(239, 233, 223, 0.92));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.76);
-  flex: 0 0 auto;
-}
-
-.session-tracker-panel__badge-icon {
+.session-tracker-panel__body {
   display: grid;
-  place-items: center;
-  width: 100%;
-  height: 100%;
-}
-
-.session-tracker-panel__badge-icon svg {
-  width: 36px;
-  height: 36px;
-  display: block;
-}
-
-.session-tracker-panel__titles {
-  display: grid;
-  gap: 0;
+  grid-template-columns: minmax(0, 1.02fr) minmax(186px, 0.98fr);
+  gap: 8px 10px;
+  align-items: start;
   min-width: 0;
 }
 
@@ -302,16 +263,85 @@ select {
   text-transform: uppercase;
 }
 
+.session-tracker-panel__titles {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.session-tracker-panel__progress-column {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.session-tracker-panel__count-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  color: var(--accent-deep);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.session-tracker-panel__count-row strong {
+  color: var(--accent-deep);
+  font-size: 0.88rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+.session-tracker-panel__count-row span {
+  color: var(--accent-deep);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.session-tracker-panel__count-label {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.66rem;
+  line-height: 1.15;
+}
+
+.session-tracker-panel__bar {
+  height: 7px;
+}
+
+.session-tracker-panel__gauge-column {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding-left: 11px;
+  border-left: 1px solid rgba(31, 36, 48, 0.08);
+}
+
+.session-tracker-panel__gauge-row {
+  display: grid;
+  grid-template-columns: 50px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  min-width: 0;
+}
+
 .session-tracker-panel__clock {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   color: #2d5965;
   flex: 0 0 auto;
+  white-space: nowrap;
+  justify-self: end;
 }
 
 .session-tracker-panel__clock-time {
-  font-size: clamp(1.08rem, 1.45vw, 1.72rem);
+  font-size: 0.66rem;
   font-weight: 800;
   letter-spacing: 0.02em;
 }
@@ -319,97 +349,26 @@ select {
 .session-tracker-panel__clock-icon {
   display: inline-grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
+  width: 16px;
+  height: 16px;
   color: #5d8b96;
 }
 
 .session-tracker-panel__clock-icon svg {
-  width: 24px;
-  height: 24px;
+  width: 16px;
+  height: 16px;
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.8;
+  stroke-width: 1.9;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
-.session-tracker-panel__body {
-  display: grid;
-  grid-template-columns: minmax(0, 1.18fr) minmax(210px, 0.82fr);
-  gap: 14px;
-  align-items: center;
-  min-width: 0;
-}
-
-.session-tracker-panel__progress-column {
-  display: grid;
-  gap: 10px;
-  min-width: 0;
-}
-
-.session-tracker-panel__bar {
-  position: relative;
-  height: 22px;
-  border-radius: 999px;
-  background: rgba(31, 36, 48, 0.1);
-  overflow: hidden;
-}
-
-.session-tracker-panel__bar span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--writing-target-bar-color, linear-gradient(90deg, rgba(26, 103, 112, 0.96), rgba(113, 215, 177, 0.96)));
-  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.3);
-  transition: width 180ms ease, background 180ms ease, box-shadow 180ms ease, filter 180ms ease;
-}
-
-.session-tracker-panel__bar.is-over-target span {
-  animation: sessionPacePulse 1.25s ease-in-out infinite;
-}
-
-.session-tracker-panel__count-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  min-width: 0;
-}
-
-.session-tracker-panel__count-row strong {
-  color: #3f6c74;
-  font-size: clamp(1.42rem, 2vw, 2.2rem);
-  font-weight: 800;
-  line-height: 1;
-}
-
-.session-tracker-panel__count-row span {
-  color: var(--ink-soft);
-  font-size: 0.92rem;
-  white-space: nowrap;
-}
-
-.session-tracker-panel__count-label {
-  margin: 0;
-  color: var(--ink-soft);
-  font-size: 0.84rem;
-  line-height: 1.35;
-}
-
-.session-tracker-panel__gauge-column {
-  display: grid;
-  justify-items: center;
-  gap: 8px;
-  min-width: 0;
-  padding-left: 14px;
-  border-left: 1px solid rgba(63, 81, 92, 0.12);
-}
-
 .session-tracker-panel__gauge {
   position: relative;
-  width: min(100%, 144px);
-  aspect-ratio: 1;
+  width: 50px;
+  height: 50px;
+  flex: 0 0 auto;
   display: grid;
   place-items: center;
   border-radius: 999px;
@@ -421,12 +380,12 @@ select {
 .session-tracker-panel__gauge.is-over-target {
   box-shadow:
     inset 0 0 0 1px rgba(113, 215, 177, 0.18),
-    0 0 24px rgba(113, 215, 177, 0.18);
+    0 0 12px rgba(113, 215, 177, 0.18);
 }
 
 .session-tracker-panel__gauge-ring {
   position: absolute;
-  inset: 4px;
+  inset: 1px;
   display: block;
 }
 
@@ -461,8 +420,8 @@ select {
 .session-tracker-panel__gauge-icon {
   display: grid;
   place-items: center;
-  width: 66px;
-  height: 66px;
+  width: 30px;
+  height: 30px;
 }
 
 .session-tracker-panel__gauge-icon svg {
@@ -473,60 +432,63 @@ select {
 
 .session-tracker-panel__gauge-copy {
   display: grid;
+  gap: 2px;
+  align-content: start;
+  justify-items: start;
+  text-align: left;
+  color: var(--ink-soft);
+  font-size: 0.66rem;
+  line-height: 1.18;
+}
+
+.session-tracker-panel__wpm-row {
+  display: inline-flex;
+  align-items: center;
   gap: 4px;
-  text-align: center;
-}
-
-.session-tracker-panel__gauge-copy strong {
-  color: #1d3e4a;
-  font-size: 0.92rem;
-  font-weight: 800;
-}
-
-.session-tracker-panel__gauge-copy span {
-  color: var(--ink-soft);
-  font-size: 0.82rem;
-}
-
-.session-tracker-panel__footer {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  align-items: center;
-  padding-top: 4px;
-  border-top: 1px solid rgba(63, 81, 92, 0.1);
-}
-
-.session-tracker-panel__footer-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   min-width: 0;
-  color: var(--ink-soft);
-  font-size: 0.84rem;
   white-space: nowrap;
 }
 
-.session-tracker-panel__footer-item:not(:first-child) {
-  padding-left: 10px;
-  border-left: 1px solid rgba(63, 81, 92, 0.12);
+.session-tracker-panel__wpm-row strong,
+.session-tracker-panel__footer-item strong {
+  color: var(--accent-deep);
+  font-size: 0.88rem;
 }
 
-.session-tracker-panel__footer-item strong {
-  color: #1f6e78;
-  font-weight: 800;
+.session-tracker-panel__pace-note {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.66rem;
+  line-height: 1.18;
+}
+
+.session-tracker-panel__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding-top: 2px;
+  border-top: 1px solid rgba(31, 36, 48, 0.06);
+  color: var(--ink-soft);
+  font-size: 0.66rem;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.session-tracker-panel__footer-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
 }
 
 .session-tracker-panel__footer-icon {
   display: inline-grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 8px;
-  background: rgba(31, 36, 48, 0.07);
+  width: 15px;
+  height: 15px;
   color: #5d8b96;
-  font-size: 0.8rem;
-  flex: 0 0 auto;
 }
 
 .writing-target-card-head {
@@ -3423,17 +3385,6 @@ select {
     max-width: none;
   }
 
-  .session-tracker-panel__body {
-    grid-template-columns: 1fr;
-  }
-
-  .session-tracker-panel__gauge-column {
-    padding-left: 0;
-    border-left: 0;
-    padding-top: 12px;
-    border-top: 1px solid rgba(63, 81, 92, 0.12);
-  }
-
 }
 
 @media (max-width: 760px) {
@@ -3522,37 +3473,59 @@ select {
   }
 
   .session-tracker-panel {
-    padding: 12px;
+    padding: 10px;
   }
 
-  .session-tracker-panel__header {
-    flex-direction: column;
-    align-items: flex-start;
+  .session-tracker-panel__body {
+    grid-template-columns: 1fr;
+    gap: 8px;
   }
 
-  .session-tracker-panel__clock {
-    align-self: flex-end;
+  .session-tracker-panel__gauge-column {
+    padding-left: 0;
+    border-left: 0;
   }
 
-  .session-tracker-panel__badge {
-    width: 48px;
-    height: 48px;
+  .session-tracker-panel__gauge-row {
+    grid-template-columns: 44px minmax(0, 1fr);
+    gap: 6px;
   }
 
-  .session-tracker-panel__badge-icon svg {
-    width: 30px;
-    height: 30px;
+  .session-tracker-panel__gauge {
+    width: 42px;
+    height: 42px;
+  }
+
+  .session-tracker-panel__gauge-icon {
+    width: 24px;
+    height: 24px;
   }
 
   .session-tracker-panel__footer {
-    grid-template-columns: 1fr;
+    flex-direction: column;
+    align-items: flex-start;
+    white-space: normal;
+    font-size: 0.64rem;
   }
 
-  .session-tracker-panel__footer-item:not(:first-child) {
-    padding-left: 0;
-    border-left: 0;
-    padding-top: 8px;
-    border-top: 1px solid rgba(63, 81, 92, 0.12);
+  .session-tracker-panel__footer-item strong {
+    font-size: 0.82rem;
+  }
+
+  .session-tracker-panel__clock {
+    gap: 3px;
+  }
+
+  .session-tracker-panel__gauge-copy {
+    font-size: 0.64rem;
+  }
+
+  .session-tracker-panel__pace-note {
+    font-size: 0.64rem;
+  }
+
+  .session-tracker-panel__count-row {
+    font-size: 0.72rem;
   }
 
 }

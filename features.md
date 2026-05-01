@@ -66,8 +66,8 @@ Narration follow tracks a live read-through against canonical manuscript spans, 
 ### Progress
 
 - Status: Foundation implemented.
-- Repository coverage: narration session snapshots, alignment jobs, audio service contract, local alignment monitor, manuscript-style narration panel reuse, narration tool chips that arm a verse for recording, voice recording records with project-media pointers, and a low-overhead browser capture path with optional speech-tracker state.
-- Next work: add pause/recover state transitions, better spoken-word-to-verse tracking, Whisper-based streaming alignment, and follow-cursor recovery.
+- Repository coverage: narration session snapshots, alignment jobs, audio service contract, local alignment monitor, manuscript-style narration panel reuse, narration tool chips that arm a verse for recording, voice recording records with project-media pointers, a low-overhead browser capture path with optional speech-tracker state, and the first modular extraction of the writing-target/session-tracker view into `apps/editor/public/features/progress-tracker.js` plus shared formatting helpers in `apps/editor/public/shared/ui-utils.js`, with the desktop host now serving modular editor files generically from `apps/editor/public`.
+- Next work: add pause/recover state transitions, better spoken-word-to-verse tracking, Whisper-based streaming alignment, follow-cursor recovery, and continue splitting the manuscript shell into feature-owned modules so parallel work can happen without editing the same monolith.
 
 ## Feature 05 - Character Voice Narration
 

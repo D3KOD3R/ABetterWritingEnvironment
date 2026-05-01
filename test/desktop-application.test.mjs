@@ -237,11 +237,6 @@ export async function runDesktopApplicationTest() {
   assert.match(appScript.body, /data-action="close-writing-target-window"/);
   assert.match(appScript.body, /Writing Goals/);
   assert.match(appScript.body, /writingTargetPointerDownStartedInsideWindow/);
-  assert.match(appScript.body, /buildSessionTrackerMetric/);
-  assert.match(appScript.body, /sessionTracker/);
-  assert.match(appScript.body, /Session tracker/);
-  assert.match(appScript.body, /session-tracker-panel/);
-  assert.match(appScript.body, /renderSessionTrackerPanel/);
   assert.match(appScript.body, /sessionWordsPerHourLabel/);
   assert.match(appScript.body, /sessionMilestoneStatusText/);
   assert.match(appScript.body, /estimateRecentSessionWordsPerMinute/);
@@ -257,7 +252,6 @@ export async function runDesktopApplicationTest() {
   assert.match(appScript.body, /progress: sessionTargetWords > 0 \? Math\.min\(1, Math\.max\(0, dailyWords\) \/ sessionTargetWords\) : 0,/);
   assert.match(appScript.body, /syncWritingTargetWindowLiveState\(\);[\s\S]*?queueWritingTargetSnapshot\(\);/);
   assert.match(appScript.body, /buildLiveWritingTargetHistoryEntry/);
-  assert.match(appScript.body, /desktop-target-strip/);
   assert.match(appScript.body, /recordWritingTargetSnapshot/);
   assert.match(appScript.body, /commitWritingTargetDraft/);
   assert.match(appScript.body, /getProjectRecordById\(projectId\)/);
@@ -318,7 +312,6 @@ export async function runDesktopApplicationTest() {
   assert.match(appScript.body, /writing-target-note-field/);
   assert.match(appScript.body, /writing-target-footer-actions/);
   assert.match(appScript.body, /writing-target-help-card/);
-  assert.match(appScript.body, /writing-target-card-icon/);
   assert.match(appScript.body, /Goal settings/);
   assert.match(appScript.body, /Calendar view/);
   assert.match(appScript.body, /Selected day/);
@@ -351,7 +344,7 @@ export async function runDesktopApplicationTest() {
   assert.match(appScript.body, /syncLayoutWidths/);
   assert.match(
     appScript.body,
-    /function toggleChapterCollapse\(chapterId\) \{[\s\S]*?persistCollapsedChapterState\(state\.activeProjectId, state\.collapsedChapterIds\);\n  persistCurrentProjectRecord\(\);\n  renderBinderPanel\(\);\n\}/,
+    /function toggleChapterCollapse\(chapterId\) \{[\s\S]*?persistCollapsedChapterState\(state\.activeProjectId, state\.collapsedChapterIds\);[\s\S]*?persistCurrentProjectRecord\(\);[\s\S]*?renderBinderPanel\(\);[\s\S]*?\}/,
   );
   assert.match(appScript.body, />Manuscript<\/p>/);
   assert.doesNotMatch(appScript.body, />Binder<\/p>/);
@@ -373,6 +366,25 @@ export async function runDesktopApplicationTest() {
   assert.equal(sessionTrackerIcons.statusCode, 200);
   assert.match(sessionTrackerIcons.body, /renderSessionTrackerPenSvg/);
   assert.match(sessionTrackerIcons.body, /SESSION_TRACKER_FLAMING_PEN_SVG/);
+
+  const progressTrackerModule = createDesktopResponse("/features/progress-tracker.js");
+  assert.equal(progressTrackerModule.statusCode, 200);
+  assert.match(progressTrackerModule.body, /renderWritingTargetStrip/);
+  assert.match(progressTrackerModule.body, /buildSessionTrackerMetric/);
+  assert.match(progressTrackerModule.body, /getSessionTrackerVisualState/);
+  assert.match(progressTrackerModule.body, /renderSessionTrackerPaceRing/);
+  assert.match(progressTrackerModule.body, /renderSessionTrackerPanel/);
+  assert.match(progressTrackerModule.body, /renderSessionTrackerClockIcon/);
+  assert.match(progressTrackerModule.body, /desktop-target-strip/);
+  assert.match(progressTrackerModule.body, /session-tracker-panel/);
+  assert.match(progressTrackerModule.body, /writing-target-card/);
+  assert.match(progressTrackerModule.body, /writing-target-card-icon/);
+  assert.match(progressTrackerModule.body, /Session tracker/);
+
+  const sharedUiUtilsModule = createDesktopResponse("/shared/ui-utils.js");
+  assert.equal(sharedUiUtilsModule.statusCode, 200);
+  assert.match(sharedUiUtilsModule.body, /function escapeHtml/);
+  assert.match(sharedUiUtilsModule.body, /function formatDisplayNumber/);
 
   const editorModel = createDesktopResponse("/editor-model.js");
   assert.equal(editorModel.statusCode, 200);

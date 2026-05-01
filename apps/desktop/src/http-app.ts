@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, resolve as resolvePath } from "node:path";
+import { dirname, extname, relative, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { createDesktopSettingsSnapshot } from "./settings.ts";
@@ -23,6 +23,7 @@ import {
 } from "../../../services/local-ai/index.ts";
 
 const INDEX_HTML_PATH = fileURLToPath(new URL("../../editor/public/index.html", import.meta.url));
+const EDITOR_PUBLIC_ROOT = fileURLToPath(new URL("../../editor/public/", import.meta.url));
 const SERVA_VITAE_PROJECT_LIBRARY_JS_PATH = fileURLToPath(
   new URL("../../editor/public/serva-vitae-project-library.js", import.meta.url),
 );
@@ -177,10 +178,15 @@ export function createDesktopResponse(pathname: string): DesktopHttpResponse {
     );
   }
 
+  const editorPublicAsset = serveEditorPublicAsset(pathname);
+  if (editorPublicAsset) {
+    return editorPublicAsset;
+  }
+
   return textResponse(
     404,
     "text/plain; charset=utf-8",
-    "Not found. Try '/', '/app.js', '/serva-vitae-project-library.js', '/editor-model.js', '/session-tracker-icons.js', '/styles.css', '/writing-goals-dashboard.css', '/assets/icons/session-tracker-sleeping-pen.svg', '/assets/icons/session-tracker-working-pen.svg', '/assets/icons/session-tracker-flaming-pen.svg', '/api/workspace', '/api/project-library', '/api/project-integrator', '/api/project-file/save', '/api/project-file/load', '/api/settings', or '/api/local-ai/status'.",
+    "Not found. Try '/', '/app.js', '/serva-vitae-project-library.js', '/editor-model.js', '/session-tracker-icons.js', '/features/progress-tracker.js', '/shared/ui-utils.js', '/styles.css', '/writing-goals-dashboard.css', '/assets/icons/session-tracker-sleeping-pen.svg', '/assets/icons/session-tracker-working-pen.svg', '/assets/icons/session-tracker-flaming-pen.svg', '/api/workspace', '/api/project-library', '/api/project-integrator', '/api/project-file/save', '/api/project-file/load', '/api/settings', or '/api/local-ai/status'.",
   );
 }
 
@@ -442,6 +448,30 @@ export async function createDesktopResponseForRequest(
   return createDesktopResponse(request.pathname);
 }
 
+function serveEditorPublicAsset(pathname: string): DesktopHttpResponse | null {
+  const normalizedPathname = pathname.startsWith("/") ? pathname.slice(1) : pathname;
+  if (!normalizedPathname || normalizedPathname.endsWith("/")) {
+    return null;
+  }
+
+  const extension = extname(normalizedPathname).toLowerCase();
+  if (![".js", ".mjs", ".css", ".html", ".svg", ".json", ".txt"].includes(extension)) {
+    return null;
+  }
+
+  const resolvedPath = resolvePath(EDITOR_PUBLIC_ROOT, normalizedPathname);
+  const relativePath = relative(EDITOR_PUBLIC_ROOT, resolvedPath);
+  if (!relativePath || relativePath.startsWith("..") || relativePath.includes(":")) {
+    return null;
+  }
+
+  try {
+    return textResponse(200, contentTypeForExtension(extension), readFileSync(resolvedPath, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
 function textResponse(
   statusCode: number,
   contentType: string,
@@ -473,6 +503,24 @@ function apiCorsHeaders(): Record<string, string> {
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
   };
+}
+
+function contentTypeForExtension(extension: string): string {
+  switch (extension) {
+    case ".js":
+    case ".mjs":
+      return "text/javascript; charset=utf-8";
+    case ".css":
+      return "text/css; charset=utf-8";
+    case ".html":
+      return "text/html; charset=utf-8";
+    case ".svg":
+      return "image/svg+xml; charset=utf-8";
+    case ".json":
+      return "application/json; charset=utf-8";
+    default:
+      return "text/plain; charset=utf-8";
+  }
 }
 
 function createAiRouteRequest(
