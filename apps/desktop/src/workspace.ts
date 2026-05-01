@@ -1,3 +1,9 @@
+import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
+
 import {
   addBlock,
   addCharacter,
@@ -51,6 +57,99 @@ import { createLocalAnalysisService } from "../../../services/analysis/src/index
 import { createInMemoryAudioService } from "../../../services/audio/src/index.ts";
 import { createInMemoryVoiceService } from "../../../services/voice/src/index.ts";
 import { createDesktopSettingsSnapshot } from "./settings.ts";
+import {
+  logDesktopError,
+  logDesktopInfo,
+} from "./logger.ts";
+
+export interface ImportedProjectData {
+  schemaVersion: number;
+  generatedAt: string;
+  project: Project;
+  world: WorldModel;
+  manuscriptTasks: any[];
+  passageNotes: any[];
+  sourceArchive?: ImportedSourceArchiveItem[];
+  importReport: Record<string, unknown>;
+}
+
+export interface ImportedSourceArchiveItem {
+  id: string;
+  title: string;
+  kind: string;
+  binderPath: string;
+  scrivenerDocumentId?: string;
+  assetPath?: string;
+  bodyPreview?: string;
+}
+
+export interface ProjectSettingsSnapshot {
+  editorPrefs: Record<string, unknown>;
+  localAiPrefs: Record<string, unknown>;
+  binderPanelWidth: number;
+  consoleDockWidth: number;
+  consoleDockCollapsed: boolean;
+  collapsedChapterIds: string[];
+  collapsedConsoleChapterIds: {
+    issueTasks: string[];
+    issues: string[];
+    inspiration: string[];
+    research: string[];
+  };
+  projectFilePath: string;
+  projectIntegratorPath: string;
+  writingTargetState: Record<string, unknown>;
+  writingTargetViewMode: string;
+  writingTargetSelectedDateKey: string;
+  writingTargetCalendarMonthKey: string;
+}
+
+export interface ProjectLibrarySeedRecord {
+  id: string;
+  title: string;
+  source: string;
+  createdAt: string;
+  updatedAt: string;
+  workspace: EditorWorkspaceSnapshot;
+  sceneDrafts: Record<string, unknown>;
+  structureDrafts: { scenes: unknown[] };
+  templateDrafts: unknown[];
+  manuscriptTasks: any[];
+  passageNotes: any[];
+  sourceArchive: ImportedSourceArchiveItem[];
+  importReport: Record<string, unknown>;
+  projectSettings: ProjectSettingsSnapshot;
+  editorPrefs: Record<string, unknown>;
+  localAiPrefs: Record<string, unknown>;
+}
+
+export interface ProjectLibrarySeedSnapshot {
+  activeProjectId: string;
+  projects: ProjectLibrarySeedRecord[];
+}
+
+const SERVA_VITAE_IMPORT_SCRIPT_PATH = fileURLToPath(
+  new URL("../../../scripts/build-project-data.mjs", import.meta.url),
+);
+const SERVA_VITAE_IMPORT_INDEX_PATH = fileURLToPath(
+  new URL(
+    "../../../Project Serva Vitae Novel & WoldBuild Combined Cloud.scriv/Project Serva Vitae Novel & WoldBuild Combined Cloud.scrivx",
+    import.meta.url,
+  ),
+);
+const SERVA_VITAE_IMPORT_DATA_ROOT = fileURLToPath(
+  new URL(
+    "../../../Project Serva Vitae Novel & WoldBuild Combined Cloud.scriv/Files/Data",
+    import.meta.url,
+  ),
+);
+const SERVA_VITAE_IMPORT_OUTPUT_PATH = path.join(
+  tmpdir(),
+  "abe-serva-vitae-project-data.json",
+);
+
+let cachedServaVitaeImportBundle: ImportedProjectData | null = null;
+let cachedServaVitaeProjectLibrarySeed: ProjectLibrarySeedSnapshot | null = null;
 
 interface ProjectAnchors {
   khepriAnchor: ManuscriptAnchor;
@@ -65,6 +164,33 @@ const DREAM_SCAPE_IDEA = {
   text:
     "A powerful scene where an old corridor beacon wakes beneath Khepri and makes the treaty silence feel staged rather than accidental.",
 };
+
+function createDefaultProjectSettingsSnapshot(generatedAt: string): ProjectSettingsSnapshot {
+  const parsedDate = new Date(generatedAt);
+  const effectiveDate = Number.isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
+  const dateKey = effectiveDate.toISOString().slice(0, 10);
+
+  return {
+    editorPrefs: {},
+    localAiPrefs: { enabled: true },
+    binderPanelWidth: 320,
+    consoleDockWidth: 320,
+    consoleDockCollapsed: false,
+    collapsedChapterIds: [],
+    collapsedConsoleChapterIds: {
+      issueTasks: [],
+      issues: [],
+      inspiration: [],
+      research: [],
+    },
+    projectFilePath: "",
+    projectIntegratorPath: "",
+    writingTargetState: {},
+    writingTargetViewMode: "month",
+    writingTargetSelectedDateKey: dateKey,
+    writingTargetCalendarMonthKey: dateKey.slice(0, 7),
+  };
+}
 
 export function createDesktopWorkspaceSnapshot(): EditorWorkspaceSnapshot {
   const seededProject = buildSeedProject();
@@ -173,6 +299,7 @@ export function createDesktopWorkspaceSnapshot(): EditorWorkspaceSnapshot {
     profiles,
     bindings,
     renderJobs: [previewJob, chapterRenderJob],
+    recordings: [],
   };
 
   return {
@@ -204,6 +331,282 @@ export function createDesktopWorkspaceSnapshot(): EditorWorkspaceSnapshot {
       entityId: worldSnapshot.entities[0]?.id,
     },
   };
+}
+
+export function createServaVitaeProjectLibrarySeed(): ProjectLibrarySeedSnapshot {
+  if (cachedServaVitaeProjectLibrarySeed) {
+    return cachedServaVitaeProjectLibrarySeed;
+  }
+
+  const imported = loadServaVitaeImportBundle();
+  const seed = createProjectLibrarySeedFromImportedData(imported, {
+    sourceLabel: "Serva Vitae",
+  });
+  cachedServaVitaeProjectLibrarySeed = seed;
+  return seed;
+}
+
+export function createProjectLibrarySeedFromImportedData(
+  imported: ImportedProjectData,
+  options: { sourceLabel?: string } = {},
+): ProjectLibrarySeedSnapshot {
+  logDesktopInfo("import", `Loaded the ${options.sourceLabel ?? imported.project.title} Scrivener import bundle.`, {
+    projectId: imported.project.id,
+    projectTitle: imported.project.title,
+    chapters: imported.project.chapters.length,
+    scenes: imported.project.chapters.reduce((count, chapter) => count + chapter.scenes.length, 0),
+    templates: imported.world.templates.length,
+    manuscriptTasks: imported.manuscriptTasks.length,
+    passageNotes: imported.passageNotes.length,
+    archivedItems: imported.sourceArchive?.length ?? 0,
+  });
+  let project = cloneImportProject(imported.project);
+  let world = cloneImportWorld(imported.world);
+  const analysisService = createLocalAnalysisService();
+  const analysisBatch = analysisService.analyzeWorkspace(
+    project,
+    world,
+    imported.generatedAt,
+  );
+  const dreamScapeBatch = analysisService.exploreDreamScape({
+    project,
+    world,
+    ideaTitle: DREAM_SCAPE_IDEA.title,
+    ideaText: DREAM_SCAPE_IDEA.text,
+    now: imported.generatedAt,
+  });
+
+  for (const issue of analysisBatch.issues) {
+    project = addIssueRecord(
+      project,
+      {
+        category: issue.category,
+        severity: issue.severity,
+        summary: issue.summary,
+        detail: issue.detail,
+        source: issue.source,
+        confidence: issue.confidence,
+        anchor: issue.anchor,
+      },
+      imported.generatedAt,
+    ).project;
+  }
+
+  for (const event of analysisBatch.events) {
+    project = addEventTag(
+      project,
+      {
+        kind: event.kind,
+        label: event.label,
+        source: event.source,
+        notes: event.notes,
+        anchor: event.anchor,
+      },
+      imported.generatedAt,
+    ).project;
+  }
+
+  const binder = buildBinderTree(project);
+  const manuscriptIndex = buildManuscriptIndex(project);
+  const projectSnapshot = buildProjectSnapshot(project, binder, manuscriptIndex);
+  const worldSnapshot = buildWorldSnapshot(project, world);
+  const suggestionQueue = buildSuggestionQueue(project, [
+    ...analysisBatch.suggestions,
+    ...dreamScapeBatch.suggestions,
+  ]);
+  const firstLine = projectSnapshot.lines[0];
+  if (!firstLine) {
+    throw new Error(`Unable to resolve a seed narration line for ${projectSnapshot.title}.`);
+  }
+
+  const audioService = createInMemoryAudioService();
+  const narrationSession = audioService.startNarrationSession({
+    project,
+    sessionLabel: `${projectSnapshot.title} seed read-through`,
+    anchor: createProjectNarrationAnchor(project, firstLine),
+    currentLineNumber: firstLine.lineNumber,
+    currentText: firstLine.text,
+    now: imported.generatedAt,
+  });
+  const alignment = audioService.alignNarration({
+    session: narrationSession,
+    projectId: project.id,
+    anchor: createProjectNarrationAnchor(project, firstLine),
+    transcript: firstLine.text.slice(0, 96),
+    resolvedText: firstLine.text,
+    matchedLineNumber: firstLine.lineNumber,
+    confidence: 0.95,
+    now: imported.generatedAt,
+  });
+
+  const voiceService = createInMemoryVoiceService();
+  const bindings = voiceService.createSpeakerBindings({
+    project,
+    assignments: project.speakerAssignments,
+  });
+  const firstScene = projectSnapshot.lines.find((line) => line.sceneId === firstLine.sceneId) ?? firstLine;
+  const previewJob = voiceService.queueVoicePreview({
+    projectId: project.id,
+    sceneId: firstScene.sceneId,
+    bindingIds: bindings.slice(0, 2).map((binding) => binding.id),
+    now: imported.generatedAt,
+  });
+  const chapterRenderJob = voiceService.queueChapterRender({
+    projectId: project.id,
+    chapterId: firstLine.chapterId,
+    bindingIds: bindings.map((binding) => binding.id),
+    now: imported.generatedAt,
+  });
+
+  const workspace: EditorWorkspaceSnapshot = {
+    generatedAt: imported.generatedAt,
+    workspaceTitle: "ABetterNovelAuthoringEnvironment",
+    settings: createDesktopSettingsSnapshot(),
+    project: projectSnapshot,
+    world: worldSnapshot,
+    analysis: {
+      provider: analysisService.provider,
+      lastJob: analysisBatch.job,
+      suggestionQueue,
+      dreamScaping: {
+        ideaTitle: DREAM_SCAPE_IDEA.title,
+        ideaText: DREAM_SCAPE_IDEA.text,
+        suggestionIds: dreamScapeBatch.suggestions.map((suggestion) => suggestion.id),
+      },
+    },
+    narration: {
+      provider: audioService.provider,
+      session: alignment.session,
+      alignmentJobs: [alignment.job],
+    },
+    voice: {
+      provider: voiceService.provider,
+      profiles: voiceService.listProfiles(),
+      bindings,
+      renderJobs: [previewJob, chapterRenderJob],
+      recordings: [],
+    },
+    selectionDefaults: {
+      lineId: firstLine.blockId,
+      issueId: projectSnapshot.issues[0]?.id,
+      nodeId: worldSnapshot.spines[0]?.nodes[0]?.id,
+      entityId: worldSnapshot.entities[0]?.id,
+    },
+  };
+
+  return {
+    activeProjectId: projectSnapshot.id,
+    projects: [
+      {
+        id: projectSnapshot.id,
+        title: projectSnapshot.title,
+        source: "scrivener-import",
+        createdAt: imported.generatedAt,
+        updatedAt: imported.generatedAt,
+        workspace,
+        sceneDrafts: {},
+        structureDrafts: { scenes: [] },
+        templateDrafts: [],
+        manuscriptTasks: imported.manuscriptTasks,
+        passageNotes: imported.passageNotes,
+        sourceArchive: imported.sourceArchive ?? [],
+        importReport: imported.importReport,
+        projectSettings: createDefaultProjectSettingsSnapshot(imported.generatedAt),
+        editorPrefs: {},
+        localAiPrefs: { enabled: true },
+      },
+    ],
+  };
+}
+
+function loadServaVitaeImportBundle(): ImportedProjectData {
+  if (cachedServaVitaeImportBundle) {
+    return cachedServaVitaeImportBundle;
+  }
+
+  const result = spawnSync(process.execPath, [
+    SERVA_VITAE_IMPORT_SCRIPT_PATH,
+    "--index",
+    SERVA_VITAE_IMPORT_INDEX_PATH,
+    "--data-root",
+    SERVA_VITAE_IMPORT_DATA_ROOT,
+    "--output",
+    SERVA_VITAE_IMPORT_OUTPUT_PATH,
+    "--now",
+    "2026-04-21T05:00:00.000Z",
+    "--project-title",
+    "Project Serva Vitae",
+    "--project-id",
+    "project-serva-vitae",
+    "--world-id",
+    "world-serva-vitae",
+  ], {
+    encoding: "utf8",
+  });
+
+  if (result.error) {
+    logDesktopError("import", "The Scrivener import script failed to spawn.", {
+      error: result.error,
+    });
+    throw result.error;
+  }
+
+  if (result.status !== 0) {
+    logDesktopError("import", "The Scrivener import script exited with an error.", {
+      status: result.status,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    });
+    throw new Error(
+      `Scrivener import failed with status ${result.status}: ${result.stderr || result.stdout || "unknown error"}`,
+    );
+  }
+
+  try {
+    const payload = JSON.parse(readFileSync(SERVA_VITAE_IMPORT_OUTPUT_PATH, "utf8")) as ImportedProjectData;
+    cachedServaVitaeImportBundle = payload;
+    return payload;
+  } catch (error) {
+    logDesktopError("import", "Unable to read the Serva Vitae import output bundle.", {
+      error,
+      outputPath: SERVA_VITAE_IMPORT_OUTPUT_PATH,
+    });
+    throw error;
+  }
+}
+
+function cloneImportProject(project: Project): Project {
+  return cloneValue(project);
+}
+
+function cloneImportWorld(world: WorldModel): WorldModel {
+  return cloneValue(world);
+}
+
+function createProjectNarrationAnchor(project: Project, line: WorkspaceLineRecord): ManuscriptAnchor {
+  const paragraphId =
+    project.chapters
+      .flatMap((chapter) => chapter.scenes)
+      .flatMap((scene) => scene.blocks)
+      .find((block) => block.id === line.blockId)?.paragraphId ?? "";
+
+  return {
+    projectId: project.id,
+    chapterId: line.chapterId,
+    sceneId: line.sceneId,
+    blockId: line.blockId,
+    paragraphId,
+    startOffset: 0,
+    endOffset: line.text.length,
+  };
+}
+
+function cloneValue(value: unknown) {
+  if (typeof structuredClone === "function") {
+    return structuredClone(value);
+  }
+
+  return JSON.parse(JSON.stringify(value));
 }
 
 function buildSeedProject(): {
@@ -915,6 +1318,10 @@ function buildWorldSnapshot(project: Project, world: WorldModel): WorldWorkspace
       key: template.key,
       description: template.description,
       fieldCount: template.fields.length,
+      source: template.source,
+      scrivenerDocumentId: template.scrivenerDocumentId,
+      scrivenerBinderPath: template.scrivenerBinderPath,
+      sourceText: template.sourceText,
     })),
     entities: world.entities.map((entity) =>
       buildEntityRecord(project, entity, templateById, nodeById),

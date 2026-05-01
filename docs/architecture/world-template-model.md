@@ -4,6 +4,8 @@
 
 A `WorldTemplate` defines a reusable entity shape with typed `TemplateField` records. Fields are validated at instantiation time and may declare defaults or enum options.
 
+Imported Scrivener template sheets are preserved as template records with source provenance, including the original binder path and source text, so the application can render or edit them later without re-reading the Scrivener package.
+
 ## Instantiated Entities
 
 A `WorldEntity` preserves:

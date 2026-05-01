@@ -17,8 +17,9 @@ The writer reviews manuscript problems as structured diagnostics, with each issu
 ### Progress
 
 - Status: Foundation implemented.
-- Repository coverage: `IssueRecord`, `ManuscriptAnchor`, local analysis issue suggestions, issue console records, editor navigation to flagged scene lines, simplified issue-console headings, chapter-grouped open task lists, right-click selected-text task creation with generated scene-order task titles, blue task-body instructions, click-only manuscript references, draft-only inline editor inspiration/research bubbles with a normal manuscript verse field that preloads selected text or saves against the inserted typed verse, issue-style inspiration/research list navigation, hover previews that glow the selected manuscript range, task-click navigation back to the editor range with fuzzy selected-text drift recovery, whitespace-click writing focus, caret-centering while typing, pane-local editor scrolling, scene task completion, remaining-task chapter badges in the Manuscript panel, and a documented Scrivener import plan for the Project Serva Vitae source package.
-- Next work: promote local selected-text tasks into canonical anchored task records, add host-seeded Scrivener comment tasks, and persist task resolution with project data.
+- Repository coverage: `IssueRecord`, `ManuscriptAnchor`, local analysis issue suggestions, issue console records, editor navigation to flagged scene lines, simplified issue-console headings, collapsible chapter groups in the issue, inspiration, research, and task consoles, chapter-grouped open task lists, collapsible manuscript chapter tabs, resizable left and right sidebar splitters, browser keyboard shortcuts for save/new/open/writing-goals/pane switching, right-click selected-text task creation with generated scene-order task titles, blue task-body instructions, thumbnail-hover task expansion, click-only manuscript references, draft-only inline editor inspiration/research bubbles with a normal manuscript verse field that preloads selected text or saves against the inserted typed verse, two-way inspiration/research navigation between saved manuscript ranges and side-panel note items, hover previews that glow the selected manuscript range, task-click navigation back to the editor range with fuzzy selected-text drift recovery, whitespace-click writing focus, caret-centering while typing, pane-local editor scrolling, scene task completion, remaining-task chapter badges in the Manuscript panel, live manuscript word counts with release-date-aware projected-days forecasting and on-track/off-track hints, a Ctrl+Alt+T writing-target utility window, selectable top-header writing metrics, linked release-date and daily-target goal syncing, a session-split and inactivity timer panel, a top-header session tracker card with recent-snapshot words/minute pacing, red-to-blue-to-green progress signaling, and pulsing over-target glow, plus a full writing-goals dashboard modal with top summary cards, a month/week/list calendar, streak summary, selected-day detail panel, notes, and explicit save/cancel/reset actions, with the daily target tracker now counting words written today separately from the session tracker, a per-day progress archive with chapter/scene/issue/inspiration breakdown, a 30-day believable sample-history seeding action for tracker testing, a Scrivener import command that emits manuscript, world, task, timeline, and template data with source provenance, nested station and fauna world sheets, full binder-path provenance, retained Scrivener template sheet text, file-backed desktop/browser logging, a saved-project library with browser load/save/create controls and file-backed Save As/load routes, and a documented Scrivener import plan for the Project Serva Vitae source package. Modal dismissal is deliberate: a single outside click closes the writing-target window, but a pointer that starts inside the modal and is released outside should leave the window open.
+- Note: The session tracker now renders as the full inline metrics panel with a circular WPM tracker, and its stateful pen artwork lives at `apps/editor/public/assets/icons/session-tracker-sleeping-pen.svg`, `apps/editor/public/assets/icons/session-tracker-working-pen.svg`, and `apps/editor/public/assets/icons/session-tracker-flaming-pen.svg`.
+- Next work: promote local selected-text tasks into canonical anchored task records, add host-seeded passage-note/research records, persist task resolution with project data, and move the saved-project library from browser storage into a host-backed project store if needed later.
 
 ## Feature 02 - Local Writing Assistant
 
@@ -65,8 +66,8 @@ Narration follow tracks a live read-through against canonical manuscript spans, 
 ### Progress
 
 - Status: Foundation implemented.
-- Repository coverage: narration session snapshots, alignment jobs, audio service contract, local alignment monitor, and editor narration panel.
-- Next work: add microphone capture adapters, pause/recover state transitions, and real streaming alignment.
+- Repository coverage: narration session snapshots, alignment jobs, audio service contract, local alignment monitor, manuscript-style narration panel reuse, narration tool chips that arm a verse for recording, voice recording records with project-media pointers, and a low-overhead browser capture path with optional speech-tracker state.
+- Next work: add pause/recover state transitions, better spoken-word-to-verse tracking, Whisper-based streaming alignment, and follow-cursor recovery.
 
 ## Feature 05 - Character Voice Narration
 
@@ -81,8 +82,8 @@ Character voice narration maps manuscript speaker assignments to voice profiles 
 ### Progress
 
 - Status: Foundation implemented.
-- Repository coverage: characters, speaker assignments, voice profiles, speaker bindings, preview jobs, chapter render jobs, and voice routing UI.
-- Next work: add editable voice-profile assignment, provider configuration, and audio output persistence.
+- Repository coverage: characters, speaker assignments, legacy voice routing, narration voice profiles, narration jobs, queue transitions, placeholder rendering, local voice narration storage, right-side voice rail controls, speaker bindings, preview jobs, chapter render jobs, the editor Voice Narration foundation panel, and saved voice-recording cards with preview/open actions.
+- Next work: add editable voice-profile assignment, per-verse voice selection, provider configuration, richer media persistence, and later alignment handoff.
 
 ## Feature 06 - World Spine View
 
@@ -115,3 +116,19 @@ Dream Scaping lets an author submit a powerful loose idea or scene and receive r
 - Status: Foundation implemented on 2026-04-24.
 - Repository coverage: `DreamScapeSuggestion`, `DreamScapeIdeaInput`, local `exploreDreamScape` analysis flow, dream-scaping job trigger, desktop workspace snapshot, editor Dream Scaping panel, and tests.
 - Next work: add an author-facing idea submission form, accept/reject actions, and optional creation of reviewed timeline nodes or scene drafts.
+
+## Feature 08 - Scrivener Project Integrator
+
+### Feature Definition
+
+Allows a writer to convert a local Scrivener project into this application's canonical saved-project format. The integrator preserves manuscript hierarchy, chapter and scene ordering, template sheets, source provenance, and whitespace in the imported text so the manuscript can be loaded, reviewed, and revised locally without depending on Scrivener at runtime.
+
+### Process Header
+
+The project integrator imports a user-owned Scrivener package, translates it into the app's normal project model, and stores it as a regular saved project while keeping the original source package untouched.
+
+### Progress
+
+- Status: Foundation implemented.
+- Repository coverage: host-backed `/api/project-integrator` route, browser project-path input and import button, whitespace-preserving RTF conversion, generic Scrivener path resolution, project-library merge/load flow for imported projects, and file-backed import logging.
+- Next work: add a folder/file picker, surface richer import diagnostics, and build a dedicated retained-template browser for imported Scrivener template sheets.

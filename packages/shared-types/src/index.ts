@@ -218,6 +218,27 @@ export interface VoiceProfile {
   style: string;
 }
 
+export interface VoiceRecordingRecord {
+  id: string;
+  projectId: string;
+  chapterId: string;
+  chapterTitle: string;
+  sceneId: string;
+  sceneTitle: string;
+  blockId: string;
+  paragraphId: string;
+  lineNumber: number;
+  verseText: string;
+  transcript: string;
+  mediaPath?: string;
+  mediaName?: string;
+  mediaMimeType?: string;
+  durationMs?: number;
+  status: "recorded" | "saved" | "failed";
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface SpeakerVoiceBinding {
   id: string;
   speakerAssignmentId: string;
@@ -359,6 +380,10 @@ export interface WorldTemplateRecord {
   key: string;
   description: string;
   fieldCount: number;
+  source?: string;
+  scrivenerDocumentId?: string;
+  scrivenerBinderPath?: string;
+  sourceText?: string;
 }
 
 export interface WorldEntityRecord {
@@ -477,6 +502,7 @@ export interface VoiceWorkspaceSnapshot {
   profiles: VoiceProfile[];
   bindings: SpeakerVoiceBinding[];
   renderJobs: VoiceRenderJob[];
+  recordings: VoiceRecordingRecord[];
 }
 
 export interface WorkspaceSelectionDefaults {

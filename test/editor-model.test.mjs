@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 
 import {
   buildSceneRecords,
+  buildSceneLineMetrics,
   completeManuscriptTask,
   countRemainingTasksByChapter,
   createDefaultEditorPrefs,
@@ -63,12 +64,14 @@ export function runEditorModelTest() {
   };
 
   const draftBlock = createDraftBlock("dialogue", 2);
+  draftBlock.text = "Another beat follows.";
   const scenes = buildSceneRecords(
     workspace,
     {
       "scene-1": {
         sceneTitle: "Docking Rewrite",
         sceneSynopsis: "A sharper version of the approach scene.",
+        editorText: "The frigate crawled toward Halcyon Station in silence.\nAnother beat follows.",
         blocks: [
           {
             blockId: "block-1",
@@ -101,7 +104,7 @@ export function runEditorModelTest() {
   assert.equal(scenes[0].sceneTitle, "Docking Rewrite");
   assert.equal(scenes[0].sceneSynopsis, "A sharper version of the approach scene.");
   assert.equal(scenes[0].blocks.length, 2);
-  assert.equal(scenes[0].editorText, "The frigate crawled toward Halcyon Station in silence.\n");
+  assert.equal(scenes[0].editorText, "The frigate crawled toward Halcyon Station in silence.\n\nAnother beat follows.");
   assert.equal(scenes[0].blocks[1].isDraft, true);
   assert.equal(scenes[0].blocks[1].speakerLabel, "Unnamed Speaker");
   assert.equal(scenes[1].sceneTitle, "New Scene");
@@ -111,6 +114,36 @@ export function runEditorModelTest() {
   assert.equal(findBlockById(scenes, "block-1")?.text, "The frigate crawled toward Halcyon Station in silence.");
   assert.equal(groupScenesByChapter(scenes).length, 2);
   assert.equal(estimateWrappedLineCount("alpha beta gamma delta", 10), 3);
+  assert.deepEqual(
+    buildSceneLineMetrics(
+      [
+        { sceneId: "scene-a", editorText: "alpha beta" },
+        { sceneId: "scene-b", editorText: "gamma" },
+        { sceneId: "scene-c", editorText: "" },
+      ],
+      5,
+    ),
+    [
+      {
+        sceneId: "scene-a",
+        startLineNumber: 1,
+        endLineNumber: 2,
+        lineCount: 2,
+      },
+      {
+        sceneId: "scene-b",
+        startLineNumber: 3,
+        endLineNumber: 3,
+        lineCount: 1,
+      },
+      {
+        sceneId: "scene-c",
+        startLineNumber: 4,
+        endLineNumber: 4,
+        lineCount: 1,
+      },
+    ],
+  );
 
   const defaults = createDefaultEditorPrefs();
   assert.deepEqual(
@@ -164,6 +197,25 @@ export function runEditorModelTest() {
   const renamedTasks = updateManuscriptTaskTitle(normalizedTasks, task.id, "Arrival checkpoint");
   assert.equal(renamedTasks[0].title, "Arrival checkpoint");
   assert.equal(normalizeManuscriptTasks(renamedTasks)[0].title, "Arrival checkpoint");
+  const importedTask = normalizeManuscriptTasks([
+    {
+      ...task,
+      id: "scrivener-comment-task-1",
+      source: "scrivener-comment",
+      scrivenerDocumentId: "DOC-1",
+      scrivenerCommentId: "COMMENT-1",
+      scrivenerBinderPath: "Manuscript / Chapter 1",
+      anchorMode: "location",
+      anchorStatus: "active",
+      nearbyBefore: "Before",
+      nearbyAfter: "After",
+      lineIndex: 2,
+      paragraphIndex: 1,
+    },
+  ])[0];
+  assert.equal(importedTask.source, "scrivener-comment");
+  assert.equal(importedTask.scrivenerDocumentId, "DOC-1");
+  assert.equal(importedTask.anchorStatus, "active");
 
   const note = createPassageNote(
     scenes[0],
@@ -180,6 +232,7 @@ export function runEditorModelTest() {
   assert.equal(normalizedNotes[0].noteType, "inspiration");
   assert.equal(normalizedNotes[0].body, "");
   assert.equal(normalizedNotes[0].title, "Inspiration note");
+  assert.equal(normalizedNotes[0].source, "manual");
   const updatedNotes = updatePassageNoteBody(
     normalizedNotes,
     note.id,
@@ -192,6 +245,31 @@ export function runEditorModelTest() {
   const renamedNotes = updatePassageNoteTitle(updatedNotes, note.id, "Reader wonder");
   assert.equal(renamedNotes[0].title, "Reader wonder");
   assert.equal(normalizePassageNotes(renamedNotes)[0].title, "Reader wonder");
+  const importedNote = normalizePassageNotes([
+    {
+      id: "scrivener-note-1",
+      noteType: "research",
+      chapterId: "scrivener-front-matter",
+      chapterTitle: "Front Matter / Paperback",
+      sceneId: "scrivener-front-matter-scene",
+      sceneTitle: "Copyright",
+      selectedText: "Copyright",
+      startOffset: 0,
+      endOffset: 9,
+      body: "Copyright page text",
+      title: "Copyright",
+      createdAt: "2026-04-24T02:03:00.000Z",
+      source: "scrivener-front-matter",
+      scrivenerDocumentId: "FRONT-1",
+      scrivenerBinderPath: "WorldBuilding / Front Matter / Paperback / Copyright",
+      attachmentConfidence: 0.2,
+      assetIds: ["asset-1"],
+    },
+  ])[0];
+  assert.equal(importedNote.source, "scrivener-front-matter");
+  assert.equal(importedNote.scrivenerDocumentId, "FRONT-1");
+  assert.equal(importedNote.attachmentConfidence, 0.2);
+  assert.deepEqual(importedNote.assetIds, ["asset-1"]);
   const inlineNote = createPassageNote(
     scenes[0],
     {

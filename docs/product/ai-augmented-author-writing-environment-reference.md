@@ -38,7 +38,7 @@ Is a live reading view that listens to the narrator's voice, matches the spoken 
 ### Progress
 
 - Status: Foundation implemented.
-- Notes: Narration session snapshots, alignment jobs, local alignment service boundaries, and a narration follow panel are in place. Next work is microphone capture and streaming alignment recovery.
+- Notes: Narration session snapshots, alignment jobs, local alignment service boundaries, a narration follow panel, and the merged narration/voice production viewport are in place. The follow-track design is intentionally Whisper-shaped: chunked capture, short-window transcription, small overlap, and canonical-anchor recovery. Next work is microphone capture and streaming alignment recovery.
 
 ## Character Voice Narration
 
@@ -47,7 +47,7 @@ Allows the author to produce full audiobook performances directly inside the wri
 ### Progress
 
 - Status: Foundation implemented.
-- Notes: Speaker assignments, voice profiles, speaker bindings, preview jobs, chapter render jobs, and voice routing UI are in place. Next work is editable voice assignment and real provider adapters.
+- Notes: Speaker assignments, voice profiles, speaker bindings, preview jobs, chapter render jobs, and the right-side voice rail are in place. Next work is editable voice assignment, per-verse voice selection, and real provider adapters.
 
 ## World Spine View
 

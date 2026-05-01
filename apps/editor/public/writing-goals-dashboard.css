@@ -1,0 +1,523 @@
+.writing-target-window {
+  position: fixed;
+  z-index: 32;
+  top: 50%;
+  left: 50%;
+  right: auto;
+  transform: translate(-50%, -50%);
+  width: min(99.5vw, 1760px);
+  height: min(98vh, 1120px);
+  max-height: min(98vh, 1120px);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 16px 16px 12px;
+  border: 1px solid rgba(31, 36, 48, 0.12);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(252, 249, 244, 0.99), rgba(246, 242, 235, 0.98));
+  color: var(--ink-deep);
+  box-shadow: 0 32px 72px rgba(28, 35, 44, 0.22);
+  backdrop-filter: blur(12px);
+  overflow: hidden;
+}
+
+.writing-target-window-header {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(250px, 300px) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding-right: 48px;
+}
+
+.writing-target-window-copy {
+  min-width: 0;
+  padding-top: 4px;
+}
+
+.writing-target-window-header h2 {
+  margin: 0;
+  font-family: var(--copy-font);
+  font-size: 2rem;
+  font-weight: 600;
+  line-height: 1.02;
+}
+
+.writing-target-window-subtitle {
+  margin: 6px 0 0;
+  max-width: 34rem;
+  color: rgba(31, 36, 48, 0.68);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.writing-target-close {
+  position: absolute;
+  top: 0;
+  right: 0;
+  background: rgba(31, 36, 48, 0.08);
+  color: var(--ink-deep);
+}
+
+.writing-target-dashboard-stats {
+  align-self: start;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.writing-target-window .writing-target-card {
+  min-width: 0;
+  max-width: none;
+  min-height: 102px;
+  padding: 10px 12px 11px;
+  border-color: rgba(31, 36, 48, 0.08);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 10px 20px rgba(28, 35, 44, 0.06);
+}
+
+.writing-target-card-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.writing-target-card-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: rgba(31, 36, 48, 0.06);
+  color: var(--ink-soft);
+  font-style: normal;
+  font-size: 0.78rem;
+  line-height: 1;
+}
+
+.writing-target-window .writing-target-card-head span {
+  color: rgba(31, 36, 48, 0.58);
+}
+
+.writing-target-window .writing-target-card-head strong {
+  color: var(--accent-deep);
+}
+
+.writing-target-window .writing-target-note {
+  color: rgba(31, 36, 48, 0.7);
+}
+
+.writing-target-dashboard-body {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(245px, 275px) minmax(0, 1fr) minmax(290px, 330px);
+  gap: 10px;
+}
+
+.writing-target-dashboard-settings,
+.writing-target-dashboard-calendar,
+.writing-target-dashboard-detail {
+  min-height: 0;
+  padding: 12px;
+  border: 1px solid rgba(31, 36, 48, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.76);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.44);
+  overflow: hidden;
+  scrollbar-width: none;
+  overscroll-behavior: contain;
+}
+
+.writing-target-dashboard-settings::-webkit-scrollbar,
+.writing-target-dashboard-calendar::-webkit-scrollbar,
+.writing-target-dashboard-detail::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.writing-target-section-header h3 {
+  font-size: 1.32rem;
+}
+
+.writing-target-summary-grid {
+  gap: 12px;
+}
+
+.writing-target-field span,
+.writing-target-checkbox span,
+.writing-target-footer span,
+.writing-target-day-overview span,
+.writing-target-day-point span,
+.writing-target-day-sections span,
+.writing-target-day-session-summary span,
+.writing-target-note-field span,
+.writing-target-calendar-day-head span,
+.writing-target-week-day-name,
+.writing-target-calendar-weekday,
+.writing-target-day-status,
+.writing-target-legend-chip,
+.writing-target-help-card span {
+  color: rgba(31, 36, 48, 0.58);
+}
+
+.writing-target-field input:not(.writing-target-range),
+.writing-target-field select,
+.writing-target-note-field textarea {
+  border-color: rgba(31, 36, 48, 0.12);
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--ink-deep);
+}
+
+.writing-target-help-card {
+  padding: 12px 14px;
+  border: 1px solid rgba(31, 36, 48, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.writing-target-help-card p {
+  color: rgba(31, 36, 48, 0.72);
+}
+
+.writing-target-view-toggle {
+  background: rgba(31, 36, 48, 0.06);
+}
+
+.writing-target-view-toggle-button.is-active {
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.writing-target-calendar-grid,
+.writing-target-week-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(76px, 1fr));
+  gap: 5px;
+}
+
+.writing-target-calendar-weekday {
+  padding: 0 8px 2px;
+  font-size: 0.65rem;
+  text-align: left;
+}
+
+.writing-target-calendar-day,
+.writing-target-week-day {
+  display: grid;
+  align-content: start;
+  min-height: 102px;
+  padding: 7px 8px 6px;
+  border-color: rgba(214, 181, 166, 0.74);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.94);
+  text-align: left;
+  grid-template-rows: auto auto auto auto;
+  overflow: hidden;
+}
+
+.writing-target-calendar-day-head {
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.writing-target-calendar-day-head strong,
+.writing-target-week-day strong {
+  font-size: 0.92rem;
+  color: rgba(184, 92, 56, 0.95);
+}
+
+.writing-target-calendar-day-head span {
+  font-size: 0.6rem;
+}
+
+.writing-target-calendar-day-count,
+.writing-target-week-day span {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+}
+
+.writing-target-calendar-day-count {
+  -webkit-line-clamp: 1;
+  font-size: 0.72rem;
+  color: rgba(31, 36, 48, 0.76);
+}
+
+.writing-target-calendar-day-progress {
+  display: block;
+  height: 3px;
+  margin-top: 0;
+  border-radius: 999px;
+  background: rgba(31, 36, 48, 0.08);
+  overflow: hidden;
+}
+
+.writing-target-calendar-day-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--writing-target-day-progress-color, linear-gradient(90deg, rgba(110, 181, 131, 0.96), rgba(184, 92, 56, 0.94)));
+}
+
+.writing-target-calendar-day-indicators {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  align-items: center;
+}
+
+.writing-target-calendar-day-indicators span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  height: 16px;
+  padding: 0 5px 0 4px;
+  border-radius: 999px;
+  background: rgba(31, 36, 48, 0.06);
+  color: rgba(31, 36, 48, 0.66);
+  font-size: 0.58rem;
+  line-height: 1;
+  letter-spacing: 0.02em;
+}
+
+.writing-target-calendar-day-indicator-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 10px;
+  color: currentColor;
+  font-size: 0.68rem;
+  line-height: 1;
+}
+
+.writing-target-calendar-day-indicator-count {
+  display: inline-block;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.writing-target-calendar-day-indicators .is-task {
+  background: rgba(110, 181, 131, 0.12);
+  color: #2f6b45;
+}
+
+.writing-target-calendar-day-indicators .is-inspiration {
+  background: rgba(92, 132, 184, 0.12);
+  color: #35507d;
+}
+
+.writing-target-calendar-day-indicators .is-issue {
+  background: rgba(214, 118, 104, 0.12);
+  color: #8f3f36;
+}
+
+.writing-target-calendar-day.is-outside-month,
+.writing-target-week-day.is-outside-month {
+  opacity: 0.55;
+}
+
+.writing-target-calendar-day.on-target,
+.writing-target-week-day.on-target {
+  --writing-target-day-progress-color: rgba(110, 181, 131, 0.96);
+}
+
+.writing-target-calendar-day.good,
+.writing-target-week-day.good {
+  --writing-target-day-progress-color: rgba(184, 146, 92, 0.96);
+}
+
+.writing-target-calendar-day.below-target,
+.writing-target-week-day.below-target {
+  --writing-target-day-progress-color: rgba(220, 153, 74, 0.96);
+}
+
+.writing-target-calendar-day.low,
+.writing-target-week-day.low {
+  --writing-target-day-progress-color: rgba(214, 118, 104, 0.96);
+}
+
+.writing-target-calendar-day.no-writing,
+.writing-target-week-day.no-writing {
+  --writing-target-day-progress-color: rgba(31, 36, 48, 0.24);
+}
+
+.writing-target-calendar-day.is-selected,
+.writing-target-week-day.is-selected {
+  border-color: rgba(92, 132, 184, 0.48);
+  box-shadow: 0 0 0 2px rgba(92, 132, 184, 0.12);
+}
+
+.writing-target-calendar-legend {
+  gap: 8px 12px;
+  font-size: 0.7rem;
+}
+
+.writing-target-calendar-legend span {
+  padding-left: 14px;
+}
+
+.writing-target-day-overview,
+.writing-target-day-points,
+.writing-target-day-session-summary {
+  display: grid;
+  gap: 7px;
+}
+
+.writing-target-day-overview,
+.writing-target-day-points {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.writing-target-day-session-summary {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.writing-target-day-sections {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr;
+}
+
+.writing-target-day-hero {
+  display: grid;
+  gap: 6px;
+  padding: 12px 0 4px;
+}
+
+.writing-target-day-hero-value {
+  color: var(--accent-deep);
+  font-family: var(--copy-font);
+  font-size: clamp(2rem, 3vw, 2.6rem);
+  font-weight: 600;
+  line-height: 1;
+}
+
+.writing-target-day-hero-value span {
+  color: rgba(31, 36, 48, 0.6);
+  font-family: var(--editor-font-stack, var(--copy-font));
+  font-size: 0.9rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+}
+
+.writing-target-day-hero-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  color: rgba(31, 36, 48, 0.66);
+  font-size: 0.84rem;
+}
+
+.writing-target-day-hero-delta {
+  color: #2f6b45;
+  font-weight: 600;
+}
+
+.writing-target-day-hero-target {
+  color: rgba(31, 36, 48, 0.62);
+}
+
+.writing-target-day-overview > div,
+.writing-target-day-point,
+.writing-target-day-session-summary > div,
+.writing-target-day-excerpt {
+  padding: 7px 9px;
+  border-color: rgba(31, 36, 48, 0.08);
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.writing-target-day-overview strong,
+.writing-target-day-point strong,
+.writing-target-day-session-summary strong {
+  font-size: 1rem;
+}
+
+.writing-target-day-excerpt p {
+  color: rgba(31, 36, 48, 0.8);
+}
+
+.writing-target-day-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(31, 36, 48, 0.06);
+}
+
+.writing-target-day-status.is-on-target {
+  background: rgba(110, 181, 131, 0.16);
+  color: #2f6b45;
+}
+
+.writing-target-day-status.is-good {
+  background: rgba(184, 146, 92, 0.16);
+  color: #8a5b1f;
+}
+
+.writing-target-day-status.is-below-target {
+  background: rgba(220, 153, 74, 0.16);
+  color: #8c5412;
+}
+
+.writing-target-day-status.is-low {
+  background: rgba(214, 118, 104, 0.16);
+  color: #8f3f36;
+}
+
+.writing-target-day-status.is-no-writing {
+  background: rgba(31, 36, 48, 0.08);
+  color: rgba(31, 36, 48, 0.62);
+}
+
+.writing-target-footer {
+  padding-top: 2px;
+}
+
+.writing-target-footer-actions {
+  gap: 10px;
+}
+
+@media (max-width: 1180px) {
+  .writing-target-window {
+    width: min(100vw - 12px, 1280px);
+    max-height: calc(100vh - 20px);
+  }
+
+  .writing-target-dashboard-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .writing-target-dashboard-body {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .writing-target-window {
+    width: calc(100vw - 10px);
+    padding: 10px;
+  }
+
+  .writing-target-dashboard-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .writing-target-row,
+  .writing-target-day-overview,
+  .writing-target-day-points,
+  .writing-target-day-session-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .writing-target-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .writing-target-footer-actions {
+    width: 100%;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+}

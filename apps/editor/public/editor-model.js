@@ -2,6 +2,9 @@ export const EDITOR_DRAFTS_KEY = "abe-scene-drafts-v1";
 export const EDITOR_PREFS_KEY = "abe-editor-prefs-v1";
 export const EDITOR_LOCAL_AI_PREFS_KEY = "abe-local-ai-prefs-v1";
 export const EDITOR_PROJECT_TITLE_KEY = "abe-project-title-v1";
+export const EDITOR_PROJECT_LIBRARY_KEY = "abe-project-library-v1";
+export const EDITOR_ACTIVE_PROJECT_ID_KEY = "abe-active-project-id-v1";
+export const EDITOR_SCRIVENER_IMPORT_PATH_KEY = "abe-scrivener-import-path-v1";
 export const EDITOR_PASSAGE_NOTES_KEY = "abe-passage-notes-v1";
 export const EDITOR_STRUCTURE_KEY = "abe-structure-drafts-v1";
 export const EDITOR_TEMPLATE_DRAFTS_KEY = "abe-template-drafts-v1";
@@ -139,16 +142,24 @@ export function buildSceneRecords(workspace, sceneDrafts = {}, structureDrafts =
       return cloneValue(scene);
     }
 
+    const draftBlocks = Array.isArray(draft.blocks) ? draft.blocks : null;
+    const draftEditorText = typeof draft.editorText === "string" ? draft.editorText : null;
+    const composedDraftText = draftBlocks ? composeEditorText(draftBlocks) : null;
+    const legacyDraftText = draftBlocks ? composeEditorText(draftBlocks, "\n") : null;
+    const resolvedEditorText =
+      draftEditorText && draftEditorText === legacyDraftText && draftEditorText !== composedDraftText
+        ? composedDraftText
+        : draftEditorText ?? composedDraftText ?? scene.editorText;
+
     return {
       sceneId: scene.sceneId,
       chapterId: scene.chapterId,
       chapterTitle: scene.chapterTitle,
       sceneTitle: draft.sceneTitle ?? scene.sceneTitle,
       sceneSynopsis: draft.sceneSynopsis ?? scene.sceneSynopsis,
-      editorText: draft.editorText
-        ?? (Array.isArray(draft.blocks) ? composeEditorText(draft.blocks) : scene.editorText),
-      blocks: Array.isArray(draft.blocks)
-        ? draft.blocks.map((block, index) => ({
+      editorText: resolvedEditorText,
+      blocks: draftBlocks
+        ? draftBlocks.map((block, index) => ({
             blockId: block.blockId ?? `draft-block-${scene.sceneId}-${index + 1}`,
             lineNumber: block.lineNumber ?? null,
             kind: block.kind ?? "narration",
@@ -243,6 +254,16 @@ export function normalizeManuscriptTasks(candidate) {
         status: task.status === "completed" ? "completed" : "open",
         createdAt: typeof task.createdAt === "string" ? task.createdAt : new Date(0).toISOString(),
         completedAt: typeof task.completedAt === "string" ? task.completedAt : undefined,
+        source: typeof task.source === "string" ? task.source : undefined,
+        scrivenerDocumentId: typeof task.scrivenerDocumentId === "string" ? task.scrivenerDocumentId : undefined,
+        scrivenerCommentId: typeof task.scrivenerCommentId === "string" ? task.scrivenerCommentId : undefined,
+        scrivenerBinderPath: typeof task.scrivenerBinderPath === "string" ? task.scrivenerBinderPath : undefined,
+        anchorMode: typeof task.anchorMode === "string" ? task.anchorMode : undefined,
+        anchorStatus: typeof task.anchorStatus === "string" ? task.anchorStatus : undefined,
+        lineIndex: Number.isInteger(task.lineIndex) ? task.lineIndex : undefined,
+        paragraphIndex: Number.isInteger(task.paragraphIndex) ? task.paragraphIndex : undefined,
+        nearbyBefore: typeof task.nearbyBefore === "string" ? task.nearbyBefore : undefined,
+        nearbyAfter: typeof task.nearbyAfter === "string" ? task.nearbyAfter : undefined,
       };
     });
 }
@@ -277,6 +298,15 @@ export function normalizePassageNotes(candidate) {
       title: getStoredOrGeneratedTitle(note.title, createPassageNoteTitle(note)),
       createdAt: typeof note.createdAt === "string" ? note.createdAt : new Date(0).toISOString(),
       updatedAt: typeof note.updatedAt === "string" ? note.updatedAt : undefined,
+      source: typeof note.source === "string" ? note.source : "manual",
+      scrivenerDocumentId: typeof note.scrivenerDocumentId === "string" ? note.scrivenerDocumentId : undefined,
+      scrivenerBinderPath: typeof note.scrivenerBinderPath === "string" ? note.scrivenerBinderPath : undefined,
+      attachmentConfidence: Number.isFinite(Number(note.attachmentConfidence))
+        ? Number(note.attachmentConfidence)
+        : undefined,
+      assetIds: Array.isArray(note.assetIds)
+        ? note.assetIds.filter((assetId) => typeof assetId === "string")
+        : undefined,
     }));
 }
 
@@ -374,6 +404,7 @@ export function createPassageNote(scene, selection, noteType, now = new Date().t
     body,
     title: createPassageNoteTitle(noteSeed),
     createdAt: now,
+    source: "manual",
   };
 }
 
@@ -588,6 +619,39 @@ export function estimateWrappedLineCount(text, maxCharactersPerLine) {
   return Math.max(1, lineCount);
 }
 
+export function buildSceneLineMetrics(scenes, maxCharactersPerLine, sceneTextOverrides = {}) {
+  const metrics = [];
+  let lineNumber = 1;
+
+  for (const scene of Array.isArray(scenes) ? scenes : []) {
+    if (!scene || typeof scene !== "object") {
+      continue;
+    }
+
+    const sceneId = typeof scene.sceneId === "string" ? scene.sceneId : "";
+    if (!sceneId) {
+      continue;
+    }
+
+    const overrideText = sceneTextOverrides?.[sceneId];
+    const sceneText = typeof overrideText === "string" ? overrideText : scene.editorText ?? "";
+    const lineCount = estimateWrappedLineCount(sceneText, maxCharactersPerLine);
+    const startLineNumber = lineNumber;
+    const endLineNumber = startLineNumber + lineCount - 1;
+
+    metrics.push({
+      sceneId,
+      startLineNumber,
+      endLineNumber,
+      lineCount,
+    });
+
+    lineNumber = endLineNumber + 1;
+  }
+
+  return metrics;
+}
+
 export function findSceneByBlockId(scenes, blockId) {
   return scenes.find((scene) => scene.blocks.some((block) => block.blockId === blockId)) ?? null;
 }
@@ -616,8 +680,8 @@ function getStoredOrGeneratedTitle(title, fallbackTitle) {
   return normalizedTitle || fallbackTitle;
 }
 
-function composeEditorText(blocks) {
-  return blocks.map((block) => block.text).join("\n");
+function composeEditorText(blocks, separator = "\n\n") {
+  return blocks.map((block) => block.text).join(separator);
 }
 
 function findClosestExactRange(content, selectedText, fallbackStart, preferredStart = null) {

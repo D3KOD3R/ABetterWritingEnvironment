@@ -16,6 +16,7 @@ This agent is the single source of truth whenever we're working through the `fix
 4. Before editing related code, set the checkbox to `[working on]` so the UI shows progress. Implement the fix, then either:
    - Mark the entry `[x]` with a short clarifying note (e.g., `(fixed in voice_gui_app.py)`), or
    - Leave it `[ ]` and explain in the final response why it still needs attention.
+   - Preserve the issue prefix like `[#12]` when you edit text so spoken references stay stable across follow-up issues.
 5. Do not declare the task complete until every entry that was present at the start of the session is either resolved or explained.
 6. If new issues appear while you work, append them immediately and keep them in scope; reopen the checklist after resolving the original queue to capture the additions.
 7. Report in the final reply which issues were completed and which remain, citing their text and line number from `.voice/voice-issues.md` (or `voiceissues/voice-issues.md`, whichever you edited) so the user can verify the changes.

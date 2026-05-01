@@ -60,7 +60,8 @@ Task navigation should resolve in this order:
 10. If the user edits a seeded-selection verse before saving, `insertInlinePassageVerse` replaces the original selected range with the edited verse and updates `abe-scene-drafts-v1`.
 11. `createPassageNote` receives the final verse excerpt plus its offsets, then the note is persisted to `abe-passage-notes-v1`.
 12. The right panel lists the note under Inspiration or Research, and selecting it uses `resolveManuscriptTaskRange` to recover and highlight the stored manuscript range.
-13. Inspiration note highlights use the same blue family as the inline inspiration bubble. Issue and task previews remain orange so issue-console diagnostics are visually distinct from author inspiration notes.
+13. When the Inspiration or Research panel is open, clicking inside a saved note's manuscript range in the scene editor resolves the passage back to the saved note, selects that note in the side panel, and scrolls the note item into view.
+14. Inspiration note highlights use the same blue family as the inline inspiration bubble. Issue and task previews remain orange so issue-console diagnostics are visually distinct from author inspiration notes.
 
 The older direct-editor path remains supported: if the user types the related prose directly in the scene textarea before saving, `trackInlinePassageDraftTyping` records that changed text range as `typedStartOffset` and `typedEndOffset`.
 

@@ -58,6 +58,10 @@ export interface WorldTemplate {
   name: string;
   description: string;
   fields: TemplateField[];
+  source?: string;
+  scrivenerDocumentId?: string;
+  scrivenerBinderPath?: string;
+  sourceText?: string;
   createdAt: string;
 }
 
@@ -167,6 +171,10 @@ export interface AddWorldTemplateInput {
   name: string;
   description?: string;
   fields: AddTemplateFieldInput[];
+  source?: string;
+  scrivenerDocumentId?: string;
+  scrivenerBinderPath?: string;
+  sourceText?: string;
 }
 
 export interface InstantiateWorldEntityInput {
@@ -282,6 +290,10 @@ export function addWorldTemplate(
     name,
     description: input.description?.trim() ?? "",
     fields,
+    source: input.source?.trim() || undefined,
+    scrivenerDocumentId: input.scrivenerDocumentId?.trim() || undefined,
+    scrivenerBinderPath: input.scrivenerBinderPath?.trim() || undefined,
+    sourceText: input.sourceText,
     createdAt: timestamp,
   };
 

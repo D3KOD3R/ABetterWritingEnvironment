@@ -4,7 +4,11 @@
 
 The project includes a Scrivener package at `Project Serva Vitae Novel & WoldBuild Combined Cloud.scriv`. That package should become the source import for the working manuscript, worldbuilding notes, timeline notes, comment-derived tasks, and research assets used by this application.
 
-This import must preserve authorship context. The goal is not to flatten the Scrivener project into anonymous text, but to convert its binder structure into addressable manuscript, world, task, and research records.
+This import must preserve authorship context. The goal is not to flatten the Scrivener project into anonymous text, but to convert its binder structure into addressable manuscript, world, task, research, and template records.
+
+## Current Status
+
+The initial import command lives in `scripts/build-project-data.mjs`. It reads the Scrivener package, walks nested binder folders and text nodes in order, converts manuscript/world/timeline content into JSON, and emits a report with source provenance for imported tasks, entities, timeline nodes, and template sheets. The browser now seeds its saved-project library from that import, while the desktop workspace snapshot remains a separate demo workspace for now. Binder paths are preserved so nested content such as station sheets, template sheets, and marketing notes can be traced back to their exact Scrivener location. The desktop host also exposes a project integrator route for local `.scriv` packages, so a user can convert a project into a normal saved-project record without mutating the original Scrivener bundle.
 
 ## Current Source Inventory
 
@@ -26,11 +30,13 @@ The initial import should use these boundaries:
 - Each top-level manuscript folder becomes a chapter.
 - Each text item inside a manuscript chapter becomes a scene.
 - Paragraphs inside each scene RTF become editable manuscript blocks.
+- Whitespace, line breaks, and paragraph indentation in the manuscript RTF should be preserved as faithfully as the RTF conversion allows.
 - Scrivener comments attached to manuscript RTF become tasks, not issues.
 - `Timeline` becomes timeline/world-spine material.
-- `WorldBuilding / Characters`, `Ships`, `Weapons`, `Planets`, `Fauna`, and `Flora` become world entities or entity candidates.
+- `WorldBuilding / Characters`, `Ships`, `Weapons`, `Planets`, `Fauna`, `Flora`, and nested `Station` sheets become world entities or entity candidates.
 - `WorldBuilding / Notes`, `Research`, and research-like comments become research notes.
 - `WorldBuilding / Front Matter` should be imported as publication/front-matter material, not as story scenes.
+- `Template Sheets`, including `Station`, become reusable world templates with their original binder path and source text retained for later UI work.
 - `Trash` should not be imported by default. Assets there should be listed in an import report so the user can opt in.
 
 ## Missing Features
@@ -45,6 +51,8 @@ The desktop host needs a Scrivener importer that can:
 - convert RTF to plain editable text;
 - preserve paragraph boundaries;
 - preserve source provenance such as Scrivener UUID, binder path, source file path, and modification time.
+
+The importer should not depend on Scrivener internals beyond the documented package files and RTF/text artifacts that users already own.
 
 The importer should produce an import report with counts for imported scenes, skipped items, comments, notes, assets, and unresolved anchors.
 

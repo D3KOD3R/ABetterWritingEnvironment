@@ -1,0 +1,174 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" aria-hidden="true" focusable="false">
+  <style>
+    .pen {
+      filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.35));
+    }
+
+    .outer-flame {
+      transform-origin: 180px 332px;
+      animation: flameFlicker 0.75s infinite ease-in-out alternate;
+    }
+
+    .mid-flame {
+      transform-origin: 180px 332px;
+      animation: flameFlicker 0.58s infinite ease-in-out alternate-reverse;
+    }
+
+    .inner-flame {
+      transform-origin: 180px 332px;
+      animation: innerPulse 0.46s infinite ease-in-out alternate;
+    }
+
+    .small-flame {
+      transform-origin: 180px 332px;
+      animation: smallFlicker 0.62s infinite ease-in-out alternate;
+    }
+
+    .glow {
+      transform-origin: 180px 332px;
+      animation: glowPulse 0.5s infinite ease-in-out alternate;
+    }
+
+    @keyframes flameFlicker {
+      0% {
+        transform: scaleY(0.96) scaleX(1.02) translateY(2px) rotate(-1deg);
+        opacity: 0.93;
+      }
+
+      100% {
+        transform: scaleY(1.08) scaleX(0.97) translateY(-6px) rotate(2deg);
+        opacity: 1;
+      }
+    }
+
+    @keyframes innerPulse {
+      0% {
+        transform: scale(0.94) translateY(3px);
+        opacity: 0.75;
+      }
+
+      100% {
+        transform: scale(1.08) translateY(-4px);
+        opacity: 1;
+      }
+    }
+
+    @keyframes smallFlicker {
+      0% {
+        transform: translateY(2px) rotate(-2deg) scale(0.94);
+        opacity: 0.72;
+      }
+
+      100% {
+        transform: translateY(-4px) rotate(3deg) scale(1.07);
+        opacity: 1;
+      }
+    }
+
+    @keyframes glowPulse {
+      0% {
+        opacity: 0.28;
+        transform: scale(0.95);
+      }
+
+      100% {
+        opacity: 0.52;
+        transform: scale(1.08);
+      }
+    }
+  </style>
+
+  <g transform="rotate(-35 200 220)">
+    <g id="flame-cluster" transform="translate(12 -6) rotate(-12 180 332)">
+      <ellipse class="glow" cx="181" cy="332" rx="20" ry="14" fill="#ff9a1f" opacity="0.35" />
+      <ellipse class="glow" cx="187" cy="318" rx="14" ry="10" fill="#ffd23c" opacity="0.22" />
+
+      <path
+        class="outer-flame"
+        d="M180 336
+          C160 318, 154 292, 166 270
+          C148 266, 144 244, 156 226
+          C150 196, 166 172, 188 158
+          C184 128, 202 102, 226 84
+          C224 116, 248 126, 260 154
+          C280 144, 296 158, 294 182
+          C316 188, 324 214, 312 236
+          C320 264, 306 290, 278 306
+          C254 320, 226 322, 204 314
+          C197 326, 190 333, 180 336
+          Z"
+        fill="#ff1f0f"
+      />
+
+      <path
+        class="mid-flame"
+        d="M181 335
+          C168 316, 166 292, 176 275
+          C164 268, 162 250, 172 236
+          C170 210, 184 192, 202 180
+          C202 152, 218 132, 236 120
+          C236 140, 252 150, 258 168
+          C274 162, 286 174, 284 192
+          C300 200, 302 220, 292 238
+          C294 260, 282 280, 260 292
+          C238 304, 214 306, 198 300
+          C193 313, 187 324, 181 335
+          Z"
+        fill="#ff7a00"
+      />
+
+      <path
+        class="inner-flame"
+        d="M182 334
+          C176 316, 178 298, 188 284
+          C182 274, 184 258, 194 246
+          C194 224, 206 208, 220 198
+          C220 176, 232 160, 244 150
+          C244 166, 254 176, 258 190
+          C270 186, 278 196, 276 210
+          C286 220, 286 236, 280 250
+          C278 266, 266 280, 248 290
+          C230 298, 210 300, 196 294
+          C190 308, 186 320, 182 334
+          Z"
+        fill="#ffd23c"
+      />
+
+      <path
+        class="small-flame"
+        d="M169 334
+          C156 320, 154 302, 162 288
+          C153 288, 148 276, 152 264
+          C166 276, 172 298, 169 334
+          Z"
+        fill="#ff5a00"
+      />
+
+      <path
+        class="small-flame"
+        d="M193 332
+          C209 320, 218 302, 218 284
+          C232 288, 238 272, 234 258
+          C248 272, 244 298, 193 332
+          Z"
+        fill="#ff3b12"
+      />
+    </g>
+
+    <g class="pen">
+      <rect x="140" y="95" width="80" height="70" rx="26" fill="#111820" />
+      <rect x="145" y="135" width="70" height="155" rx="24" fill="#111820" />
+      <rect x="145" y="160" width="70" height="8" rx="4" fill="#f2f2f2" />
+      <rect x="148" y="280" width="64" height="8" rx="4" fill="#f2f2f2" />
+
+      <path d="M205 110 C235 145, 230 195, 205 220" fill="none" stroke="#f2f2f2" stroke-width="7" stroke-linecap="round" />
+      <circle cx="205" cy="220" r="8" fill="#111820" />
+      <circle cx="205" cy="220" r="4" fill="#f2f2f2" />
+
+      <path d="M150 288 L210 288 L198 330 L162 330 Z" fill="#111820" />
+      <path d="M162 330 L198 330 L180 380 Z" fill="#111820" />
+      <path d="M180 342 L180 375" stroke="#f2f2f2" stroke-width="4" stroke-linecap="round" />
+      <circle cx="180" cy="346" r="6" fill="#f2f2f2" />
+    </g>
+  </g>
+</svg>

@@ -2,13 +2,18 @@ import { createCompletedJob } from "../../../packages/job-contracts/src/index.ts
 import type {
   CreateSpeakerBindingsInput,
   SpeakerVoiceBinding,
-  VoiceProfile,
+  VoiceProfile as SpeakerVoiceProfile,
   VoiceServiceContract,
   VoiceChapterRenderInput,
   VoicePreviewInput,
 } from "../../../packages/shared-types/src/index.ts";
+export * from "./narration-job.ts";
+export * from "./placeholder-renderer.ts";
+export * from "./voice-queue.ts";
+export * from "./voice-profile.ts";
+export * from "./voice-storage.ts";
 
-const VOICE_PROFILES: VoiceProfile[] = [
+const VOICE_PROFILES: SpeakerVoiceProfile[] = [
   {
     id: "voice-narrator-lantern",
     label: "Lantern Narrator",
@@ -50,7 +55,7 @@ export function createInMemoryVoiceService(): VoiceServiceContract {
       availability: "ready",
       synthesisMode: "local",
     },
-    listProfiles(): VoiceProfile[] {
+    listProfiles(): SpeakerVoiceProfile[] {
       return VOICE_PROFILES.map((profile) => ({ ...profile }));
     },
     createSpeakerBindings(input: CreateSpeakerBindingsInput): SpeakerVoiceBinding[] {
