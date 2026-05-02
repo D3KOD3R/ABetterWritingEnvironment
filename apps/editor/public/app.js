@@ -6,14 +6,11 @@ import {
   EDITOR_PASSAGE_NOTES_KEY,
   EDITOR_PROJECT_TITLE_KEY,
   EDITOR_PROJECT_LIBRARY_KEY,
-  EDITOR_SCRIVENER_IMPORT_PATH_KEY,
+  EDITOR_PROJECT_SOURCE_PATH_KEY,
   EDITOR_STRUCTURE_KEY,
   EDITOR_TEMPLATE_DRAFTS_KEY,
   EDITOR_TASKS_KEY,
-  EDITOR_WIDTH_OPTIONS,
   FONT_OPTIONS,
-  FONT_SIZE_OPTIONS,
-  LINE_HEIGHT_OPTIONS,
   buildSceneRecords,
   buildSceneLineMetrics,
   completeManuscriptTask,
@@ -35,8 +32,14 @@ import {
   updateManuscriptTaskTitle,
   updatePassageNoteTitle,
 } from "./editor-model.js";
+import { getPassageNotePlaceholder, renderManuscriptPanelHTML } from "./features/scene-editor.js";
 import { escapeHtml, formatDisplayNumber } from "./shared/ui-utils.js";
-import { renderWritingTargetCard, renderWritingTargetStrip } from "./features/progress-tracker.js";
+import {
+  getSessionTrackerVisualState,
+  renderWritingTargetCard,
+  renderWritingTargetStrip,
+} from "./features/progress-tracker.js";
+import { renderSessionTrackerPenSvg as renderSessionTrackerPenGlyph } from "./session-tracker-icons.js";
 
 const appRoot = document.querySelector("#app");
 const EDITOR_COLLAPSED_CHAPTERS_KEY = "abe-collapsed-chapters-v1";
@@ -54,14 +57,19 @@ const DEFAULT_WRITING_TARGET_WORDS = 150000;
 const DEFAULT_SESSION_TARGET_WORDS = 5000;
 const DEFAULT_WRITING_TARGET_LOOKBACK_DAYS = 7;
 const DEFAULT_SESSION_TARGETS_PER_DAY = 5;
-const DEFAULT_SESSION_TIMEOUT_MINUTES = 30;
+const DEFAULT_SESSION_TIMEOUT_MINUTES = 5;
+// The tracker uses one idle grace period, then a longer close window, then a new-session window.
+const WRITING_TARGET_SESSION_SEGMENT_CLOSE_BUFFER_MINUTES = 10;
+const WRITING_TARGET_SESSION_NEW_SESSION_BUFFER_MINUTES = 25;
 const WRITING_TARGET_MAX_HISTORY_DAYS = 180;
 const WRITING_TARGET_MAX_SESSION_TARGETS_PER_DAY = 12;
 const WRITING_TARGET_MIN_SESSION_TIMEOUT_MINUTES = 5;
 const WRITING_TARGET_MAX_SESSION_TIMEOUT_MINUTES = 240;
 const WRITING_TARGET_MAX_SESSION_SAMPLES = 20;
+const WRITING_TARGET_SESSION_HISTORY_MAX = 24;
 const WRITING_TARGET_SESSION_PACE_LOOKBACK_MINUTES = 5;
 const WRITING_TARGET_GOAL_SYNC_SOURCES = ["releaseDate", "sessionTargetWords"];
+const DESKTOP_PROJECT_LIBRARY_BOOT_TIMEOUT_MS = 50;
 const MIN_BINDER_PANEL_WIDTH = 220;
 const MIN_CONSOLE_PANEL_WIDTH = 260;
 const MIN_MANUSCRIPT_PANEL_WIDTH = 560;
@@ -85,9 +93,9 @@ const state = {
   projectFilePath: "",
   projectFileStatus: "",
   projectFileBusy: false,
-  projectIntegratorPath: "",
-  projectIntegratorStatus: "",
-  projectIntegratorBusy: false,
+  projectSourcePath: "",
+  projectSourceStatus: "",
+  projectSourceBusy: false,
   fileMenuOpen: false,
   consoleDockCollapsed: false,
   binderPanelWidth: DEFAULT_BINDER_PANEL_WIDTH,
@@ -168,8 +176,8 @@ async function boot() {
   state.projectFilePath = loadStoredString(EDITOR_PROJECT_FILE_PATH_KEY) ?? "";
   state.projectFileStatus = "";
   state.projectFileBusy = false;
-  state.projectIntegratorPath = loadStoredString(EDITOR_SCRIVENER_IMPORT_PATH_KEY) ?? "";
-  state.projectIntegratorStatus = "";
+  state.projectSourcePath = loadStoredString(EDITOR_PROJECT_SOURCE_PATH_KEY) ?? "";
+  state.projectSourceStatus = "";
   state.consoleDockCollapsed = readStoredJson(EDITOR_RIGHT_DOCK_COLLAPSED_KEY) === true;
   state.binderPanelWidth = loadStoredNumber(EDITOR_BINDER_WIDTH_KEY, DEFAULT_BINDER_PANEL_WIDTH);
   state.consoleDockWidth = loadStoredNumber(EDITOR_CONSOLE_WIDTH_KEY, DEFAULT_CONSOLE_PANEL_WIDTH);
@@ -186,6 +194,7 @@ async function boot() {
     null;
   syncSelectionFromBlock(initialBlockId);
   syncWritingTargetState({ forceReload: true });
+  refreshWritingTargetSessionLifecycle({ reason: "boot" });
 
   render();
   syncLayoutWidths();
@@ -340,9 +349,9 @@ function wireEvents() {
       return;
     }
 
-    if (action === "import-scrivener-project") {
+    if (action === "load-project-source") {
       hideFileMenu();
-      importScrivenerProject();
+      loadProjectSource();
       return;
     }
 
@@ -650,8 +659,8 @@ function wireEvents() {
       return;
     }
 
-    if (action === "import-scrivener-project") {
-      importScrivenerProject();
+    if (action === "load-project-source") {
+      loadProjectSource();
       return;
     }
 
@@ -809,10 +818,10 @@ function wireEvents() {
       return;
     }
 
-    if (editField === "project-integrator-path") {
-      state.projectIntegratorPath = target.value;
-      state.projectIntegratorStatus = "";
-      writeStoredJsonRaw(EDITOR_SCRIVENER_IMPORT_PATH_KEY, target.value);
+    if (editField === "project-source-path") {
+      state.projectSourcePath = target.value;
+      state.projectSourceStatus = "";
+      writeStoredJsonRaw(EDITOR_PROJECT_SOURCE_PATH_KEY, target.value);
       persistCurrentProjectRecord();
       return;
     }
@@ -1145,12 +1154,6 @@ function renderTaskContextMenu() {
   `;
 }
 
-function getPassageNotePlaceholder(noteType) {
-  return noteType === "research"
-    ? "Collect references, facts, and questions for this passage..."
-    : "What are you trying to convey here?";
-}
-
 function getPassageNoteVerb(noteType) {
   return noteType === "research" ? "research" : "inspiration";
 }
@@ -1184,11 +1187,11 @@ function renderHeader() {
           </div>
         </div>
         <div class="desktop-stat-strip" aria-label="Project statistics">
-          ${renderStat("Lines", workspace.project.stats.lineCount)}
-          ${renderStat("Words", getCurrentManuscriptWordCount())}
-          ${renderStat("Issues", workspace.project.stats.issueCount)}
-          ${renderStat("Events", workspace.project.stats.eventCount)}
-          ${renderStat("Chars", workspace.project.stats.characterCount)}
+          ${renderStat("Lines", workspace.project.stats.lineCount, "lines")}
+          ${renderStat("Words", getCurrentManuscriptWordCount(), "words")}
+          ${renderStat("Issues", workspace.project.stats.issueCount, "issues")}
+          ${renderStat("Events", workspace.project.stats.eventCount, "events")}
+          ${renderStat("Chars", workspace.project.stats.characterCount, "chars")}
           ${renderWritingTargetToggle(writingTargetSummary)}
         </div>
       </div>
@@ -1243,8 +1246,8 @@ function renderFileMenu() {
     ? `Project file: ${state.projectFilePath}`
     : "No project file selected";
   const projectFileFeedback = state.projectFileStatus ? ` · ${state.projectFileStatus}` : "";
-  const integratorStatus = state.projectIntegratorStatus
-    ? ` · Integrator: ${state.projectIntegratorStatus}`
+  const integratorStatus = state.projectSourceStatus
+    ? ` · Integrator: ${state.projectSourceStatus}`
     : "";
 
   return `
@@ -1307,14 +1310,14 @@ function renderFileMenu() {
       </div>
       <div class="file-menu-section">
         <span class="file-menu-label">Import</span>
-        <label class="project-integrator-shell compact">
-          <span>Scrivener project</span>
+        <label class="project-source-shell compact">
+          <span>Project source</span>
           <input
             type="text"
-            value="${escapeHtml(state.projectIntegratorPath)}"
-            data-edit-field="project-integrator-path"
-            placeholder="C:\\Projects\\Novel.scriv or ...\\Project.scrivx"
-            aria-label="Scrivener project path"
+            value="${escapeHtml(state.projectSourcePath)}"
+            data-edit-field="project-source-path"
+            placeholder="C:\\Projects\\Novel.abe-project.json or ...\\Project folder"
+            aria-label="Project source path"
             spellcheck="false"
           />
         </label>
@@ -1322,10 +1325,10 @@ function renderFileMenu() {
           <button
             class="tag-button panel-action-button"
             type="button"
-            data-action="import-scrivener-project"
-            ${state.projectIntegratorBusy ? "disabled" : ""}
+            data-action="load-project-source"
+            ${state.projectSourceBusy ? "disabled" : ""}
           >
-            ${state.projectIntegratorBusy ? "Importing..." : "Import Scrivener"}
+            ${state.projectSourceBusy ? "Importing..." : "Load Project Source"}
           </button>
         </div>
       </div>
@@ -1383,11 +1386,11 @@ function renderPaneTab(paneId, label, detail) {
   `;
 }
 
-function renderStat(label, value) {
+function renderStat(label, value, statKey = "") {
   return `
-    <div class="chrome-stat">
+    <div class="chrome-stat"${statKey ? ` data-stat-key="${escapeHtml(statKey)}"` : ""}>
       <span>${escapeHtml(label)}</span>
-      <strong>${escapeHtml(formatDisplayNumber(value))}</strong>
+      <strong data-stat-value>${escapeHtml(formatDisplayNumber(value))}</strong>
     </div>
   `;
 }
@@ -1399,6 +1402,7 @@ function renderWritingTargetToggle(summary) {
     <button
       class="chrome-stat chrome-target-toggle"
       type="button"
+      data-writing-target-toggle
       data-action="toggle-writing-target-window"
       aria-pressed="${state.writingTargetWindowOpen ? "true" : "false"}"
       title="Open writing goals (Ctrl+Alt+T)"
@@ -1406,7 +1410,7 @@ function renderWritingTargetToggle(summary) {
     >
       <span class="chrome-target-icon" aria-hidden="true">◎</span>
       <span>Writing Goals</span>
-      <strong>${escapeHtml(targetLabel)}</strong>
+      <strong data-writing-target-toggle-value>${escapeHtml(targetLabel)}</strong>
     </button>
   `;
 }
@@ -1854,8 +1858,13 @@ function syncWritingTargetWindowLiveState() {
 }
 
 function syncSessionTrackerLiveState() {
-  const strip = document.querySelector("#hero-slot .desktop-target-strip");
-  if (!(strip instanceof HTMLElement)) {
+  refreshWritingTargetSessionLifecycle();
+  syncHeaderLiveState();
+}
+
+function syncHeaderLiveState() {
+  const heroSlot = document.querySelector("#hero-slot");
+  if (!(heroSlot instanceof HTMLElement)) {
     return;
   }
 
@@ -1864,7 +1873,181 @@ function syncSessionTrackerLiveState() {
     return;
   }
 
-  strip.outerHTML = renderWritingTargetStrip(summary);
+  const wordsStat = heroSlot.querySelector('[data-stat-key="words"] [data-stat-value]');
+  if (wordsStat instanceof HTMLElement) {
+    wordsStat.textContent = formatDisplayNumber(getCurrentManuscriptWordCount());
+  }
+
+  const writingTargetToggle = heroSlot.querySelector("[data-writing-target-toggle-value]");
+  if (writingTargetToggle instanceof HTMLElement) {
+    writingTargetToggle.textContent = summary.goalButtonLabel ?? "Writing Goals";
+  }
+
+  const strip = heroSlot.querySelector("[data-writing-target-strip]");
+  const visibleMetrics = Array.isArray(summary.visibleMetrics) ? summary.visibleMetrics : [];
+  if (strip instanceof HTMLElement) {
+    for (const metric of visibleMetrics) {
+      if (!metric || typeof metric !== "object") {
+        continue;
+      }
+
+      const card = strip.querySelector(`[data-writing-target-card="${CSS.escape(String(metric.key ?? ""))}"]`);
+      if (!(card instanceof HTMLElement)) {
+        continue;
+      }
+
+      const label = card.querySelector("[data-writing-target-card-label]");
+      const value = card.querySelector("[data-writing-target-card-value]");
+      const bar = card.querySelector("[data-writing-target-card-bar]");
+      const progress = card.querySelector("[data-writing-target-card-progress]");
+      const foot = card.querySelector("[data-writing-target-card-foot]");
+      const note = card.querySelector("[data-writing-target-card-note]");
+      const metricProgress = Math.max(0, Math.min(1, Number(metric.progress ?? 0)));
+      const footContent = metric.comparison
+        ? `
+            <span>${escapeHtml(metric.leftLabel ?? "")}</span>
+            <span aria-hidden="true">→</span>
+            <span>${escapeHtml(metric.rightLabel ?? "")}</span>
+          `
+        : `
+            <span>${escapeHtml(metric.leftLabel ?? "")}</span>
+            <span>${escapeHtml(metric.rightLabel ?? "")}</span>
+          `;
+
+      if (label instanceof HTMLElement) {
+        label.lastElementChild ? label.lastElementChild.textContent = String(metric.label ?? "") : label.textContent = String(metric.label ?? "");
+      }
+      if (value instanceof HTMLElement) {
+        value.textContent = String(metric.value ?? "—");
+      }
+      if (bar instanceof HTMLElement) {
+        bar.className = `writing-target-bar ${String(metric.barClass ?? "").trim()}`.trim();
+        if (typeof metric.barStyle === "string" && metric.barStyle.trim()) {
+          bar.setAttribute("style", metric.barStyle);
+        } else {
+          bar.setAttribute("style", "");
+        }
+      }
+      if (progress instanceof HTMLElement) {
+        progress.style.width = `${Math.round(metricProgress * 100)}%`;
+        if (typeof metric.barStyle === "string" && metric.barStyle.trim()) {
+          progress.setAttribute("style", `width:${Math.round(metricProgress * 100)}%;${metric.barStyle}`);
+        } else {
+          progress.setAttribute("style", `width:${Math.round(metricProgress * 100)}%;`);
+        }
+      }
+      if (foot instanceof HTMLElement) {
+        foot.className = `writing-target-foot${metric.comparison ? " is-comparison" : ""}`;
+        foot.innerHTML = footContent;
+      }
+      if (note instanceof HTMLElement) {
+        note.textContent = String(metric.note ?? "");
+      } else if (metric.note) {
+        card.insertAdjacentHTML("beforeend", `<p class="writing-target-note" data-writing-target-card-note>${escapeHtml(metric.note ?? "")}</p>`);
+      }
+    }
+  }
+
+  const panel = document.querySelector("#hero-slot [data-session-tracker-panel]");
+  if (!(panel instanceof HTMLElement)) {
+    return;
+  }
+
+  patchSessionTrackerPanel(panel, summary);
+}
+
+function patchSessionTrackerPanel(panel, summary) {
+  if (!(panel instanceof HTMLElement) || !summary) {
+    return;
+  }
+
+  const tracker = {
+    clockLabel: summary.sessionCurrentTimeLabel ?? "—",
+    wordsWrittenLabel: formatDisplayNumber(Math.round(summary.currentSessionWords ?? 0)),
+    wordsTargetLabel: formatDisplayNumber(Math.round(summary.sessionTargetWordsPerSession ?? 0)),
+    sessionStartTimeLabel: summary.sessionStartTimeLabel ?? "—",
+    sessionMinutesLapsedLabel: summary.sessionMinutesLapsedLabel ?? "0",
+    sessionIdleLabel: summary.sessionIdleLabel ?? "Idle",
+    wpmLabel: summary.sessionWordsPerMinuteLabel ?? "0/min",
+  };
+  const isLiveSession = summary.sessionIsActive === true;
+  const visualState = getSessionTrackerVisualState(summary, null);
+  const paceStatus = isLiveSession
+    ? summary.sessionWordsPerMinuteOverTarget
+      ? "You’re outperforming"
+      : summary.sessionWordsPerMinuteStatusText === "On track"
+        ? "You’re on pace"
+        : summary.sessionWordsPerMinuteStatusText === "Ahead of pace"
+          ? "You’re outperforming"
+          : "Need more pace"
+    : "Idle";
+  const progressWidth = Math.max(0, Math.min(100, Math.round((Number(summary.currentSessionWords ?? 0) / Math.max(1, Number(summary.sessionTargetWordsPerSession ?? 0))) * 100)));
+  const paceColor = isLiveSession
+    ? summary.sessionWordsPerMinuteBarColor ?? "rgb(113, 215, 177)"
+    : "rgba(31, 36, 48, 0.26)";
+  const bar = panel.querySelector("[data-session-tracker-bar]");
+  const gauge = panel.querySelector("[data-session-tracker-gauge]");
+  const gaugeIcon = panel.querySelector("[data-session-tracker-gauge-icon]");
+  const clock = panel.querySelector("[data-session-tracker-clock]");
+  const wpm = panel.querySelector("[data-session-tracker-wpm]");
+  const paceNote = panel.querySelector("[data-session-tracker-pace-note]");
+  const startTime = panel.querySelector("[data-session-tracker-start-time]");
+  const lapsedLabel = panel.querySelector("[data-session-tracker-lapsed-label]");
+  const lapsedValue = panel.querySelector("[data-session-tracker-lapsed-value]");
+  const wordsWritten = panel.querySelector("[data-session-tracker-words-written]");
+  const wordsTarget = panel.querySelector("[data-session-tracker-words-target]");
+  const progressFill = panel.querySelector("[data-session-tracker-progress-fill]");
+
+  if (bar instanceof HTMLElement) {
+    bar.style.setProperty("--writing-target-bar-color", paceColor);
+    bar.classList.toggle("is-over-target", visualState.key === "flaming");
+  }
+
+  if (gauge instanceof HTMLElement) {
+    gauge.classList.toggle("is-over-target", visualState.key === "flaming");
+  }
+
+  if (gaugeIcon instanceof HTMLElement) {
+    gaugeIcon.innerHTML = renderSessionTrackerPenGlyph(visualState.key);
+  }
+
+  if (clock instanceof HTMLElement) {
+    clock.textContent = tracker.clockLabel;
+  }
+
+  if (wpm instanceof HTMLElement) {
+    wpm.textContent = tracker.wpmLabel;
+  }
+
+  if (paceNote instanceof HTMLElement) {
+    paceNote.textContent = paceStatus;
+  }
+
+  if (startTime instanceof HTMLElement) {
+    startTime.textContent = tracker.sessionStartTimeLabel;
+  }
+
+  if (lapsedLabel instanceof HTMLElement) {
+    lapsedLabel.textContent = isLiveSession ? "Lapsed:" : "Idle:";
+  }
+
+  if (lapsedValue instanceof HTMLElement) {
+    lapsedValue.textContent = isLiveSession
+      ? tracker.sessionMinutesLapsedLabel
+      : tracker.sessionIdleLabel;
+  }
+
+  if (wordsWritten instanceof HTMLElement) {
+    wordsWritten.textContent = tracker.wordsWrittenLabel;
+  }
+
+  if (wordsTarget instanceof HTMLElement) {
+    wordsTarget.textContent = tracker.wordsTargetLabel;
+  }
+
+  if (progressFill instanceof HTMLElement) {
+    progressFill.style.width = `${progressWidth}%`;
+  }
 }
 
 function startWritingTargetWindowRefreshTimer() {
@@ -1897,8 +2080,10 @@ function startSessionTrackerRefreshTimer() {
   stopSessionTrackerRefreshTimer();
 
   sessionTrackerRefreshTimer = window.setInterval(() => {
+    refreshWritingTargetSessionLifecycle();
     syncSessionTrackerLiveState();
   }, 15000);
+  refreshWritingTargetSessionLifecycle();
   syncSessionTrackerLiveState();
 }
 
@@ -2203,7 +2388,6 @@ function recordWritingTargetSnapshot(options = {}) {
     const dateKey = getLocalDateKey(now);
     const nextRecord = cloneValue(record);
     const history = Array.isArray(nextRecord.history) ? [...nextRecord.history] : [];
-    const sessionSamples = normalizeWritingTargetSessionSamples(nextRecord.sessionSamples ?? []);
     const previousDailyBaselineDateKey = typeof nextRecord.dailyBaselineDateKey === "string"
       ? nextRecord.dailyBaselineDateKey.trim()
       : "";
@@ -2217,6 +2401,14 @@ function recordWritingTargetSnapshot(options = {}) {
       previousEntry,
       context,
     });
+    const markSessionActivity = options.markSessionActivity === true;
+    const nextSessionRecord = markSessionActivity
+      ? (record.sessionIsActive === true
+        ? cloneValue(record)
+        : resumeWritingSession(record, currentWordCount, now, {
+            reason: normalizeWritingTargetSessionActivityReason(options.reason),
+          }))
+      : null;
 
     if (currentEntry) {
       history[history.findIndex((entry) => entry.date === dateKey)] = nextHistoryEntry;
@@ -2231,11 +2423,22 @@ function recordWritingTargetSnapshot(options = {}) {
     } else if (!Number.isFinite(Number(nextRecord.dailyBaselineWordCount))) {
       nextRecord.dailyBaselineWordCount = getWritingTargetDailyBaselineWordCount(nextRecord, currentWordCount, now);
     }
-    nextRecord.sessionSamples = [
-      ...sessionSamples,
-      createWritingTargetSessionSample(currentWordCount, now),
-    ].slice(-WRITING_TARGET_MAX_SESSION_SAMPLES);
-    nextRecord.sessionLastActiveAt = now.toISOString();
+    if (nextSessionRecord) {
+      nextRecord.sessionIsActive = true;
+      nextRecord.sessionStartedAt = nextSessionRecord.sessionStartedAt;
+      nextRecord.sessionBaselineWordCount = nextSessionRecord.sessionBaselineWordCount;
+      nextRecord.sessionLastWordCount = currentWordCount;
+      nextRecord.sessionConcludedAt = "";
+      nextRecord.sessionConcludedReason = "";
+      nextRecord.sessionSamples = normalizeWritingTargetSessionSamples(nextSessionRecord.sessionSamples ?? []);
+      if (record.sessionIsActive === true) {
+        nextRecord.sessionSamples = [
+          ...nextRecord.sessionSamples,
+          createWritingTargetSessionSample(currentWordCount, now),
+        ].slice(-WRITING_TARGET_MAX_SESSION_SAMPLES);
+      }
+      nextRecord.sessionLastActiveAt = now.toISOString();
+    }
     nextRecord.updatedAt = now.toISOString();
     state.writingTargetState = persistWritingTargetState(nextRecord);
     persistCurrentProjectRecord();
@@ -2250,6 +2453,13 @@ function recordWritingTargetSnapshot(options = {}) {
         dailyBaselineWordCount: nextRecord.dailyBaselineWordCount,
         sessionSamples: cloneValue(nextRecord.sessionSamples),
         sessionLastActiveAt: nextRecord.sessionLastActiveAt,
+        sessionIsActive: nextRecord.sessionIsActive,
+        sessionStartedAt: nextRecord.sessionStartedAt,
+        sessionBaselineWordCount: nextRecord.sessionBaselineWordCount,
+        sessionConcludedAt: nextRecord.sessionConcludedAt,
+        sessionConcludedReason: nextRecord.sessionConcludedReason,
+        sessionLastWordCount: nextRecord.sessionLastWordCount,
+        sessionHistory: cloneValue(nextRecord.sessionHistory),
         updatedAt: nextRecord.updatedAt,
       };
     }
@@ -2268,8 +2478,8 @@ function recordWritingTargetSnapshot(options = {}) {
   writingTargetSnapshotTimer = window.setTimeout(capture, 750);
 }
 
-function queueWritingTargetSnapshot() {
-  recordWritingTargetSnapshot();
+function queueWritingTargetSnapshot(options = {}) {
+  recordWritingTargetSnapshot(options);
 }
 
 function clearWritingTargetSnapshotTimer() {
@@ -2341,18 +2551,22 @@ function buildWritingTargetSummaryForRecord(record) {
   const sessionProgress = sessionTargetWordsPerSession > 0
     ? Math.max(0, Math.min(1, currentSessionWords / sessionTargetWordsPerSession))
     : 0;
-  const sessionStartedAt = typeof syncedRecord.sessionStartedAt === "string" && syncedRecord.sessionStartedAt.trim()
-    ? new Date(syncedRecord.sessionStartedAt)
+  const sessionLifecycle = getWritingTargetSessionLifecycle(syncedRecord, now);
+  const sessionIsLive = sessionLifecycle.sessionDisplayActive === true;
+  const sessionLifecycleSummaryText = buildWritingTargetSessionLifecycleSummaryText(sessionLifecycle);
+  const recentSessionWordsPerMinute = sessionIsLive
+    ? estimateRecentSessionWordsPerMinute(syncedRecord, now)
     : null;
-  const recentSessionWordsPerMinute = estimateRecentSessionWordsPerMinute(syncedRecord, now);
-  const sessionElapsedMinutes = sessionStartedAt && !Number.isNaN(sessionStartedAt.getTime())
-    ? Math.max(1 / 60, (now.getTime() - sessionStartedAt.getTime()) / 60000)
-    : null;
-  const sessionWordsPerMinute = recentSessionWordsPerMinute != null
-    ? recentSessionWordsPerMinute
-    : sessionElapsedMinutes != null
-      ? sessionWords / sessionElapsedMinutes
-      : 0;
+  const sessionElapsedMinutes = sessionIsLive
+    ? Math.max(1 / 60, sessionLifecycle.activeMinutes)
+    : 0;
+  const sessionWordsPerMinute = sessionIsLive
+    ? (recentSessionWordsPerMinute != null
+      ? recentSessionWordsPerMinute
+      : sessionElapsedMinutes > 0
+        ? sessionWords / sessionElapsedMinutes
+        : 0)
+    : 0;
   const sessionWordsPerHour = sessionWordsPerMinute * 60;
   const sessionRequiredWordsPerMinute = sessionTimeoutMinutes > 0
     ? sessionTargetWordsPerSession / sessionTimeoutMinutes
@@ -2360,9 +2574,11 @@ function buildWritingTargetSummaryForRecord(record) {
   const sessionWordsPerMinuteRatio = sessionRequiredWordsPerMinute > 0
     ? sessionWordsPerMinute / sessionRequiredWordsPerMinute
     : 0;
-  const sessionWordsPerMinuteOverTarget = sessionRequiredWordsPerMinute > 0
+  const sessionWordsPerMinuteOverTarget = sessionIsLive && sessionRequiredWordsPerMinute > 0
     && sessionWordsPerMinute > sessionRequiredWordsPerMinute;
-  const sessionWordsPerMinuteBarColor = buildSessionPaceColor(sessionWordsPerMinuteRatio);
+  const sessionWordsPerMinuteBarColor = sessionIsLive
+    ? buildSessionPaceColor(sessionWordsPerMinuteRatio)
+    : "rgba(31, 36, 48, 0.26)";
   const sessionTargetWordsRemaining = Math.max(0, sessionTargetWordsPerSession - currentSessionWords);
   const sessionProjectedMilestoneMinutes = sessionWordsPerMinute > 0
     ? sessionTargetWordsRemaining / sessionWordsPerMinute
@@ -2370,52 +2586,56 @@ function buildWritingTargetSummaryForRecord(record) {
   const sessionProjectedMilestoneLabel =
     sessionTargetWordsRemaining <= 0
       ? "Milestone reached"
-      : sessionProjectedMilestoneMinutes != null
+      : sessionIsLive && sessionProjectedMilestoneMinutes != null
         ? `${formatDurationMinutes(sessionProjectedMilestoneMinutes)} to milestone`
-        : "Need more pace";
+        : "Idle";
   const sessionMilestoneStatusText =
     sessionTargetWordsRemaining <= 0
       ? "Milestone reached"
-      : sessionProjectedMilestoneMinutes != null && sessionProjectedMilestoneMinutes <= sessionTimeoutMinutes
+      : sessionIsLive && sessionProjectedMilestoneMinutes != null && sessionProjectedMilestoneMinutes <= sessionTimeoutMinutes
         ? "On track"
-        : sessionProjectedMilestoneMinutes != null
+      : sessionIsLive && sessionProjectedMilestoneMinutes != null
           ? "Off track"
-          : "Need more pace";
+          : "Idle";
   const sessionWordsPerMinuteLabel = `${formatDisplayNumber(Math.round(sessionWordsPerMinute))}/min`;
   const sessionRequiredWordsPerMinuteLabel = `${formatDisplayNumber(Math.round(sessionRequiredWordsPerMinute))}/min`;
   const sessionWordsPerMinuteSummaryText = sessionTargetWordsRemaining <= 0
     ? "Milestone reached"
-    : `${sessionWordsPerMinuteLabel} now · ${sessionRequiredWordsPerMinuteLabel} needed`;
-  const sessionWordsPerMinuteStatusText = sessionWordsPerMinuteOverTarget
-    ? "Ahead of pace"
-    : sessionWordsPerMinuteRatio >= 0.95
-      ? "On track"
-      : "Off track";
-  const sessionPaceSummaryText = `${formatDisplayNumber(Math.round(sessionWordsPerHour))}/h · ${sessionProjectedMilestoneLabel}`;
-  const sessionPaceRatio = Math.max(0, sessionWordsPerMinuteRatio);
+    : sessionIsLive
+      ? `${sessionWordsPerMinuteLabel} now · ${sessionRequiredWordsPerMinuteLabel} needed`
+      : "Idle";
+  const sessionWordsPerMinuteStatusText = sessionIsLive
+    ? sessionWordsPerMinuteOverTarget
+      ? "Ahead of pace"
+      : sessionWordsPerMinuteRatio >= 0.95
+        ? "On track"
+        : "Off track"
+    : "Idle";
+  const sessionPaceSummaryText = sessionIsLive
+    ? `${formatDisplayNumber(Math.round(sessionWordsPerHour))}/h · ${sessionProjectedMilestoneLabel}`
+    : "Idle";
+  const sessionPaceRatio = sessionIsLive ? Math.max(0, sessionWordsPerMinuteRatio) : 0;
   const sessionPacePercentLabel = `${formatDisplayNumber(Math.round(sessionPaceRatio * 100))}%`;
   const sessionCurrentTimeLabel = formatClockTimeLabel(now);
-  const sessionStartTimeLabel = formatClockTimeLabel(sessionStartedAt ?? now);
-  const sessionMinutesLapsed = sessionStartedAt && !Number.isNaN(sessionStartedAt.getTime())
-    ? Math.max(0, Math.floor((now.getTime() - sessionStartedAt.getTime()) / 60000))
+  const sessionStartTimeLabel = formatClockTimeLabel(sessionLifecycle.sessionStartedAt ?? now);
+  const sessionMinutesLapsed = sessionIsLive
+    ? Math.max(0, Math.floor(sessionLifecycle.activeMinutes))
     : 0;
   const sessionMinutesLapsedLabel = formatDisplayNumber(sessionMinutesLapsed);
-  const sessionElapsedLabel = sessionStartedAt && !Number.isNaN(sessionStartedAt.getTime())
-    ? formatSessionElapsedLabel((now.getTime() - sessionStartedAt.getTime()) / 60000, sessionTimeoutMinutes)
-    : formatSessionElapsedLabel(0, sessionTimeoutMinutes);
-  const sessionLastActiveAt = typeof syncedRecord.sessionLastActiveAt === "string" && syncedRecord.sessionLastActiveAt.trim()
-    ? new Date(syncedRecord.sessionLastActiveAt)
-    : null;
-  const sessionLastActiveMinutes = sessionLastActiveAt && !Number.isNaN(sessionLastActiveAt.getTime())
-    ? Math.max(0, Math.floor((now.getTime() - sessionLastActiveAt.getTime()) / 60000))
-    : null;
-  const sessionIsConcluded =
-    sessionLastActiveMinutes != null && sessionLastActiveMinutes >= sessionTimeoutMinutes;
-  const sessionStatusText = sessionLastActiveMinutes == null
-    ? "Session baseline set"
-    : sessionIsConcluded
-      ? `Concluded · idle ${formatMinuteCount(sessionLastActiveMinutes)}`
-      : `Active · idle ${formatMinuteCount(sessionLastActiveMinutes)}`;
+  const sessionElapsedLabel = sessionIsLive
+    ? formatSessionElapsedLabel(sessionLifecycle.activeMinutes, sessionTimeoutMinutes)
+    : "Idle";
+  const sessionLastActiveMinutes = sessionLifecycle.idleMinutes;
+  const sessionStatusText = sessionIsLive
+    ? sessionLastActiveMinutes == null
+      ? "Session baseline set"
+      : `Active · idle ${formatMinuteCount(sessionLastActiveMinutes)}`
+    : "Idle";
+  const sessionIdleLabel = sessionIsLive
+    ? sessionLastActiveMinutes != null
+      ? `${formatMinuteCount(sessionLastActiveMinutes)} idle`
+      : "Active"
+    : `${formatMinuteCount(sessionLastActiveMinutes ?? 0)} idle`;
   const effectiveWordsPerDay = Math.max(0, pace.wordsPerDay || 0);
   const projectedDaysToTarget = effectiveWordsPerDay > 0 ? remainingWords / effectiveWordsPerDay : null;
   const projectedCompletionDate = projectedDaysToTarget != null ? addDays(now, projectedDaysToTarget) : null;
@@ -2533,12 +2753,22 @@ function buildWritingTargetSummaryForRecord(record) {
     streakCurrentDays: streakSummary.current,
     streakBestDays: streakSummary.best,
     streakLabel: streakSummary.current > 0 ? `${formatDisplayNumber(streakSummary.current)} days` : "No streak yet",
-    sessionAgeLabel: formatSessionAge(syncedRecord.sessionStartedAt, now),
+    sessionAgeLabel: sessionIsLive
+      ? formatSessionAge(syncedRecord.sessionStartedAt, now)
+      : "Idle",
     sessionCurrentTimeLabel,
     sessionStartTimeLabel,
     sessionMinutesLapsed,
     sessionMinutesLapsedLabel,
     sessionElapsedLabel,
+    sessionIsActive: sessionIsLive,
+    sessionLifecyclePhase: sessionLifecycle.sessionLifecyclePhase,
+    sessionLifecycleSummaryText,
+    sessionIdleGraceMinutes: sessionLifecycle.sessionIdleGraceMinutes,
+    sessionSegmentCloseMinutes: sessionLifecycle.sessionSegmentCloseMinutes,
+    sessionNewSessionMinutes: sessionLifecycle.sessionNewSessionMinutes,
+    sessionIdleLabel,
+    sessionConcludedAt: sessionLifecycle.sessionConcludedAt?.toISOString?.() ?? "",
     visibleMetrics,
     projectedDaysToTarget,
     projectedCompletionDate,
@@ -3349,10 +3579,29 @@ function syncWritingTargetGoalFields(record, currentWordCount, now = new Date())
   nextRecord.sessionTimeoutMinutes = sessionTimeoutMinutes;
   nextRecord.targetCadence = targetCadence;
   nextRecord.goalSyncSource = goalSyncSource;
+  nextRecord.sessionIsActive = nextRecord.sessionIsActive === true;
+  nextRecord.sessionStartedAt =
+    typeof nextRecord.sessionStartedAt === "string" && nextRecord.sessionStartedAt.trim()
+      ? nextRecord.sessionStartedAt
+      : now.toISOString();
   nextRecord.sessionLastActiveAt =
     typeof nextRecord.sessionLastActiveAt === "string" && nextRecord.sessionLastActiveAt.trim()
       ? nextRecord.sessionLastActiveAt
       : now.toISOString();
+  nextRecord.sessionConcludedAt = nextRecord.sessionIsActive
+    ? ""
+    : typeof nextRecord.sessionConcludedAt === "string" && nextRecord.sessionConcludedAt.trim()
+      ? nextRecord.sessionConcludedAt
+      : "";
+  nextRecord.sessionConcludedReason = nextRecord.sessionIsActive
+    ? ""
+    : typeof nextRecord.sessionConcludedReason === "string" && nextRecord.sessionConcludedReason.trim()
+      ? nextRecord.sessionConcludedReason
+      : "idle";
+  nextRecord.sessionLastWordCount =
+    Number.isFinite(Number(nextRecord.sessionLastWordCount)) && Number(nextRecord.sessionLastWordCount) >= 0
+      ? Math.max(0, Math.round(Number(nextRecord.sessionLastWordCount)))
+      : Math.max(0, Math.round(Number(currentWordCount) || 0));
 
   if (goalSyncSource === "releaseDate") {
     nextRecord.releaseDate = releaseDate ? getLocalDateKey(releaseDate) : "";
@@ -3402,13 +3651,18 @@ function seedWritingTargetTestData() {
     dailyBaselineDateKey: todayKey,
     dailyBaselineWordCount: Math.max(0, Math.round(Number(previousEntry?.wordCount ?? 0))),
     sessionBaselineWordCount: Math.max(0, currentWordCount - Math.max(250, todaysGain)),
+    sessionIsActive: true,
     sessionStartedAt: addHours(now, -6).toISOString(),
     sessionLastActiveAt: now.toISOString(),
+    sessionConcludedAt: "",
+    sessionConcludedReason: "",
+    sessionLastWordCount: currentWordCount,
     sessionSamples: [
       createWritingTargetSessionSample(recentSessionStartCount, recentSessionStart),
       createWritingTargetSessionSample(recentSessionMidCount, recentSessionMidpoint),
       createWritingTargetSessionSample(currentWordCount, now),
     ],
+    sessionHistory: Array.isArray(record.sessionHistory) ? cloneValue(record.sessionHistory) : [],
     updatedAt: now.toISOString(),
   };
 
@@ -3688,6 +3942,7 @@ function normalizeWritingTargetRecord(candidate, currentWordCount, now = new Dat
     Number.isFinite(Number(candidate.sessionBaselineWordCount)) && Number(candidate.sessionBaselineWordCount) >= 0
       ? Math.max(0, Math.round(Number(candidate.sessionBaselineWordCount)))
       : currentWordCount;
+  const sessionIsActive = candidate.sessionIsActive === true;
   const dailyBaselineDateKey =
     typeof candidate.dailyBaselineDateKey === "string" && candidate.dailyBaselineDateKey.trim()
       ? getLocalDateKey(new Date(`${candidate.dailyBaselineDateKey}T12:00:00`))
@@ -3700,11 +3955,24 @@ function normalizeWritingTargetRecord(candidate, currentWordCount, now = new Dat
     typeof candidate.sessionStartedAt === "string" && candidate.sessionStartedAt.trim()
       ? candidate.sessionStartedAt
       : defaults.sessionStartedAt;
+  const sessionLastActiveAt =
+    typeof candidate.sessionLastActiveAt === "string" && candidate.sessionLastActiveAt.trim()
+      ? candidate.sessionLastActiveAt
+      : defaults.sessionLastActiveAt;
+  const sessionConcludedAt =
+    typeof candidate.sessionConcludedAt === "string" && candidate.sessionConcludedAt.trim()
+      ? candidate.sessionConcludedAt
+      : defaults.sessionConcludedAt;
   const releaseDate = normalizeDateInput(candidate.releaseDate);
   const goalSyncSource = normalizeWritingTargetGoalSyncSource(candidate.goalSyncSource)
     || (releaseDate ? "releaseDate" : sessionTargetWords !== DEFAULT_SESSION_TARGET_WORDS ? "sessionTargetWords" : "releaseDate");
   const history = trimWritingTargetHistory(candidate.history ?? defaults.history, lookbackDays);
   const sessionSamples = normalizeWritingTargetSessionSamples(candidate.sessionSamples ?? defaults.sessionSamples);
+  const sessionHistory = normalizeWritingTargetSessionHistory(candidate.sessionHistory ?? defaults.sessionHistory);
+  const sessionLastWordCount =
+    Number.isFinite(Number(candidate.sessionLastWordCount)) && Number(candidate.sessionLastWordCount) >= 0
+      ? Math.max(0, Math.round(Number(candidate.sessionLastWordCount)))
+      : sessionBaselineWordCount;
 
   return syncWritingTargetGoalFields({
     targetWords,
@@ -3717,14 +3985,21 @@ function normalizeWritingTargetRecord(candidate, currentWordCount, now = new Dat
     lookbackDays,
     visibleMetrics: visibleMetrics.length ? visibleMetrics : [...defaults.visibleMetrics],
     sessionBaselineWordCount,
+    sessionLastWordCount,
     dailyBaselineDateKey,
     dailyBaselineWordCount,
+    sessionIsActive,
     sessionStartedAt,
-    sessionLastActiveAt:
-      typeof candidate.sessionLastActiveAt === "string" && candidate.sessionLastActiveAt.trim()
-        ? candidate.sessionLastActiveAt
-        : defaults.sessionLastActiveAt,
+    sessionLastActiveAt,
+    sessionConcludedAt,
+    sessionConcludedReason:
+      typeof candidate.sessionConcludedReason === "string" && candidate.sessionConcludedReason.trim()
+        ? candidate.sessionConcludedReason
+        : sessionIsActive
+          ? ""
+          : "idle",
     sessionSamples: sessionSamples.length ? sessionSamples : defaults.sessionSamples,
+    sessionHistory: sessionHistory.length ? sessionHistory : defaults.sessionHistory,
     history: history.length ? history : defaults.history,
     updatedAt:
       typeof candidate.updatedAt === "string" && candidate.updatedAt.trim()
@@ -3797,6 +4072,320 @@ function normalizeWritingTargetSessionSamples(samples) {
   return normalized.slice(-WRITING_TARGET_MAX_SESSION_SAMPLES);
 }
 
+function normalizeWritingTargetSessionActivityReason(value) {
+  const candidate = typeof value === "string" ? value.trim() : "";
+  return candidate || "activity";
+}
+
+function normalizeWritingTargetSessionHistory(entries) {
+  const normalized = Array.isArray(entries)
+    ? entries
+        .filter((entry) => entry && typeof entry === "object")
+        .map((entry) => {
+          const startedAt = typeof entry.startedAt === "string" && entry.startedAt.trim()
+            ? new Date(entry.startedAt)
+            : null;
+          const endedAt = typeof entry.endedAt === "string" && entry.endedAt.trim()
+            ? new Date(entry.endedAt)
+            : null;
+          return {
+            startedAt: startedAt && !Number.isNaN(startedAt.getTime()) ? startedAt.toISOString() : new Date().toISOString(),
+            endedAt: endedAt && !Number.isNaN(endedAt.getTime()) ? endedAt.toISOString() : new Date().toISOString(),
+            endedReason: normalizeWritingTargetSessionActivityReason(entry.endedReason),
+            wordCountStart: Math.max(0, Math.round(Number(entry.wordCountStart) || 0)),
+            wordCountEnd: Math.max(0, Math.round(Number(entry.wordCountEnd) || 0)),
+            wordGain: Math.max(0, Math.round(Number(entry.wordGain) || 0)),
+            activeMinutes: Math.max(0, Math.round(Number(entry.activeMinutes) || 0)),
+            idleMinutes: Math.max(0, Math.round(Number(entry.idleMinutes) || 0)),
+            sessionTargetWordsPerSession: Math.max(0, Math.round(Number(entry.sessionTargetWordsPerSession) || 0)),
+            goalReached: entry.goalReached === true,
+          };
+        })
+    : [];
+
+  normalized.sort((a, b) => a.endedAt.localeCompare(b.endedAt));
+  return normalized.slice(-WRITING_TARGET_SESSION_HISTORY_MAX);
+}
+
+function addMinutes(date, minutes) {
+  const next = new Date(date.getTime());
+  next.setMinutes(next.getMinutes() + Math.round(Number(minutes) || 0));
+  return next;
+}
+
+function getWritingTargetSessionThresholds(sessionTimeoutMinutes) {
+  const idleGraceMinutes = clampPositiveNumber(
+    sessionTimeoutMinutes,
+    DEFAULT_SESSION_TIMEOUT_MINUTES,
+    WRITING_TARGET_MIN_SESSION_TIMEOUT_MINUTES,
+    WRITING_TARGET_MAX_SESSION_TIMEOUT_MINUTES,
+  );
+
+  return {
+    idleGraceMinutes,
+    segmentCloseMinutes: idleGraceMinutes + WRITING_TARGET_SESSION_SEGMENT_CLOSE_BUFFER_MINUTES,
+    newSessionMinutes: idleGraceMinutes + WRITING_TARGET_SESSION_NEW_SESSION_BUFFER_MINUTES,
+  };
+}
+
+function getWritingTargetSessionPhase(idleMinutes, thresholds, sessionIsActive) {
+  if (sessionIsActive && idleMinutes < thresholds.idleGraceMinutes) {
+    return "writing";
+  }
+
+  if (idleMinutes < thresholds.segmentCloseMinutes) {
+    return "idle";
+  }
+
+  if (idleMinutes < thresholds.newSessionMinutes) {
+    return "segment-closed";
+  }
+
+  return "new-session";
+}
+
+function getWritingTargetSessionPhaseLabel(phase) {
+  if (phase === "writing") {
+    return "Writing";
+  }
+
+  if (phase === "segment-closed") {
+    return "Segment closed";
+  }
+
+  if (phase === "new-session") {
+    return "New session";
+  }
+
+  return "Idle";
+}
+
+function buildWritingTargetSessionLifecycleSummaryText(sessionLifecycle) {
+  if (!sessionLifecycle) {
+    return "Idle";
+  }
+
+  const phaseLabel = getWritingTargetSessionPhaseLabel(sessionLifecycle.sessionLifecyclePhase);
+  return phaseLabel;
+}
+
+function getWritingTargetSessionLifecycle(record, now = new Date()) {
+  const sessionStartedAt = typeof record?.sessionStartedAt === "string" && record.sessionStartedAt.trim()
+    ? new Date(record.sessionStartedAt)
+    : null;
+  const sessionLastActiveAt = typeof record?.sessionLastActiveAt === "string" && record.sessionLastActiveAt.trim()
+    ? new Date(record.sessionLastActiveAt)
+    : null;
+  const sessionConcludedAt = typeof record?.sessionConcludedAt === "string" && record.sessionConcludedAt.trim()
+    ? new Date(record.sessionConcludedAt)
+    : null;
+  const sessionIsActive = record?.sessionIsActive === true;
+  const sessionTimeoutMinutes = clampPositiveNumber(
+    record?.sessionTimeoutMinutes,
+    DEFAULT_SESSION_TIMEOUT_MINUTES,
+    WRITING_TARGET_MIN_SESSION_TIMEOUT_MINUTES,
+    WRITING_TARGET_MAX_SESSION_TIMEOUT_MINUTES,
+  );
+  const thresholds = getWritingTargetSessionThresholds(sessionTimeoutMinutes);
+  const idleMinutes = sessionLastActiveAt && !Number.isNaN(sessionLastActiveAt.getTime())
+    ? Math.max(0, Math.floor((now.getTime() - sessionLastActiveAt.getTime()) / 60000))
+    : 0;
+  const timedOut = sessionIsActive && idleMinutes >= sessionTimeoutMinutes;
+  const effectiveConcludedAt = sessionConcludedAt && !Number.isNaN(sessionConcludedAt.getTime())
+    ? sessionConcludedAt
+    : timedOut && sessionLastActiveAt && !Number.isNaN(sessionLastActiveAt.getTime())
+      ? addMinutes(sessionLastActiveAt, sessionTimeoutMinutes)
+      : null;
+  const activeAnchor = effectiveConcludedAt && !Number.isNaN(effectiveConcludedAt.getTime())
+    ? effectiveConcludedAt
+    : now;
+  const activeMinutes = sessionStartedAt && !Number.isNaN(sessionStartedAt.getTime())
+    ? Math.max(0, Math.floor((activeAnchor.getTime() - sessionStartedAt.getTime()) / 60000))
+    : 0;
+  const sessionBaselineWordCount =
+    Number.isFinite(Number(record?.sessionBaselineWordCount)) && Number(record.sessionBaselineWordCount) >= 0
+      ? Math.max(0, Math.round(Number(record.sessionBaselineWordCount)))
+      : 0;
+  const sessionLifecyclePhase = getWritingTargetSessionPhase(idleMinutes, thresholds, sessionIsActive && !timedOut);
+
+  return {
+    sessionStartedAt,
+    sessionLastActiveAt,
+    sessionConcludedAt: effectiveConcludedAt,
+    sessionTimeoutMinutes,
+    sessionIdleGraceMinutes: thresholds.idleGraceMinutes,
+    sessionSegmentCloseMinutes: thresholds.segmentCloseMinutes,
+    sessionNewSessionMinutes: thresholds.newSessionMinutes,
+    sessionLifecyclePhase,
+    sessionIsActive: sessionIsActive && !timedOut,
+    sessionDisplayActive: sessionIsActive && !timedOut && idleMinutes < thresholds.idleGraceMinutes,
+    isConcluded: !sessionIsActive || timedOut || Boolean(effectiveConcludedAt),
+    activeMinutes,
+    idleMinutes,
+    sessionBaselineWordCount,
+    sessionLastWordCount: Number.isFinite(Number(record?.sessionLastWordCount))
+      ? Math.max(0, Math.round(Number(record.sessionLastWordCount)))
+      : sessionBaselineWordCount,
+  };
+}
+
+function createWritingTargetSessionHistoryEntry(record, currentWordCount, now = new Date(), reason = "idle") {
+  const lifecycle = getWritingTargetSessionLifecycle(record, now);
+  const endedAt = lifecycle.sessionConcludedAt ?? now;
+  const sessionTargetWordsPerSession = Math.max(
+    0,
+    Math.round(
+      clampPositiveNumber(record?.sessionTargetWords, DEFAULT_SESSION_TARGET_WORDS) /
+        Math.max(1, clampPositiveNumber(record?.sessionsPerDay, DEFAULT_SESSION_TARGETS_PER_DAY, 1, WRITING_TARGET_MAX_SESSION_TARGETS_PER_DAY)),
+    ),
+  );
+  const wordCountStart = lifecycle.sessionBaselineWordCount;
+  const wordCountEnd = Math.max(0, Math.round(Number(currentWordCount) || 0));
+  const wordGain = Math.max(0, wordCountEnd - wordCountStart);
+
+  return {
+    startedAt: lifecycle.sessionStartedAt?.toISOString?.() ?? now.toISOString(),
+    endedAt: endedAt.toISOString(),
+    endedReason: normalizeWritingTargetSessionActivityReason(reason),
+    wordCountStart,
+    wordCountEnd,
+    wordGain,
+    activeMinutes: Math.max(0, Math.round(lifecycle.activeMinutes)),
+    idleMinutes: Math.max(0, Math.round(lifecycle.idleMinutes)),
+    sessionTargetWordsPerSession,
+    goalReached: wordGain >= sessionTargetWordsPerSession,
+  };
+}
+
+function resumeWritingSession(record, currentWordCount = getCurrentManuscriptWordCount(), now = new Date(), options = {}) {
+  if (!record || typeof record !== "object") {
+    return null;
+  }
+
+  const currentCount = Math.max(0, Math.round(Number(currentWordCount) || 0));
+  const startedAt = now.toISOString();
+  const nextRecord = cloneValue(record);
+  nextRecord.sessionIsActive = true;
+  nextRecord.sessionStartedAt = startedAt;
+  nextRecord.sessionLastActiveAt = startedAt;
+  nextRecord.sessionConcludedAt = "";
+  nextRecord.sessionConcludedReason = "";
+  nextRecord.sessionBaselineWordCount = currentCount;
+  nextRecord.sessionLastWordCount = currentCount;
+  nextRecord.sessionSamples = [createWritingTargetSessionSample(currentCount, now)];
+  nextRecord.updatedAt = now.toISOString();
+  if (options.reason) {
+    nextRecord.sessionResumeReason = normalizeWritingTargetSessionActivityReason(options.reason);
+  }
+  return nextRecord;
+}
+
+function touchWritingTargetSessionActivity(record, currentWordCount = getCurrentManuscriptWordCount(), now = new Date(), options = {}) {
+  if (!record || typeof record !== "object") {
+    return null;
+  }
+
+  const currentCount = Math.max(0, Math.round(Number(currentWordCount) || 0));
+  const previousCount = Number.isFinite(Number(options.previousWordCount))
+    ? Math.max(0, Math.round(Number(options.previousWordCount)))
+    : currentCount;
+  const lifecycle = getWritingTargetSessionLifecycle(record, now);
+  const wasActive = record.sessionIsActive === true
+    && !(typeof record.sessionConcludedAt === "string" && record.sessionConcludedAt.trim());
+  const resumeReason = normalizeWritingTargetSessionActivityReason(
+    options.reason ?? (
+      lifecycle.idleMinutes >= lifecycle.sessionNewSessionMinutes
+        ? "new-session"
+        : lifecycle.idleMinutes >= lifecycle.sessionSegmentCloseMinutes
+          ? "segment-reopen"
+          : "resume"
+    ),
+  );
+
+  const nextRecord = wasActive
+    ? cloneValue(record)
+    : resumeWritingSession(record, previousCount, now, {
+        reason: resumeReason,
+      });
+
+  if (!nextRecord) {
+    return null;
+  }
+
+  nextRecord.sessionIsActive = true;
+  nextRecord.sessionLastActiveAt = now.toISOString();
+  nextRecord.sessionConcludedAt = "";
+  nextRecord.sessionConcludedReason = "";
+  nextRecord.sessionBaselineWordCount = wasActive ? nextRecord.sessionBaselineWordCount : previousCount;
+  nextRecord.sessionLastWordCount = currentCount;
+  nextRecord.updatedAt = now.toISOString();
+
+  if (!wasActive) {
+    nextRecord.sessionSamples = [createWritingTargetSessionSample(previousCount, now)];
+  }
+
+  return nextRecord;
+}
+
+function concludeWritingSession(record, currentWordCount = getCurrentManuscriptWordCount(), now = new Date(), reason = "idle") {
+  if (!record || typeof record !== "object") {
+    return null;
+  }
+
+  const lifecycle = getWritingTargetSessionLifecycle(record, now);
+  if (!lifecycle.sessionIsActive && !record.sessionIsActive) {
+    return cloneValue(record);
+  }
+
+  const concludedAt = lifecycle.sessionConcludedAt ?? addMinutes(lifecycle.sessionLastActiveAt ?? now, lifecycle.sessionTimeoutMinutes);
+  const currentCount = Math.max(0, Math.round(Number(currentWordCount) || 0));
+  const nextRecord = cloneValue(record);
+  const history = normalizeWritingTargetSessionHistory(nextRecord.sessionHistory ?? []);
+  const nextHistoryEntry = createWritingTargetSessionHistoryEntry(nextRecord, currentCount, concludedAt, reason);
+
+  nextRecord.sessionIsActive = false;
+  nextRecord.sessionConcludedAt = concludedAt.toISOString();
+  nextRecord.sessionConcludedReason = normalizeWritingTargetSessionActivityReason(reason);
+  nextRecord.sessionLastActiveAt = lifecycle.sessionLastActiveAt?.toISOString?.() ?? concludedAt.toISOString();
+  nextRecord.sessionLastWordCount = currentCount;
+  nextRecord.sessionHistory = [...history, nextHistoryEntry].slice(-WRITING_TARGET_SESSION_HISTORY_MAX);
+  nextRecord.updatedAt = concludedAt.toISOString();
+  return nextRecord;
+}
+
+function refreshWritingTargetSessionLifecycle(options = {}) {
+  const record = getWritingTargetWorkingRecord();
+  if (!record) {
+    return null;
+  }
+
+  const lifecycle = getWritingTargetSessionLifecycle(record);
+  if (!record.sessionIsActive || !lifecycle.isConcluded) {
+    return record;
+  }
+
+  const concludedRecord = concludeWritingSession(record, getCurrentManuscriptWordCount(), new Date(), options.reason ?? "idle");
+  if (!concludedRecord) {
+    return record;
+  }
+
+  state.writingTargetState = persistWritingTargetState(concludedRecord);
+  if (state.writingTargetDraft && state.writingTargetDraftProjectId === state.workspace?.project?.id) {
+    state.writingTargetDraft = {
+      ...cloneValue(state.writingTargetDraft),
+      sessionIsActive: state.writingTargetState.sessionIsActive,
+      sessionConcludedAt: state.writingTargetState.sessionConcludedAt,
+      sessionConcludedReason: state.writingTargetState.sessionConcludedReason,
+      sessionLastActiveAt: state.writingTargetState.sessionLastActiveAt,
+      sessionLastWordCount: state.writingTargetState.sessionLastWordCount,
+      sessionHistory: cloneValue(state.writingTargetState.sessionHistory),
+      updatedAt: state.writingTargetState.updatedAt,
+    };
+  }
+  persistCurrentProjectRecord();
+  return concludedRecord;
+}
+
 function estimateRecentSessionWordsPerMinute(record, now = new Date()) {
   const samples = normalizeWritingTargetSessionSamples(record?.sessionSamples);
   if (samples.length < 2) {
@@ -3862,9 +4451,14 @@ function createDefaultWritingTargetRecord(currentWordCount, now = new Date()) {
     sessionBaselineWordCount: Math.max(0, Math.round(Number(currentWordCount) || 0)),
     dailyBaselineDateKey: getLocalDateKey(now),
     dailyBaselineWordCount: 0,
+    sessionIsActive: false,
     sessionStartedAt: now.toISOString(),
     sessionLastActiveAt: now.toISOString(),
+    sessionConcludedAt: "",
+    sessionConcludedReason: "",
+    sessionLastWordCount: Math.max(0, Math.round(Number(currentWordCount) || 0)),
     sessionSamples: [createWritingTargetSessionSample(currentWordCount, now)],
+    sessionHistory: [],
     history: [createWritingTargetHistoryEntry(currentWordCount, now, { previousEntry: null, context })],
     updatedAt: now.toISOString(),
   };
@@ -4121,11 +4715,17 @@ function resetWritingSession() {
   }
 
   const now = new Date();
+  const currentWordCount = getCurrentManuscriptWordCount();
   const nextRecord = {
     ...cloneValue(record),
-    sessionBaselineWordCount: getCurrentManuscriptWordCount(),
+    sessionIsActive: true,
+    sessionBaselineWordCount: currentWordCount,
     sessionStartedAt: now.toISOString(),
     sessionLastActiveAt: now.toISOString(),
+    sessionConcludedAt: "",
+    sessionConcludedReason: "",
+    sessionLastWordCount: currentWordCount,
+    sessionSamples: [createWritingTargetSessionSample(currentWordCount, now)],
     updatedAt: now.toISOString(),
   };
 
@@ -4260,8 +4860,8 @@ function renderSourceArchive(projectRecord) {
   return `
     <div class="source-archive">
       <div class="panel-heading split-heading">
-        <p class="panel-kicker">Imported Sources</p>
-        <h2>Scrivener archive</h2>
+        <p class="panel-kicker">Project sources</p>
+        <h2>Project archive</h2>
       </div>
       <div class="source-archive-list">
         ${archive.map((item) => renderSourceArchiveItem(item)).join("")}
@@ -4348,194 +4948,18 @@ function renderSceneNode(scene) {
 function renderManuscriptPanel() {
   const selectedScene = getSelectedScene() ?? state.scenes[0];
   const editorMode = state.activePane === "narration" ? "narration" : "manuscript";
-  document.querySelector("#manuscript-slot").innerHTML = `
-    <div class="panel-heading">
-      <p class="panel-kicker">Scene Editor</p>
-      <h2>Scene Editor Viewport</h2>
-    </div>
-    ${selectedScene ? renderSceneEditor(selectedScene, { mode: editorMode }) : ""}
-  `;
-}
-
-function renderSceneEditor(scene, options = {}) {
-  const mode = options.mode === "narration" ? "narration" : "manuscript";
-  const hasDraft = Boolean(state.sceneDrafts[scene.sceneId]);
-  const localAiStatus = state.localAiTitleStatus[scene.sceneId];
-  const narrationSelection = mode === "narration" ? getNarrationTakeSelectionForScene(scene.sceneId) : null;
-  const narrationSession = mode === "narration" ? state.narrationTakeSession : null;
-  return `
-    <section class="scene-editor-shell ${mode === "narration" ? "narration-editor-shell" : ""}">
-      <div class="scene-editor-header">
-        <div class="editor-title-row">
-          <input
-            class="editor-title-input"
-            type="text"
-            value="${escapeHtml(scene.sceneTitle)}"
-            data-edit-field="scene-title"
-            data-scene-id="${escapeHtml(scene.sceneId)}"
-            aria-label="Scene title"
-          />
-          <button
-            class="tag-button editor-action-button ai-title-button"
-            type="button"
-            data-action="suggest-scene-title"
-            data-scene-id="${escapeHtml(scene.sceneId)}"
-            ${state.localAiPrefs.enabled ? "" : "disabled"}
-          >${localAiStatus === "loading" ? "Thinking..." : "Suggest title"}</button>
-          ${localAiStatus && localAiStatus !== "loading" ? `<span class="local-ai-status">${escapeHtml(localAiStatus)}</span>` : ""}
-        </div>
-        <div class="scene-editor-tools ${mode === "narration" ? "narration-recording-tools" : ""}">
-          ${mode === "narration"
-            ? renderNarrationRecordingTools(scene, narrationSelection, narrationSession)
-            : `
-              ${renderEditorSetting("Font", "fontFamilyId", FONT_OPTIONS.map((option) => ({
-                value: option.id,
-                label: option.label,
-              })), state.editorPrefs.fontFamilyId)}
-              ${renderEditorSetting("Size", "fontSize", FONT_SIZE_OPTIONS.map((value) => ({
-                value: String(value),
-                label: `${value}px`,
-              })), String(state.editorPrefs.fontSize))}
-              ${renderEditorSetting("Line Height", "lineHeight", LINE_HEIGHT_OPTIONS.map((value) => ({
-                value: String(value),
-                label: `${value}x`,
-              })), String(state.editorPrefs.lineHeight))}
-              ${renderEditorSetting("Text Width", "editorWidth", EDITOR_WIDTH_OPTIONS.map((value) => ({
-                value: String(value),
-                label: `${value}px`,
-              })), String(state.editorPrefs.editorWidth))}
-            `}
-          ${hasDraft ? `<button class="tag-button editor-action-button" data-action="reset-scene-draft" data-scene-id="${escapeHtml(scene.sceneId)}">Revert local draft</button>` : ""}
-        </div>
-      </div>
-
-      <div
-        class="scene-editor-codeframe ${mode === "narration" ? "narration-editor-frame" : ""}"
-        data-scene-editor="${escapeHtml(scene.sceneId)}"
-        style="${escapeHtml(buildEditorStyle())}"
-      >
-        <div class="editor-document-gutter" data-editor-gutter aria-hidden="true"></div>
-        <div class="editor-document-body">
-          <textarea
-            class="editor-document-input"
-            data-edit-field="editor-text"
-            data-scene-id="${escapeHtml(scene.sceneId)}"
-            spellcheck="true"
-          >${escapeHtml(scene.editorText ?? "")}</textarea>
-        </div>
-        ${renderInlinePassageDraft(scene)}
-      </div>
-    </section>
-  `;
-}
-
-function renderInlinePassageDraft(scene) {
-  const draft = state.inlinePassageDraft;
-  if (!draft || draft.sceneId !== scene.sceneId) {
-    return "";
+  const slot = document.querySelector("#manuscript-slot");
+  if (!(slot instanceof HTMLElement)) {
+    return;
   }
 
-  const label = draft.noteType === "research" ? "Research" : "Inspiration";
-  const anchor = getInlinePassageDraftAnchor(draft, scene.editorText ?? "", {
-    includePendingVerse: true,
+  slot.innerHTML = renderManuscriptPanelHTML({
+    state,
+    selectedScene,
+    editorMode,
+    buildEditorStyle,
+    getInlinePassageDraftAnchor,
   });
-  const prompt = anchor
-    ? `${label} will save against: ${anchor.selectedText.slice(0, 96)}`
-    : `Save this ${label.toLowerCase()} note against the verse typed in the manuscript field below.`;
-  return `
-    <section
-      class="inline-passage-bubble inline-passage-${escapeHtml(draft.noteType)}"
-      data-inline-passage-draft
-      style="--inline-passage-y:${Math.round(draft.y)}px;"
-    >
-      <div class="inline-passage-heading">
-        <span>${escapeHtml(label)} note</span>
-        <strong data-inline-passage-status>${escapeHtml(prompt)}</strong>
-        <button class="inline-passage-close" type="button" data-action="cancel-inline-passage-note" aria-label="Cancel ${escapeHtml(label)}">x</button>
-      </div>
-      <textarea
-        data-edit-field="inline-passage-note"
-        data-scene-id="${escapeHtml(scene.sceneId)}"
-        placeholder="${escapeHtml(getPassageNotePlaceholder(draft.noteType))}"
-      >${escapeHtml(draft.body ?? "")}</textarea>
-      <label class="inline-passage-verse-shell">
-        <span>Typed verse</span>
-        <textarea
-          class="inline-passage-verse-field"
-          data-edit-field="inline-passage-verse"
-          data-scene-id="${escapeHtml(scene.sceneId)}"
-          placeholder="Type the manuscript verse this note belongs to."
-        >${escapeHtml(draft.typedText ?? "")}</textarea>
-      </label>
-      <div class="inline-passage-actions">
-        <span aria-hidden="true"></span>
-        <button class="tag-button" type="button" data-inline-passage-save data-action="commit-inline-passage-note">Save to typed verse</button>
-      </div>
-    </section>
-  `;
-}
-
-function renderNarrationRecordingTools(scene, selection, session) {
-  const statusLabel = session?.status === "recording"
-    ? `Recording ${session.elapsedLabel ?? "0:00"}`
-    : selection
-      ? "Ready to record"
-      : "Awaiting verse selection";
-  const verseLabel = selection
-    ? `Line ${String(selection.lineNumber ?? selection.blockLineNumber ?? "")} · ${selection.kindLabel ?? "Verse"}`
-    : "Click a verse to arm recording";
-  const trackerLabel = session?.trackerStatus
-    ? session.trackerStatus
-    : "Speech tracker idle";
-  return `
-    <div class="editor-inline-setting narration-recording-field">
-      <span>Status</span>
-      <div class="narration-recording-value ${session?.status === "recording" ? "is-recording" : ""}">${escapeHtml(statusLabel)}</div>
-    </div>
-    <div class="editor-inline-setting narration-recording-field">
-      <span>Verse</span>
-      <div class="narration-recording-value">${escapeHtml(verseLabel)}</div>
-    </div>
-    <div class="editor-inline-setting narration-recording-field">
-      <span>Tracker</span>
-      <div class="narration-recording-value">${escapeHtml(trackerLabel)}</div>
-    </div>
-    <div class="narration-recording-actions">
-      <button
-        class="tag-button editor-action-button"
-        type="button"
-        data-action="${session?.status === "recording" ? "stop-narration-recording" : "start-narration-recording"}"
-        data-scene-id="${escapeHtml(scene.sceneId)}"
-        ${session?.status === "recording" ? "" : selection ? "" : "disabled"}
-      >
-        ${session?.status === "recording" ? "Stop recording" : "Start recording"}
-      </button>
-      <button
-        class="tag-button editor-action-button"
-        type="button"
-        data-action="clear-narration-selection"
-        data-scene-id="${escapeHtml(scene.sceneId)}"
-        ${selection && session?.status !== "recording" ? "" : "disabled"}
-      >
-        Clear verse
-      </button>
-    </div>
-  `;
-}
-
-function renderEditorSetting(label, prefKey, options, selectedValue) {
-  return `
-    <label class="editor-inline-setting">
-      <span>${escapeHtml(label)}</span>
-      <select data-editor-pref="${escapeHtml(prefKey)}">
-        ${options.map((option) => `
-          <option value="${escapeHtml(option.value)}" ${option.value === selectedValue ? "selected" : ""}>
-            ${escapeHtml(option.label)}
-          </option>
-        `).join("")}
-      </select>
-    </label>
-  `;
 }
 
 function renderConsolePanel() {
@@ -4688,23 +5112,23 @@ function formatImportSourceLabel(source) {
     return "Manual";
   }
 
-  if (source === "scrivener-research") {
-    return "Scrivener research";
+  if (source === "source-research") {
+    return "Research";
   }
 
-  if (source === "scrivener-front-matter") {
+  if (source === "source-front-matter") {
     return "Front matter";
   }
 
-  if (source === "scrivener-comment") {
-    return "Scrivener comment";
+  if (source === "source-comment") {
+    return "Comment";
   }
 
-  if (source === "scrivener-comment-note") {
+  if (source === "source-comment-note") {
     return "Comment note";
   }
 
-  if (source === "scrivener-asset") {
+  if (source === "source-asset") {
     return "Asset";
   }
 
@@ -4724,7 +5148,10 @@ function formatImportSourceLabel(source) {
     return "PDF";
   }
 
-  return source.replace(/^scrivener-/, "Scrivener ");
+  return source
+    .replace(/^source-/, "")
+    .replace(/[-_]/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
 function renderTaskChapterList(tasks) {
@@ -6622,7 +7049,12 @@ async function loadInitialProjectLibrary() {
     readStoredJson(EDITOR_ACTIVE_PROJECT_ID_KEY) ??
     null;
   const legacyState = loadLegacyProjectState(legacyProjectId);
-  const remoteSeedLibrary = await loadDesktopProjectLibrarySeed();
+  const remoteSeedLibrary = await Promise.race([
+    loadDesktopProjectLibrarySeed(),
+    new Promise((resolve) => {
+      window.setTimeout(() => resolve(null), DESKTOP_PROJECT_LIBRARY_BOOT_TIMEOUT_MS);
+    }),
+  ]);
   const bundledSeedLibrary = remoteSeedLibrary ? null : loadBundledProjectLibrarySeed();
   const workspaceSeedLibrary = remoteSeedLibrary || bundledSeedLibrary || await loadWorkspaceFallbackProjectLibrarySeed();
   const seedLibrary = workspaceSeedLibrary;
@@ -6769,7 +7201,7 @@ function loadLegacyProjectState(projectId = null) {
     editorPrefs: loadEditorPrefs(),
     localAiPrefs: loadLocalAiPrefs(),
     projectTitle: loadProjectTitle(state.workspace?.project?.title ?? ""),
-    projectIntegratorPath: loadStoredString(EDITOR_SCRIVENER_IMPORT_PATH_KEY) ?? "",
+    projectSourcePath: loadStoredString(EDITOR_PROJECT_SOURCE_PATH_KEY) ?? "",
     binderPanelWidth: loadStoredNumber(EDITOR_BINDER_WIDTH_KEY, DEFAULT_BINDER_PANEL_WIDTH),
     consoleDockWidth: loadStoredNumber(EDITOR_CONSOLE_WIDTH_KEY, DEFAULT_CONSOLE_PANEL_WIDTH),
     consoleDockCollapsed: readStoredJson(EDITOR_RIGHT_DOCK_COLLAPSED_KEY) === true,
@@ -6838,7 +7270,7 @@ function mergeProjectLibrarySnapshots(storedLibrary, seedLibrary, legacyState = 
     projectsById.set(merged.id, merged);
   }
 
-  const canonicalSeedProject = seedProjects.find((project) => project.source === "scrivener-import") ?? seedProjects[0] ?? null;
+  const canonicalSeedProject = seedProjects.find((project) => project.source === "project-file") ?? seedProjects[0] ?? null;
   if (canonicalSeedProject) {
     const staleDuplicate = findStaleSeedProjectMatch(
       mergedProjects.filter((project) => project.id !== canonicalSeedProject.id),
@@ -6912,7 +7344,7 @@ function findStaleSeedProjectMatch(projects, seedProject) {
         return false;
       }
 
-      if (project.source === "scrivener-import") {
+      if (project.source === "project-file") {
         return false;
       }
 
@@ -6965,7 +7397,7 @@ function mergeItemsById(storedItems, seedItems) {
 function mergeImportedRecord(storedItem, seedItem) {
   const seedSource = typeof seedItem.source === "string" ? seedItem.source : "";
   const storedSource = typeof storedItem.source === "string" ? storedItem.source : "";
-  const isImported = seedSource.startsWith("scrivener-") || storedSource.startsWith("scrivener-");
+  const isImported = seedSource.startsWith("source-") || storedSource.startsWith("source-");
 
   if (!isImported) {
     return cloneValue(storedItem);
@@ -7028,7 +7460,7 @@ function createDefaultProjectSettingsSnapshot(currentWordCount = 0, now = new Da
     collapsedChapterIds: [],
     collapsedConsoleChapterIds: createCollapsedConsoleChapterState(),
     projectFilePath: "",
-    projectIntegratorPath: "",
+    projectSourcePath: "",
     writingTargetState: createDefaultWritingTargetRecord(currentWordCount, now),
     writingTargetViewMode: "month",
     writingTargetSelectedDateKey: getLocalDateKey(now),
@@ -7082,7 +7514,7 @@ function normalizeProjectSettingsSnapshot(candidate, projectId = "", currentWord
       normalizedCandidate.collapsedConsoleChapterIds ?? defaults.collapsedConsoleChapterIds,
     ),
     projectFilePath: normalizeProjectFilePath(normalizedCandidate.projectFilePath ?? defaults.projectFilePath),
-    projectIntegratorPath: normalizeProjectFilePath(normalizedCandidate.projectIntegratorPath ?? defaults.projectIntegratorPath),
+    projectSourcePath: normalizeProjectFilePath(normalizedCandidate.projectSourcePath ?? defaults.projectSourcePath),
     writingTargetState,
     writingTargetViewMode,
     writingTargetSelectedDateKey: selectedDateKey,
@@ -7106,7 +7538,7 @@ function buildProjectSettingsCandidate(candidate) {
     collapsedChapterIds: projectSettings.collapsedChapterIds ?? candidate?.collapsedChapterIds,
     collapsedConsoleChapterIds: projectSettings.collapsedConsoleChapterIds ?? candidate?.collapsedConsoleChapterIds,
     projectFilePath: projectSettings.projectFilePath ?? candidate?.projectFilePath,
-    projectIntegratorPath: projectSettings.projectIntegratorPath ?? candidate?.projectIntegratorPath,
+    projectSourcePath: projectSettings.projectSourcePath ?? candidate?.projectSourcePath,
     writingTargetState: projectSettings.writingTargetState ?? candidate?.writingTargetState,
     writingTargetViewMode: projectSettings.writingTargetViewMode ?? candidate?.writingTargetViewMode,
     writingTargetSelectedDateKey: projectSettings.writingTargetSelectedDateKey ?? candidate?.writingTargetSelectedDateKey,
@@ -7134,7 +7566,7 @@ function createProjectSettingsSnapshotFromState({
       collapsedChapterIds: cloneValue(state.collapsedChapterIds),
       collapsedConsoleChapterIds: cloneValue(state.collapsedConsoleChapterIds),
       projectFilePath: state.projectFilePath,
-      projectIntegratorPath: state.projectIntegratorPath,
+      projectSourcePath: state.projectSourcePath,
       writingTargetState,
       writingTargetViewMode: state.writingTargetViewMode,
       writingTargetSelectedDateKey: state.writingTargetSelectedDateKey,
@@ -7188,7 +7620,7 @@ function normalizeProjectRecord(candidate, legacyState = null) {
     ...cloneValue(candidate),
     editorPrefs: candidate.editorPrefs ?? legacyState?.editorPrefs,
     localAiPrefs: candidate.localAiPrefs ?? legacyState?.localAiPrefs,
-    projectIntegratorPath: candidate.projectIntegratorPath ?? legacyState?.projectIntegratorPath,
+    projectSourcePath: candidate.projectSourcePath ?? legacyState?.projectSourcePath,
   }),
     id,
     getWorkspaceManuscriptWordCount(workspace),
@@ -7456,7 +7888,7 @@ function applyProjectRecord(record) {
   state.collapsedChapterIds = projectSettings.collapsedChapterIds;
   state.collapsedConsoleChapterIds = projectSettings.collapsedConsoleChapterIds;
   state.projectFilePath = projectSettings.projectFilePath;
-  state.projectIntegratorPath = projectSettings.projectIntegratorPath;
+  state.projectSourcePath = projectSettings.projectSourcePath;
   state.projectFileHandle = null;
   state.writingTargetViewMode = projectSettings.writingTargetViewMode;
   state.writingTargetSelectedDateKey = projectSettings.writingTargetSelectedDateKey;
@@ -7464,7 +7896,7 @@ function applyProjectRecord(record) {
   state.writingTargetProjectId = record.id;
   state.writingTargetState = cloneValue(projectSettings.writingTargetState);
   writeStoredJsonRaw(EDITOR_PROJECT_FILE_PATH_KEY, state.projectFilePath);
-  writeStoredJsonRaw(EDITOR_SCRIVENER_IMPORT_PATH_KEY, state.projectIntegratorPath);
+  writeStoredJsonRaw(EDITOR_PROJECT_SOURCE_PATH_KEY, state.projectSourcePath);
   writeStoredJsonRaw(EDITOR_BINDER_WIDTH_KEY, state.binderPanelWidth);
   writeStoredJsonRaw(EDITOR_CONSOLE_WIDTH_KEY, state.consoleDockWidth);
   persistConsoleDockCollapsedState(state.consoleDockCollapsed);
@@ -7483,7 +7915,7 @@ function syncLegacyProjectStorageFromState() {
 
   writeStoredJsonRaw(EDITOR_PROJECT_TITLE_KEY, state.projectTitle);
   writeStoredJsonRaw(EDITOR_PROJECT_FILE_PATH_KEY, state.projectFilePath);
-  writeStoredJsonRaw(EDITOR_SCRIVENER_IMPORT_PATH_KEY, state.projectIntegratorPath);
+  writeStoredJsonRaw(EDITOR_PROJECT_SOURCE_PATH_KEY, state.projectSourcePath);
   writeStoredJsonRaw(EDITOR_DRAFTS_KEY, state.sceneDrafts);
   writeStoredJsonRaw(EDITOR_STRUCTURE_KEY, state.structureDrafts);
   writeStoredJsonRaw(EDITOR_TEMPLATE_DRAFTS_KEY, state.templateDrafts);
@@ -7532,6 +7964,7 @@ function loadSelectedProject() {
     state.workspace.selectionDefaults.lineId ?? state.scenes[0]?.blocks[0]?.blockId ?? null,
   );
   syncWritingTargetState({ forceReload: true });
+  refreshWritingTargetSessionLifecycle({ reason: "load-project" });
   render();
   recordWritingTargetSnapshot({ immediate: true, reason: "load-project" });
   if (state.workspace?.project?.stats) {
@@ -8169,20 +8602,20 @@ function createProject() {
   }
 }
 
-async function importScrivenerProject() {
-  const projectPath = state.projectIntegratorPath.trim();
+async function loadProjectSource() {
+  const projectPath = state.projectSourcePath.trim();
   if (!projectPath) {
-    state.projectIntegratorStatus = "Enter a local Scrivener project path.";
+    state.projectSourceStatus = "Enter a local project source path.";
     renderHeader();
     return;
   }
 
-  state.projectIntegratorBusy = true;
-  state.projectIntegratorStatus = "Importing Scrivener project...";
+  state.projectSourceBusy = true;
+  state.projectSourceStatus = "Loading project source...";
   renderHeader();
 
   try {
-    const response = await fetchJsonFromDesktopApi("/api/project-integrator", {
+    const response = await fetchJsonFromDesktopApi("/api/project-source", {
       method: "POST",
       body: {
         projectPath,
@@ -8190,7 +8623,7 @@ async function importScrivenerProject() {
     });
 
     if (!response.ok) {
-      throw response.error ?? new Error("Scrivener import failed.");
+      throw response.error ?? new Error("Project source load failed.");
     }
 
     const importedLibrary = normalizeProjectLibrarySnapshot(response.value);
@@ -8215,7 +8648,7 @@ async function importScrivenerProject() {
 
     const record = getActiveProjectRecord();
     if (!record) {
-      throw new Error("Unable to activate the imported Scrivener project.");
+      throw new Error("Unable to activate the loaded project source.");
     }
 
     applyProjectRecord(record);
@@ -8228,13 +8661,13 @@ async function importScrivenerProject() {
     );
     syncWritingTargetState({ forceReload: true });
     if (state.workspace?.project?.stats) {
-      state.projectIntegratorStatus = `Imported ${record.title} · ${state.workspace.project.stats.chapterCount} chapters, ${state.workspace.project.stats.sceneCount} scenes`;
+      state.projectSourceStatus = `Loaded ${record.title} · ${state.workspace.project.stats.chapterCount} chapters, ${state.workspace.project.stats.sceneCount} scenes`;
     }
     render();
-    recordWritingTargetSnapshot({ immediate: true, reason: "import-project" });
+    recordWritingTargetSnapshot({ immediate: true, reason: "load-project-source" });
 
     if (state.workspace?.project?.stats) {
-      reportBrowserLog("info", "project-integrator", "Imported a Scrivener project into saved projects.", {
+      reportBrowserLog("info", "project-source", "Loaded a project source into saved projects.", {
         projectPath,
         projectId: record.id,
         title: record.title,
@@ -8244,14 +8677,14 @@ async function importScrivenerProject() {
       });
     }
   } catch (error) {
-    state.projectIntegratorStatus = `Import failed: ${error instanceof Error ? error.message : String(error)}`;
-    reportBrowserLog("error", "project-integrator", "Scrivener project import failed.", {
+    state.projectSourceStatus = `Load failed: ${error instanceof Error ? error.message : String(error)}`;
+    reportBrowserLog("error", "project-source", "Project source load failed.", {
       projectPath,
       error,
     });
     renderHeader();
   } finally {
-    state.projectIntegratorBusy = false;
+    state.projectSourceBusy = false;
     renderHeader();
   }
 }
@@ -9694,19 +10127,16 @@ function maybeSuggestPassageNoteTitle(note) {
 
 async function requestLocalAiTitle({ userInput, manuscriptContext, projectContext, maxTokens }) {
   try {
-    const response = await fetch("/api/local-ai/generate-title", {
+    const response = await fetchJsonFromDesktopApi("/api/local-ai/generate-title", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
+      body: {
         userInput,
         manuscriptContext,
         projectContext,
         outputFormat: "text",
         maxTokens,
         temperature: 0.25,
-      }),
+      },
     });
 
     if (!response.ok) {
@@ -9716,7 +10146,7 @@ async function requestLocalAiTitle({ userInput, manuscriptContext, projectContex
       };
     }
 
-    const payload = await response.json();
+    const payload = response.value;
     if (!payload.ok) {
       return {
         ok: false,
@@ -9830,12 +10260,15 @@ function hideTaskSurfaces() {
   renderTaskContextMenu();
 }
 
-function updateSceneDraft(sceneId, mutate) {
+function updateSceneDraft(sceneId, mutate, options = {}) {
   const scene = getScene(sceneId);
   if (!scene) {
     return;
   }
 
+  const previousWordCount = getCurrentManuscriptWordCount();
+  const previousWritingTargetRecord = getWritingTargetWorkingRecord();
+  const hadActiveSession = previousWritingTargetRecord?.sessionIsActive === true;
   const draft = cloneValue(state.sceneDrafts[sceneId] ?? createSceneDraft(scene));
   mutate(draft);
   state.sceneDrafts = {
@@ -9844,9 +10277,60 @@ function updateSceneDraft(sceneId, mutate) {
   };
   writeStoredJson(EDITOR_DRAFTS_KEY, state.sceneDrafts);
   refreshScenes();
-  renderHeader();
+  const markSessionActivity = options.markSessionActivity !== false;
+  const currentWordCount = getCurrentManuscriptWordCount();
+
+  if (markSessionActivity) {
+    const currentWritingTargetRecord = getWritingTargetWorkingRecord();
+    const touchedSessionRecord = touchWritingTargetSessionActivity(
+      currentWritingTargetRecord,
+      currentWordCount,
+      new Date(),
+      {
+        reason: options.reason ?? "scene-draft",
+        previousWordCount,
+      },
+    );
+
+    if (touchedSessionRecord) {
+      state.writingTargetState = persistWritingTargetState(touchedSessionRecord);
+      if (state.writingTargetDraft && state.writingTargetDraftProjectId === state.workspace?.project?.id) {
+        state.writingTargetDraft = {
+          ...cloneValue(state.writingTargetDraft),
+          sessionIsActive: state.writingTargetState.sessionIsActive,
+          sessionStartedAt: state.writingTargetState.sessionStartedAt,
+          sessionLastActiveAt: state.writingTargetState.sessionLastActiveAt,
+          sessionConcludedAt: state.writingTargetState.sessionConcludedAt,
+          sessionConcludedReason: state.writingTargetState.sessionConcludedReason,
+          sessionBaselineWordCount: state.writingTargetState.sessionBaselineWordCount,
+          sessionLastWordCount: state.writingTargetState.sessionLastWordCount,
+          sessionSamples: cloneValue(state.writingTargetState.sessionSamples),
+          updatedAt: state.writingTargetState.updatedAt,
+        };
+      }
+      persistCurrentProjectRecord();
+    }
+  }
+
+  const shouldCaptureImmediately = options.immediate === true || !hadActiveSession;
+
+  syncHeaderLiveState();
   syncWritingTargetWindowLiveState();
-  queueWritingTargetSnapshot();
+
+  if (shouldCaptureImmediately) {
+    queueWritingTargetSnapshot({
+      immediate: true,
+      markSessionActivity,
+      reason: options.reason ?? "scene-draft",
+    });
+  }
+
+  if (!shouldCaptureImmediately) {
+    queueWritingTargetSnapshot({
+      markSessionActivity,
+      reason: options.reason ?? "scene-draft",
+    });
+  }
 }
 
 function resetSceneDraft(sceneId) {
@@ -9860,7 +10344,10 @@ function resetSceneDraft(sceneId) {
   writeStoredJson(EDITOR_DRAFTS_KEY, state.sceneDrafts);
   refreshScenes();
   renderHeader();
-  queueWritingTargetSnapshot();
+  queueWritingTargetSnapshot({
+    markSessionActivity: true,
+    reason: "scene-reset",
+  });
 }
 
 function addChapterDraft() {
@@ -10332,24 +10819,33 @@ function reportBrowserLog(level, scope, message, context = {}) {
     context: serializeBrowserLogContext(context),
   };
 
-  try {
-    if (navigator.sendBeacon) {
-      const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
-      navigator.sendBeacon("/api/log", blob);
-      return;
+  void postJsonToDesktopHost("/api/log", payload);
+}
+
+async function postJsonToDesktopHost(pathname, payload) {
+  const baseUrls = ["http://127.0.0.1:4310", "http://localhost:4310"];
+  const body = JSON.stringify(payload);
+
+  for (const baseUrl of baseUrls) {
+    try {
+      const response = await fetch(new URL(pathname, baseUrl).toString(), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body,
+        keepalive: true,
+      });
+
+      if (response.ok) {
+        return true;
+      }
+    } catch {
+      // Ignore and try the next desktop host origin.
     }
-  } catch {
-    // Ignore sendBeacon problems and fall back to fetch.
   }
 
-  void fetch("/api/log", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-    keepalive: true,
-  }).catch(() => {});
+  return false;
 }
 
 function serializeBrowserLogContext(context) {
@@ -10402,3 +10898,4 @@ function cloneValue(value) {
 
   return JSON.parse(JSON.stringify(value));
 }
+

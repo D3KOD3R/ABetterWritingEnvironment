@@ -6,7 +6,17 @@
       name="viewport"
       content="width=device-width, initial-scale=1"
     />
-    <title>ABetterNovelAuthoringEnvironment</title>
+    <title>Abe Sandpit</title>
+    <script>
+      (() => {
+        const params = new URLSearchParams(window.location.search);
+        const rawSandpit = typeof params.get("sandpit") === "string" ? params.get("sandpit").trim() : "";
+        const displayName = rawSandpit
+          ? rawSandpit.replace(/[-_]+/g, " ").replace(/\b\w/g, (match) => match.toUpperCase())
+          : "Manuscript Shell";
+        document.title = `Abe Sandpit "${displayName}"`;
+      })();
+    </script>
     <link rel="stylesheet" href="./styles.css" />
     <link rel="stylesheet" href="./writing-goals-dashboard.css" />
     <script src="./serva-vitae-project-library.js"></script>

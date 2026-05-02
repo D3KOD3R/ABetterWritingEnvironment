@@ -60,13 +60,13 @@ export async function runDesktopApplicationTest() {
   assert.equal(projectLibrary.activeProjectId, "project-serva-vitae");
   assert.equal(projectLibrary.projects.length, 1);
   assert.equal(projectLibrary.projects[0].title, "Project Serva Vitae");
-  assert.equal(projectLibrary.projects[0].source, "scrivener-import");
+  assert.equal(projectLibrary.projects[0].source, "project-file");
   assert.equal(projectLibrary.projects[0].workspace.project.stats.chapterCount, 4);
   assert.equal(projectLibrary.projects[0].workspace.project.stats.sceneCount, 29);
   assert.equal(typeof projectLibrary.projects[0].projectSettings, "object");
   assert.equal(projectLibrary.projects[0].projectSettings.writingTargetViewMode, "month");
   assert.equal(projectLibrary.projects[0].projectSettings.consoleDockCollapsed, false);
-  assert.equal(typeof projectLibrary.projects[0].projectSettings.projectIntegratorPath, "string");
+  assert.equal(typeof projectLibrary.projects[0].projectSettings.projectSourcePath, "string");
   assert.equal(projectLibrary.projects[0].passageNotes.length, 19);
   assert.equal(projectLibrary.projects[0].sourceArchive.length, 5);
   assert.equal(projectLibrary.projects[0].importReport.importedWorldNotes, 11);
@@ -74,19 +74,19 @@ export async function runDesktopApplicationTest() {
   assert.equal(projectLibrary.projects[0].workspace.project.lines.length, 855);
   assert.equal(
     projectLibrary.projects[0].workspace.world.templates.filter(
-      (template) => template.source === "scrivener-template",
+      (template) => template.source === "source-template",
     ).length,
     6,
   );
   assert.equal(
     projectLibrary.projects[0].workspace.world.templates.filter(
-      (template) => template.source === "scrivener-template",
-    ).every((template) => /Template Sheets/.test(template.scrivenerBinderPath ?? "")),
+      (template) => template.source === "source-template",
+    ).every((template) => /Template Sheets/.test(template.sourcePath ?? "")),
     true,
   );
   assert.equal(
     projectLibrary.projects[0].workspace.world.templates.filter(
-      (template) => template.source === "scrivener-template",
+      (template) => template.source === "source-template",
     ).every((template) => typeof template.sourceText === "string" && template.sourceText.trim().length > 0),
     true,
   );
@@ -113,7 +113,7 @@ export async function runDesktopApplicationTest() {
     assert.equal(savedProjectFile.projects[0].title, "Project Serva Vitae");
     assert.equal(savedProjectFile.projects[0].projectSettings.writingTargetViewMode, "month");
     assert.equal(savedProjectFile.projects[0].projectSettings.consoleDockCollapsed, false);
-    assert.equal(typeof savedProjectFile.projects[0].projectSettings.projectIntegratorPath, "string");
+    assert.equal(typeof savedProjectFile.projects[0].projectSettings.projectSourcePath, "string");
 
     const loadProjectFileResponse = await createDesktopResponseForRequest({
       method: "POST",
@@ -127,7 +127,7 @@ export async function runDesktopApplicationTest() {
     assert.equal(loadedProjectFile.activeProjectId, projectLibrary.activeProjectId);
     assert.equal(loadedProjectFile.projects[0].title, "Project Serva Vitae");
     assert.equal(loadedProjectFile.projects[0].projectSettings.writingTargetViewMode, "month");
-    assert.equal(typeof loadedProjectFile.projects[0].projectSettings.projectIntegratorPath, "string");
+    assert.equal(typeof loadedProjectFile.projects[0].projectSettings.projectSourcePath, "string");
   } finally {
     rmSync(tempProjectDir, { recursive: true, force: true });
   }
@@ -158,7 +158,7 @@ export async function runDesktopApplicationTest() {
   assert.match(appScript.body, /getInlinePassageDraftExistingSelectionRange/);
   assert.match(appScript.body, /trackInlinePassageDraftTyping/);
   assert.match(appScript.body, /syncInlinePassageDraftLayout/);
-  assert.match(appScript.body, /Save to typed verse/);
+  assert.match(appScript.body, /renderManuscriptPanelHTML/);
   assert.match(appScript.body, /Save this .* note against the verse typed in the manuscript field below/);
   assert.match(appScript.body, /typedStartOffset/);
   assert.match(appScript.body, /typedText/);
@@ -188,7 +188,7 @@ export async function runDesktopApplicationTest() {
   assert.match(appScript.body, /save-project-file-as/);
   assert.match(appScript.body, /load-project-file/);
   assert.match(appScript.body, /create-project/);
-  assert.match(appScript.body, /import-scrivener-project/);
+  assert.match(appScript.body, /load-project-source/);
   assert.match(appScript.body, /handleGlobalKeyboardShortcut/);
   assert.match(appScript.body, /focusProjectLibrarySelect/);
   assert.match(appScript.body, /Saved projects/);
@@ -206,9 +206,9 @@ export async function runDesktopApplicationTest() {
   assert.match(appScript.body, /file-menu-shortcuts/);
   assert.match(appScript.body, /toggle-console-collapse/);
   assert.match(appScript.body, /console-dock-toggle/);
-  assert.match(appScript.body, /Import Scrivener/);
-  assert.match(appScript.body, /Imported Sources/);
-  assert.match(appScript.body, /Scrivener archive/);
+  assert.match(appScript.body, /Load Project Source/);
+  assert.match(appScript.body, /Project sources/);
+  assert.match(appScript.body, /Project archive/);
   assert.match(appScript.body, /source-archive/);
   assert.match(appScript.body, /task-source/);
   assert.match(appScript.body, /EDITOR_PROJECT_LIBRARY_KEY/);
@@ -226,7 +226,7 @@ export async function runDesktopApplicationTest() {
   assert.doesNotMatch(appScript.body, /Inspiration Notes<\/h2>/);
   assert.doesNotMatch(appScript.body, /Research Notes<\/h2>/);
   assert.match(appScript.body, /project-title-input/);
-  assert.match(appScript.body, /project-integrator-path/);
+  assert.match(appScript.body, /project-source-path/);
   assert.match(appScript.body, /select-pane/);
   assert.match(appScript.body, /formatChapterDisplayTitle/);
   assert.match(appScript.body, /binder-chapter-order/);
@@ -240,6 +240,18 @@ export async function runDesktopApplicationTest() {
   assert.match(appScript.body, /sessionWordsPerHourLabel/);
   assert.match(appScript.body, /sessionMilestoneStatusText/);
   assert.match(appScript.body, /estimateRecentSessionWordsPerMinute/);
+  assert.match(appScript.body, /const sessionIsLive = sessionLifecycle\.sessionDisplayActive === true;/);
+  assert.match(appScript.body, /if \(!record\.sessionIsActive \|\| !lifecycle\.isConcluded\) \{/);
+  assert.match(appScript.body, /touchWritingTargetSessionActivity/);
+  assert.match(appScript.body, /syncHeaderLiveState/);
+  assert.match(appScript.body, /const shouldCaptureImmediately = options\.immediate === true/);
+  assert.match(appScript.body, /Idle/);
+  assert.match(appScript.body, /WRITING_TARGET_SESSION_SEGMENT_CLOSE_BUFFER_MINUTES/);
+  assert.match(appScript.body, /WRITING_TARGET_SESSION_NEW_SESSION_BUFFER_MINUTES/);
+  assert.match(appScript.body, /buildWritingTargetSessionLifecycleSummaryText/);
+  assert.match(appScript.body, /sessionLifecycleSummaryText/);
+  assert.match(appScript.body, /data-session-tracker-start-time/);
+  assert.match(appScript.body, /data-session-tracker-words-written/);
   assert.match(appScript.body, /sessionSamples/);
   assert.match(appScript.body, /createPassageExcerpt/);
   assert.match(appScript.body, /passageExcerpt/);
@@ -250,7 +262,7 @@ export async function runDesktopApplicationTest() {
   assert.match(appScript.body, /dailyBaselineWordCount/);
   assert.match(appScript.body, /const dailyWords = currentWordCount - dailyBaselineWordCount;/);
   assert.match(appScript.body, /progress: sessionTargetWords > 0 \? Math\.min\(1, Math\.max\(0, dailyWords\) \/ sessionTargetWords\) : 0,/);
-  assert.match(appScript.body, /syncWritingTargetWindowLiveState\(\);[\s\S]*?queueWritingTargetSnapshot\(\);/);
+  assert.match(appScript.body, /syncWritingTargetWindowLiveState\(\);[\s\S]*?queueWritingTargetSnapshot\(/);
   assert.match(appScript.body, /buildLiveWritingTargetHistoryEntry/);
   assert.match(appScript.body, /recordWritingTargetSnapshot/);
   assert.match(appScript.body, /commitWritingTargetDraft/);
@@ -258,6 +270,12 @@ export async function runDesktopApplicationTest() {
   assert.match(appScript.body, /projectRecord\?\.projectSettings\?\.writingTargetState \?\? store\[projectId\]/);
   assert.match(appScript.body, /function syncWritingTargetCanonicalState\(record\)/);
   assert.match(appScript.body, /writingTargetDraftBaseline/);
+
+  const sceneEditorScript = createDesktopResponse("/features/scene-editor.js");
+  assert.equal(sceneEditorScript.statusCode, 200);
+  assert.match(sceneEditorScript.body, /Scene Editor Viewport/);
+  assert.match(sceneEditorScript.body, /Text Width/);
+  assert.match(sceneEditorScript.body, /Save to typed verse/);
   assert.match(appScript.body, /const writingTargetWorkingRecord = getWritingTargetWorkingRecord\(\);/);
   assert.match(
     appScript.body,
@@ -277,6 +295,7 @@ export async function runDesktopApplicationTest() {
   );
   assert.match(appScript.body, /saveWritingTargetState/);
   assert.match(appScript.body, /syncWritingTargetWindowLiveState/);
+  assert.match(appScript.body, /data-session-tracker-panel/);
   assert.match(appScript.body, /startWritingTargetWindowRefreshTimer/);
   assert.match(appScript.body, /stopWritingTargetWindowRefreshTimer/);
   assert.doesNotMatch(appScript.body, /Seed 30-day sample/);
@@ -358,7 +377,6 @@ export async function runDesktopApplicationTest() {
   assert.match(appScript.body, /\+S/);
   assert.match(appScript.body, /New template/);
   assert.match(appScript.body, /Dream Scaping/);
-  assert.match(appScript.body, /Text Width/);
   assert.match(appScript.body, /scene line/);
   assert.match(appScript.body, /syncSceneDocumentLayout/);
 
@@ -380,6 +398,7 @@ export async function runDesktopApplicationTest() {
   assert.match(progressTrackerModule.body, /writing-target-card/);
   assert.match(progressTrackerModule.body, /writing-target-card-icon/);
   assert.match(progressTrackerModule.body, /Session tracker/);
+  assert.match(progressTrackerModule.body, /session-tracker-panel__bar-meta/);
 
   const sharedUiUtilsModule = createDesktopResponse("/shared/ui-utils.js");
   assert.equal(sharedUiUtilsModule.statusCode, 200);
@@ -396,7 +415,7 @@ export async function runDesktopApplicationTest() {
   assert.match(editorModel.body, /createPassageNoteTitle/);
   assert.match(editorModel.body, /abe-project-library-v1/);
   assert.match(editorModel.body, /abe-active-project-id-v1/);
-  assert.match(editorModel.body, /abe-scrivener-import-path-v1/);
+  assert.match(editorModel.body, /abe-project-source-path-v1/);
 
   const styles = createDesktopResponse("/styles.css");
   assert.equal(styles.statusCode, 200);
@@ -474,7 +493,7 @@ export async function runDesktopApplicationTest() {
   assert.match(styles.body, /\.panel-resizer/);
   assert.match(styles.body, /\.project-library-select-shell/);
   assert.match(styles.body, /\.project-library-status/);
-  assert.match(styles.body, /\.project-integrator-shell/);
+  assert.match(styles.body, /\.project-source-shell/);
   assert.match(styles.body, /\.console-dock/);
   assert.match(styles.body, /\.console-dock-toggle/);
   assert.match(styles.body, /cursor: col-resize/);
@@ -542,18 +561,18 @@ export async function runDesktopApplicationTest() {
 
   const projectIntegrator = await createDesktopResponseForRequest({
     method: "POST",
-    pathname: "/api/project-integrator",
+    pathname: "/api/project-source",
     body: JSON.stringify({
       projectPath: path.join(
         repoRoot,
-        "Project Serva Vitae Novel & WoldBuild Combined Cloud.scriv",
+        "SaveTestFile",
       ),
     }),
   });
   assert.equal(projectIntegrator.statusCode, 200);
   const importedProjectLibrary = JSON.parse(projectIntegrator.body);
   assert.equal(importedProjectLibrary.projects.length, 1);
-  assert.equal(importedProjectLibrary.projects[0].source, "scrivener-import");
+  assert.equal(importedProjectLibrary.projects[0].source, "project-file");
   assert.equal(importedProjectLibrary.projects[0].workspace.project.stats.chapterCount, 4);
   assert.equal(importedProjectLibrary.projects[0].workspace.project.stats.sceneCount, 29);
   assert.equal(importedProjectLibrary.projects[0].workspace.world.templates.length, 7);
