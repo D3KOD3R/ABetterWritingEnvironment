@@ -4,7 +4,7 @@ export const EDITOR_LOCAL_AI_PREFS_KEY = "abe-local-ai-prefs-v1";
 export const EDITOR_PROJECT_TITLE_KEY = "abe-project-title-v1";
 export const EDITOR_PROJECT_LIBRARY_KEY = "abe-project-library-v1";
 export const EDITOR_ACTIVE_PROJECT_ID_KEY = "abe-active-project-id-v1";
-export const EDITOR_SCRIVENER_IMPORT_PATH_KEY = "abe-scrivener-import-path-v1";
+export const EDITOR_PROJECT_SOURCE_PATH_KEY = "abe-project-source-path-v1";
 export const EDITOR_PASSAGE_NOTES_KEY = "abe-passage-notes-v1";
 export const EDITOR_STRUCTURE_KEY = "abe-structure-drafts-v1";
 export const EDITOR_TEMPLATE_DRAFTS_KEY = "abe-template-drafts-v1";
@@ -255,9 +255,9 @@ export function normalizeManuscriptTasks(candidate) {
         createdAt: typeof task.createdAt === "string" ? task.createdAt : new Date(0).toISOString(),
         completedAt: typeof task.completedAt === "string" ? task.completedAt : undefined,
         source: typeof task.source === "string" ? task.source : undefined,
-        scrivenerDocumentId: typeof task.scrivenerDocumentId === "string" ? task.scrivenerDocumentId : undefined,
-        scrivenerCommentId: typeof task.scrivenerCommentId === "string" ? task.scrivenerCommentId : undefined,
-        scrivenerBinderPath: typeof task.scrivenerBinderPath === "string" ? task.scrivenerBinderPath : undefined,
+        sourceDocumentId: typeof task.sourceDocumentId === "string" ? task.sourceDocumentId : undefined,
+        sourceCommentId: typeof task.sourceCommentId === "string" ? task.sourceCommentId : undefined,
+        sourcePath: typeof task.sourcePath === "string" ? task.sourcePath : undefined,
         anchorMode: typeof task.anchorMode === "string" ? task.anchorMode : undefined,
         anchorStatus: typeof task.anchorStatus === "string" ? task.anchorStatus : undefined,
         lineIndex: Number.isInteger(task.lineIndex) ? task.lineIndex : undefined,
@@ -299,8 +299,8 @@ export function normalizePassageNotes(candidate) {
       createdAt: typeof note.createdAt === "string" ? note.createdAt : new Date(0).toISOString(),
       updatedAt: typeof note.updatedAt === "string" ? note.updatedAt : undefined,
       source: typeof note.source === "string" ? note.source : "manual",
-      scrivenerDocumentId: typeof note.scrivenerDocumentId === "string" ? note.scrivenerDocumentId : undefined,
-      scrivenerBinderPath: typeof note.scrivenerBinderPath === "string" ? note.scrivenerBinderPath : undefined,
+      sourceDocumentId: typeof note.sourceDocumentId === "string" ? note.sourceDocumentId : undefined,
+      sourcePath: typeof note.sourcePath === "string" ? note.sourcePath : undefined,
       attachmentConfidence: Number.isFinite(Number(note.attachmentConfidence))
         ? Number(note.attachmentConfidence)
         : undefined,
