@@ -190,6 +190,9 @@ export async function runDesktopApplicationTest() {
   assert.match(appScript.body, /create-project/);
   assert.match(appScript.body, /load-project-source/);
   assert.match(appScript.body, /handleGlobalKeyboardShortcut/);
+  assert.match(appScript.body, /isTextEditingTarget/);
+  assert.match(appScript.body, /runNativeTextEditCommand/);
+  assert.match(appScript.body, /event\.shiftKey \? "redo" : "undo"/);
   assert.match(appScript.body, /focusProjectLibrarySelect/);
   assert.match(appScript.body, /Saved projects/);
   assert.match(appScript.body, /Project file/);
@@ -231,11 +234,26 @@ export async function runDesktopApplicationTest() {
   assert.match(appScript.body, /formatChapterDisplayTitle/);
   assert.match(appScript.body, /binder-chapter-order/);
   assert.match(appScript.body, /binder-chapter-title/);
+  assert.match(appScript.body, /binder-chapter-title-input/);
+  assert.match(appScript.body, /data-chapter-title-id/);
+  assert.match(appScript.body, /beginChapterTitleEdit/);
+  assert.match(appScript.body, /updateChapterTitle/);
+  assert.match(appScript.body, /updateSceneEditorChapterTitle/);
+  assert.match(appScript.body, /if \(editField === "chapter-title"\) \{[\s\S]*?updateChapterTitle\(target\.dataset\.chapterId, target\.value\);[\s\S]*?return;/);
+  assert.match(appScript.body, /binder-scene-title-input/);
+  assert.match(appScript.body, /data-binder-scene-title-id/);
+  assert.match(appScript.body, /beginSceneTitleEdit/);
+  assert.match(appScript.body, /updateSceneEditorTitle/);
+  assert.match(appScript.body, /if \(editField === "scene-title"\) \{[\s\S]*?updateSceneTitleLabel\(sceneId, target\.value\);[\s\S]*?updateSceneEditorTitle\(sceneId, target\.value\);/);
   assert.match(appScript.body, /binder-nav-action-short/);
   assert.match(appScript.body, /toggle-writing-target-window/);
   assert.match(appScript.body, /writing-target-window/);
   assert.match(appScript.body, /data-action="close-writing-target-window"/);
   assert.match(appScript.body, /Writing Goals/);
+  assert.doesNotMatch(appScript.body, /renderStat\("Words", getCurrentManuscriptWordCount\(\), "words"\)/);
+  assert.doesNotMatch(appScript.body, /renderStat\("Issues", workspace\.project\.stats\.issueCount, "issues"\)/);
+  assert.doesNotMatch(appScript.body, /renderStat\("Events", workspace\.project\.stats\.eventCount, "events"\)/);
+  assert.doesNotMatch(appScript.body, /renderStat\("Chars", workspace\.project\.stats\.characterCount, "chars"\)/);
   assert.match(appScript.body, /writingTargetPointerDownStartedInsideWindow/);
   assert.match(appScript.body, /sessionWordsPerHourLabel/);
   assert.match(appScript.body, /sessionMilestoneStatusText/);
@@ -253,6 +271,8 @@ export async function runDesktopApplicationTest() {
   assert.match(appScript.body, /data-session-tracker-start-time/);
   assert.match(appScript.body, /data-session-tracker-words-written/);
   assert.match(appScript.body, /sessionSamples/);
+  assert.match(appScript.body, /WRITING_TARGET_SESSION_PACE_STALE_MINUTES/);
+  assert.match(appScript.body, /sessionPaceActive/);
   assert.match(appScript.body, /createPassageExcerpt/);
   assert.match(appScript.body, /passageExcerpt/);
   assert.match(appScript.body, /getWritingTargetDailyBaselineWordCount/);
@@ -273,9 +293,14 @@ export async function runDesktopApplicationTest() {
 
   const sceneEditorScript = createDesktopResponse("/features/scene-editor.js");
   assert.equal(sceneEditorScript.statusCode, 200);
-  assert.match(sceneEditorScript.body, /Scene Editor Viewport/);
+  assert.match(sceneEditorScript.body, /Scene Editor/);
+  assert.doesNotMatch(sceneEditorScript.body, /Scene Editor Viewport/);
   assert.match(sceneEditorScript.body, /Text Width/);
+  assert.match(sceneEditorScript.body, /scene-editor-context/);
+  assert.match(sceneEditorScript.body, /data-scene-editor-chapter-title/);
+  assert.match(sceneEditorScript.body, /data-scene-title-id/);
   assert.match(sceneEditorScript.body, /Save to typed verse/);
+  assert.match(appScript.body, /function applySceneTitle\(sceneId, title\) \{[\s\S]*?updateSceneEditorTitle\(sceneId, title\);[\s\S]*?updateFocusedLineCard\(\);/);
   assert.match(appScript.body, /const writingTargetWorkingRecord = getWritingTargetWorkingRecord\(\);/);
   assert.match(
     appScript.body,
@@ -311,6 +336,7 @@ export async function runDesktopApplicationTest() {
   assert.match(appScript.body, /Esc close/);
   assert.match(appScript.body, /Words/);
   assert.match(appScript.body, /Days to release/);
+  assert.match(appScript.body, /const DEFAULT_SESSION_TIMEOUT_MINUTES = 20;/);
   assert.match(appScript.body, /writing-target-dashboard-stats/);
   assert.match(appScript.body, /writing-target-dashboard-body/);
   assert.match(appScript.body, /writing-target-dashboard-settings/);
@@ -345,11 +371,13 @@ export async function runDesktopApplicationTest() {
   assert.match(appScript.body, /targetCadence/);
   assert.match(appScript.body, /writing-target-range/);
   assert.match(appScript.body, /Daily target/);
+  assert.match(appScript.body, /data-metric-key="sessionTracker"/);
   assert.match(appScript.body, /goalSyncSource/);
   assert.match(appScript.body, /goalSyncHint/);
   assert.match(appScript.body, /syncWritingTargetGoalFields/);
   assert.match(appScript.body, /sessionsPerDay/);
   assert.match(appScript.body, /sessionTimeoutMinutes/);
+  assert.match(appScript.body, /Session time/);
   assert.match(appScript.body, /DEFAULT_SESSION_TARGETS_PER_DAY = 5/);
   assert.match(appScript.body, /toggle-console-chapter-collapse/);
   assert.match(appScript.body, /collapsedConsoleChapterIds/);
@@ -503,12 +531,15 @@ export async function runDesktopApplicationTest() {
   assert.match(styles.body, /\.local-ai-setting/);
   assert.match(styles.body, /\.ai-title-button/);
   assert.match(styles.body, /\.inline-title-input/);
+  assert.match(styles.body, /\.binder-chapter-title-input/);
+  assert.match(styles.body, /\.binder-scene-title-input/);
   assert.match(styles.body, /\.pane-section\[hidden\]/);
   assert.match(styles.body, /\.task-chapter-list/);
   assert.doesNotMatch(styles.body, /\.runtime-strip/);
   assert.match(styles.body, /\.task-copy/);
   assert.match(styles.body, /\.editor-document-input/);
   assert.match(styles.body, /\.editor-gutter-line/);
+  assert.match(styles.body, /\.scene-editor-context/);
 
   const goalsStyles = createDesktopResponse("/writing-goals-dashboard.css");
   assert.equal(goalsStyles.statusCode, 200);
