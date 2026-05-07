@@ -5,7 +5,7 @@ import { runEditorModelTest } from "./editor-model.test.mjs";
 import { runLocalAiRouterContractTest } from "./local-ai-router.test.mjs";
 import { runLocalAiServiceTest } from "./local-ai-service.test.mjs";
 import { runManuscriptSchemaTest } from "./manuscript-schema.test.mjs";
-import { runScrivenerImportTest } from "./scrivener-import.test.mjs";
+import { runProjectSourceTest } from "./project-source.test.mjs";
 import { runVoiceNarrationFoundationTest } from "./voice-narration-foundation.test.mjs";
 import { runVoiceServiceTest } from "./voice-service.test.mjs";
 import { runWorldSchemaTest } from "./world-schema.test.mjs";
@@ -40,8 +40,8 @@ const tests = [
     run: runManuscriptSchemaTest,
   },
   {
-    name: "scrivener importer produces reportable project data and provenance",
-    run: runScrivenerImportTest,
+    name: "project source loader produces reportable project data and provenance",
+    run: runProjectSourceTest,
   },
   {
     name: "voice service creates speaker bindings and render jobs",

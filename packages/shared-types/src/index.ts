@@ -381,8 +381,8 @@ export interface WorldTemplateRecord {
   description: string;
   fieldCount: number;
   source?: string;
-  scrivenerDocumentId?: string;
-  scrivenerBinderPath?: string;
+  sourceDocumentId?: string;
+  sourcePath?: string;
   sourceText?: string;
 }
 
