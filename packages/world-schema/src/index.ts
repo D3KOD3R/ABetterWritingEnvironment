@@ -59,8 +59,8 @@ export interface WorldTemplate {
   description: string;
   fields: TemplateField[];
   source?: string;
-  scrivenerDocumentId?: string;
-  scrivenerBinderPath?: string;
+  sourceDocumentId?: string;
+  sourcePath?: string;
   sourceText?: string;
   createdAt: string;
 }
@@ -172,8 +172,8 @@ export interface AddWorldTemplateInput {
   description?: string;
   fields: AddTemplateFieldInput[];
   source?: string;
-  scrivenerDocumentId?: string;
-  scrivenerBinderPath?: string;
+  sourceDocumentId?: string;
+  sourcePath?: string;
   sourceText?: string;
 }
 
@@ -291,8 +291,8 @@ export function addWorldTemplate(
     description: input.description?.trim() ?? "",
     fields,
     source: input.source?.trim() || undefined,
-    scrivenerDocumentId: input.scrivenerDocumentId?.trim() || undefined,
-    scrivenerBinderPath: input.scrivenerBinderPath?.trim() || undefined,
+    sourceDocumentId: input.sourceDocumentId?.trim() || undefined,
+    sourcePath: input.sourcePath?.trim() || undefined,
     sourceText: input.sourceText,
     createdAt: timestamp,
   };
