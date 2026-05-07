@@ -4,7 +4,7 @@ import { escapeHtml, formatDisplayNumber } from "../shared/ui-utils.js";
 export function renderWritingTargetStrip(summary) {
   const visibleMetrics = summary?.visibleMetrics ?? [];
   return `
-    <div class="desktop-target-strip" aria-label="Writing target metrics">
+    <div class="desktop-target-strip" aria-label="Writing target metrics" data-writing-target-strip>
       <div class="desktop-target-strip__metrics">
         ${visibleMetrics.map((metric) => renderWritingTargetCard(metric, summary)).join("")}
         ${renderSessionTrackerPanel(summary)}
@@ -26,6 +26,8 @@ export function buildSessionTrackerMetric(summary) {
       wordsTargetLabel: "0",
       sessionStartTimeLabel: "—",
       sessionMinutesLapsedLabel: "0",
+      sessionIsActive: false,
+      sessionIdleLabel: "Idle",
       wpmValue: 0,
       wpmLabel: "0.00",
       progress: 0,
@@ -49,6 +51,8 @@ export function buildSessionTrackerMetric(summary) {
     wordsTargetLabel: formatDisplayNumber(Math.round(summary.sessionTargetWordsPerSession ?? 0)),
     sessionStartTimeLabel: summary.sessionStartTimeLabel ?? "—",
     sessionMinutesLapsedLabel: formatDisplayNumber(Math.max(0, Math.floor(Number(summary.sessionMinutesLapsed ?? 0)))),
+    sessionIsActive: summary.sessionIsActive === true,
+    sessionIdleLabel: summary.sessionIdleLabel ?? "Idle",
     wpmValue: currentWordsPerMinute,
     wpmLabel: summary.sessionWordsPerMinuteLabel ?? "0/min",
     comparison: true,
@@ -64,7 +68,7 @@ export function buildSessionTrackerMetric(summary) {
 }
 
 export function getSessionTrackerVisualState(summary, tracker) {
-  const isLiveSession = /^Active\b/.test(summary?.sessionStatusText ?? "");
+  const isLiveSession = summary?.sessionIsActive === true;
   const currentWordsPerMinute = Number(summary?.sessionWordsPerMinute ?? tracker?.wpmValue ?? 0);
 
   if (!isLiveSession || Math.round(currentWordsPerMinute) <= 0) {
@@ -101,7 +105,7 @@ export function renderSessionTrackerPaceRing(ratio, color) {
 export function renderSessionTrackerPanel(summary) {
   const tracker = buildSessionTrackerMetric(summary);
   const paceRatio = Math.max(0, Math.min(1, Number(summary?.sessionWordsPerMinuteRatio ?? tracker.progress ?? 0)));
-  const isLiveSession = /^Active\b/.test(summary?.sessionStatusText ?? "");
+  const isLiveSession = summary?.sessionIsActive === true;
   const visualState = getSessionTrackerVisualState(summary, tracker);
   const paceStatus = isLiveSession
     ? summary?.sessionWordsPerMinuteOverTarget
@@ -111,63 +115,68 @@ export function renderSessionTrackerPanel(summary) {
         : summary?.sessionWordsPerMinuteStatusText === "Ahead of pace"
           ? "You’re outperforming"
           : "Need more pace"
-    : "No live session";
+    : "Idle";
   const progressWidth = Math.max(0, Math.min(100, Math.round((Number(summary?.currentSessionWords ?? 0) / Math.max(1, Number(summary?.sessionTargetWordsPerSession ?? 0))) * 100)));
   const paceColor = isLiveSession
     ? summary?.sessionWordsPerMinuteBarColor ?? "rgb(113, 215, 177)"
     : "rgba(31, 36, 48, 0.26)";
 
   return `
-    <article class="session-tracker-panel">
+    <article class="session-tracker-panel" data-session-tracker-panel>
       <div class="session-tracker-panel__body">
         <div class="session-tracker-panel__progress-column">
           <div class="session-tracker-panel__titles">
             <span class="session-tracker-panel__eyebrow">Session tracker</span>
           </div>
-          <div class="writing-target-bar session-tracker-panel__bar ${visualState.key === "flaming" ? "is-over-target" : ""}" style="--writing-target-bar-color: ${paceColor};" aria-hidden="true">
-            <span style="width: ${progressWidth}%"></span>
+          <div class="writing-target-bar session-tracker-panel__bar ${visualState.key === "flaming" ? "is-over-target" : ""}" style="--writing-target-bar-color: ${paceColor};" aria-hidden="true" data-session-tracker-bar>
+            <span style="width: ${progressWidth}%" data-session-tracker-progress-fill></span>
           </div>
           <div class="session-tracker-panel__count-row">
-            <strong>${escapeHtml(tracker.wordsWrittenLabel ?? "0")}</strong>
-            <span>${escapeHtml(tracker.wordsTargetLabel ?? "0")}</span>
+            <span class="session-tracker-panel__count-current">
+              <strong data-session-tracker-words-written>${escapeHtml(tracker.wordsWrittenLabel ?? "0")}</strong>
+              <span class="session-tracker-panel__count-label" data-session-tracker-words-label>Words written</span>
+            </span>
+            <span class="session-tracker-panel__count-target" data-session-tracker-words-target>${escapeHtml(tracker.wordsTargetLabel ?? "0")}</span>
           </div>
-          <p class="session-tracker-panel__count-label">Words written</p>
+          <div class="session-tracker-panel__bar-meta">
+            <div class="session-tracker-panel__bar-meta-item session-tracker-panel__bar-meta-item--start">
+              <span class="session-tracker-panel__footer-icon" aria-hidden="true">◷</span>
+              <span>Start:</span>
+              <strong data-session-tracker-start-time>${escapeHtml(tracker.sessionStartTimeLabel ?? "—")}</strong>
+            </div>
+            <div class="session-tracker-panel__bar-meta-item session-tracker-panel__bar-meta-item--lapsed">
+              <span class="session-tracker-panel__footer-icon" aria-hidden="true">⏱</span>
+              <span data-session-tracker-lapsed-label>${escapeHtml(isLiveSession ? "Lapsed:" : "Idle:")}</span>
+              <strong data-session-tracker-lapsed-value>${escapeHtml(
+                isLiveSession
+                  ? tracker.sessionMinutesLapsedLabel ?? "0"
+                  : tracker.sessionIdleLabel ?? "Idle",
+              )}</strong>
+            </div>
+          </div>
         </div>
 
         <div class="session-tracker-panel__gauge-column">
           <div class="session-tracker-panel__gauge-row">
-            <div class="session-tracker-panel__gauge ${visualState.key === "flaming" ? "is-over-target" : ""}" aria-hidden="true">
+            <div class="session-tracker-panel__gauge ${visualState.key === "flaming" ? "is-over-target" : ""}" aria-hidden="true" data-session-tracker-gauge>
               ${renderSessionTrackerPaceRing(paceRatio, paceColor)}
               <span class="session-tracker-panel__gauge-inner">
-                <span class="session-tracker-panel__gauge-icon">${renderSessionTrackerPenSvg(visualState.key)}</span>
+                <span class="session-tracker-panel__gauge-icon" data-session-tracker-gauge-icon>${renderSessionTrackerPenSvg(visualState.key)}</span>
               </span>
             </div>
             <div class="session-tracker-panel__gauge-copy">
               <div class="session-tracker-panel__clock">
                 <span class="session-tracker-panel__clock-icon" aria-hidden="true">${renderSessionTrackerClockIcon()}</span>
-                <span class="session-tracker-panel__clock-time">${escapeHtml(tracker.clockLabel ?? "—")}</span>
+                <span class="session-tracker-panel__clock-time" data-session-tracker-clock>${escapeHtml(tracker.clockLabel ?? "—")}</span>
               </div>
               <div class="session-tracker-panel__wpm-row">
                 <span class="session-tracker-panel__footer-icon" aria-hidden="true">⌁</span>
                 <span>WPM:</span>
-                <strong>${escapeHtml(tracker.wpmLabel ?? "0/min")}</strong>
+                <strong data-session-tracker-wpm>${escapeHtml(tracker.wpmLabel ?? "0/min")}</strong>
               </div>
-              <span class="session-tracker-panel__pace-note">${escapeHtml(paceStatus)}</span>
+              <span class="session-tracker-panel__pace-note" data-session-tracker-pace-note>${escapeHtml(paceStatus)}</span>
             </div>
           </div>
-        </div>
-      </div>
-
-      <div class="session-tracker-panel__footer">
-        <div class="session-tracker-panel__footer-item">
-          <span class="session-tracker-panel__footer-icon" aria-hidden="true">◷</span>
-          <span>Start:</span>
-          <strong>${escapeHtml(tracker.sessionStartTimeLabel ?? "—")}</strong>
-        </div>
-        <div class="session-tracker-panel__footer-item">
-          <span class="session-tracker-panel__footer-icon" aria-hidden="true">⏱</span>
-          <span>Lapsed:</span>
-          <strong>${escapeHtml(tracker.sessionMinutesLapsedLabel ?? "0")}</strong>
         </div>
       </div>
     </article>
@@ -201,21 +210,21 @@ export function renderWritingTargetCard(metric, summary) {
       `;
 
   return `
-    <article class="writing-target-card">
+    <article class="writing-target-card" data-writing-target-card="${escapeHtml(metric.key ?? "")}">
       <div class="writing-target-card-head">
-        <span class="writing-target-card-label">
+        <span class="writing-target-card-label" data-writing-target-card-label>
           ${metric.icon ? `<i class="writing-target-card-icon" aria-hidden="true">${escapeHtml(metric.icon)}</i>` : ""}
           <span>${escapeHtml(metric.label)}</span>
         </span>
-        <strong>${escapeHtml(value)}</strong>
+        <strong data-writing-target-card-value>${escapeHtml(value)}</strong>
       </div>
-      <div class="writing-target-bar ${escapeHtml(metric.barClass ?? "")}" aria-hidden="true">
-        <span style="width:${Math.round(progress * 100)}%;${escapeHtml(metric.barStyle ?? "")}"></span>
+      <div class="writing-target-bar ${escapeHtml(metric.barClass ?? "")}" aria-hidden="true" data-writing-target-card-bar>
+        <span style="width:${Math.round(progress * 100)}%;${escapeHtml(metric.barStyle ?? "")}" data-writing-target-card-progress></span>
       </div>
-      <div class="writing-target-foot ${metric.comparison ? "is-comparison" : ""}">
+      <div class="writing-target-foot ${metric.comparison ? "is-comparison" : ""}" data-writing-target-card-foot>
         ${footContent}
       </div>
-      ${note ? `<p class="writing-target-note">${escapeHtml(note)}</p>` : ""}
+      ${note ? `<p class="writing-target-note" data-writing-target-card-note>${escapeHtml(note)}</p>` : ""}
     </article>
   `;
 }

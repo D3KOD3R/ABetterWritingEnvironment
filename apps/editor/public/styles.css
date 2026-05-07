@@ -288,6 +288,13 @@ select {
   font-weight: 800;
 }
 
+.session-tracker-panel__count-current {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+}
+
 .session-tracker-panel__count-row strong {
   color: var(--accent-deep);
   font-size: 0.88rem;
@@ -295,7 +302,8 @@ select {
   letter-spacing: 0.01em;
 }
 
-.session-tracker-panel__count-row span {
+.session-tracker-panel__count-label,
+.session-tracker-panel__count-target {
   color: var(--accent-deep);
   font-size: 0.72rem;
   font-weight: 800;
@@ -304,10 +312,32 @@ select {
 }
 
 .session-tracker-panel__count-label {
-  margin: 0;
   color: var(--ink-soft);
   font-size: 0.66rem;
+  font-weight: 700;
   line-height: 1.15;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.session-tracker-panel__bar-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  color: var(--ink-soft);
+  font-size: 0.66rem;
+  line-height: 1.25;
+  white-space: nowrap;
+  padding-top: 2px;
+}
+
+.session-tracker-panel__bar-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
 }
 
 .session-tracker-panel__bar {
@@ -450,7 +480,7 @@ select {
 }
 
 .session-tracker-panel__wpm-row strong,
-.session-tracker-panel__footer-item strong {
+.session-tracker-panel__bar-meta-item strong {
   color: var(--accent-deep);
   font-size: 0.88rem;
 }
@@ -460,27 +490,6 @@ select {
   color: var(--ink-soft);
   font-size: 0.66rem;
   line-height: 1.18;
-}
-
-.session-tracker-panel__footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-width: 0;
-  padding-top: 2px;
-  border-top: 1px solid rgba(31, 36, 48, 0.06);
-  color: var(--ink-soft);
-  font-size: 0.66rem;
-  line-height: 1.25;
-  white-space: nowrap;
-}
-
-.session-tracker-panel__footer-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-width: 0;
 }
 
 .session-tracker-panel__footer-icon {
@@ -675,19 +684,19 @@ select {
 }
 
 .file-menu .project-library-select-shell,
-.file-menu .project-integrator-shell,
+.file-menu .project-source-shell,
 .file-menu .project-file-shell {
   gap: 4px;
 }
 
 .file-menu .project-library-select-shell span,
-.file-menu .project-integrator-shell span,
+.file-menu .project-source-shell span,
 .file-menu .project-file-shell span {
   font-size: 0.68rem;
 }
 
 .file-menu .project-library-select-shell select,
-.file-menu .project-integrator-shell input,
+.file-menu .project-source-shell input,
 .file-menu .project-file-shell input {
   min-height: 34px;
   padding: 8px 10px;
@@ -3501,14 +3510,14 @@ select {
     height: 24px;
   }
 
-  .session-tracker-panel__footer {
+  .session-tracker-panel__bar-meta {
     flex-direction: column;
     align-items: flex-start;
     white-space: normal;
     font-size: 0.64rem;
   }
 
-  .session-tracker-panel__footer-item strong {
+  .session-tracker-panel__bar-meta-item strong {
     font-size: 0.82rem;
   }
 
