@@ -9,8 +9,8 @@ import {
   createServaVitaeProjectLibrarySeed,
 } from "./workspace.ts";
 import {
-  importScrivenerProjectLibrarySeed,
-} from "./scrivener-integrator.ts";
+  loadProjectLibrarySeedFromPath,
+} from "./project-source.ts";
 import {
   logDesktopError,
   logDesktopInfo,
@@ -186,7 +186,7 @@ export function createDesktopResponse(pathname: string): DesktopHttpResponse {
   return textResponse(
     404,
     "text/plain; charset=utf-8",
-    "Not found. Try '/', '/app.js', '/serva-vitae-project-library.js', '/editor-model.js', '/session-tracker-icons.js', '/features/progress-tracker.js', '/shared/ui-utils.js', '/styles.css', '/writing-goals-dashboard.css', '/assets/icons/session-tracker-sleeping-pen.svg', '/assets/icons/session-tracker-working-pen.svg', '/assets/icons/session-tracker-flaming-pen.svg', '/api/workspace', '/api/project-library', '/api/project-integrator', '/api/project-file/save', '/api/project-file/load', '/api/settings', or '/api/local-ai/status'.",
+    "Not found. Try '/', '/app.js', '/serva-vitae-project-library.js', '/editor-model.js', '/session-tracker-icons.js', '/features/progress-tracker.js', '/shared/ui-utils.js', '/styles.css', '/writing-goals-dashboard.css', '/assets/icons/session-tracker-sleeping-pen.svg', '/assets/icons/session-tracker-working-pen.svg', '/assets/icons/session-tracker-flaming-pen.svg', '/api/workspace', '/api/project-library', '/api/project-source', '/api/project-file/save', '/api/project-file/load', '/api/settings', or '/api/local-ai/status'.",
   );
 }
 
@@ -211,32 +211,32 @@ export async function createDesktopResponseForRequest(
     return textResponse(204, "text/plain; charset=utf-8", "", apiCorsHeaders());
   }
 
-  if (method === "POST" && request.pathname === "/api/project-integrator") {
+  if (method === "POST" && request.pathname === "/api/project-source") {
     const body = parseJsonBody(request.body);
     const projectPath = typeof body.projectPath === "string" ? body.projectPath.trim() : "";
     if (!projectPath) {
       return jsonResponse(400, {
         ok: false,
-        message: "A local Scrivener project path is required.",
+        message: "A local project source path is required.",
       }, apiCorsHeaders());
     }
 
     try {
-      const projectLibrary = importScrivenerProjectLibrarySeed(projectPath);
-      logDesktopInfo("project-integrator", "Imported a Scrivener project into a saved-project seed.", {
+      const projectLibrary = loadProjectLibrarySeedFromPath(projectPath);
+      logDesktopInfo("project-source", "Loaded a project source into a saved-project seed.", {
         projectPath,
         projectCount: projectLibrary.projects.length,
         activeProjectId: projectLibrary.activeProjectId,
       });
       return textResponse(200, "application/json; charset=utf-8", JSON.stringify(projectLibrary), apiCorsHeaders());
     } catch (error) {
-      logDesktopError("project-integrator", "Failed to import a Scrivener project.", {
+      logDesktopError("project-source", "Failed to load a project source.", {
         error,
         projectPath,
       });
       return jsonResponse(500, {
         ok: false,
-        message: error instanceof Error ? error.message : "Unable to import the Scrivener project.",
+        message: error instanceof Error ? error.message : "Unable to load the project source.",
       }, apiCorsHeaders());
     }
   }

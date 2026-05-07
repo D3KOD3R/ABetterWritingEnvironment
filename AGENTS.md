@@ -33,6 +33,12 @@ and less like:
 Each feature of the program is underpinned and numbered in the word doc named "An AI augmented author writing environment." 
 - As you work through each feature, you should create a process header which explains the feature and updates the features.md list. 
 
+## Project save file rules
+- The canonical source of truth for project state is the app-native `*.abe-project.json` save file.
+- Use `SaveTestFile/project-serva-vitae.abe-project.json` as the reference fixture when evolving the save schema.
+- Do not add or retain Scrivener-specific dependencies, field names, route names, file names, or UI labels in active code or schema.
+- If legacy import data is present, treat it as migration or archive data only. The active product flow must remain project-save-file-first.
+
 
 ## Core product pillars
 
@@ -647,6 +653,7 @@ When making changes in this repository:
 - prefer small coherent modules
 - preserve contracts unless migration is intentional
 - avoid speculative renames of shared schema
+- if the user has edited CSS or styling in this repo, treat those changes as intentional interface work and do not revert, normalize, or overwrite them unless the user explicitly asks
 - update or add types when introducing new cross-module behavior
 - add tests around domain behavior, not only UI rendering
 - document major decisions when they affect shared architecture

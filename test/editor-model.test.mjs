@@ -200,11 +200,11 @@ export function runEditorModelTest() {
   const importedTask = normalizeManuscriptTasks([
     {
       ...task,
-      id: "scrivener-comment-task-1",
-      source: "scrivener-comment",
-      scrivenerDocumentId: "DOC-1",
-      scrivenerCommentId: "COMMENT-1",
-      scrivenerBinderPath: "Manuscript / Chapter 1",
+      id: "source-comment-task-1",
+      source: "source-comment",
+      sourceDocumentId: "DOC-1",
+      sourceCommentId: "COMMENT-1",
+      sourcePath: "Manuscript / Chapter 1",
       anchorMode: "location",
       anchorStatus: "active",
       nearbyBefore: "Before",
@@ -213,8 +213,8 @@ export function runEditorModelTest() {
       paragraphIndex: 1,
     },
   ])[0];
-  assert.equal(importedTask.source, "scrivener-comment");
-  assert.equal(importedTask.scrivenerDocumentId, "DOC-1");
+  assert.equal(importedTask.source, "source-comment");
+  assert.equal(importedTask.sourceDocumentId, "DOC-1");
   assert.equal(importedTask.anchorStatus, "active");
 
   const note = createPassageNote(
@@ -247,11 +247,11 @@ export function runEditorModelTest() {
   assert.equal(normalizePassageNotes(renamedNotes)[0].title, "Reader wonder");
   const importedNote = normalizePassageNotes([
     {
-      id: "scrivener-note-1",
+      id: "source-note-1",
       noteType: "research",
-      chapterId: "scrivener-front-matter",
+      chapterId: "source-front-matter",
       chapterTitle: "Front Matter / Paperback",
-      sceneId: "scrivener-front-matter-scene",
+      sceneId: "source-front-matter-scene",
       sceneTitle: "Copyright",
       selectedText: "Copyright",
       startOffset: 0,
@@ -259,15 +259,15 @@ export function runEditorModelTest() {
       body: "Copyright page text",
       title: "Copyright",
       createdAt: "2026-04-24T02:03:00.000Z",
-      source: "scrivener-front-matter",
-      scrivenerDocumentId: "FRONT-1",
-      scrivenerBinderPath: "WorldBuilding / Front Matter / Paperback / Copyright",
+      source: "source-front-matter",
+      sourceDocumentId: "FRONT-1",
+      sourcePath: "WorldBuilding / Front Matter / Paperback / Copyright",
       attachmentConfidence: 0.2,
       assetIds: ["asset-1"],
     },
   ])[0];
-  assert.equal(importedNote.source, "scrivener-front-matter");
-  assert.equal(importedNote.scrivenerDocumentId, "FRONT-1");
+  assert.equal(importedNote.source, "source-front-matter");
+  assert.equal(importedNote.sourceDocumentId, "FRONT-1");
   assert.equal(importedNote.attachmentConfidence, 0.2);
   assert.deepEqual(importedNote.assetIds, ["asset-1"]);
   const inlineNote = createPassageNote(

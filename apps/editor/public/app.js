@@ -6,20 +6,18 @@ import {
   EDITOR_PASSAGE_NOTES_KEY,
   EDITOR_PROJECT_TITLE_KEY,
   EDITOR_PROJECT_LIBRARY_KEY,
-  EDITOR_SCRIVENER_IMPORT_PATH_KEY,
+  EDITOR_PROJECT_SOURCE_PATH_KEY,
   EDITOR_STRUCTURE_KEY,
   EDITOR_TEMPLATE_DRAFTS_KEY,
   EDITOR_TASKS_KEY,
-  EDITOR_WIDTH_OPTIONS,
   FONT_OPTIONS,
-  FONT_SIZE_OPTIONS,
-  LINE_HEIGHT_OPTIONS,
   buildSceneRecords,
   buildSceneLineMetrics,
   completeManuscriptTask,
   countRemainingTasksByChapter,
   createDefaultEditorPrefs,
   createDefaultLocalAiPrefs,
+  createDefaultSpellcheckProjectSettings,
   createManuscriptTask,
   createPassageNote,
   createSceneDraft,
@@ -31,12 +29,32 @@ import {
   normalizeEditorPrefs,
   normalizeLocalAiPrefs,
   normalizePassageNotes,
+  normalizeSpellcheckProjectSettings,
   resolveManuscriptTaskRange,
   updateManuscriptTaskTitle,
+  updatePassageNoteBody,
   updatePassageNoteTitle,
 } from "./editor-model.js";
+import { getPassageNotePlaceholder, renderManuscriptPanelHTML } from "./features/scene-editor.js";
 import { escapeHtml, formatDisplayNumber } from "./shared/ui-utils.js";
-import { renderWritingTargetCard, renderWritingTargetStrip } from "./features/progress-tracker.js";
+import {
+  buildSpellcheckProjectLexicon,
+  collectSpellcheckMisspellings,
+  countSpellcheckMisspellings,
+  ensureSpellcheckBaseLexicon,
+  ensureSpellcheckReferenceLexicon,
+  groupSpellcheckMisspellings,
+  getSpellcheckWordRange,
+  isSpellcheckMisspelledWord,
+  normalizeSpellcheckWord,
+  suggestSpellcheckAlternatives,
+} from "./spellcheck.js";
+import {
+  getSessionTrackerVisualState,
+  renderWritingTargetCard,
+  renderWritingTargetStrip,
+} from "./features/progress-tracker.js";
+import { renderSessionTrackerPenSvg as renderSessionTrackerPenGlyph } from "./session-tracker-icons.js";
 
 const appRoot = document.querySelector("#app");
 const EDITOR_COLLAPSED_CHAPTERS_KEY = "abe-collapsed-chapters-v1";
@@ -54,25 +72,35 @@ const DEFAULT_WRITING_TARGET_WORDS = 150000;
 const DEFAULT_SESSION_TARGET_WORDS = 5000;
 const DEFAULT_WRITING_TARGET_LOOKBACK_DAYS = 7;
 const DEFAULT_SESSION_TARGETS_PER_DAY = 5;
-const DEFAULT_SESSION_TIMEOUT_MINUTES = 30;
+const DEFAULT_SESSION_TIMEOUT_MINUTES = 20;
+const PROJECT_FILE_AUTOSAVE_DELAY_MS = 2000;
+// The tracker uses one idle grace period, then a longer close window, then a new-session window.
+const WRITING_TARGET_SESSION_SEGMENT_CLOSE_BUFFER_MINUTES = 10;
+const WRITING_TARGET_SESSION_NEW_SESSION_BUFFER_MINUTES = 25;
 const WRITING_TARGET_MAX_HISTORY_DAYS = 180;
 const WRITING_TARGET_MAX_SESSION_TARGETS_PER_DAY = 12;
 const WRITING_TARGET_MIN_SESSION_TIMEOUT_MINUTES = 5;
 const WRITING_TARGET_MAX_SESSION_TIMEOUT_MINUTES = 240;
 const WRITING_TARGET_MAX_SESSION_SAMPLES = 20;
+const WRITING_TARGET_SESSION_HISTORY_MAX = 24;
 const WRITING_TARGET_SESSION_PACE_LOOKBACK_MINUTES = 5;
+const WRITING_TARGET_SESSION_PACE_STALE_MINUTES = 0.5;
 const WRITING_TARGET_GOAL_SYNC_SOURCES = ["releaseDate", "sessionTargetWords"];
+const DESKTOP_PROJECT_LIBRARY_BOOT_TIMEOUT_MS = 50;
+const REVISION_DRAFTING_UI_ENABLED = false;
 const MIN_BINDER_PANEL_WIDTH = 220;
 const MIN_CONSOLE_PANEL_WIDTH = 260;
 const MIN_MANUSCRIPT_PANEL_WIDTH = 560;
 const PANEL_RESIZER_WIDTH = 8;
 const CONSOLE_DOCK_COLLAPSED_WIDTH = 52;
 const BINDER_PANEL_COMPACT_THRESHOLD = 280;
-const WRITING_TARGET_METRIC_KEYS = ["wordTarget", "sessionTarget", "forecast"];
+const WRITING_TARGET_VISIBLE_METRICS_SCHEMA_VERSION = 2;
+const WRITING_TARGET_METRIC_KEYS = ["wordTarget", "sessionTarget", "forecast", "sessionTracker"];
 const WRITING_TARGET_CADENCE_OPTIONS = [
   { value: "daily", label: "Daily target", unitLabel: "day", periodsPerWeek: 7 },
   { value: "weekly", label: "Weekly target", unitLabel: "week", periodsPerWeek: 1 },
 ];
+const BINDER_TITLE_DOUBLE_CLICK_WINDOW_MS = 350;
 
 const state = {
   shellReady: false,
@@ -85,9 +113,14 @@ const state = {
   projectFilePath: "",
   projectFileStatus: "",
   projectFileBusy: false,
-  projectIntegratorPath: "",
-  projectIntegratorStatus: "",
-  projectIntegratorBusy: false,
+  projectFileAutosaveDirty: false,
+  projectFileAutosaveTarget: null,
+  projectFileAutosaveTimer: null,
+  projectFileAutosaveRevision: 0,
+  projectFileAutosaveSuppressionDepth: 0,
+  projectSourcePath: "",
+  projectSourceStatus: "",
+  projectSourceBusy: false,
   fileMenuOpen: false,
   consoleDockCollapsed: false,
   binderPanelWidth: DEFAULT_BINDER_PANEL_WIDTH,
@@ -107,13 +140,29 @@ const state = {
   templateDrafts: createTemplateDrafts(),
   manuscriptTasks: [],
   passageNotes: [],
+  spellcheckProjectSettings: createDefaultSpellcheckProjectSettings(),
   sidePanelMode: "issues",
   selectedTaskId: null,
   selectedPassageNoteId: null,
   inlinePassageDraft: null,
   taskContextMenu: null,
+  binderContextMenu: null,
+  spellcheckContextMenu: null,
+  grammarCheckPanel: {
+    open: false,
+    position: null,
+    selectedWords: [],
+    selectionAnchorIndex: null,
+  },
   taskComposer: null,
   taskPreview: null,
+  manuscriptFind: {
+    open: false,
+    query: "",
+    replaceText: "",
+    activeIndex: 0,
+    position: null,
+  },
   narrationTakeSelection: null,
   narrationTakeSession: null,
   editorPrefs: createDefaultEditorPrefs(),
@@ -126,6 +175,8 @@ const state = {
   selectedIssueId: null,
   selectedNodeId: null,
   selectedEntityId: null,
+  editingChapterTitleId: null,
+  editingSceneTitleId: null,
   collapsedChapterIds: [],
   collapsedConsoleChapterIds: {
     issueTasks: [],
@@ -141,6 +192,12 @@ let writingTargetSnapshotTimer = null;
 let writingTargetWindowRefreshTimer = null;
 let sessionTrackerRefreshTimer = null;
 let writingTargetPointerDownStartedInsideWindow = false;
+let binderTitleClickState = null;
+let binderSceneDragState = null;
+let manuscriptFindDragState = null;
+let manuscriptGrammarDragState = null;
+let spellcheckBaseLexicon = null;
+let spellcheckReferenceLexicon = null;
 let narrationRecordingRuntime = null;
 let voiceRecordingPreviewAudio = null;
 let voiceRecordingPreviewUrl = null;
@@ -168,13 +225,23 @@ async function boot() {
   state.projectFilePath = loadStoredString(EDITOR_PROJECT_FILE_PATH_KEY) ?? "";
   state.projectFileStatus = "";
   state.projectFileBusy = false;
-  state.projectIntegratorPath = loadStoredString(EDITOR_SCRIVENER_IMPORT_PATH_KEY) ?? "";
-  state.projectIntegratorStatus = "";
+  state.projectFileAutosaveDirty = false;
+  state.projectFileAutosaveTarget = null;
+  state.projectFileAutosaveRevision = 0;
+  if (state.projectFileAutosaveTimer) {
+    window.clearTimeout(state.projectFileAutosaveTimer);
+    state.projectFileAutosaveTimer = null;
+  }
+  state.projectFileAutosaveSuppressionDepth = 0;
+  state.projectSourcePath = loadStoredString(EDITOR_PROJECT_SOURCE_PATH_KEY) ?? "";
+  state.projectSourceStatus = "";
   state.consoleDockCollapsed = readStoredJson(EDITOR_RIGHT_DOCK_COLLAPSED_KEY) === true;
   state.binderPanelWidth = loadStoredNumber(EDITOR_BINDER_WIDTH_KEY, DEFAULT_BINDER_PANEL_WIDTH);
   state.consoleDockWidth = loadStoredNumber(EDITOR_CONSOLE_WIDTH_KEY, DEFAULT_CONSOLE_PANEL_WIDTH);
   applyProjectRecord(getActiveProjectRecord() ?? state.projectLibrary[0]);
   refreshScenes();
+  spellcheckBaseLexicon = await ensureSpellcheckBaseLexicon();
+  spellcheckReferenceLexicon = await ensureSpellcheckReferenceLexicon();
 
   state.selectedIssueId = state.workspace.selectionDefaults.issueId ?? null;
   state.selectedNodeId = state.workspace.selectionDefaults.nodeId ?? null;
@@ -186,10 +253,11 @@ async function boot() {
     null;
   syncSelectionFromBlock(initialBlockId);
   syncWritingTargetState({ forceReload: true });
+  refreshWritingTargetSessionLifecycle({ reason: "boot" });
 
   render();
   syncLayoutWidths();
-  recordWritingTargetSnapshot({ immediate: true, reason: "boot" });
+  recordWritingTargetSnapshot({ immediate: true, reason: "boot", skipProjectFileAutosave: true });
   startSessionTrackerRefreshTimer();
   const bootedProject = getActiveProjectRecord();
   if (bootedProject?.workspace?.project?.stats) {
@@ -239,6 +307,15 @@ function wireEvents() {
       writingTargetPointerDownStartedInsideWindow = false;
     }, 0);
   });
+  document.addEventListener("pointerdown", handleGrammarCheckPointerDown);
+  document.addEventListener("pointermove", handleGrammarCheckPointerMove);
+  document.addEventListener("pointerup", handleGrammarCheckPointerEnd);
+  document.addEventListener("pointercancel", handleGrammarCheckPointerEnd);
+  document.addEventListener("pointerdown", handleManuscriptFindPointerDown);
+  document.addEventListener("pointermove", handleManuscriptFindPointerMove);
+  document.addEventListener("pointerup", handleManuscriptFindPointerEnd);
+  document.addEventListener("pointercancel", handleManuscriptFindPointerEnd);
+  document.addEventListener("wheel", handleManuscriptFindWheel, { passive: false });
   document.addEventListener("selectionchange", () => {
     if (state.activePane !== "narration" || state.narrationTakeSession?.status === "recording") {
       return;
@@ -251,12 +328,19 @@ function wireEvents() {
 
     updateNarrationTakeSelectionFromTextarea(activeElement);
   });
+  document.addEventListener("dragstart", handleBinderSceneDragStart);
+  document.addEventListener("dragover", handleBinderSceneDragOver);
+  document.addEventListener("drop", handleBinderSceneDrop);
+  document.addEventListener("dragend", handleBinderSceneDragEnd);
   window.addEventListener("resize", syncLayoutWidths);
 
   document.addEventListener("click", (event) => {
     const clickTarget = event.target instanceof Element ? event.target : null;
     if (state.fileMenuOpen && !clickTarget?.closest("[data-file-menu]")) {
       hideFileMenu();
+    }
+    if (state.binderContextMenu && !clickTarget?.closest("[data-binder-menu]")) {
+      hideBinderContextMenu();
     }
     if (
       state.writingTargetWindowOpen &&
@@ -267,8 +351,8 @@ function wireEvents() {
     ) {
       closeWritingTargetWindow();
     }
-    if (clickTarget?.closest("[data-title-input]")) {
-      hideTaskContextMenu();
+    if (clickTarget?.closest("[data-title-input], [data-passage-note-body-input]")) {
+      hideTaskSurfaces();
       return;
     }
 
@@ -301,7 +385,12 @@ function wireEvents() {
 
     const { action } = target.dataset;
 
-    if (action !== "add-selection-task" && action !== "add-passage-note") {
+    if (
+      action !== "add-selection-task" &&
+      action !== "add-passage-note" &&
+      action !== "apply-spellcheck-suggestion" &&
+      action !== "dismiss-spellcheck-menu"
+    ) {
       hideTaskContextMenu();
     }
 
@@ -340,15 +429,65 @@ function wireEvents() {
       return;
     }
 
-    if (action === "import-scrivener-project") {
+    if (action === "load-project-source") {
       hideFileMenu();
-      importScrivenerProject();
+      loadProjectSource();
       return;
     }
 
     if (action === "toggle-writing-target-window") {
       hideFileMenu();
       toggleWritingTargetWindow();
+      return;
+    }
+
+    if (action === "toggle-revision-overlay") {
+      toggleRevisionOverlay(target.dataset.sceneId);
+      return;
+    }
+
+    if (action === "toggle-italic-text") {
+      toggleItalicText();
+      return;
+    }
+
+    if (action === "toggle-grammar-check-panel") {
+      toggleGrammarCheckPanel();
+      return;
+    }
+
+    if (action === "open-manuscript-find") {
+      openManuscriptFind();
+      return;
+    }
+
+    if (action === "close-manuscript-find") {
+      closeManuscriptFind();
+      return;
+    }
+
+    if (action === "find-prev") {
+      moveManuscriptFindMatch(-1);
+      return;
+    }
+
+    if (action === "find-next") {
+      moveManuscriptFindMatch(1);
+      return;
+    }
+
+    if (action === "replace-find-current") {
+      replaceManuscriptFindCurrent();
+      return;
+    }
+
+    if (action === "replace-find-all") {
+      replaceManuscriptFindAll();
+      return;
+    }
+
+    if (action === "find-match") {
+      navigateManuscriptFindMatch(Number(target.dataset.findMatchIndex));
       return;
     }
 
@@ -418,6 +557,84 @@ function wireEvents() {
       return;
     }
 
+    if (action === "cancel-binder-context-menu") {
+      hideBinderContextMenu();
+      return;
+    }
+
+    if (action === "apply-spellcheck-suggestion") {
+      applySpellcheckSuggestionFromMenu(target);
+      return;
+    }
+
+    if (action === "add-grammar-check-dictionary") {
+      addGrammarCheckWordsToProjectList("dictionaryWords");
+      return;
+    }
+
+    if (action === "add-grammar-check-exceptions") {
+      addGrammarCheckWordsToProjectList("exceptionWords");
+      return;
+    }
+
+    if (action === "dismiss-spellcheck-menu") {
+      hideSpellcheckContextMenu();
+      return;
+    }
+
+    if (action === "toggle-grammar-check-word") {
+      const grammarCheckTarget = target.closest("[data-grammar-check-word]");
+      if (!(grammarCheckTarget instanceof HTMLElement)) {
+        return;
+      }
+
+      toggleGrammarCheckPanelWordSelection(
+        grammarCheckTarget.dataset.grammarCheckWord,
+        Number(grammarCheckTarget.dataset.grammarCheckIndex),
+        event.shiftKey === true,
+      );
+      return;
+    }
+
+    if (action === "focus-grammar-check-word") {
+      const grammarCheckTarget = target.closest("[data-grammar-check-word]");
+      if (!(grammarCheckTarget instanceof HTMLElement)) {
+        return;
+      }
+
+      const firstIndex = Number(grammarCheckTarget.dataset.grammarCheckFirstIndex);
+      const word = String(grammarCheckTarget.dataset.grammarCheckWord ?? "").trim();
+      if (!word || !Number.isInteger(firstIndex)) {
+        return;
+      }
+
+      focusGrammarCheckEntry({
+        firstIndex,
+        word,
+      });
+      return;
+    }
+
+    if (action === "grammar-check-select-all") {
+      selectAllGrammarCheckPanelWords();
+      return;
+    }
+
+    if (action === "grammar-check-clear-selection") {
+      clearGrammarCheckPanelSelection();
+      return;
+    }
+
+    if (action === "grammar-check-add-selected") {
+      addSelectedGrammarCheckWordsToProjectDictionary();
+      return;
+    }
+
+    if (action === "close-grammar-check-panel") {
+      closeGrammarCheckPanel();
+      return;
+    }
+
     if (action === "add-selection-task") {
       openTaskComposerFromContextMenu(event);
       return;
@@ -450,6 +667,11 @@ function wireEvents() {
 
     if (action === "cancel-selection-task") {
       cancelTaskComposer();
+      return;
+    }
+
+    if (action === "trim-scene-whitespace") {
+      trimSceneWhitespace(target.dataset.sceneId);
       return;
     }
 
@@ -511,17 +733,58 @@ function wireEvents() {
       return;
     }
 
+    if (action === "delete-scene") {
+      deleteSceneFromBinder(target.dataset.sceneId);
+      return;
+    }
+
+    if (action === "delete-chapter") {
+      deleteChapterFromBinder(target.dataset.chapterId);
+      return;
+    }
+
     if (action === "select-chapter") {
       hideFileMenu();
-      const chapterScene = getScenesForChapter(target.dataset.chapterId)[0];
-      if (chapterScene) {
-        selectSceneById(chapterScene.sceneId);
+      const chapterTitleTarget = clickTarget?.closest("[data-chapter-title-id]");
+      if (chapterTitleTarget instanceof Element) {
+        const chapterId = chapterTitleTarget.dataset.chapterTitleId;
+        if (chapterId && consumeBinderTitleClick("chapter", chapterId)) {
+          event.preventDefault();
+          beginChapterTitleEdit(chapterId);
+          return;
+        }
       }
+
+      if (
+        event.target instanceof Element &&
+        event.target.closest("[data-edit-field='chapter-title']")
+      ) {
+        return;
+      }
+
+      selectChapterById(target.dataset.chapterId);
       return;
     }
 
     if (action === "select-scene") {
       hideFileMenu();
+      const binderSceneTitleTarget = clickTarget?.closest("[data-binder-scene-title-id]");
+      if (binderSceneTitleTarget instanceof Element) {
+        const sceneId = binderSceneTitleTarget.dataset.binderSceneTitleId;
+        if (sceneId && consumeBinderTitleClick("scene", sceneId)) {
+          event.preventDefault();
+          beginSceneTitleEdit(sceneId);
+          return;
+        }
+      }
+
+      if (
+        event.target instanceof Element &&
+        event.target.closest("[data-edit-field='scene-title']")
+      ) {
+        return;
+      }
+
       selectSceneById(target.dataset.sceneId);
       return;
     }
@@ -650,8 +913,8 @@ function wireEvents() {
       return;
     }
 
-    if (action === "import-scrivener-project") {
-      importScrivenerProject();
+    if (action === "load-project-source") {
+      loadProjectSource();
       return;
     }
 
@@ -665,9 +928,75 @@ function wireEvents() {
   document.addEventListener("keydown", handleGlobalKeyboardShortcut, true);
 
   document.addEventListener("contextmenu", (event) => {
+    const clickTarget = event.target instanceof Element ? event.target : null;
+    const grammarCheckTarget = clickTarget?.closest("[data-grammar-check-word]");
+    if (grammarCheckTarget instanceof HTMLElement && grammarCheckTarget.closest("[data-grammar-check-panel]")) {
+      const grammarCheckContext = getSpellcheckContextFromGrammarCheckTarget(grammarCheckTarget, event);
+      if (grammarCheckContext) {
+        event.preventDefault();
+        state.taskComposer = null;
+        state.binderContextMenu = null;
+        state.taskContextMenu = null;
+        state.spellcheckContextMenu = grammarCheckContext;
+        renderTaskContextMenu();
+      }
+      return;
+    }
+
+    const binderSceneTarget = clickTarget?.closest("[data-binder-scene-id]");
+    if (binderSceneTarget instanceof HTMLElement) {
+      const sceneId = binderSceneTarget.dataset.binderSceneId;
+      const scene = getScene(sceneId);
+      if (scene) {
+        event.preventDefault();
+        openBinderContextMenu(
+          "scene",
+          {
+            sceneId: scene.sceneId,
+            sceneTitle: scene.sceneTitle,
+            chapterId: scene.chapterId,
+            chapterTitle: scene.chapterTitle,
+          },
+          event,
+        );
+      }
+      return;
+    }
+
+    const binderChapterTarget = clickTarget?.closest("[data-chapter-id]");
+    if (binderChapterTarget instanceof HTMLElement && binderChapterTarget.closest(".binder-chapter-button")) {
+      const chapterId = binderChapterTarget.dataset.chapterId;
+      const chapter = groupScenesByChapter(state.scenes).find((candidate) => candidate.chapterId === chapterId) ?? null;
+      if (chapterId && chapter) {
+        event.preventDefault();
+        openBinderContextMenu(
+          "chapter",
+          {
+            chapterId,
+            chapterTitle: chapter.chapterTitle,
+            sceneId: chapter.scenes[0]?.sceneId ?? "",
+            sceneTitle: chapter.scenes[0]?.sceneTitle ?? "",
+          },
+          event,
+        );
+      }
+      return;
+    }
+
     const editorContext = getEditorContextFromEvent(event);
     if (!editorContext) {
       hideTaskSurfaces();
+      return;
+    }
+
+    const spellcheckContext = getSpellcheckContextFromEvent(editorContext, event);
+    if (spellcheckContext) {
+      event.preventDefault();
+      state.taskComposer = null;
+      state.binderContextMenu = null;
+      state.taskContextMenu = null;
+      state.spellcheckContextMenu = spellcheckContext;
+      renderTaskContextMenu();
       return;
     }
 
@@ -681,6 +1010,8 @@ function wireEvents() {
 
     event.preventDefault();
     state.taskComposer = null;
+    state.binderContextMenu = null;
+    state.spellcheckContextMenu = null;
     state.taskContextMenu = {
       sceneId,
       selectedText: contextRange.selectedText,
@@ -736,6 +1067,38 @@ function wireEvents() {
   });
 
   document.addEventListener("focusout", (event) => {
+    const chapterTitleTarget = event.target instanceof Element
+      ? event.target.closest("[data-edit-field='chapter-title']")
+      : null;
+    if (chapterTitleTarget) {
+      const chapterId = chapterTitleTarget.dataset.chapterId;
+      if (chapterId && state.editingChapterTitleId === chapterId) {
+        const related = event.relatedTarget instanceof Element ? event.relatedTarget : null;
+        if (related && chapterTitleTarget.contains(related)) {
+          return;
+        }
+
+        finishChapterTitleEdit(chapterId);
+      }
+      return;
+    }
+
+    const sceneTitleTarget = event.target instanceof Element
+      ? event.target.closest("[data-edit-field='scene-title']")
+      : null;
+    if (sceneTitleTarget) {
+      const sceneId = sceneTitleTarget.dataset.sceneId;
+      if (sceneId && state.editingSceneTitleId === sceneId) {
+        const related = event.relatedTarget instanceof Element ? event.relatedTarget : null;
+        if (related && sceneTitleTarget.contains(related)) {
+          return;
+        }
+
+        finishSceneTitleEdit(sceneId);
+      }
+      return;
+    }
+
     const target = event.target instanceof Element
       ? event.target.closest("[data-task-preview-id]")
       : null;
@@ -763,6 +1126,46 @@ function wireEvents() {
       !(event.target instanceof HTMLTextAreaElement)
     ) {
       commitInlinePassageNote();
+      return;
+    }
+
+    if (
+      event.target instanceof HTMLInputElement &&
+      event.target.dataset.editField === "scene-title" &&
+      event.target.dataset.binderSceneTitleId
+    ) {
+      return;
+    }
+
+    if (event.target instanceof HTMLInputElement && event.target.dataset.editField === "chapter-title") {
+      return;
+    }
+
+    const binderSceneTitleTarget = event.target instanceof Element
+      ? event.target.closest("[data-binder-scene-title-id]")
+      : null;
+    if (binderSceneTitleTarget) {
+      const sceneId = binderSceneTitleTarget.dataset.binderSceneTitleId;
+      if (!sceneId) {
+        return;
+      }
+
+      event.preventDefault();
+      beginSceneTitleEdit(sceneId);
+      return;
+    }
+
+    const chapterTitleTarget = event.target instanceof Element
+      ? event.target.closest("[data-chapter-title-id]")
+      : null;
+    if (chapterTitleTarget) {
+      const chapterId = chapterTitleTarget.dataset.chapterTitleId;
+      if (!chapterId) {
+        return;
+      }
+
+      event.preventDefault();
+      beginChapterTitleEdit(chapterId);
       return;
     }
 
@@ -796,6 +1199,12 @@ function wireEvents() {
       return;
     }
 
+    const findField = String(target.dataset.findField ?? "");
+    if (findField === "manuscript-find-query" || findField === "manuscript-find-replace") {
+      updateManuscriptFindField(findField, target.value);
+      return;
+    }
+
     const { editField, sceneId } = target.dataset;
     if (!editField) {
       return;
@@ -809,16 +1218,16 @@ function wireEvents() {
       return;
     }
 
-    if (editField === "project-integrator-path") {
-      state.projectIntegratorPath = target.value;
-      state.projectIntegratorStatus = "";
-      writeStoredJsonRaw(EDITOR_SCRIVENER_IMPORT_PATH_KEY, target.value);
-      persistCurrentProjectRecord();
+    if (editField === "project-source-path") {
+      state.projectSourcePath = target.value;
+      state.projectSourceStatus = "";
+      writeStoredJsonRaw(EDITOR_PROJECT_SOURCE_PATH_KEY, target.value);
+      persistCurrentProjectRecord({ skipProjectFileAutosave: true });
       return;
     }
 
     if (editField === "project-file-path") {
-      setProjectFilePath(target.value, null);
+      setProjectFilePath(target.value, null, { skipProjectFileAutosave: true });
       state.projectFileStatus = "";
       return;
     }
@@ -876,6 +1285,21 @@ function wireEvents() {
       return;
     }
 
+    if (editField === "passage-note-body") {
+      state.passageNotes = updatePassageNoteBody(
+        state.passageNotes,
+        target.dataset.noteId,
+        target.value,
+      );
+      writeStoredJson(EDITOR_PASSAGE_NOTES_KEY, state.passageNotes);
+      return;
+    }
+
+    if (editField === "chapter-title") {
+      updateChapterTitle(target.dataset.chapterId, target.value);
+      return;
+    }
+
     if (!sceneId) {
       return;
     }
@@ -885,6 +1309,7 @@ function wireEvents() {
         draft.sceneTitle = target.value;
       });
       updateSceneTitleLabel(sceneId, target.value);
+      updateSceneEditorTitle(sceneId, target.value);
       updateFocusedLineCard();
       return;
     }
@@ -895,12 +1320,38 @@ function wireEvents() {
       trackInlinePassageDraftTyping(sceneId, previousText, target);
       updateSceneDraft(sceneId, (draft) => {
         draft.editorText = target.value;
+        draft.revisionStats = updateSceneRevisionStats(draft.revisionStats, previousText, target.value);
       });
       syncSceneDocumentLayout();
+      syncRevisionPanel(sceneId);
+      renderGrammarCheckPanel();
       centerEditorOnCaret(target);
       updateFocusedLineCard();
       updateInlinePassageDraftStatus(target.value);
     }
+  });
+
+  document.addEventListener("paste", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLTextAreaElement)) {
+      return;
+    }
+
+    if (!["editor-text", "inline-passage-note", "inline-passage-verse", "task-description", "passage-note-body"].includes(String(target.dataset.editField ?? ""))) {
+      return;
+    }
+
+    const pastedText = event.clipboardData?.getData("text/plain");
+    if (typeof pastedText !== "string" || !pastedText.length) {
+      return;
+    }
+
+    event.preventDefault();
+    const normalizedText = pastedText.replace(/\r\n?/g, "\n");
+    const selectionStart = Number.isInteger(target.selectionStart) ? target.selectionStart : target.value.length;
+    const selectionEnd = Number.isInteger(target.selectionEnd) ? target.selectionEnd : selectionStart;
+    target.setRangeText(normalizedText, selectionStart, selectionEnd, "end");
+    target.dispatchEvent(new Event("input", { bubbles: true }));
   });
 
   document.addEventListener("change", (event) => {
@@ -987,12 +1438,42 @@ function wireEvents() {
       return;
     }
 
+    if (
+      event.target instanceof HTMLInputElement &&
+      event.target.dataset.editField === "chapter-title" &&
+      (event.key === "Enter" || event.key === "Escape")
+    ) {
+      event.preventDefault();
+      event.target.blur();
+      return;
+    }
+
     const target = event.target instanceof Element
       ? event.target.closest("[data-task-preview-id]")
       : null;
     if (target && (event.key === "Enter" || event.key === " ")) {
       event.preventDefault();
       navigateTaskAnchor(target.dataset.taskPreviewId);
+      return;
+    }
+
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
+      event.preventDefault();
+      openManuscriptFind();
+      return;
+    }
+
+    if (state.manuscriptFind.open && event.key === "Enter" && event.target instanceof HTMLInputElement) {
+      if (event.target.dataset.findField === "manuscript-find-query") {
+        event.preventDefault();
+        moveManuscriptFindMatch(event.shiftKey ? -1 : 1);
+        return;
+      }
+    }
+
+    if (state.manuscriptFind.open && event.key === "Escape") {
+      event.preventDefault();
+      closeManuscriptFind();
       return;
     }
 
@@ -1018,6 +1499,7 @@ function render() {
   renderBinderPanel();
   renderManuscriptPanel();
   renderConsolePanel();
+  renderManuscriptFindPanel();
   renderWorldPanel();
   renderEntityPanel();
   renderDreamScapingPanel();
@@ -1063,6 +1545,8 @@ function renderShell() {
     </section>
 
     <div id="task-menu-slot"></div>
+    <div id="find-slot"></div>
+    <div id="grammar-check-slot"></div>
     <div id="writing-target-slot"></div>
   `;
 }
@@ -1070,6 +1554,102 @@ function renderShell() {
 function renderTaskContextMenu() {
   const slot = document.querySelector("#task-menu-slot");
   if (!slot) {
+    return;
+  }
+
+  const spellcheckMenu = state.spellcheckContextMenu;
+  if (spellcheckMenu) {
+    const suggestions = Array.isArray(spellcheckMenu.suggestions) ? spellcheckMenu.suggestions : [];
+    const menuWords = Array.isArray(spellcheckMenu.words) && spellcheckMenu.words.length
+      ? spellcheckMenu.words
+      : (spellcheckMenu.word ? [spellcheckMenu.word] : []);
+    const menuWidth = spellcheckMenu.mode === "selection" ? 440 : 360;
+    const menuHeight = spellcheckMenu.mode === "selection" ? 320 : 300;
+    const left = Math.min(Math.max(8, spellcheckMenu.x), Math.max(8, window.innerWidth - menuWidth));
+    const top = Math.min(Math.max(8, spellcheckMenu.y), Math.max(8, window.innerHeight - menuHeight));
+    const countLabel = `${menuWords.length} flagged word${menuWords.length === 1 ? "" : "s"}`;
+    slot.innerHTML = `
+      <div
+        class="task-context-menu grammar-check-context-menu spellcheck-context-menu"
+        style="left:${left}px; top:${top}px;"
+        role="menu"
+        data-spellcheck-menu
+      >
+        <p class="spellcheck-context-menu__label">Grammar check</p>
+        <strong class="spellcheck-context-menu__word">${escapeHtml(countLabel)}</strong>
+        <div class="spellcheck-context-menu__selection-list">
+          ${menuWords.length
+            ? menuWords.map((word) => `<span class="spellcheck-context-menu__chip">${escapeHtml(word)}</span>`).join("")
+            : `<p class="spellcheck-context-menu__empty">No flagged words found.</p>`}
+        </div>
+        ${spellcheckMenu.mode === "word" && suggestions.length
+          ? `
+            <div class="spellcheck-context-menu__suggestions">
+              ${suggestions.map((suggestion) => `
+                <button
+                  class="task-menu-item spellcheck-suggestion-item"
+                  data-action="apply-spellcheck-suggestion"
+                  data-spellcheck-replacement="${escapeHtml(suggestion)}"
+                  data-spellcheck-start-offset="${escapeHtml(String(spellcheckMenu.startOffset))}"
+                  data-spellcheck-end-offset="${escapeHtml(String(spellcheckMenu.endOffset))}"
+                  data-spellcheck-scene-id="${escapeHtml(spellcheckMenu.sceneId)}"
+                  role="menuitem"
+                >
+                  <span class="task-menu-icon" aria-hidden="true">✓</span>
+                  <span>${escapeHtml(suggestion)}</span>
+                </button>
+              `).join("")}
+            </div>
+          `
+          : ""}
+        <button class="task-menu-item spellcheck-add-item" data-action="add-grammar-check-dictionary" role="menuitem">
+          <span class="task-menu-icon" aria-hidden="true">+</span>
+          <span>Add to project dictionary</span>
+        </button>
+        <button class="task-menu-item spellcheck-add-item" data-action="add-grammar-check-exceptions" role="menuitem">
+          <span class="task-menu-icon" aria-hidden="true">⟲</span>
+          <span>Add to project exceptions</span>
+        </button>
+        <button class="task-menu-item spellcheck-dismiss" data-action="dismiss-spellcheck-menu" role="menuitem">
+          <span class="task-menu-icon" aria-hidden="true">×</span>
+          <span>Close grammar check</span>
+        </button>
+      </div>
+    `;
+    return;
+  }
+
+  const binderMenu = state.binderContextMenu;
+  if (binderMenu) {
+    const left = Math.min(Math.max(8, binderMenu.x), Math.max(8, window.innerWidth - 280));
+    const top = Math.min(Math.max(8, binderMenu.y), Math.max(8, window.innerHeight - 220));
+    const title =
+      binderMenu.kind === "chapter"
+        ? `${String(binderMenu.chapterTitle ?? "").trim() || "Untitled chapter"}`
+        : `${String(binderMenu.sceneTitle ?? "").trim() || "Untitled scene"}`;
+    const detail =
+      binderMenu.kind === "chapter"
+        ? "Delete this chapter and every scene inside it."
+        : "Delete this scene and its attached tasks and notes.";
+    slot.innerHTML = `
+      <div
+        class="task-context-menu binder-context-menu"
+        style="left:${left}px; top:${top}px;"
+        role="menu"
+        data-binder-menu
+      >
+        <p>${escapeHtml(title)}</p>
+        <button class="task-menu-item" data-action="${binderMenu.kind === "chapter" ? "delete-chapter" : "delete-scene"}" data-${binderMenu.kind}-id="${escapeHtml(binderMenu.kind === "chapter" ? binderMenu.chapterId : binderMenu.sceneId)}" role="menuitem">
+          <span class="task-menu-icon" aria-hidden="true">−</span>
+          <span>${escapeHtml(binderMenu.kind === "chapter" ? "Delete chapter" : "Delete scene")}</span>
+        </button>
+        <button class="task-menu-item" data-action="cancel-binder-context-menu" role="menuitem">
+          <span class="task-menu-icon" aria-hidden="true">×</span>
+          <span>Cancel</span>
+        </button>
+        <p>${escapeHtml(detail)}</p>
+      </div>
+    `;
     return;
   }
 
@@ -1125,13 +1705,11 @@ function renderTaskContextMenu() {
       class="task-context-menu"
       style="left:${left}px; top:${top}px;"
       role="menu"
-    >
-      ${menu.hasExplicitSelection ? `
-        <button class="task-menu-item" data-action="add-selection-task" role="menuitem">
-          <span class="task-menu-icon" aria-hidden="true">+</span>
-          <span>Add task</span>
-        </button>
-      ` : ""}
+      >
+      <button class="task-menu-item" data-action="add-selection-task" role="menuitem">
+        <span class="task-menu-icon" aria-hidden="true">+</span>
+        <span>${escapeHtml(menu.hasExplicitSelection ? "Add task" : "Add task from line")}</span>
+      </button>
       <button class="task-menu-item" data-action="add-passage-note" data-note-type="inspiration" role="menuitem">
         <span class="task-menu-icon" aria-hidden="true">i</span>
         <span>Add inspiration</span>
@@ -1140,15 +1718,13 @@ function renderTaskContextMenu() {
         <span class="task-menu-icon" aria-hidden="true">r</span>
         <span>Add research</span>
       </button>
+      <button class="task-menu-item" data-action="trim-scene-whitespace" data-scene-id="${escapeHtml(menu.sceneId)}" role="menuitem">
+        <span class="task-menu-icon" aria-hidden="true">↧</span>
+        <span>Trim scene whitespace</span>
+      </button>
       <p>${escapeHtml(excerpt)}</p>
     </div>
   `;
-}
-
-function getPassageNotePlaceholder(noteType) {
-  return noteType === "research"
-    ? "Collect references, facts, and questions for this passage..."
-    : "What are you trying to convey here?";
 }
 
 function getPassageNoteVerb(noteType) {
@@ -1183,22 +1759,20 @@ function renderHeader() {
             />
           </div>
         </div>
+        <div class="desktop-menubar-center">
+          <nav class="workspace-tabs" aria-label="Workspace panes">
+            ${renderPaneTab("manuscript", "Manuscript", workspace.settings.executionMode)}
+            ${renderPaneTab("world", "World", "Spines and templates")}
+            ${renderPaneTab("narration", "Narration + Voice", "Whisper follow-track")}
+          </nav>
+        </div>
         <div class="desktop-stat-strip" aria-label="Project statistics">
-          ${renderStat("Lines", workspace.project.stats.lineCount)}
-          ${renderStat("Words", getCurrentManuscriptWordCount())}
-          ${renderStat("Issues", workspace.project.stats.issueCount)}
-          ${renderStat("Events", workspace.project.stats.eventCount)}
-          ${renderStat("Chars", workspace.project.stats.characterCount)}
+          ${renderStat("Lines", workspace.project.stats.lineCount, "lines")}
           ${renderWritingTargetToggle(writingTargetSummary)}
         </div>
       </div>
       ${renderWritingTargetStrip(writingTargetSummary)}
       <div class="desktop-toolbar">
-        <nav class="workspace-tabs" aria-label="Workspace panes">
-          ${renderPaneTab("manuscript", "Manuscript", workspace.settings.executionMode)}
-          ${renderPaneTab("world", "World", "Spines and templates")}
-          ${renderPaneTab("narration", "Narration + Voice", "Whisper follow-track")}
-        </nav>
         ${renderLocalAiSetting()}
       </div>
     </header>
@@ -1243,8 +1817,8 @@ function renderFileMenu() {
     ? `Project file: ${state.projectFilePath}`
     : "No project file selected";
   const projectFileFeedback = state.projectFileStatus ? ` · ${state.projectFileStatus}` : "";
-  const integratorStatus = state.projectIntegratorStatus
-    ? ` · Integrator: ${state.projectIntegratorStatus}`
+  const integratorStatus = state.projectSourceStatus
+    ? ` · Integrator: ${state.projectSourceStatus}`
     : "";
 
   return `
@@ -1307,14 +1881,14 @@ function renderFileMenu() {
       </div>
       <div class="file-menu-section">
         <span class="file-menu-label">Import</span>
-        <label class="project-integrator-shell compact">
-          <span>Scrivener project</span>
+        <label class="project-source-shell compact">
+          <span>Project source</span>
           <input
             type="text"
-            value="${escapeHtml(state.projectIntegratorPath)}"
-            data-edit-field="project-integrator-path"
-            placeholder="C:\\Projects\\Novel.scriv or ...\\Project.scrivx"
-            aria-label="Scrivener project path"
+            value="${escapeHtml(state.projectSourcePath)}"
+            data-edit-field="project-source-path"
+            placeholder="C:\\Projects\\Novel.abe-project.json or ...\\Project folder"
+            aria-label="Project source path"
             spellcheck="false"
           />
         </label>
@@ -1322,10 +1896,10 @@ function renderFileMenu() {
           <button
             class="tag-button panel-action-button"
             type="button"
-            data-action="import-scrivener-project"
-            ${state.projectIntegratorBusy ? "disabled" : ""}
+            data-action="load-project-source"
+            ${state.projectSourceBusy ? "disabled" : ""}
           >
-            ${state.projectIntegratorBusy ? "Importing..." : "Import Scrivener"}
+            ${state.projectSourceBusy ? "Importing..." : "Load Project Source"}
           </button>
         </div>
       </div>
@@ -1383,11 +1957,11 @@ function renderPaneTab(paneId, label, detail) {
   `;
 }
 
-function renderStat(label, value) {
+function renderStat(label, value, statKey = "") {
   return `
-    <div class="chrome-stat">
+    <div class="chrome-stat"${statKey ? ` data-stat-key="${escapeHtml(statKey)}"` : ""}>
       <span>${escapeHtml(label)}</span>
-      <strong>${escapeHtml(formatDisplayNumber(value))}</strong>
+      <strong data-stat-value>${escapeHtml(formatDisplayNumber(value))}</strong>
     </div>
   `;
 }
@@ -1399,6 +1973,7 @@ function renderWritingTargetToggle(summary) {
     <button
       class="chrome-stat chrome-target-toggle"
       type="button"
+      data-writing-target-toggle
       data-action="toggle-writing-target-window"
       aria-pressed="${state.writingTargetWindowOpen ? "true" : "false"}"
       title="Open writing goals (Ctrl+Alt+T)"
@@ -1406,7 +1981,7 @@ function renderWritingTargetToggle(summary) {
     >
       <span class="chrome-target-icon" aria-hidden="true">◎</span>
       <span>Writing Goals</span>
-      <strong>${escapeHtml(targetLabel)}</strong>
+      <strong data-writing-target-toggle-value>${escapeHtml(targetLabel)}</strong>
     </button>
   `;
 }
@@ -1628,7 +2203,7 @@ function renderWritingTargetWindow() {
               </label>
             </div>
             <label class="writing-target-field">
-              <span>Idle timeout</span>
+              <span>Session time</span>
               <input
                 type="number"
                 min="${escapeHtml(String(WRITING_TARGET_MIN_SESSION_TIMEOUT_MINUTES))}"
@@ -1637,7 +2212,7 @@ function renderWritingTargetWindow() {
                 value="${escapeHtml(String(summary.sessionTimeoutMinutes))}"
                 data-edit-field="writing-target-field"
                 data-writing-target-field="sessionTimeoutMinutes"
-                aria-label="Idle timeout minutes"
+                aria-label="Session time minutes"
               />
             </label>
             <div class="writing-target-presets">
@@ -1670,6 +2245,16 @@ function renderWritingTargetWindow() {
                   ${summary.record.visibleMetrics.includes("forecast") ? "checked" : ""}
                 />
                 <span>Days to release</span>
+              </label>
+              <label class="writing-target-checkbox">
+                <input
+                  type="checkbox"
+                  data-edit-field="writing-target-field"
+                  data-writing-target-field="visibleMetric"
+                  data-metric-key="sessionTracker"
+                  ${summary.record.visibleMetrics.includes("sessionTracker") ? "checked" : ""}
+                />
+                <span>Session tracker</span>
               </label>
             </div>
           </div>
@@ -1854,8 +2439,13 @@ function syncWritingTargetWindowLiveState() {
 }
 
 function syncSessionTrackerLiveState() {
-  const strip = document.querySelector("#hero-slot .desktop-target-strip");
-  if (!(strip instanceof HTMLElement)) {
+  refreshWritingTargetSessionLifecycle();
+  syncHeaderLiveState();
+}
+
+function syncHeaderLiveState() {
+  const heroSlot = document.querySelector("#hero-slot");
+  if (!(heroSlot instanceof HTMLElement)) {
     return;
   }
 
@@ -1864,7 +2454,182 @@ function syncSessionTrackerLiveState() {
     return;
   }
 
-  strip.outerHTML = renderWritingTargetStrip(summary);
+  const wordsStat = heroSlot.querySelector('[data-stat-key="words"] [data-stat-value]');
+  if (wordsStat instanceof HTMLElement) {
+    wordsStat.textContent = formatDisplayNumber(getCurrentManuscriptWordCount());
+  }
+
+  const writingTargetToggle = heroSlot.querySelector("[data-writing-target-toggle-value]");
+  if (writingTargetToggle instanceof HTMLElement) {
+    writingTargetToggle.textContent = summary.goalButtonLabel ?? "Writing Goals";
+  }
+
+  const strip = heroSlot.querySelector("[data-writing-target-strip]");
+  const visibleMetrics = Array.isArray(summary.visibleMetrics) ? summary.visibleMetrics : [];
+  if (strip instanceof HTMLElement) {
+    for (const metric of visibleMetrics) {
+      if (!metric || typeof metric !== "object") {
+        continue;
+      }
+
+      const card = strip.querySelector(`[data-writing-target-card="${CSS.escape(String(metric.key ?? ""))}"]`);
+      if (!(card instanceof HTMLElement)) {
+        continue;
+      }
+
+      const label = card.querySelector("[data-writing-target-card-label]");
+      const value = card.querySelector("[data-writing-target-card-value]");
+      const bar = card.querySelector("[data-writing-target-card-bar]");
+      const progress = card.querySelector("[data-writing-target-card-progress]");
+      const foot = card.querySelector("[data-writing-target-card-foot]");
+      const note = card.querySelector("[data-writing-target-card-note]");
+      const metricProgress = Math.max(0, Math.min(1, Number(metric.progress ?? 0)));
+      const footContent = metric.comparison
+        ? `
+            <span>${escapeHtml(metric.leftLabel ?? "")}</span>
+            <span aria-hidden="true">→</span>
+            <span>${escapeHtml(metric.rightLabel ?? "")}</span>
+          `
+        : `
+            <span>${escapeHtml(metric.leftLabel ?? "")}</span>
+            <span>${escapeHtml(metric.rightLabel ?? "")}</span>
+          `;
+
+      if (label instanceof HTMLElement) {
+        label.lastElementChild ? label.lastElementChild.textContent = String(metric.label ?? "") : label.textContent = String(metric.label ?? "");
+      }
+      if (value instanceof HTMLElement) {
+        value.textContent = String(metric.value ?? "—");
+      }
+      if (bar instanceof HTMLElement) {
+        bar.className = `writing-target-bar ${String(metric.barClass ?? "").trim()}`.trim();
+        if (typeof metric.barStyle === "string" && metric.barStyle.trim()) {
+          bar.setAttribute("style", metric.barStyle);
+        } else {
+          bar.setAttribute("style", "");
+        }
+      }
+      if (progress instanceof HTMLElement) {
+        progress.style.width = `${Math.round(metricProgress * 100)}%`;
+        if (typeof metric.barStyle === "string" && metric.barStyle.trim()) {
+          progress.setAttribute("style", `width:${Math.round(metricProgress * 100)}%;${metric.barStyle}`);
+        } else {
+          progress.setAttribute("style", `width:${Math.round(metricProgress * 100)}%;`);
+        }
+      }
+      if (foot instanceof HTMLElement) {
+        foot.className = `writing-target-foot${metric.comparison ? " is-comparison" : ""}`;
+        foot.innerHTML = footContent;
+      }
+      if (note instanceof HTMLElement) {
+        note.textContent = String(metric.note ?? "");
+      } else if (metric.note) {
+        card.insertAdjacentHTML("beforeend", `<p class="writing-target-note" data-writing-target-card-note>${escapeHtml(metric.note ?? "")}</p>`);
+      }
+    }
+  }
+
+  const panel = document.querySelector("#hero-slot [data-session-tracker-panel]");
+  if (!(panel instanceof HTMLElement)) {
+    return;
+  }
+
+  patchSessionTrackerPanel(panel, summary);
+}
+
+function patchSessionTrackerPanel(panel, summary) {
+  if (!(panel instanceof HTMLElement) || !summary) {
+    return;
+  }
+
+  const tracker = {
+    clockLabel: summary.sessionCurrentTimeLabel ?? "—",
+    wordsWrittenLabel: formatDisplayNumber(Math.round(summary.currentSessionWords ?? 0)),
+    wordsTargetLabel: formatDisplayNumber(Math.round(summary.sessionTargetWordsPerSession ?? 0)),
+    sessionStartTimeLabel: summary.sessionStartTimeLabel ?? "—",
+    sessionMinutesLapsedLabel: summary.sessionMinutesLapsedLabel ?? "0",
+    sessionIdleLabel: summary.sessionIdleLabel ?? "Idle",
+    wpmLabel: summary.sessionWordsPerMinuteLabel ?? "0/min",
+  };
+  const isLiveSession = summary.sessionIsActive === true;
+  const isPaceActive = summary.sessionPaceActive === true;
+  const visualState = getSessionTrackerVisualState(summary, null);
+  const paceStatus = isPaceActive
+    ? summary.sessionWordsPerMinuteOverTarget
+      ? "You’re outperforming"
+      : summary.sessionWordsPerMinuteStatusText === "On track"
+        ? "You’re on pace"
+        : summary.sessionWordsPerMinuteStatusText === "Ahead of pace"
+          ? "You’re outperforming"
+          : "Need more pace"
+    : "Idle";
+  const progressWidth = Math.max(0, Math.min(100, Math.round((Number(summary.currentSessionWords ?? 0) / Math.max(1, Number(summary.sessionTargetWordsPerSession ?? 0))) * 100)));
+  const paceColor = isPaceActive
+    ? summary.sessionWordsPerMinuteBarColor ?? "rgb(113, 215, 177)"
+    : "rgba(31, 36, 48, 0.26)";
+  const bar = panel.querySelector("[data-session-tracker-bar]");
+  const gauge = panel.querySelector("[data-session-tracker-gauge]");
+  const gaugeIcon = panel.querySelector("[data-session-tracker-gauge-icon]");
+  const clock = panel.querySelector("[data-session-tracker-clock]");
+  const wpm = panel.querySelector("[data-session-tracker-wpm]");
+  const paceNote = panel.querySelector("[data-session-tracker-pace-note]");
+  const startTime = panel.querySelector("[data-session-tracker-start-time]");
+  const lapsedLabel = panel.querySelector("[data-session-tracker-lapsed-label]");
+  const lapsedValue = panel.querySelector("[data-session-tracker-lapsed-value]");
+  const wordsWritten = panel.querySelector("[data-session-tracker-words-written]");
+  const wordsTarget = panel.querySelector("[data-session-tracker-words-target]");
+  const progressFill = panel.querySelector("[data-session-tracker-progress-fill]");
+
+  if (bar instanceof HTMLElement) {
+    bar.style.setProperty("--writing-target-bar-color", paceColor);
+    bar.classList.toggle("is-over-target", visualState.key === "flaming");
+  }
+
+  if (gauge instanceof HTMLElement) {
+    gauge.classList.toggle("is-over-target", visualState.key === "flaming");
+  }
+
+  if (gaugeIcon instanceof HTMLElement) {
+    gaugeIcon.innerHTML = renderSessionTrackerPenGlyph(visualState.key);
+  }
+
+  if (clock instanceof HTMLElement) {
+    clock.textContent = tracker.clockLabel;
+  }
+
+  if (wpm instanceof HTMLElement) {
+    wpm.textContent = tracker.wpmLabel;
+  }
+
+  if (paceNote instanceof HTMLElement) {
+    paceNote.textContent = paceStatus;
+  }
+
+  if (startTime instanceof HTMLElement) {
+    startTime.textContent = tracker.sessionStartTimeLabel;
+  }
+
+  if (lapsedLabel instanceof HTMLElement) {
+    lapsedLabel.textContent = isLiveSession ? "Lapsed:" : "Idle:";
+  }
+
+  if (lapsedValue instanceof HTMLElement) {
+    lapsedValue.textContent = isLiveSession
+      ? tracker.sessionMinutesLapsedLabel
+      : tracker.sessionIdleLabel;
+  }
+
+  if (wordsWritten instanceof HTMLElement) {
+    wordsWritten.textContent = tracker.wordsWrittenLabel;
+  }
+
+  if (wordsTarget instanceof HTMLElement) {
+    wordsTarget.textContent = tracker.wordsTargetLabel;
+  }
+
+  if (progressFill instanceof HTMLElement) {
+    progressFill.style.width = `${progressWidth}%`;
+  }
 }
 
 function startWritingTargetWindowRefreshTimer() {
@@ -1897,8 +2662,10 @@ function startSessionTrackerRefreshTimer() {
   stopSessionTrackerRefreshTimer();
 
   sessionTrackerRefreshTimer = window.setInterval(() => {
+    refreshWritingTargetSessionLifecycle();
     syncSessionTrackerLiveState();
   }, 15000);
+  refreshWritingTargetSessionLifecycle();
   syncSessionTrackerLiveState();
 }
 
@@ -2017,6 +2784,7 @@ function toggleWritingTargetMetric(metricKey, enabled) {
 
   const nextRecord = {
     ...cloneValue(record),
+    visibleMetricsVersion: WRITING_TARGET_VISIBLE_METRICS_SCHEMA_VERSION,
     visibleMetrics: [...nextMetrics].filter((key) => WRITING_TARGET_METRIC_KEYS.includes(key)),
   };
 
@@ -2031,6 +2799,7 @@ function toggleWritingTargetMetric(metricKey, enabled) {
 
   state.writingTargetDraft = {
     ...cloneValue(draft),
+    visibleMetricsVersion: nextRecord.visibleMetricsVersion,
     visibleMetrics: [...nextRecord.visibleMetrics],
   };
   state.writingTargetDraftProjectId = state.workspace?.project?.id ?? null;
@@ -2122,7 +2891,7 @@ function clearWritingTargetDraft() {
   state.writingTargetDraftBaseline = null;
 }
 
-function commitWritingTargetDraft() {
+function commitWritingTargetDraft(options = {}) {
   const record = getWritingTargetWorkingRecord();
   if (!record) {
     return null;
@@ -2131,7 +2900,7 @@ function commitWritingTargetDraft() {
   const persisted = persistWritingTargetState(record);
   state.writingTargetState = persisted;
   clearWritingTargetDraft();
-  persistCurrentProjectRecord();
+  persistCurrentProjectRecord({ skipProjectFileAutosave: options.skipProjectFileAutosave === true });
   return persisted;
 }
 
@@ -2203,7 +2972,6 @@ function recordWritingTargetSnapshot(options = {}) {
     const dateKey = getLocalDateKey(now);
     const nextRecord = cloneValue(record);
     const history = Array.isArray(nextRecord.history) ? [...nextRecord.history] : [];
-    const sessionSamples = normalizeWritingTargetSessionSamples(nextRecord.sessionSamples ?? []);
     const previousDailyBaselineDateKey = typeof nextRecord.dailyBaselineDateKey === "string"
       ? nextRecord.dailyBaselineDateKey.trim()
       : "";
@@ -2217,6 +2985,14 @@ function recordWritingTargetSnapshot(options = {}) {
       previousEntry,
       context,
     });
+    const markSessionActivity = options.markSessionActivity === true;
+    const nextSessionRecord = markSessionActivity
+      ? (record.sessionIsActive === true
+        ? cloneValue(record)
+        : resumeWritingSession(record, currentWordCount, now, {
+            reason: normalizeWritingTargetSessionActivityReason(options.reason),
+          }))
+      : null;
 
     if (currentEntry) {
       history[history.findIndex((entry) => entry.date === dateKey)] = nextHistoryEntry;
@@ -2231,14 +3007,25 @@ function recordWritingTargetSnapshot(options = {}) {
     } else if (!Number.isFinite(Number(nextRecord.dailyBaselineWordCount))) {
       nextRecord.dailyBaselineWordCount = getWritingTargetDailyBaselineWordCount(nextRecord, currentWordCount, now);
     }
-    nextRecord.sessionSamples = [
-      ...sessionSamples,
-      createWritingTargetSessionSample(currentWordCount, now),
-    ].slice(-WRITING_TARGET_MAX_SESSION_SAMPLES);
-    nextRecord.sessionLastActiveAt = now.toISOString();
+    if (nextSessionRecord) {
+      nextRecord.sessionIsActive = true;
+      nextRecord.sessionStartedAt = nextSessionRecord.sessionStartedAt;
+      nextRecord.sessionBaselineWordCount = nextSessionRecord.sessionBaselineWordCount;
+      nextRecord.sessionLastWordCount = currentWordCount;
+      nextRecord.sessionConcludedAt = "";
+      nextRecord.sessionConcludedReason = "";
+      nextRecord.sessionSamples = normalizeWritingTargetSessionSamples(nextSessionRecord.sessionSamples ?? []);
+      if (record.sessionIsActive === true) {
+        nextRecord.sessionSamples = [
+          ...nextRecord.sessionSamples,
+          createWritingTargetSessionSample(currentWordCount, now),
+        ].slice(-WRITING_TARGET_MAX_SESSION_SAMPLES);
+      }
+      nextRecord.sessionLastActiveAt = now.toISOString();
+    }
     nextRecord.updatedAt = now.toISOString();
     state.writingTargetState = persistWritingTargetState(nextRecord);
-    persistCurrentProjectRecord();
+    persistCurrentProjectRecord({ skipProjectFileAutosave: options.skipProjectFileAutosave === true });
     if (
       state.writingTargetDraft &&
       state.writingTargetDraftProjectId === projectId
@@ -2250,6 +3037,13 @@ function recordWritingTargetSnapshot(options = {}) {
         dailyBaselineWordCount: nextRecord.dailyBaselineWordCount,
         sessionSamples: cloneValue(nextRecord.sessionSamples),
         sessionLastActiveAt: nextRecord.sessionLastActiveAt,
+        sessionIsActive: nextRecord.sessionIsActive,
+        sessionStartedAt: nextRecord.sessionStartedAt,
+        sessionBaselineWordCount: nextRecord.sessionBaselineWordCount,
+        sessionConcludedAt: nextRecord.sessionConcludedAt,
+        sessionConcludedReason: nextRecord.sessionConcludedReason,
+        sessionLastWordCount: nextRecord.sessionLastWordCount,
+        sessionHistory: cloneValue(nextRecord.sessionHistory),
         updatedAt: nextRecord.updatedAt,
       };
     }
@@ -2268,8 +3062,8 @@ function recordWritingTargetSnapshot(options = {}) {
   writingTargetSnapshotTimer = window.setTimeout(capture, 750);
 }
 
-function queueWritingTargetSnapshot() {
-  recordWritingTargetSnapshot();
+function queueWritingTargetSnapshot(options = {}) {
+  recordWritingTargetSnapshot(options);
 }
 
 function clearWritingTargetSnapshotTimer() {
@@ -2341,18 +3135,26 @@ function buildWritingTargetSummaryForRecord(record) {
   const sessionProgress = sessionTargetWordsPerSession > 0
     ? Math.max(0, Math.min(1, currentSessionWords / sessionTargetWordsPerSession))
     : 0;
-  const sessionStartedAt = typeof syncedRecord.sessionStartedAt === "string" && syncedRecord.sessionStartedAt.trim()
-    ? new Date(syncedRecord.sessionStartedAt)
+  const sessionLifecycle = getWritingTargetSessionLifecycle(syncedRecord, now);
+  const sessionIsLive = sessionLifecycle.sessionDisplayActive === true;
+  const sessionLifecycleSummaryText = buildWritingTargetSessionLifecycleSummaryText(sessionLifecycle);
+  const sessionInactiveMinutes = sessionLifecycle.sessionLastActiveAt && !Number.isNaN(sessionLifecycle.sessionLastActiveAt.getTime())
+    ? Math.max(0, (now.getTime() - sessionLifecycle.sessionLastActiveAt.getTime()) / 60000)
+    : Number.POSITIVE_INFINITY;
+  const sessionPaceActive = sessionIsLive && sessionInactiveMinutes < WRITING_TARGET_SESSION_PACE_STALE_MINUTES;
+  const recentSessionWordsPerMinute = sessionPaceActive
+    ? estimateRecentSessionWordsPerMinute(syncedRecord, now)
     : null;
-  const recentSessionWordsPerMinute = estimateRecentSessionWordsPerMinute(syncedRecord, now);
-  const sessionElapsedMinutes = sessionStartedAt && !Number.isNaN(sessionStartedAt.getTime())
-    ? Math.max(1 / 60, (now.getTime() - sessionStartedAt.getTime()) / 60000)
-    : null;
-  const sessionWordsPerMinute = recentSessionWordsPerMinute != null
-    ? recentSessionWordsPerMinute
-    : sessionElapsedMinutes != null
-      ? sessionWords / sessionElapsedMinutes
-      : 0;
+  const sessionElapsedMinutes = sessionPaceActive
+    ? Math.max(1 / 60, sessionLifecycle.activeMinutes)
+    : 0;
+  const sessionWordsPerMinute = sessionPaceActive
+    ? (recentSessionWordsPerMinute != null
+      ? recentSessionWordsPerMinute
+      : sessionElapsedMinutes > 0
+        ? sessionWords / sessionElapsedMinutes
+        : 0)
+    : 0;
   const sessionWordsPerHour = sessionWordsPerMinute * 60;
   const sessionRequiredWordsPerMinute = sessionTimeoutMinutes > 0
     ? sessionTargetWordsPerSession / sessionTimeoutMinutes
@@ -2360,9 +3162,11 @@ function buildWritingTargetSummaryForRecord(record) {
   const sessionWordsPerMinuteRatio = sessionRequiredWordsPerMinute > 0
     ? sessionWordsPerMinute / sessionRequiredWordsPerMinute
     : 0;
-  const sessionWordsPerMinuteOverTarget = sessionRequiredWordsPerMinute > 0
+  const sessionWordsPerMinuteOverTarget = sessionPaceActive && sessionRequiredWordsPerMinute > 0
     && sessionWordsPerMinute > sessionRequiredWordsPerMinute;
-  const sessionWordsPerMinuteBarColor = buildSessionPaceColor(sessionWordsPerMinuteRatio);
+  const sessionWordsPerMinuteBarColor = sessionPaceActive
+    ? buildSessionPaceColor(sessionWordsPerMinuteRatio)
+    : "rgba(31, 36, 48, 0.26)";
   const sessionTargetWordsRemaining = Math.max(0, sessionTargetWordsPerSession - currentSessionWords);
   const sessionProjectedMilestoneMinutes = sessionWordsPerMinute > 0
     ? sessionTargetWordsRemaining / sessionWordsPerMinute
@@ -2370,52 +3174,56 @@ function buildWritingTargetSummaryForRecord(record) {
   const sessionProjectedMilestoneLabel =
     sessionTargetWordsRemaining <= 0
       ? "Milestone reached"
-      : sessionProjectedMilestoneMinutes != null
+      : sessionPaceActive && sessionProjectedMilestoneMinutes != null
         ? `${formatDurationMinutes(sessionProjectedMilestoneMinutes)} to milestone`
-        : "Need more pace";
+        : "Idle";
   const sessionMilestoneStatusText =
     sessionTargetWordsRemaining <= 0
       ? "Milestone reached"
-      : sessionProjectedMilestoneMinutes != null && sessionProjectedMilestoneMinutes <= sessionTimeoutMinutes
+      : sessionPaceActive && sessionProjectedMilestoneMinutes != null && sessionProjectedMilestoneMinutes <= sessionTimeoutMinutes
         ? "On track"
-        : sessionProjectedMilestoneMinutes != null
+      : sessionPaceActive && sessionProjectedMilestoneMinutes != null
           ? "Off track"
-          : "Need more pace";
+          : "Idle";
   const sessionWordsPerMinuteLabel = `${formatDisplayNumber(Math.round(sessionWordsPerMinute))}/min`;
   const sessionRequiredWordsPerMinuteLabel = `${formatDisplayNumber(Math.round(sessionRequiredWordsPerMinute))}/min`;
   const sessionWordsPerMinuteSummaryText = sessionTargetWordsRemaining <= 0
     ? "Milestone reached"
-    : `${sessionWordsPerMinuteLabel} now · ${sessionRequiredWordsPerMinuteLabel} needed`;
-  const sessionWordsPerMinuteStatusText = sessionWordsPerMinuteOverTarget
-    ? "Ahead of pace"
-    : sessionWordsPerMinuteRatio >= 0.95
-      ? "On track"
-      : "Off track";
-  const sessionPaceSummaryText = `${formatDisplayNumber(Math.round(sessionWordsPerHour))}/h · ${sessionProjectedMilestoneLabel}`;
-  const sessionPaceRatio = Math.max(0, sessionWordsPerMinuteRatio);
+    : sessionPaceActive
+      ? `${sessionWordsPerMinuteLabel} now · ${sessionRequiredWordsPerMinuteLabel} needed`
+      : "Idle";
+  const sessionWordsPerMinuteStatusText = sessionPaceActive
+    ? sessionWordsPerMinuteOverTarget
+      ? "Ahead of pace"
+      : sessionWordsPerMinuteRatio >= 0.95
+        ? "On track"
+        : "Off track"
+    : "Idle";
+  const sessionPaceSummaryText = sessionPaceActive
+    ? `${formatDisplayNumber(Math.round(sessionWordsPerHour))}/h · ${sessionProjectedMilestoneLabel}`
+    : "Idle";
+  const sessionPaceRatio = sessionPaceActive ? Math.max(0, sessionWordsPerMinuteRatio) : 0;
   const sessionPacePercentLabel = `${formatDisplayNumber(Math.round(sessionPaceRatio * 100))}%`;
   const sessionCurrentTimeLabel = formatClockTimeLabel(now);
-  const sessionStartTimeLabel = formatClockTimeLabel(sessionStartedAt ?? now);
-  const sessionMinutesLapsed = sessionStartedAt && !Number.isNaN(sessionStartedAt.getTime())
-    ? Math.max(0, Math.floor((now.getTime() - sessionStartedAt.getTime()) / 60000))
+  const sessionStartTimeLabel = formatClockTimeLabel(sessionLifecycle.sessionStartedAt ?? now);
+  const sessionMinutesLapsed = sessionIsLive
+    ? Math.max(0, Math.floor(sessionLifecycle.activeMinutes))
     : 0;
   const sessionMinutesLapsedLabel = formatDisplayNumber(sessionMinutesLapsed);
-  const sessionElapsedLabel = sessionStartedAt && !Number.isNaN(sessionStartedAt.getTime())
-    ? formatSessionElapsedLabel((now.getTime() - sessionStartedAt.getTime()) / 60000, sessionTimeoutMinutes)
-    : formatSessionElapsedLabel(0, sessionTimeoutMinutes);
-  const sessionLastActiveAt = typeof syncedRecord.sessionLastActiveAt === "string" && syncedRecord.sessionLastActiveAt.trim()
-    ? new Date(syncedRecord.sessionLastActiveAt)
-    : null;
-  const sessionLastActiveMinutes = sessionLastActiveAt && !Number.isNaN(sessionLastActiveAt.getTime())
-    ? Math.max(0, Math.floor((now.getTime() - sessionLastActiveAt.getTime()) / 60000))
-    : null;
-  const sessionIsConcluded =
-    sessionLastActiveMinutes != null && sessionLastActiveMinutes >= sessionTimeoutMinutes;
-  const sessionStatusText = sessionLastActiveMinutes == null
-    ? "Session baseline set"
-    : sessionIsConcluded
-      ? `Concluded · idle ${formatMinuteCount(sessionLastActiveMinutes)}`
-      : `Active · idle ${formatMinuteCount(sessionLastActiveMinutes)}`;
+  const sessionElapsedLabel = sessionIsLive
+    ? formatSessionElapsedLabel(sessionLifecycle.activeMinutes, sessionTimeoutMinutes)
+    : "Idle";
+  const sessionLastActiveMinutes = sessionLifecycle.idleMinutes;
+  const sessionStatusText = sessionIsLive
+    ? sessionLastActiveMinutes == null
+      ? "Session baseline set"
+      : `Active · idle ${formatMinuteCount(sessionLastActiveMinutes)}`
+    : "Idle";
+  const sessionIdleLabel = sessionIsLive
+    ? sessionLastActiveMinutes != null
+      ? `${formatMinuteCount(sessionLastActiveMinutes)} idle`
+      : "Active"
+    : `${formatMinuteCount(sessionLastActiveMinutes ?? 0)} idle`;
   const effectiveWordsPerDay = Math.max(0, pace.wordsPerDay || 0);
   const projectedDaysToTarget = effectiveWordsPerDay > 0 ? remainingWords / effectiveWordsPerDay : null;
   const projectedCompletionDate = projectedDaysToTarget != null ? addDays(now, projectedDaysToTarget) : null;
@@ -2434,8 +3242,10 @@ function buildWritingTargetSummaryForRecord(record) {
         ? "On track"
         : `Off track by ${formatDayCount(projectedReleaseGap)}`
     : `Track ${lookbackDays} days`;
-  const visibleMetrics = (Array.isArray(syncedRecord.visibleMetrics) ? syncedRecord.visibleMetrics : WRITING_TARGET_METRIC_KEYS)
-    .filter((metricKey) => WRITING_TARGET_METRIC_KEYS.includes(metricKey))
+  const visibleMetrics = normalizeWritingTargetVisibleMetrics(
+    syncedRecord.visibleMetrics,
+    syncedRecord.visibleMetricsVersion,
+  )
     .map((metricKey) => buildWritingTargetMetric(metricKey, {
       record: syncedRecord,
       currentWordCount,
@@ -2533,12 +3343,23 @@ function buildWritingTargetSummaryForRecord(record) {
     streakCurrentDays: streakSummary.current,
     streakBestDays: streakSummary.best,
     streakLabel: streakSummary.current > 0 ? `${formatDisplayNumber(streakSummary.current)} days` : "No streak yet",
-    sessionAgeLabel: formatSessionAge(syncedRecord.sessionStartedAt, now),
+    sessionAgeLabel: sessionIsLive
+      ? formatSessionAge(syncedRecord.sessionStartedAt, now)
+      : "Idle",
+    sessionPaceActive,
     sessionCurrentTimeLabel,
     sessionStartTimeLabel,
     sessionMinutesLapsed,
     sessionMinutesLapsedLabel,
     sessionElapsedLabel,
+    sessionIsActive: sessionIsLive,
+    sessionLifecyclePhase: sessionLifecycle.sessionLifecyclePhase,
+    sessionLifecycleSummaryText,
+    sessionIdleGraceMinutes: sessionLifecycle.sessionIdleGraceMinutes,
+    sessionSegmentCloseMinutes: sessionLifecycle.sessionSegmentCloseMinutes,
+    sessionNewSessionMinutes: sessionLifecycle.sessionNewSessionMinutes,
+    sessionIdleLabel,
+    sessionConcludedAt: sessionLifecycle.sessionConcludedAt?.toISOString?.() ?? "",
     visibleMetrics,
     projectedDaysToTarget,
     projectedCompletionDate,
@@ -2588,8 +3409,10 @@ function buildWritingTargetMetric(metricKey, context) {
     WRITING_TARGET_MAX_HISTORY_DAYS,
   );
 
+  // Stable keys are required so the live header patcher updates the right card.
   if (metricKey === "wordTarget") {
     return {
+      key: metricKey,
       label: "Word Target",
       value: formatDisplayNumber(currentWordCount),
       leftLabel: formatDisplayNumber(currentWordCount),
@@ -2603,6 +3426,7 @@ function buildWritingTargetMetric(metricKey, context) {
 
   if (metricKey === "sessionTarget") {
     return {
+      key: metricKey,
       label: cadenceMeta?.label ?? "Daily target",
       value: formatDisplayNumber(dailyWords),
       leftLabel: formatDisplayNumber(dailyWords),
@@ -2614,6 +3438,7 @@ function buildWritingTargetMetric(metricKey, context) {
 
   if (metricKey === "sessionTracker") {
     return {
+      key: metricKey,
       label: "Session tracker",
       value: `Session ${currentSessionIndex} of ${sessionsPerDay}`,
       leftLabel: formatDisplayNumber(currentSessionWords),
@@ -2625,6 +3450,7 @@ function buildWritingTargetMetric(metricKey, context) {
 
   if (releaseDate) {
     return {
+      key: metricKey,
       label: "Days to release",
       value: projectedDaysToTarget != null ? formatDayCount(projectedDaysToTarget) : "—",
       leftLabel: formatGoalDateLabel(releaseDate),
@@ -2649,6 +3475,7 @@ function buildWritingTargetMetric(metricKey, context) {
     : `Track ${lookbackDays} days`;
 
   return {
+    key: metricKey,
     label: "Days to release",
     value: projectedDaysToTarget != null ? formatDayCount(projectedDaysToTarget) : "—",
     leftLabel: averageLabel,
@@ -3259,6 +4086,22 @@ function normalizeWritingTargetGoalSyncSource(value) {
   return WRITING_TARGET_GOAL_SYNC_SOURCES.includes(candidate) ? candidate : "";
 }
 
+function normalizeWritingTargetVisibleMetrics(candidateVisibleMetrics, visibleMetricsVersion = 0) {
+  const selectedMetrics = new Set(
+    Array.isArray(candidateVisibleMetrics)
+      ? candidateVisibleMetrics.filter((metricKey) => WRITING_TARGET_METRIC_KEYS.includes(metricKey))
+      : WRITING_TARGET_METRIC_KEYS,
+  );
+
+  // Older records predate the session tracker toggle, so keep that card visible during migration.
+  if (Number(visibleMetricsVersion) < WRITING_TARGET_VISIBLE_METRICS_SCHEMA_VERSION) {
+    selectedMetrics.add("sessionTracker");
+  }
+
+  const orderedMetrics = WRITING_TARGET_METRIC_KEYS.filter((metricKey) => selectedMetrics.has(metricKey));
+  return orderedMetrics.length ? orderedMetrics : [...WRITING_TARGET_METRIC_KEYS];
+}
+
 function getWritingTargetCadenceMeta(cadence) {
   return WRITING_TARGET_CADENCE_OPTIONS.find((option) => option.value === normalizeWritingTargetCadence(cadence))
     ?? WRITING_TARGET_CADENCE_OPTIONS[0];
@@ -3349,10 +4192,29 @@ function syncWritingTargetGoalFields(record, currentWordCount, now = new Date())
   nextRecord.sessionTimeoutMinutes = sessionTimeoutMinutes;
   nextRecord.targetCadence = targetCadence;
   nextRecord.goalSyncSource = goalSyncSource;
+  nextRecord.sessionIsActive = nextRecord.sessionIsActive === true;
+  nextRecord.sessionStartedAt =
+    typeof nextRecord.sessionStartedAt === "string" && nextRecord.sessionStartedAt.trim()
+      ? nextRecord.sessionStartedAt
+      : now.toISOString();
   nextRecord.sessionLastActiveAt =
     typeof nextRecord.sessionLastActiveAt === "string" && nextRecord.sessionLastActiveAt.trim()
       ? nextRecord.sessionLastActiveAt
       : now.toISOString();
+  nextRecord.sessionConcludedAt = nextRecord.sessionIsActive
+    ? ""
+    : typeof nextRecord.sessionConcludedAt === "string" && nextRecord.sessionConcludedAt.trim()
+      ? nextRecord.sessionConcludedAt
+      : "";
+  nextRecord.sessionConcludedReason = nextRecord.sessionIsActive
+    ? ""
+    : typeof nextRecord.sessionConcludedReason === "string" && nextRecord.sessionConcludedReason.trim()
+      ? nextRecord.sessionConcludedReason
+      : "idle";
+  nextRecord.sessionLastWordCount =
+    Number.isFinite(Number(nextRecord.sessionLastWordCount)) && Number(nextRecord.sessionLastWordCount) >= 0
+      ? Math.max(0, Math.round(Number(nextRecord.sessionLastWordCount)))
+      : Math.max(0, Math.round(Number(currentWordCount) || 0));
 
   if (goalSyncSource === "releaseDate") {
     nextRecord.releaseDate = releaseDate ? getLocalDateKey(releaseDate) : "";
@@ -3402,13 +4264,18 @@ function seedWritingTargetTestData() {
     dailyBaselineDateKey: todayKey,
     dailyBaselineWordCount: Math.max(0, Math.round(Number(previousEntry?.wordCount ?? 0))),
     sessionBaselineWordCount: Math.max(0, currentWordCount - Math.max(250, todaysGain)),
+    sessionIsActive: true,
     sessionStartedAt: addHours(now, -6).toISOString(),
     sessionLastActiveAt: now.toISOString(),
+    sessionConcludedAt: "",
+    sessionConcludedReason: "",
+    sessionLastWordCount: currentWordCount,
     sessionSamples: [
       createWritingTargetSessionSample(recentSessionStartCount, recentSessionStart),
       createWritingTargetSessionSample(recentSessionMidCount, recentSessionMidpoint),
       createWritingTargetSessionSample(currentWordCount, now),
     ],
+    sessionHistory: Array.isArray(record.sessionHistory) ? cloneValue(record.sessionHistory) : [],
     updatedAt: now.toISOString(),
   };
 
@@ -3681,13 +4548,13 @@ function normalizeWritingTargetRecord(candidate, currentWordCount, now = new Dat
     2,
     WRITING_TARGET_MAX_HISTORY_DAYS,
   );
-  const visibleMetrics = Array.isArray(candidate.visibleMetrics)
-    ? candidate.visibleMetrics.filter((metricKey) => WRITING_TARGET_METRIC_KEYS.includes(metricKey))
-    : [...defaults.visibleMetrics];
+  const visibleMetricsVersion = Math.max(0, Math.round(Number(candidate.visibleMetricsVersion) || 0));
+  const visibleMetrics = normalizeWritingTargetVisibleMetrics(candidate.visibleMetrics, visibleMetricsVersion);
   const sessionBaselineWordCount =
     Number.isFinite(Number(candidate.sessionBaselineWordCount)) && Number(candidate.sessionBaselineWordCount) >= 0
       ? Math.max(0, Math.round(Number(candidate.sessionBaselineWordCount)))
       : currentWordCount;
+  const sessionIsActive = candidate.sessionIsActive === true;
   const dailyBaselineDateKey =
     typeof candidate.dailyBaselineDateKey === "string" && candidate.dailyBaselineDateKey.trim()
       ? getLocalDateKey(new Date(`${candidate.dailyBaselineDateKey}T12:00:00`))
@@ -3700,11 +4567,24 @@ function normalizeWritingTargetRecord(candidate, currentWordCount, now = new Dat
     typeof candidate.sessionStartedAt === "string" && candidate.sessionStartedAt.trim()
       ? candidate.sessionStartedAt
       : defaults.sessionStartedAt;
+  const sessionLastActiveAt =
+    typeof candidate.sessionLastActiveAt === "string" && candidate.sessionLastActiveAt.trim()
+      ? candidate.sessionLastActiveAt
+      : defaults.sessionLastActiveAt;
+  const sessionConcludedAt =
+    typeof candidate.sessionConcludedAt === "string" && candidate.sessionConcludedAt.trim()
+      ? candidate.sessionConcludedAt
+      : defaults.sessionConcludedAt;
   const releaseDate = normalizeDateInput(candidate.releaseDate);
   const goalSyncSource = normalizeWritingTargetGoalSyncSource(candidate.goalSyncSource)
     || (releaseDate ? "releaseDate" : sessionTargetWords !== DEFAULT_SESSION_TARGET_WORDS ? "sessionTargetWords" : "releaseDate");
   const history = trimWritingTargetHistory(candidate.history ?? defaults.history, lookbackDays);
   const sessionSamples = normalizeWritingTargetSessionSamples(candidate.sessionSamples ?? defaults.sessionSamples);
+  const sessionHistory = normalizeWritingTargetSessionHistory(candidate.sessionHistory ?? defaults.sessionHistory);
+  const sessionLastWordCount =
+    Number.isFinite(Number(candidate.sessionLastWordCount)) && Number(candidate.sessionLastWordCount) >= 0
+      ? Math.max(0, Math.round(Number(candidate.sessionLastWordCount)))
+      : sessionBaselineWordCount;
 
   return syncWritingTargetGoalFields({
     targetWords,
@@ -3715,16 +4595,24 @@ function normalizeWritingTargetRecord(candidate, currentWordCount, now = new Dat
     targetCadence,
     goalSyncSource,
     lookbackDays,
+    visibleMetricsVersion: Math.max(WRITING_TARGET_VISIBLE_METRICS_SCHEMA_VERSION, visibleMetricsVersion),
     visibleMetrics: visibleMetrics.length ? visibleMetrics : [...defaults.visibleMetrics],
     sessionBaselineWordCount,
+    sessionLastWordCount,
     dailyBaselineDateKey,
     dailyBaselineWordCount,
+    sessionIsActive,
     sessionStartedAt,
-    sessionLastActiveAt:
-      typeof candidate.sessionLastActiveAt === "string" && candidate.sessionLastActiveAt.trim()
-        ? candidate.sessionLastActiveAt
-        : defaults.sessionLastActiveAt,
+    sessionLastActiveAt,
+    sessionConcludedAt,
+    sessionConcludedReason:
+      typeof candidate.sessionConcludedReason === "string" && candidate.sessionConcludedReason.trim()
+        ? candidate.sessionConcludedReason
+        : sessionIsActive
+          ? ""
+          : "idle",
     sessionSamples: sessionSamples.length ? sessionSamples : defaults.sessionSamples,
+    sessionHistory: sessionHistory.length ? sessionHistory : defaults.sessionHistory,
     history: history.length ? history : defaults.history,
     updatedAt:
       typeof candidate.updatedAt === "string" && candidate.updatedAt.trim()
@@ -3797,6 +4685,320 @@ function normalizeWritingTargetSessionSamples(samples) {
   return normalized.slice(-WRITING_TARGET_MAX_SESSION_SAMPLES);
 }
 
+function normalizeWritingTargetSessionActivityReason(value) {
+  const candidate = typeof value === "string" ? value.trim() : "";
+  return candidate || "activity";
+}
+
+function normalizeWritingTargetSessionHistory(entries) {
+  const normalized = Array.isArray(entries)
+    ? entries
+        .filter((entry) => entry && typeof entry === "object")
+        .map((entry) => {
+          const startedAt = typeof entry.startedAt === "string" && entry.startedAt.trim()
+            ? new Date(entry.startedAt)
+            : null;
+          const endedAt = typeof entry.endedAt === "string" && entry.endedAt.trim()
+            ? new Date(entry.endedAt)
+            : null;
+          return {
+            startedAt: startedAt && !Number.isNaN(startedAt.getTime()) ? startedAt.toISOString() : new Date().toISOString(),
+            endedAt: endedAt && !Number.isNaN(endedAt.getTime()) ? endedAt.toISOString() : new Date().toISOString(),
+            endedReason: normalizeWritingTargetSessionActivityReason(entry.endedReason),
+            wordCountStart: Math.max(0, Math.round(Number(entry.wordCountStart) || 0)),
+            wordCountEnd: Math.max(0, Math.round(Number(entry.wordCountEnd) || 0)),
+            wordGain: Math.max(0, Math.round(Number(entry.wordGain) || 0)),
+            activeMinutes: Math.max(0, Math.round(Number(entry.activeMinutes) || 0)),
+            idleMinutes: Math.max(0, Math.round(Number(entry.idleMinutes) || 0)),
+            sessionTargetWordsPerSession: Math.max(0, Math.round(Number(entry.sessionTargetWordsPerSession) || 0)),
+            goalReached: entry.goalReached === true,
+          };
+        })
+    : [];
+
+  normalized.sort((a, b) => a.endedAt.localeCompare(b.endedAt));
+  return normalized.slice(-WRITING_TARGET_SESSION_HISTORY_MAX);
+}
+
+function addMinutes(date, minutes) {
+  const next = new Date(date.getTime());
+  next.setMinutes(next.getMinutes() + Math.round(Number(minutes) || 0));
+  return next;
+}
+
+function getWritingTargetSessionThresholds(sessionTimeoutMinutes) {
+  const idleGraceMinutes = clampPositiveNumber(
+    sessionTimeoutMinutes,
+    DEFAULT_SESSION_TIMEOUT_MINUTES,
+    WRITING_TARGET_MIN_SESSION_TIMEOUT_MINUTES,
+    WRITING_TARGET_MAX_SESSION_TIMEOUT_MINUTES,
+  );
+
+  return {
+    idleGraceMinutes,
+    segmentCloseMinutes: idleGraceMinutes + WRITING_TARGET_SESSION_SEGMENT_CLOSE_BUFFER_MINUTES,
+    newSessionMinutes: idleGraceMinutes + WRITING_TARGET_SESSION_NEW_SESSION_BUFFER_MINUTES,
+  };
+}
+
+function getWritingTargetSessionPhase(idleMinutes, thresholds, sessionIsActive) {
+  if (sessionIsActive && idleMinutes < thresholds.idleGraceMinutes) {
+    return "writing";
+  }
+
+  if (idleMinutes < thresholds.segmentCloseMinutes) {
+    return "idle";
+  }
+
+  if (idleMinutes < thresholds.newSessionMinutes) {
+    return "segment-closed";
+  }
+
+  return "new-session";
+}
+
+function getWritingTargetSessionPhaseLabel(phase) {
+  if (phase === "writing") {
+    return "Writing";
+  }
+
+  if (phase === "segment-closed") {
+    return "Segment closed";
+  }
+
+  if (phase === "new-session") {
+    return "New session";
+  }
+
+  return "Idle";
+}
+
+function buildWritingTargetSessionLifecycleSummaryText(sessionLifecycle) {
+  if (!sessionLifecycle) {
+    return "Idle";
+  }
+
+  const phaseLabel = getWritingTargetSessionPhaseLabel(sessionLifecycle.sessionLifecyclePhase);
+  return phaseLabel;
+}
+
+function getWritingTargetSessionLifecycle(record, now = new Date()) {
+  const sessionStartedAt = typeof record?.sessionStartedAt === "string" && record.sessionStartedAt.trim()
+    ? new Date(record.sessionStartedAt)
+    : null;
+  const sessionLastActiveAt = typeof record?.sessionLastActiveAt === "string" && record.sessionLastActiveAt.trim()
+    ? new Date(record.sessionLastActiveAt)
+    : null;
+  const sessionConcludedAt = typeof record?.sessionConcludedAt === "string" && record.sessionConcludedAt.trim()
+    ? new Date(record.sessionConcludedAt)
+    : null;
+  const sessionIsActive = record?.sessionIsActive === true;
+  const sessionTimeoutMinutes = clampPositiveNumber(
+    record?.sessionTimeoutMinutes,
+    DEFAULT_SESSION_TIMEOUT_MINUTES,
+    WRITING_TARGET_MIN_SESSION_TIMEOUT_MINUTES,
+    WRITING_TARGET_MAX_SESSION_TIMEOUT_MINUTES,
+  );
+  const thresholds = getWritingTargetSessionThresholds(sessionTimeoutMinutes);
+  const idleMinutes = sessionLastActiveAt && !Number.isNaN(sessionLastActiveAt.getTime())
+    ? Math.max(0, Math.floor((now.getTime() - sessionLastActiveAt.getTime()) / 60000))
+    : 0;
+  const timedOut = sessionIsActive && idleMinutes >= sessionTimeoutMinutes;
+  const effectiveConcludedAt = sessionConcludedAt && !Number.isNaN(sessionConcludedAt.getTime())
+    ? sessionConcludedAt
+    : timedOut && sessionLastActiveAt && !Number.isNaN(sessionLastActiveAt.getTime())
+      ? addMinutes(sessionLastActiveAt, sessionTimeoutMinutes)
+      : null;
+  const activeAnchor = effectiveConcludedAt && !Number.isNaN(effectiveConcludedAt.getTime())
+    ? effectiveConcludedAt
+    : now;
+  const activeMinutes = sessionStartedAt && !Number.isNaN(sessionStartedAt.getTime())
+    ? Math.max(0, Math.floor((activeAnchor.getTime() - sessionStartedAt.getTime()) / 60000))
+    : 0;
+  const sessionBaselineWordCount =
+    Number.isFinite(Number(record?.sessionBaselineWordCount)) && Number(record.sessionBaselineWordCount) >= 0
+      ? Math.max(0, Math.round(Number(record.sessionBaselineWordCount)))
+      : 0;
+  const sessionLifecyclePhase = getWritingTargetSessionPhase(idleMinutes, thresholds, sessionIsActive && !timedOut);
+
+  return {
+    sessionStartedAt,
+    sessionLastActiveAt,
+    sessionConcludedAt: effectiveConcludedAt,
+    sessionTimeoutMinutes,
+    sessionIdleGraceMinutes: thresholds.idleGraceMinutes,
+    sessionSegmentCloseMinutes: thresholds.segmentCloseMinutes,
+    sessionNewSessionMinutes: thresholds.newSessionMinutes,
+    sessionLifecyclePhase,
+    sessionIsActive: sessionIsActive && !timedOut,
+    sessionDisplayActive: sessionIsActive && !timedOut && idleMinutes < thresholds.idleGraceMinutes,
+    isConcluded: !sessionIsActive || timedOut || Boolean(effectiveConcludedAt),
+    activeMinutes,
+    idleMinutes,
+    sessionBaselineWordCount,
+    sessionLastWordCount: Number.isFinite(Number(record?.sessionLastWordCount))
+      ? Math.max(0, Math.round(Number(record.sessionLastWordCount)))
+      : sessionBaselineWordCount,
+  };
+}
+
+function createWritingTargetSessionHistoryEntry(record, currentWordCount, now = new Date(), reason = "idle") {
+  const lifecycle = getWritingTargetSessionLifecycle(record, now);
+  const endedAt = lifecycle.sessionConcludedAt ?? now;
+  const sessionTargetWordsPerSession = Math.max(
+    0,
+    Math.round(
+      clampPositiveNumber(record?.sessionTargetWords, DEFAULT_SESSION_TARGET_WORDS) /
+        Math.max(1, clampPositiveNumber(record?.sessionsPerDay, DEFAULT_SESSION_TARGETS_PER_DAY, 1, WRITING_TARGET_MAX_SESSION_TARGETS_PER_DAY)),
+    ),
+  );
+  const wordCountStart = lifecycle.sessionBaselineWordCount;
+  const wordCountEnd = Math.max(0, Math.round(Number(currentWordCount) || 0));
+  const wordGain = Math.max(0, wordCountEnd - wordCountStart);
+
+  return {
+    startedAt: lifecycle.sessionStartedAt?.toISOString?.() ?? now.toISOString(),
+    endedAt: endedAt.toISOString(),
+    endedReason: normalizeWritingTargetSessionActivityReason(reason),
+    wordCountStart,
+    wordCountEnd,
+    wordGain,
+    activeMinutes: Math.max(0, Math.round(lifecycle.activeMinutes)),
+    idleMinutes: Math.max(0, Math.round(lifecycle.idleMinutes)),
+    sessionTargetWordsPerSession,
+    goalReached: wordGain >= sessionTargetWordsPerSession,
+  };
+}
+
+function resumeWritingSession(record, currentWordCount = getCurrentManuscriptWordCount(), now = new Date(), options = {}) {
+  if (!record || typeof record !== "object") {
+    return null;
+  }
+
+  const currentCount = Math.max(0, Math.round(Number(currentWordCount) || 0));
+  const startedAt = now.toISOString();
+  const nextRecord = cloneValue(record);
+  nextRecord.sessionIsActive = true;
+  nextRecord.sessionStartedAt = startedAt;
+  nextRecord.sessionLastActiveAt = startedAt;
+  nextRecord.sessionConcludedAt = "";
+  nextRecord.sessionConcludedReason = "";
+  nextRecord.sessionBaselineWordCount = currentCount;
+  nextRecord.sessionLastWordCount = currentCount;
+  nextRecord.sessionSamples = [createWritingTargetSessionSample(currentCount, now)];
+  nextRecord.updatedAt = now.toISOString();
+  if (options.reason) {
+    nextRecord.sessionResumeReason = normalizeWritingTargetSessionActivityReason(options.reason);
+  }
+  return nextRecord;
+}
+
+function touchWritingTargetSessionActivity(record, currentWordCount = getCurrentManuscriptWordCount(), now = new Date(), options = {}) {
+  if (!record || typeof record !== "object") {
+    return null;
+  }
+
+  const currentCount = Math.max(0, Math.round(Number(currentWordCount) || 0));
+  const previousCount = Number.isFinite(Number(options.previousWordCount))
+    ? Math.max(0, Math.round(Number(options.previousWordCount)))
+    : currentCount;
+  const lifecycle = getWritingTargetSessionLifecycle(record, now);
+  const wasActive = record.sessionIsActive === true
+    && !(typeof record.sessionConcludedAt === "string" && record.sessionConcludedAt.trim());
+  const resumeReason = normalizeWritingTargetSessionActivityReason(
+    options.reason ?? (
+      lifecycle.idleMinutes >= lifecycle.sessionNewSessionMinutes
+        ? "new-session"
+        : lifecycle.idleMinutes >= lifecycle.sessionSegmentCloseMinutes
+          ? "segment-reopen"
+          : "resume"
+    ),
+  );
+
+  const nextRecord = wasActive
+    ? cloneValue(record)
+    : resumeWritingSession(record, previousCount, now, {
+        reason: resumeReason,
+      });
+
+  if (!nextRecord) {
+    return null;
+  }
+
+  nextRecord.sessionIsActive = true;
+  nextRecord.sessionLastActiveAt = now.toISOString();
+  nextRecord.sessionConcludedAt = "";
+  nextRecord.sessionConcludedReason = "";
+  nextRecord.sessionBaselineWordCount = wasActive ? nextRecord.sessionBaselineWordCount : previousCount;
+  nextRecord.sessionLastWordCount = currentCount;
+  nextRecord.updatedAt = now.toISOString();
+
+  if (!wasActive) {
+    nextRecord.sessionSamples = [createWritingTargetSessionSample(previousCount, now)];
+  }
+
+  return nextRecord;
+}
+
+function concludeWritingSession(record, currentWordCount = getCurrentManuscriptWordCount(), now = new Date(), reason = "idle") {
+  if (!record || typeof record !== "object") {
+    return null;
+  }
+
+  const lifecycle = getWritingTargetSessionLifecycle(record, now);
+  if (!lifecycle.sessionIsActive && !record.sessionIsActive) {
+    return cloneValue(record);
+  }
+
+  const concludedAt = lifecycle.sessionConcludedAt ?? addMinutes(lifecycle.sessionLastActiveAt ?? now, lifecycle.sessionTimeoutMinutes);
+  const currentCount = Math.max(0, Math.round(Number(currentWordCount) || 0));
+  const nextRecord = cloneValue(record);
+  const history = normalizeWritingTargetSessionHistory(nextRecord.sessionHistory ?? []);
+  const nextHistoryEntry = createWritingTargetSessionHistoryEntry(nextRecord, currentCount, concludedAt, reason);
+
+  nextRecord.sessionIsActive = false;
+  nextRecord.sessionConcludedAt = concludedAt.toISOString();
+  nextRecord.sessionConcludedReason = normalizeWritingTargetSessionActivityReason(reason);
+  nextRecord.sessionLastActiveAt = lifecycle.sessionLastActiveAt?.toISOString?.() ?? concludedAt.toISOString();
+  nextRecord.sessionLastWordCount = currentCount;
+  nextRecord.sessionHistory = [...history, nextHistoryEntry].slice(-WRITING_TARGET_SESSION_HISTORY_MAX);
+  nextRecord.updatedAt = concludedAt.toISOString();
+  return nextRecord;
+}
+
+function refreshWritingTargetSessionLifecycle(options = {}) {
+  const record = getWritingTargetWorkingRecord();
+  if (!record) {
+    return null;
+  }
+
+  const lifecycle = getWritingTargetSessionLifecycle(record);
+  if (!record.sessionIsActive || !lifecycle.isConcluded) {
+    return record;
+  }
+
+  const concludedRecord = concludeWritingSession(record, getCurrentManuscriptWordCount(), new Date(), options.reason ?? "idle");
+  if (!concludedRecord) {
+    return record;
+  }
+
+  state.writingTargetState = persistWritingTargetState(concludedRecord);
+  if (state.writingTargetDraft && state.writingTargetDraftProjectId === state.workspace?.project?.id) {
+    state.writingTargetDraft = {
+      ...cloneValue(state.writingTargetDraft),
+      sessionIsActive: state.writingTargetState.sessionIsActive,
+      sessionConcludedAt: state.writingTargetState.sessionConcludedAt,
+      sessionConcludedReason: state.writingTargetState.sessionConcludedReason,
+      sessionLastActiveAt: state.writingTargetState.sessionLastActiveAt,
+      sessionLastWordCount: state.writingTargetState.sessionLastWordCount,
+      sessionHistory: cloneValue(state.writingTargetState.sessionHistory),
+      updatedAt: state.writingTargetState.updatedAt,
+    };
+  }
+  persistCurrentProjectRecord();
+  return concludedRecord;
+}
+
 function estimateRecentSessionWordsPerMinute(record, now = new Date()) {
   const samples = normalizeWritingTargetSessionSamples(record?.sessionSamples);
   if (samples.length < 2) {
@@ -3858,13 +5060,19 @@ function createDefaultWritingTargetRecord(currentWordCount, now = new Date()) {
     targetCadence: "daily",
     goalSyncSource: "releaseDate",
     lookbackDays: DEFAULT_WRITING_TARGET_LOOKBACK_DAYS,
+    visibleMetricsVersion: WRITING_TARGET_VISIBLE_METRICS_SCHEMA_VERSION,
     visibleMetrics: [...WRITING_TARGET_METRIC_KEYS],
     sessionBaselineWordCount: Math.max(0, Math.round(Number(currentWordCount) || 0)),
     dailyBaselineDateKey: getLocalDateKey(now),
     dailyBaselineWordCount: 0,
+    sessionIsActive: false,
     sessionStartedAt: now.toISOString(),
     sessionLastActiveAt: now.toISOString(),
+    sessionConcludedAt: "",
+    sessionConcludedReason: "",
+    sessionLastWordCount: Math.max(0, Math.round(Number(currentWordCount) || 0)),
     sessionSamples: [createWritingTargetSessionSample(currentWordCount, now)],
+    sessionHistory: [],
     history: [createWritingTargetHistoryEntry(currentWordCount, now, { previousEntry: null, context })],
     updatedAt: now.toISOString(),
   };
@@ -3905,6 +5113,47 @@ function hideFileMenu() {
   renderHeader();
 }
 
+function isTextEditingTarget(target) {
+  if (target instanceof HTMLTextAreaElement) {
+    return target.disabled !== true && target.readOnly !== true;
+  }
+
+  if (!(target instanceof HTMLInputElement) || target.disabled || target.readOnly) {
+    return false;
+  }
+
+  return [
+    "text",
+    "search",
+    "url",
+    "tel",
+    "email",
+    "password",
+    "number",
+    "date",
+    "datetime-local",
+    "month",
+    "time",
+    "week",
+  ].includes(target.type);
+}
+
+function runNativeTextEditCommand(command) {
+  if (typeof command !== "string" || !command) {
+    return false;
+  }
+
+  if (typeof document.execCommand !== "function") {
+    return false;
+  }
+
+  try {
+    return document.execCommand(command);
+  } catch {
+    return false;
+  }
+}
+
 function handleGlobalKeyboardShortcut(event) {
   if (event.defaultPrevented || event.repeat || event.isComposing) {
     return;
@@ -3930,6 +5179,20 @@ function handleGlobalKeyboardShortcut(event) {
   const commandKey = event.ctrlKey || event.metaKey;
   if (!commandKey) {
     return;
+  }
+
+  if (!event.altKey && isTextEditingTarget(event.target)) {
+    if (key === "z") {
+      event.preventDefault();
+      runNativeTextEditCommand(event.shiftKey ? "redo" : "undo");
+      return;
+    }
+
+    if (key === "y") {
+      event.preventDefault();
+      runNativeTextEditCommand("redo");
+      return;
+    }
   }
 
   if (event.altKey && key === "t") {
@@ -4024,13 +5287,25 @@ function saveWritingTargetGoals() {
     return;
   }
 
+  beginProjectFileAutosaveSuppression();
   commitWritingTargetDraft();
   state.writingTargetWindowOpen = false;
   renderHeader();
   renderWritingTargetWindow();
   if (hasProjectFileDestination()) {
-    void saveCurrentProject();
+    const savePromise = saveCurrentProject();
+    if (false) {
+      void saveCurrentProject();
+    }
+    if (savePromise && typeof savePromise.finally === "function") {
+      savePromise.finally(() => {
+        endProjectFileAutosaveSuppression();
+      });
+      return;
+    }
   }
+
+  endProjectFileAutosaveSuppression();
 }
 
 function cancelWritingTargetGoals() {
@@ -4121,11 +5396,17 @@ function resetWritingSession() {
   }
 
   const now = new Date();
+  const currentWordCount = getCurrentManuscriptWordCount();
   const nextRecord = {
     ...cloneValue(record),
-    sessionBaselineWordCount: getCurrentManuscriptWordCount(),
+    sessionIsActive: true,
+    sessionBaselineWordCount: currentWordCount,
     sessionStartedAt: now.toISOString(),
     sessionLastActiveAt: now.toISOString(),
+    sessionConcludedAt: "",
+    sessionConcludedReason: "",
+    sessionLastWordCount: currentWordCount,
+    sessionSamples: [createWritingTargetSessionSample(currentWordCount, now)],
     updatedAt: now.toISOString(),
   };
 
@@ -4221,7 +5502,13 @@ function renderBinderPanel() {
   const chapters = groupScenesByChapter(state.scenes);
   const taskCountsByChapter = countRemainingTasksByChapter(state.manuscriptTasks);
   const activeProject = getActiveProjectRecord();
-  document.querySelector("#binder-slot").innerHTML = `
+  const slot = document.querySelector("#binder-slot");
+  if (!slot) {
+    return;
+  }
+
+  const { scrollTop, scrollLeft } = slot;
+  slot.innerHTML = `
     <div class="panel-heading manuscript-nav-heading">
       <p class="panel-kicker">Manuscript</p>
       <div class="panel-actions manuscript-nav-actions">
@@ -4249,6 +5536,8 @@ function renderBinderPanel() {
     </div>
     ${renderSourceArchive(activeProject)}
   `;
+  slot.scrollTop = scrollTop;
+  slot.scrollLeft = scrollLeft;
 }
 
 function renderSourceArchive(projectRecord) {
@@ -4260,8 +5549,8 @@ function renderSourceArchive(projectRecord) {
   return `
     <div class="source-archive">
       <div class="panel-heading split-heading">
-        <p class="panel-kicker">Imported Sources</p>
-        <h2>Scrivener archive</h2>
+        <p class="panel-kicker">Project sources</p>
+        <h2>Project archive</h2>
       </div>
       <div class="source-archive-list">
         ${archive.map((item) => renderSourceArchiveItem(item)).join("")}
@@ -4283,11 +5572,16 @@ function renderSourceArchiveItem(item) {
 function renderChapterNode(chapter, chapterNumber, taskCount) {
   const isCurrentChapter = getSelectedScene()?.chapterId === chapter.chapterId;
   const isCollapsed = isChapterCollapsed(chapter.chapterId);
+  const isEditingChapterTitle = state.editingChapterTitleId === chapter.chapterId;
+  const isDropStart =
+    binderSceneDragState?.dropTarget?.type === "chapter-start" &&
+    binderSceneDragState.dropTarget.chapterId === chapter.chapterId;
   const childrenId = `binder-chapter-scenes-${chapter.chapterId}`;
   const chapterNumberLabel = formatChapterNumberLabel(chapterNumber);
   const chapterDisplayTitle = formatChapterDisplayTitle(chapter.chapterTitle);
+  const editableChapterTitle = getEditableChapterTitle(chapter.chapterTitle);
   return `
-    <div class="binder-node binder-chapter ${isCollapsed ? "is-collapsed" : ""}">
+    <div class="binder-node binder-chapter ${isCollapsed ? "is-collapsed" : ""} ${isDropStart ? "is-drop-start" : ""}" data-binder-chapter-drop-id="${escapeHtml(chapter.chapterId)}">
       <div class="binder-chapter-row">
         <button
           class="binder-collapse-button"
@@ -4301,16 +5595,40 @@ function renderChapterNode(chapter, chapterNumber, taskCount) {
         >
           <span aria-hidden="true">${isCollapsed ? "▸" : "▾"}</span>
         </button>
-        <button
-          class="binder-button binder-chapter-button ${isCurrentChapter ? "is-active" : ""}"
-          type="button"
-          data-action="select-chapter"
-          data-chapter-id="${escapeHtml(chapter.chapterId)}"
-        >
-          <span class="binder-chapter-order">${escapeHtml(chapterNumberLabel)}</span>
-          <span class="binder-chapter-title">${escapeHtml(chapterDisplayTitle)}</span>
-          ${taskCount > 0 ? renderTaskBadge(taskCount, chapterDisplayTitle) : ""}
-        </button>
+        ${
+          isEditingChapterTitle
+            ? `
+              <div
+                class="binder-button binder-chapter-button ${isCurrentChapter ? "is-active" : ""} is-editing-chapter-title"
+                data-action="select-chapter"
+                data-chapter-id="${escapeHtml(chapter.chapterId)}"
+              >
+                <span class="binder-chapter-order">${escapeHtml(chapterNumberLabel)}</span>
+                <input
+                  class="inline-title-input binder-chapter-title-input"
+                  type="text"
+                  value="${escapeHtml(editableChapterTitle)}"
+                  data-edit-field="chapter-title"
+                  data-chapter-id="${escapeHtml(chapter.chapterId)}"
+                  data-chapter-title-id="${escapeHtml(chapter.chapterId)}"
+                  aria-label="Chapter title"
+                />
+                ${taskCount > 0 ? renderTaskBadge(taskCount, chapterDisplayTitle) : ""}
+              </div>
+            `
+            : `
+              <button
+                class="binder-button binder-chapter-button ${isCurrentChapter ? "is-active" : ""}"
+                type="button"
+                data-action="select-chapter"
+                data-chapter-id="${escapeHtml(chapter.chapterId)}"
+              >
+                <span class="binder-chapter-order">${escapeHtml(chapterNumberLabel)}</span>
+                <span class="binder-chapter-title" data-chapter-title-id="${escapeHtml(chapter.chapterId)}">${escapeHtml(chapterDisplayTitle)}</span>
+                ${taskCount > 0 ? renderTaskBadge(taskCount, chapterDisplayTitle) : ""}
+              </button>
+            `
+        }
       </div>
       <div class="binder-children" id="${escapeHtml(childrenId)}" ${isCollapsed ? "hidden" : ""}>
         ${chapter.scenes.map((scene) => renderSceneNode(scene)).join("")}
@@ -4330,17 +5648,55 @@ function renderTaskBadge(taskCount, chapterTitle) {
 
 function renderSceneNode(scene) {
   const isCurrentScene = scene.sceneId === state.selectedSceneId;
+  const isEditingSceneTitle = state.editingSceneTitleId === scene.sceneId;
+  const canDragScene = scene.blocks.some((block) => Number.isInteger(block.lineNumber));
+  const isDraggingScene = binderSceneDragState?.sourceSceneId === scene.sceneId;
+  const isDropBefore =
+    binderSceneDragState?.dropTarget?.type === "before" &&
+    binderSceneDragState.dropTarget.sceneId === scene.sceneId;
+  const isDropAfter =
+    binderSceneDragState?.dropTarget?.type === "after" &&
+    binderSceneDragState.dropTarget.sceneId === scene.sceneId;
+  const sceneDisplayTitle = escapeHtml(scene.sceneTitle);
   return `
-    <div class="binder-node binder-scene">
-      <button
-        class="binder-button ${isCurrentScene ? "is-active" : ""}"
-        data-action="select-scene"
-        data-scene-id="${escapeHtml(scene.sceneId)}"
-        data-scene-title-id="${escapeHtml(scene.sceneId)}"
-      >
-        <span class="binder-kind">scene</span>
-        <span>${escapeHtml(scene.sceneTitle)}</span>
-      </button>
+    <div class="binder-node binder-scene ${isDropBefore ? "is-drop-before" : ""} ${isDropAfter ? "is-drop-after" : ""}" data-binder-scene-drop-id="${escapeHtml(scene.sceneId)}">
+      ${
+        isEditingSceneTitle
+          ? `
+            <div
+              class="binder-button binder-scene-button ${isCurrentScene ? "is-active" : ""} ${isDraggingScene ? "is-dragging" : ""} is-editing-scene-title"
+              data-action="select-scene"
+              data-scene-id="${escapeHtml(scene.sceneId)}"
+              data-binder-scene-id="${escapeHtml(scene.sceneId)}"
+            >
+              <span class="binder-kind">scene</span>
+              <input
+                class="inline-title-input binder-scene-title-input"
+                type="text"
+                value="${sceneDisplayTitle}"
+                data-edit-field="scene-title"
+                data-scene-id="${escapeHtml(scene.sceneId)}"
+                data-binder-scene-title-id="${escapeHtml(scene.sceneId)}"
+                aria-label="Scene title"
+              />
+            </div>
+          `
+          : `
+            <button
+              class="binder-button binder-scene-button ${isCurrentScene ? "is-active" : ""} ${isDraggingScene ? "is-dragging" : ""}"
+              type="button"
+              data-action="select-scene"
+              data-scene-id="${escapeHtml(scene.sceneId)}"
+              data-binder-scene-id="${escapeHtml(scene.sceneId)}"
+              data-scene-title-id="${escapeHtml(scene.sceneId)}"
+              data-binder-scene-title-id="${escapeHtml(scene.sceneId)}"
+              draggable="${canDragScene ? "true" : "false"}"
+            >
+              <span class="binder-kind">scene</span>
+              <span data-binder-scene-title-id="${escapeHtml(scene.sceneId)}">${sceneDisplayTitle}</span>
+            </button>
+          `
+      }
     </div>
   `;
 }
@@ -4348,194 +5704,21 @@ function renderSceneNode(scene) {
 function renderManuscriptPanel() {
   const selectedScene = getSelectedScene() ?? state.scenes[0];
   const editorMode = state.activePane === "narration" ? "narration" : "manuscript";
-  document.querySelector("#manuscript-slot").innerHTML = `
-    <div class="panel-heading">
-      <p class="panel-kicker">Scene Editor</p>
-      <h2>Scene Editor Viewport</h2>
-    </div>
-    ${selectedScene ? renderSceneEditor(selectedScene, { mode: editorMode }) : ""}
-  `;
-}
-
-function renderSceneEditor(scene, options = {}) {
-  const mode = options.mode === "narration" ? "narration" : "manuscript";
-  const hasDraft = Boolean(state.sceneDrafts[scene.sceneId]);
-  const localAiStatus = state.localAiTitleStatus[scene.sceneId];
-  const narrationSelection = mode === "narration" ? getNarrationTakeSelectionForScene(scene.sceneId) : null;
-  const narrationSession = mode === "narration" ? state.narrationTakeSession : null;
-  return `
-    <section class="scene-editor-shell ${mode === "narration" ? "narration-editor-shell" : ""}">
-      <div class="scene-editor-header">
-        <div class="editor-title-row">
-          <input
-            class="editor-title-input"
-            type="text"
-            value="${escapeHtml(scene.sceneTitle)}"
-            data-edit-field="scene-title"
-            data-scene-id="${escapeHtml(scene.sceneId)}"
-            aria-label="Scene title"
-          />
-          <button
-            class="tag-button editor-action-button ai-title-button"
-            type="button"
-            data-action="suggest-scene-title"
-            data-scene-id="${escapeHtml(scene.sceneId)}"
-            ${state.localAiPrefs.enabled ? "" : "disabled"}
-          >${localAiStatus === "loading" ? "Thinking..." : "Suggest title"}</button>
-          ${localAiStatus && localAiStatus !== "loading" ? `<span class="local-ai-status">${escapeHtml(localAiStatus)}</span>` : ""}
-        </div>
-        <div class="scene-editor-tools ${mode === "narration" ? "narration-recording-tools" : ""}">
-          ${mode === "narration"
-            ? renderNarrationRecordingTools(scene, narrationSelection, narrationSession)
-            : `
-              ${renderEditorSetting("Font", "fontFamilyId", FONT_OPTIONS.map((option) => ({
-                value: option.id,
-                label: option.label,
-              })), state.editorPrefs.fontFamilyId)}
-              ${renderEditorSetting("Size", "fontSize", FONT_SIZE_OPTIONS.map((value) => ({
-                value: String(value),
-                label: `${value}px`,
-              })), String(state.editorPrefs.fontSize))}
-              ${renderEditorSetting("Line Height", "lineHeight", LINE_HEIGHT_OPTIONS.map((value) => ({
-                value: String(value),
-                label: `${value}x`,
-              })), String(state.editorPrefs.lineHeight))}
-              ${renderEditorSetting("Text Width", "editorWidth", EDITOR_WIDTH_OPTIONS.map((value) => ({
-                value: String(value),
-                label: `${value}px`,
-              })), String(state.editorPrefs.editorWidth))}
-            `}
-          ${hasDraft ? `<button class="tag-button editor-action-button" data-action="reset-scene-draft" data-scene-id="${escapeHtml(scene.sceneId)}">Revert local draft</button>` : ""}
-        </div>
-      </div>
-
-      <div
-        class="scene-editor-codeframe ${mode === "narration" ? "narration-editor-frame" : ""}"
-        data-scene-editor="${escapeHtml(scene.sceneId)}"
-        style="${escapeHtml(buildEditorStyle())}"
-      >
-        <div class="editor-document-gutter" data-editor-gutter aria-hidden="true"></div>
-        <div class="editor-document-body">
-          <textarea
-            class="editor-document-input"
-            data-edit-field="editor-text"
-            data-scene-id="${escapeHtml(scene.sceneId)}"
-            spellcheck="true"
-          >${escapeHtml(scene.editorText ?? "")}</textarea>
-        </div>
-        ${renderInlinePassageDraft(scene)}
-      </div>
-    </section>
-  `;
-}
-
-function renderInlinePassageDraft(scene) {
-  const draft = state.inlinePassageDraft;
-  if (!draft || draft.sceneId !== scene.sceneId) {
-    return "";
+  const slot = document.querySelector("#manuscript-slot");
+  if (!(slot instanceof HTMLElement)) {
+    return;
   }
 
-  const label = draft.noteType === "research" ? "Research" : "Inspiration";
-  const anchor = getInlinePassageDraftAnchor(draft, scene.editorText ?? "", {
-    includePendingVerse: true,
+  slot.innerHTML = renderManuscriptPanelHTML({
+    state,
+    selectedScene,
+    editorMode,
+    grammarCheckSummary: buildGrammarCheckSummary(selectedScene),
+    buildEditorStyle,
+    getInlinePassageDraftAnchor,
+    formatChapterDisplayTitle,
   });
-  const prompt = anchor
-    ? `${label} will save against: ${anchor.selectedText.slice(0, 96)}`
-    : `Save this ${label.toLowerCase()} note against the verse typed in the manuscript field below.`;
-  return `
-    <section
-      class="inline-passage-bubble inline-passage-${escapeHtml(draft.noteType)}"
-      data-inline-passage-draft
-      style="--inline-passage-y:${Math.round(draft.y)}px;"
-    >
-      <div class="inline-passage-heading">
-        <span>${escapeHtml(label)} note</span>
-        <strong data-inline-passage-status>${escapeHtml(prompt)}</strong>
-        <button class="inline-passage-close" type="button" data-action="cancel-inline-passage-note" aria-label="Cancel ${escapeHtml(label)}">x</button>
-      </div>
-      <textarea
-        data-edit-field="inline-passage-note"
-        data-scene-id="${escapeHtml(scene.sceneId)}"
-        placeholder="${escapeHtml(getPassageNotePlaceholder(draft.noteType))}"
-      >${escapeHtml(draft.body ?? "")}</textarea>
-      <label class="inline-passage-verse-shell">
-        <span>Typed verse</span>
-        <textarea
-          class="inline-passage-verse-field"
-          data-edit-field="inline-passage-verse"
-          data-scene-id="${escapeHtml(scene.sceneId)}"
-          placeholder="Type the manuscript verse this note belongs to."
-        >${escapeHtml(draft.typedText ?? "")}</textarea>
-      </label>
-      <div class="inline-passage-actions">
-        <span aria-hidden="true"></span>
-        <button class="tag-button" type="button" data-inline-passage-save data-action="commit-inline-passage-note">Save to typed verse</button>
-      </div>
-    </section>
-  `;
-}
-
-function renderNarrationRecordingTools(scene, selection, session) {
-  const statusLabel = session?.status === "recording"
-    ? `Recording ${session.elapsedLabel ?? "0:00"}`
-    : selection
-      ? "Ready to record"
-      : "Awaiting verse selection";
-  const verseLabel = selection
-    ? `Line ${String(selection.lineNumber ?? selection.blockLineNumber ?? "")} · ${selection.kindLabel ?? "Verse"}`
-    : "Click a verse to arm recording";
-  const trackerLabel = session?.trackerStatus
-    ? session.trackerStatus
-    : "Speech tracker idle";
-  return `
-    <div class="editor-inline-setting narration-recording-field">
-      <span>Status</span>
-      <div class="narration-recording-value ${session?.status === "recording" ? "is-recording" : ""}">${escapeHtml(statusLabel)}</div>
-    </div>
-    <div class="editor-inline-setting narration-recording-field">
-      <span>Verse</span>
-      <div class="narration-recording-value">${escapeHtml(verseLabel)}</div>
-    </div>
-    <div class="editor-inline-setting narration-recording-field">
-      <span>Tracker</span>
-      <div class="narration-recording-value">${escapeHtml(trackerLabel)}</div>
-    </div>
-    <div class="narration-recording-actions">
-      <button
-        class="tag-button editor-action-button"
-        type="button"
-        data-action="${session?.status === "recording" ? "stop-narration-recording" : "start-narration-recording"}"
-        data-scene-id="${escapeHtml(scene.sceneId)}"
-        ${session?.status === "recording" ? "" : selection ? "" : "disabled"}
-      >
-        ${session?.status === "recording" ? "Stop recording" : "Start recording"}
-      </button>
-      <button
-        class="tag-button editor-action-button"
-        type="button"
-        data-action="clear-narration-selection"
-        data-scene-id="${escapeHtml(scene.sceneId)}"
-        ${selection && session?.status !== "recording" ? "" : "disabled"}
-      >
-        Clear verse
-      </button>
-    </div>
-  `;
-}
-
-function renderEditorSetting(label, prefKey, options, selectedValue) {
-  return `
-    <label class="editor-inline-setting">
-      <span>${escapeHtml(label)}</span>
-      <select data-editor-pref="${escapeHtml(prefKey)}">
-        ${options.map((option) => `
-          <option value="${escapeHtml(option.value)}" ${option.value === selectedValue ? "selected" : ""}>
-            ${escapeHtml(option.label)}
-          </option>
-        `).join("")}
-      </select>
-    </label>
-  `;
+  renderGrammarCheckPanel();
 }
 
 function renderConsolePanel() {
@@ -4567,6 +5750,1041 @@ function renderConsolePanel() {
       </div>
     </div>
   `;
+}
+
+function renderManuscriptFindPanel() {
+  const slot = document.querySelector("#find-slot");
+  if (!(slot instanceof HTMLElement)) {
+    return;
+  }
+
+  const findState = state.manuscriptFind ?? {};
+  if (!findState.open) {
+    slot.innerHTML = "";
+    return;
+  }
+
+  const query = String(findState.query ?? "");
+  const replaceText = String(findState.replaceText ?? "");
+  const matches = query.trim() ? getManuscriptFindMatches(query) : [];
+  const activeIndex = matches.length
+    ? clampNumber(Number(findState.activeIndex ?? 0), 0, matches.length - 1)
+    : 0;
+  const focusedFindField =
+    document.activeElement instanceof HTMLInputElement &&
+    document.activeElement.closest("#find-slot")
+      ? {
+          field: document.activeElement.dataset.findField ?? "",
+          selectionStart: document.activeElement.selectionStart,
+          selectionEnd: document.activeElement.selectionEnd,
+        }
+      : null;
+
+  if (state.manuscriptFind.activeIndex !== activeIndex) {
+    state.manuscriptFind = {
+      ...state.manuscriptFind,
+      activeIndex,
+    };
+  }
+
+  const activeMatch = matches[activeIndex] ?? null;
+  syncManuscriptFindSlotPosition(slot, findState.position);
+  slot.innerHTML = renderManuscriptFindPanelHTML({
+    query,
+    replaceText,
+    matches,
+    activeIndex,
+    activeMatch,
+  });
+
+  if (focusedFindField?.field) {
+    const field = slot.querySelector(`[data-find-field="${CSS.escape(focusedFindField.field)}"]`);
+    if (field instanceof HTMLInputElement) {
+      field.focus({ preventScroll: true });
+      if (Number.isInteger(focusedFindField.selectionStart) && Number.isInteger(focusedFindField.selectionEnd)) {
+        field.setSelectionRange(focusedFindField.selectionStart, focusedFindField.selectionEnd);
+      }
+    }
+  }
+}
+
+function syncManuscriptFindSlotPosition(slot, position) {
+  if (!(slot instanceof HTMLElement)) {
+    return;
+  }
+
+  const left = Number(position?.left);
+  const top = Number(position?.top);
+  if (Number.isFinite(left) && Number.isFinite(top)) {
+    slot.style.left = `${Math.round(left)}px`;
+    slot.style.top = `${Math.round(top)}px`;
+    slot.style.transform = "none";
+    return;
+  }
+
+  slot.style.removeProperty("left");
+  slot.style.removeProperty("top");
+  slot.style.removeProperty("transform");
+}
+
+function setManuscriptFindPosition(left, top) {
+  state.manuscriptFind = {
+    ...state.manuscriptFind,
+    position: {
+      left: Math.round(left),
+      top: Math.round(top),
+    },
+  };
+
+  const slot = document.querySelector("#find-slot");
+  syncManuscriptFindSlotPosition(slot, state.manuscriptFind.position);
+}
+
+function clampManuscriptFindPosition(left, top, width, height) {
+  const safeWidth = Math.max(0, Number(width) || 0);
+  const safeHeight = Math.max(0, Number(height) || 0);
+  const minLeft = 12;
+  const minTop = 12;
+  const maxLeft = Math.max(minLeft, window.innerWidth - safeWidth - 12);
+  const maxTop = Math.max(minTop, window.innerHeight - safeHeight - 12);
+
+  return {
+    left: Math.min(Math.max(minLeft, left), maxLeft),
+    top: Math.min(Math.max(minTop, top), maxTop),
+  };
+}
+
+function handleManuscriptFindPointerDown(event) {
+  if (!state.manuscriptFind.open || event.button !== 0) {
+    return;
+  }
+
+  const target = event.target instanceof Element ? event.target : null;
+  const dragHandle = target?.closest("[data-manuscript-find-drag-handle]");
+  if (!(dragHandle instanceof HTMLElement)) {
+    return;
+  }
+
+  const slot = dragHandle.closest("#find-slot");
+  if (!(slot instanceof HTMLElement)) {
+    return;
+  }
+
+  const rect = slot.getBoundingClientRect();
+  manuscriptFindDragState = {
+    pointerId: event.pointerId,
+    slot,
+    dragHandle,
+    offsetX: event.clientX - rect.left,
+    offsetY: event.clientY - rect.top,
+    width: rect.width,
+    height: rect.height,
+  };
+
+  slot.classList.add("is-dragging");
+  event.preventDefault();
+  if (typeof dragHandle.setPointerCapture === "function") {
+    try {
+      dragHandle.setPointerCapture(event.pointerId);
+    } catch {
+      // Ignore capture failures; the document-level move/end handlers still work.
+    }
+  }
+}
+
+function handleManuscriptFindPointerMove(event) {
+  if (!manuscriptFindDragState || event.pointerId !== manuscriptFindDragState.pointerId) {
+    return;
+  }
+
+  const nextLeft = event.clientX - manuscriptFindDragState.offsetX;
+  const nextTop = event.clientY - manuscriptFindDragState.offsetY;
+  const clamped = clampManuscriptFindPosition(
+    nextLeft,
+    nextTop,
+    manuscriptFindDragState.width,
+    manuscriptFindDragState.height,
+  );
+
+  setManuscriptFindPosition(clamped.left, clamped.top);
+  event.preventDefault();
+}
+
+function handleManuscriptFindPointerEnd(event) {
+  if (!manuscriptFindDragState || event.pointerId !== manuscriptFindDragState.pointerId) {
+    return;
+  }
+
+  const { slot, dragHandle, pointerId } = manuscriptFindDragState;
+  slot.classList.remove("is-dragging");
+  if (typeof dragHandle.releasePointerCapture === "function") {
+    try {
+      dragHandle.releasePointerCapture(pointerId);
+    } catch {
+      // Ignore release failures.
+    }
+  }
+
+  manuscriptFindDragState = null;
+}
+
+function renderManuscriptFindPanelHTML({
+  query,
+  replaceText,
+  matches,
+  activeIndex,
+  activeMatch,
+}) {
+  const hasQuery = Boolean(String(query ?? "").trim());
+  const matchCount = matches.length;
+  const canNavigate = hasQuery && matchCount > 0;
+  const activeLabel = activeMatch
+    ? `${activeMatch.chapterTitle || "Chapter"} · ${activeMatch.sceneTitle || "Scene"}`
+    : "Search the manuscript";
+
+  return `
+    <section class="manuscript-find-panel ${hasQuery ? "has-query" : ""}" data-manuscript-find-panel>
+      <button
+        class="manuscript-find-panel__close"
+        type="button"
+        data-action="close-manuscript-find"
+        aria-label="Close find window"
+        title="Close find window"
+      >×</button>
+      <div class="manuscript-find-panel__dragbar">
+        <div class="manuscript-find-panel__drag-handle" data-manuscript-find-drag-handle aria-label="Drag find window">
+          <span>Find in manuscript</span>
+          <strong>Drag to move</strong>
+        </div>
+      </div>
+      <div class="manuscript-find-panel__header">
+        <div class="manuscript-find-panel__fields">
+          <label class="manuscript-find-field">
+            <span>Find</span>
+            <input
+              type="search"
+              value="${escapeHtml(query)}"
+              data-find-field="manuscript-find-query"
+              placeholder="Search the manuscript"
+              aria-label="Find in manuscript"
+            />
+          </label>
+          <label class="manuscript-find-field">
+            <span>Replace</span>
+            <input
+              type="text"
+              value="${escapeHtml(replaceText)}"
+              data-find-field="manuscript-find-replace"
+              placeholder="Replace with"
+              aria-label="Replace in manuscript"
+            />
+          </label>
+        </div>
+        <div class="manuscript-find-panel__actions">
+          <button class="tag-button editor-action-button" type="button" data-action="find-prev" ${canNavigate ? "" : "disabled"}>Prev</button>
+          <button class="tag-button editor-action-button" type="button" data-action="find-next" ${canNavigate ? "" : "disabled"}>Next</button>
+          <button class="tag-button editor-action-button" type="button" data-action="replace-find-current" ${canNavigate ? "" : "disabled"}>Replace</button>
+          <button class="tag-button editor-action-button" type="button" data-action="replace-find-all" ${canNavigate ? "" : "disabled"}>Replace all</button>
+        </div>
+      </div>
+      <div class="manuscript-find-panel__status">
+        <strong>${escapeHtml(hasQuery ? `${matchCount} match${matchCount === 1 ? "" : "es"}` : "Find in manuscript")}</strong>
+        <span>${escapeHtml(activeLabel)}</span>
+      </div>
+      <div class="manuscript-find-results" data-manuscript-find-results>
+        ${hasQuery
+          ? (matchCount
+            ? matches.map((match, index) => renderManuscriptFindResult(match, index, index === activeIndex)).join("")
+            : `<p class="manuscript-find-empty">No matches found.</p>`)
+          : `<p class="manuscript-find-empty">Search the manuscript to jump between matches and replace them in place.</p>`}
+      </div>
+    </section>
+  `;
+}
+
+function renderGrammarCheckPanel() {
+  const slot = document.querySelector("#grammar-check-slot");
+  if (!(slot instanceof HTMLElement)) {
+    return;
+  }
+
+  const grammarCheckState = state.grammarCheckPanel ?? {};
+  if (!grammarCheckState.open) {
+    slot.innerHTML = "";
+    return;
+  }
+
+  const selectedScene = getSelectedScene() ?? state.scenes[0] ?? null;
+  const selectedSceneTitle = selectedScene?.sceneTitle ? String(selectedScene.sceneTitle) : "Selected scene";
+  const selectedSceneChapter = selectedScene?.chapterTitle
+    ? formatChapterDisplayTitle(selectedScene.chapterTitle)
+    : "Current chapter";
+  const entries = buildGrammarCheckEntries(selectedScene);
+  const previousList = slot.querySelector("[data-grammar-check-list]");
+  const previousScrollTop = previousList instanceof HTMLElement ? previousList.scrollTop : 0;
+  const previousScrollLeft = previousList instanceof HTMLElement ? previousList.scrollLeft : 0;
+  const selectionAnchorIndex = Number.isInteger(grammarCheckState.selectionAnchorIndex)
+    ? grammarCheckState.selectionAnchorIndex
+    : null;
+  const selectionSet = new Set(
+    Array.isArray(grammarCheckState.selectedWords)
+      ? grammarCheckState.selectedWords.map((word) => normalizeSpellcheckWord(word)).filter(Boolean)
+      : [],
+  );
+  const selectedCount = entries.filter((entry) => selectionSet.has(entry.normalizedWord)).length;
+  syncGrammarCheckSlotPosition(slot, grammarCheckState.position);
+  slot.innerHTML = renderGrammarCheckPanelHTML({
+    selectedSceneTitle,
+    selectedSceneChapter,
+    entries,
+    selectedCount,
+    selectionSet,
+    selectionAnchorIndex,
+  });
+
+  const nextList = slot.querySelector("[data-grammar-check-list]");
+  if (nextList instanceof HTMLElement) {
+    nextList.scrollTop = previousScrollTop;
+    nextList.scrollLeft = previousScrollLeft;
+  }
+}
+
+function syncGrammarCheckSlotPosition(slot, position) {
+  if (!(slot instanceof HTMLElement)) {
+    return;
+  }
+
+  const left = Number(position?.left);
+  const top = Number(position?.top);
+  if (Number.isFinite(left) && Number.isFinite(top)) {
+    slot.style.left = `${Math.round(left)}px`;
+    slot.style.top = `${Math.round(top)}px`;
+    slot.style.right = "auto";
+    slot.style.transform = "none";
+    return;
+  }
+
+  slot.style.removeProperty("left");
+  slot.style.removeProperty("top");
+  slot.style.removeProperty("right");
+  slot.style.removeProperty("transform");
+}
+
+function setGrammarCheckPanelPosition(left, top) {
+  state.grammarCheckPanel = {
+    ...state.grammarCheckPanel,
+    position: {
+      left: Math.round(left),
+      top: Math.round(top),
+    },
+  };
+
+  const slot = document.querySelector("#grammar-check-slot");
+  syncGrammarCheckSlotPosition(slot, state.grammarCheckPanel.position);
+}
+
+function clampGrammarCheckPanelPosition(left, top, width, height) {
+  const safeWidth = Math.max(0, Number(width) || 0);
+  const safeHeight = Math.max(0, Number(height) || 0);
+  const minLeft = 12;
+  const minTop = 12;
+  const maxLeft = Math.max(minLeft, window.innerWidth - safeWidth - 12);
+  const maxTop = Math.max(minTop, window.innerHeight - safeHeight - 12);
+
+  return {
+    left: Math.min(Math.max(minLeft, left), maxLeft),
+    top: Math.min(Math.max(minTop, top), maxTop),
+  };
+}
+
+function handleGrammarCheckPointerDown(event) {
+  if (!state.grammarCheckPanel?.open || event.button !== 0) {
+    return;
+  }
+
+  const target = event.target instanceof Element ? event.target : null;
+  const dragHandle = target?.closest("[data-grammar-check-drag-handle]");
+  if (!(dragHandle instanceof HTMLElement)) {
+    return;
+  }
+
+  const slot = dragHandle.closest("#grammar-check-slot");
+  if (!(slot instanceof HTMLElement)) {
+    return;
+  }
+
+  const rect = slot.getBoundingClientRect();
+  manuscriptGrammarDragState = {
+    pointerId: event.pointerId,
+    slot,
+    dragHandle,
+    offsetX: event.clientX - rect.left,
+    offsetY: event.clientY - rect.top,
+    width: rect.width,
+    height: rect.height,
+  };
+
+  slot.classList.add("is-dragging");
+  event.preventDefault();
+  if (typeof dragHandle.setPointerCapture === "function") {
+    try {
+      dragHandle.setPointerCapture(event.pointerId);
+    } catch {
+      // Ignore capture failures; the document-level move/end handlers still work.
+    }
+  }
+}
+
+function handleGrammarCheckPointerMove(event) {
+  if (!manuscriptGrammarDragState || event.pointerId !== manuscriptGrammarDragState.pointerId) {
+    return;
+  }
+
+  const nextLeft = event.clientX - manuscriptGrammarDragState.offsetX;
+  const nextTop = event.clientY - manuscriptGrammarDragState.offsetY;
+  const clamped = clampGrammarCheckPanelPosition(
+    nextLeft,
+    nextTop,
+    manuscriptGrammarDragState.width,
+    manuscriptGrammarDragState.height,
+  );
+
+  setGrammarCheckPanelPosition(clamped.left, clamped.top);
+  event.preventDefault();
+}
+
+function handleGrammarCheckPointerEnd(event) {
+  if (!manuscriptGrammarDragState || event.pointerId !== manuscriptGrammarDragState.pointerId) {
+    return;
+  }
+
+  const { slot, dragHandle, pointerId } = manuscriptGrammarDragState;
+  slot.classList.remove("is-dragging");
+  if (typeof dragHandle.releasePointerCapture === "function") {
+    try {
+      dragHandle.releasePointerCapture(pointerId);
+    } catch {
+      // Ignore release failures.
+    }
+  }
+
+  manuscriptGrammarDragState = null;
+}
+
+function renderGrammarCheckPanelHTML({
+  selectedSceneTitle,
+  selectedSceneChapter,
+  entries,
+  selectedCount,
+  selectionSet,
+  selectionAnchorIndex,
+}) {
+  const totalCount = entries.reduce((total, entry) => total + Number(entry.count ?? 0), 0);
+  const uniqueCount = entries.length;
+  const addDisabled = selectedCount <= 0;
+  const summaryLabel = totalCount
+    ? `${totalCount} flagged word${totalCount === 1 ? "" : "s"} · ${uniqueCount} unique`
+    : "No flagged words";
+
+  return `
+    <section class="manuscript-grammar-panel ${totalCount ? "has-entries" : ""}" data-grammar-check-panel>
+      <button
+        class="manuscript-grammar-panel__close"
+        type="button"
+        data-action="close-grammar-check-panel"
+        aria-label="Close grammar check window"
+        title="Close grammar check window"
+      >×</button>
+      <div class="manuscript-grammar-panel__dragbar">
+        <div class="manuscript-grammar-panel__drag-handle" data-grammar-check-drag-handle aria-label="Drag grammar check window">
+          <span>Grammar check</span>
+          <strong>Drag to move</strong>
+        </div>
+      </div>
+      <div class="manuscript-grammar-panel__header">
+        <div class="manuscript-grammar-panel__titles">
+          <p class="manuscript-grammar-panel__kicker">${escapeHtml(selectedSceneChapter)}</p>
+          <h2>${escapeHtml(selectedSceneTitle)}</h2>
+          <p class="manuscript-grammar-panel__summary">${escapeHtml(summaryLabel)}</p>
+        </div>
+        <div class="manuscript-grammar-panel__actions">
+          <button class="tag-button editor-action-button" type="button" data-action="grammar-check-select-all" ${totalCount ? "" : "disabled"}>Select all</button>
+          <button class="tag-button editor-action-button" type="button" data-action="grammar-check-clear-selection" ${selectedCount ? "" : "disabled"}>Clear</button>
+        </div>
+      </div>
+      <div class="manuscript-grammar-panel__list" data-grammar-check-list>
+        ${entries.length
+          ? entries.map((entry, index) => {
+              const isSelected = selectionSet.has(entry.normalizedWord);
+              const isAnchor = selectionAnchorIndex === index;
+              return `
+                <div class="grammar-check-item ${isSelected ? "is-selected" : ""} ${isAnchor ? "is-anchor" : ""}" data-grammar-check-word="${escapeHtml(entry.normalizedWord)}" data-grammar-check-index="${index}" data-grammar-check-first-index="${escapeHtml(String(entry.firstIndex ?? 0))}">
+                  <label class="grammar-check-item__toggle" data-action="toggle-grammar-check-word">
+                    <input type="checkbox" ${isSelected ? "checked" : ""} aria-label="Select ${escapeHtml(entry.word)} for project dictionary" />
+                  </label>
+                  <button class="grammar-check-item__body" type="button" data-action="focus-grammar-check-word" title="Go to this word in the manuscript">
+                    <strong class="grammar-check-item__word">${escapeHtml(entry.word)}</strong>
+                    <span class="grammar-check-item__meta">${escapeHtml(`${entry.count} occurrence${entry.count === 1 ? "" : "s"}`)}</span>
+                  </button>
+                </div>
+              `;
+            }).join("")
+          : `<p class="grammar-check-empty">No flagged words in this scene.</p>`}
+      </div>
+      <div class="manuscript-grammar-panel__footer">
+        <span>${escapeHtml(selectedCount ? `${selectedCount} selected` : "Select words to add them to the project dictionary.")}</span>
+        <div class="manuscript-grammar-panel__footer-actions">
+          <button class="tag-button editor-action-button" type="button" data-action="grammar-check-add-selected" ${addDisabled ? "disabled" : ""}>Add selected to project dictionary</button>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function buildGrammarCheckEntries(scene) {
+  if (!scene || !spellcheckBaseLexicon?.wordList?.length) {
+    return [];
+  }
+
+  const projectLexicon = buildCurrentProjectSpellcheckLexicon();
+  const misspellings = groupSpellcheckMisspellings(scene.editorText ?? "", {
+    baseLexicon: spellcheckBaseLexicon,
+    projectLexicon,
+    referenceLexicon: spellcheckReferenceLexicon,
+  });
+
+  return misspellings
+    .map((entry) => ({
+      ...entry,
+      word: String(entry.word ?? "").trim() || String(entry.normalizedWord ?? ""),
+      normalizedWord: normalizeSpellcheckWord(entry.normalizedWord ?? entry.word),
+      count: Number(entry.count ?? 0),
+      firstIndex: Number(entry.firstIndex ?? 0),
+      lastIndex: Number(entry.lastIndex ?? 0),
+    }))
+    .filter((entry) => entry.normalizedWord)
+    .sort((left, right) => left.firstIndex - right.firstIndex || left.word.localeCompare(right.word));
+}
+
+function toggleGrammarCheckPanel() {
+  const editorBookmark = captureManuscriptEditorBookmark();
+  const isOpen = state.grammarCheckPanel?.open === true;
+  state.activePane = "manuscript";
+  state.grammarCheckPanel = {
+    ...state.grammarCheckPanel,
+    open: !isOpen,
+    selectedWords: isOpen ? state.grammarCheckPanel.selectedWords ?? [] : state.grammarCheckPanel.selectedWords ?? [],
+  };
+  renderManuscriptPanel();
+  syncSceneDocumentLayout();
+  if (editorBookmark) {
+    window.requestAnimationFrame(() => {
+      restoreManuscriptEditorBookmark(editorBookmark);
+    });
+  }
+}
+
+function closeGrammarCheckPanel() {
+  if (!state.grammarCheckPanel?.open) {
+    return;
+  }
+
+  const editorBookmark = captureManuscriptEditorBookmark();
+  state.grammarCheckPanel = {
+    ...state.grammarCheckPanel,
+    open: false,
+  };
+  renderManuscriptPanel();
+  syncSceneDocumentLayout();
+  if (editorBookmark) {
+    window.requestAnimationFrame(() => {
+      restoreManuscriptEditorBookmark(editorBookmark);
+    });
+  }
+}
+
+function updateGrammarCheckPanelSelection(nextSelectedWords, selectionAnchorIndex = null) {
+  const entries = buildGrammarCheckEntries(getSelectedScene() ?? state.scenes[0] ?? null);
+  const validWords = new Set(entries.map((entry) => entry.normalizedWord));
+  const nextSelection = [];
+  const seen = new Set();
+
+  for (const word of Array.isArray(nextSelectedWords) ? nextSelectedWords : []) {
+    const normalized = normalizeSpellcheckWord(word);
+    if (!normalized || !validWords.has(normalized) || seen.has(normalized)) {
+      continue;
+    }
+
+    seen.add(normalized);
+    nextSelection.push(normalized);
+  }
+
+  state.grammarCheckPanel = {
+    ...state.grammarCheckPanel,
+    selectedWords: nextSelection,
+    selectionAnchorIndex: Number.isInteger(selectionAnchorIndex) ? selectionAnchorIndex : null,
+  };
+  renderGrammarCheckPanel();
+}
+
+function toggleGrammarCheckPanelWordSelection(word, entryIndex = -1, isShiftKey = false) {
+  const normalizedWord = normalizeSpellcheckWord(word);
+  if (!normalizedWord) {
+    return;
+  }
+
+  const entries = buildGrammarCheckEntries(getSelectedScene() ?? state.scenes[0] ?? null);
+  const selectedIndex = Number.isInteger(entryIndex) ? entryIndex : entries.findIndex((entry) => entry.normalizedWord === normalizedWord);
+  const selectedEntry = selectedIndex >= 0 ? entries[selectedIndex] : null;
+  if (!selectedEntry || !entries.some((entry) => entry.normalizedWord === normalizedWord)) {
+    return;
+  }
+
+  const currentSelection = new Set(
+    Array.isArray(state.grammarCheckPanel?.selectedWords)
+      ? state.grammarCheckPanel.selectedWords.map((entry) => normalizeSpellcheckWord(entry)).filter(Boolean)
+      : [],
+  );
+
+  const anchorIndex = Number.isInteger(state.grammarCheckPanel?.selectionAnchorIndex)
+    ? state.grammarCheckPanel.selectionAnchorIndex
+    : null;
+
+  if (isShiftKey && anchorIndex !== null) {
+    const startIndex = Math.min(anchorIndex, selectedIndex);
+    const endIndex = Math.max(anchorIndex, selectedIndex);
+    for (let index = startIndex; index <= endIndex; index += 1) {
+      const entry = entries[index];
+      if (entry?.normalizedWord) {
+        currentSelection.add(entry.normalizedWord);
+      }
+    }
+    updateGrammarCheckPanelSelection([...currentSelection], anchorIndex);
+    focusGrammarCheckEntry(selectedEntry);
+    return;
+  }
+
+  if (currentSelection.has(normalizedWord)) {
+    currentSelection.delete(normalizedWord);
+  } else {
+    currentSelection.add(normalizedWord);
+  }
+
+  updateGrammarCheckPanelSelection([...currentSelection], selectedIndex);
+  focusGrammarCheckEntry(selectedEntry);
+}
+
+function selectAllGrammarCheckPanelWords() {
+  const entries = buildGrammarCheckEntries(getSelectedScene() ?? state.scenes[0] ?? null);
+  updateGrammarCheckPanelSelection(entries.map((entry) => entry.normalizedWord), null);
+}
+
+function clearGrammarCheckPanelSelection() {
+  updateGrammarCheckPanelSelection([], null);
+}
+
+function addSelectedGrammarCheckWordsToProjectDictionary() {
+  const selectedWords = Array.isArray(state.grammarCheckPanel?.selectedWords)
+    ? state.grammarCheckPanel.selectedWords
+    : [];
+  if (!selectedWords.length) {
+    return;
+  }
+
+  const editorBookmark = captureManuscriptEditorBookmark();
+  const changed = addGrammarCheckWordsToProjectList("dictionaryWords", selectedWords);
+  state.grammarCheckPanel = {
+    ...state.grammarCheckPanel,
+    selectedWords: [],
+    selectionAnchorIndex: null,
+  };
+
+  if (changed) {
+    renderManuscriptPanel();
+    syncSceneDocumentLayout();
+  } else {
+    renderGrammarCheckPanel();
+  }
+
+  if (editorBookmark) {
+    window.requestAnimationFrame(() => {
+      restoreManuscriptEditorBookmark(editorBookmark);
+    });
+  }
+}
+
+function focusGrammarCheckEntry(entry) {
+  if (!entry) {
+    return;
+  }
+
+  const scene = getSelectedScene() ?? state.scenes[0] ?? null;
+  const targetSceneId = String(scene?.sceneId ?? "");
+  if (!targetSceneId) {
+    return;
+  }
+
+  const startOffset = Number(entry.firstIndex);
+  const endOffset = Number.isInteger(startOffset) ? startOffset + String(entry.word ?? "").length : NaN;
+  if (!Number.isInteger(startOffset) || !Number.isInteger(endOffset)) {
+    return;
+  }
+
+  takeToSceneRange(targetSceneId, startOffset, endOffset, { behavior: "smooth" });
+}
+
+function renderManuscriptFindResult(match, index, isActive) {
+  return `
+    <button
+      class="manuscript-find-result ${isActive ? "is-active" : ""}"
+      type="button"
+      data-action="find-match"
+      data-find-match-index="${index}"
+      aria-current="${isActive ? "true" : "false"}"
+    >
+      <span class="manuscript-find-result__meta">${escapeHtml(match.chapterTitle || "Chapter")} · ${escapeHtml(match.sceneTitle || "Scene")}</span>
+      <strong>${escapeHtml(match.matchText || "Match")}</strong>
+      <p>${match.snippetHtml}</p>
+    </button>
+  `;
+}
+
+function getManuscriptFindMatches(query) {
+  const needle = String(query ?? "").trim().toLocaleLowerCase();
+  if (!needle) {
+    return [];
+  }
+
+  const matches = [];
+
+  for (const scene of state.scenes) {
+    const sceneText = String(scene.editorText ?? "");
+    const haystack = sceneText.toLocaleLowerCase();
+    let searchFrom = 0;
+
+    while (searchFrom <= haystack.length) {
+      const startOffset = haystack.indexOf(needle, searchFrom);
+      if (startOffset === -1) {
+        break;
+      }
+
+      const endOffset = startOffset + needle.length;
+      matches.push({
+        sceneId: scene.sceneId,
+        chapterTitle: scene.chapterTitle,
+        sceneTitle: scene.sceneTitle,
+        startOffset,
+        endOffset,
+        matchText: sceneText.slice(startOffset, endOffset),
+        snippetHtml: buildManuscriptFindSnippetHtml(sceneText, startOffset, endOffset),
+      });
+
+      searchFrom = startOffset + Math.max(1, needle.length);
+    }
+  }
+
+  return matches;
+}
+
+function buildManuscriptFindSnippetHtml(text, startOffset, endOffset) {
+  const source = String(text ?? "");
+  const snippetStart = Math.max(0, startOffset - 40);
+  const snippetEnd = Math.min(source.length, endOffset + 40);
+  const normalizeSnippet = (value) => escapeHtml(String(value ?? "")).replace(/\s+/g, " ");
+  const before = normalizeSnippet(source.slice(snippetStart, startOffset));
+  const match = normalizeSnippet(source.slice(startOffset, endOffset));
+  const after = normalizeSnippet(source.slice(endOffset, snippetEnd));
+
+  return `${before}<mark>${match}</mark>${after}`;
+}
+
+function openManuscriptFind() {
+  const editorBookmark = captureManuscriptEditorBookmark();
+  const selectionText = getCurrentManuscriptSelectionText();
+  state.activePane = "manuscript";
+  state.manuscriptFind = {
+    ...state.manuscriptFind,
+    open: true,
+    query: selectionText || state.manuscriptFind.query,
+    activeIndex: 0,
+  };
+  render();
+  renderManuscriptFindPanel();
+  window.requestAnimationFrame(() => {
+    restoreManuscriptEditorBookmark(editorBookmark);
+    const field = document.querySelector("[data-find-field='manuscript-find-query']");
+    if (field instanceof HTMLInputElement) {
+      field.focus({ preventScroll: true });
+      field.select();
+    }
+  });
+}
+
+function closeManuscriptFind() {
+  if (!state.manuscriptFind.open) {
+    return;
+  }
+
+  state.manuscriptFind = {
+    ...state.manuscriptFind,
+    open: false,
+  };
+  renderManuscriptFindPanel();
+  window.requestAnimationFrame(() => {
+    const textarea = getEditorTextareaForScene(state.selectedSceneId);
+    if (textarea instanceof HTMLTextAreaElement) {
+      textarea.focus({ preventScroll: true });
+    }
+  });
+}
+
+function captureManuscriptEditorBookmark() {
+  const activeElement = document.activeElement;
+  const textarea =
+    activeElement instanceof HTMLTextAreaElement && activeElement.classList.contains("editor-document-input")
+      ? activeElement
+      : getEditorTextareaForScene(state.selectedSceneId);
+
+  if (!(textarea instanceof HTMLTextAreaElement)) {
+    return null;
+  }
+
+  const codeframe = textarea.closest(".scene-editor-codeframe");
+  return {
+    sceneId: String(textarea.dataset.sceneId ?? ""),
+    selectionStart: Number.isInteger(textarea.selectionStart) ? textarea.selectionStart : 0,
+    selectionEnd: Number.isInteger(textarea.selectionEnd) ? textarea.selectionEnd : Number.isInteger(textarea.selectionStart)
+      ? textarea.selectionStart
+      : 0,
+    codeframeScrollTop: codeframe instanceof HTMLElement ? codeframe.scrollTop : 0,
+    codeframeScrollLeft: codeframe instanceof HTMLElement ? codeframe.scrollLeft : 0,
+  };
+}
+
+function restoreManuscriptEditorBookmark(bookmark) {
+  if (!bookmark || typeof bookmark.sceneId !== "string" || !bookmark.sceneId.trim()) {
+    return;
+  }
+
+  const textarea = getEditorTextareaForScene(bookmark.sceneId);
+  if (!(textarea instanceof HTMLTextAreaElement)) {
+    return;
+  }
+
+  const safeStart = clampEditorOffset(bookmark.selectionStart, textarea.value.length);
+  const safeEnd = clampEditorOffset(bookmark.selectionEnd, textarea.value.length);
+  const codeframe = textarea.closest(".scene-editor-codeframe");
+  if (codeframe instanceof HTMLElement) {
+    codeframe.scrollTo({
+      left: Math.max(0, Number(bookmark.codeframeScrollLeft) || 0),
+      top: Math.max(0, Number(bookmark.codeframeScrollTop) || 0),
+    });
+  }
+
+  textarea.setSelectionRange(Math.min(safeStart, safeEnd), Math.max(safeStart, safeEnd), "forward");
+}
+
+function updateManuscriptFindField(findField, value) {
+  const normalizedField = String(findField ?? "").trim();
+  if (!normalizedField) {
+    return;
+  }
+
+  if (normalizedField === "manuscript-find-query") {
+    state.manuscriptFind = {
+      ...state.manuscriptFind,
+      query: String(value ?? ""),
+      activeIndex: 0,
+    };
+  }
+
+  if (normalizedField === "manuscript-find-replace") {
+    state.manuscriptFind = {
+      ...state.manuscriptFind,
+      replaceText: String(value ?? ""),
+    };
+  }
+
+  renderManuscriptFindPanel();
+}
+
+function moveManuscriptFindMatch(delta) {
+  const matches = getManuscriptFindMatches(state.manuscriptFind.query);
+  if (!matches.length) {
+    renderManuscriptFindPanel();
+    return;
+  }
+
+  const currentIndex = clampNumber(Number(state.manuscriptFind.activeIndex ?? 0), 0, matches.length - 1);
+  const nextIndex = (currentIndex + delta + matches.length) % matches.length;
+  navigateManuscriptFindMatch(nextIndex);
+}
+
+function navigateManuscriptFindMatch(index) {
+  const matches = getManuscriptFindMatches(state.manuscriptFind.query);
+  if (!matches.length) {
+    renderManuscriptFindPanel();
+    return;
+  }
+
+  const nextIndex = clampNumber(Number(index ?? 0), 0, matches.length - 1);
+  const match = matches[nextIndex];
+  if (!match) {
+    renderManuscriptFindPanel();
+    return;
+  }
+
+  state.manuscriptFind = {
+    ...state.manuscriptFind,
+    open: true,
+    activeIndex: nextIndex,
+  };
+  renderManuscriptFindPanel();
+  takeToSceneRange(match.sceneId, match.startOffset, match.endOffset, {
+    behavior: "smooth",
+  });
+}
+
+function replaceManuscriptFindCurrent() {
+  const query = String(state.manuscriptFind.query ?? "").trim();
+  if (!query) {
+    return;
+  }
+
+  const matches = getManuscriptFindMatches(query);
+  if (!matches.length) {
+    renderManuscriptFindPanel();
+    return;
+  }
+
+  const activeIndex = clampNumber(Number(state.manuscriptFind.activeIndex ?? 0), 0, matches.length - 1);
+  const match = matches[activeIndex];
+  if (!match) {
+    return;
+  }
+
+  const scene = getScene(match.sceneId);
+  if (!scene) {
+    return;
+  }
+
+  const sceneText = String(scene.editorText ?? "");
+  const replacement = String(state.manuscriptFind.replaceText ?? "");
+  const nextText = `${sceneText.slice(0, match.startOffset)}${replacement}${sceneText.slice(match.endOffset)}`;
+  if (nextText === sceneText) {
+    moveManuscriptFindMatch(1);
+    return;
+  }
+
+  updateSceneDraft(match.sceneId, (draft) => {
+    draft.editorText = nextText;
+    draft.revisionStats = updateSceneRevisionStats(draft.revisionStats, sceneText, nextText);
+  }, {
+    reason: "manuscript-find-replace",
+    immediate: true,
+  });
+  const textarea = getEditorTextareaForScene(match.sceneId);
+  if (textarea instanceof HTMLTextAreaElement) {
+    textarea.value = nextText;
+  }
+  syncRevisionPanel(match.sceneId);
+  syncSceneDocumentLayout();
+  renderManuscriptFindPanel();
+  moveManuscriptFindMatch(1);
+}
+
+function replaceManuscriptFindAll() {
+  const query = String(state.manuscriptFind.query ?? "").trim();
+  if (!query) {
+    return;
+  }
+
+  const matches = getManuscriptFindMatches(query);
+  if (!matches.length) {
+    renderManuscriptFindPanel();
+    return;
+  }
+
+  const replacement = String(state.manuscriptFind.replaceText ?? "");
+  const matchesByScene = new Map();
+  for (const match of matches) {
+    const sceneMatches = matchesByScene.get(match.sceneId) ?? [];
+    sceneMatches.push(match);
+    matchesByScene.set(match.sceneId, sceneMatches);
+  }
+
+  for (const scene of state.scenes) {
+    const sceneMatches = matchesByScene.get(scene.sceneId);
+    if (!sceneMatches?.length) {
+      continue;
+    }
+
+    let nextText = String(scene.editorText ?? "");
+    const sceneText = nextText;
+    for (const match of [...sceneMatches].sort((left, right) => right.startOffset - left.startOffset)) {
+      nextText = `${nextText.slice(0, match.startOffset)}${replacement}${nextText.slice(match.endOffset)}`;
+    }
+
+    if (nextText !== sceneText) {
+      updateSceneDraft(scene.sceneId, (draft) => {
+        draft.editorText = nextText;
+        draft.revisionStats = updateSceneRevisionStats(draft.revisionStats, sceneText, nextText);
+      }, {
+        reason: "manuscript-find-replace-all",
+        immediate: true,
+      });
+      const textarea = getEditorTextareaForScene(scene.sceneId);
+      if (textarea instanceof HTMLTextAreaElement) {
+        textarea.value = nextText;
+      }
+      syncRevisionPanel(scene.sceneId);
+    }
+  }
+
+  syncSceneDocumentLayout();
+  state.manuscriptFind = {
+    ...state.manuscriptFind,
+    activeIndex: 0,
+  };
+  renderManuscriptFindPanel();
+}
+
+function handleManuscriptFindWheel(event) {
+  if (!state.manuscriptFind.open) {
+    return;
+  }
+
+  const target = event.target instanceof Element ? event.target : null;
+  if (!target?.closest("[data-manuscript-find-results]")) {
+    return;
+  }
+
+  const matches = getManuscriptFindMatches(state.manuscriptFind.query);
+  if (matches.length <= 1) {
+    return;
+  }
+
+  event.preventDefault();
+  moveManuscriptFindMatch(event.deltaY > 0 ? 1 : -1);
+}
+
+function getCurrentManuscriptSelectionText() {
+  const activeElement = document.activeElement;
+  if (!(activeElement instanceof HTMLTextAreaElement)) {
+    return "";
+  }
+
+  if (!activeElement.classList.contains("editor-document-input")) {
+    return "";
+  }
+
+  const startOffset = Number.isInteger(activeElement.selectionStart) ? activeElement.selectionStart : 0;
+  const endOffset = Number.isInteger(activeElement.selectionEnd) ? activeElement.selectionEnd : startOffset;
+  if (endOffset <= startOffset) {
+    return "";
+  }
+
+  return activeElement.value.slice(startOffset, endOffset).trim();
 }
 
 function renderSidePanelTabs() {
@@ -4674,7 +6892,13 @@ function renderPassageNoteItem(note) {
         data-note-id="${escapeHtml(note.id)}"
         aria-label="${escapeHtml(note.noteType === "research" ? "Research title" : "Inspiration title")}"
       />
-      <span class="passage-note-body">${escapeHtml(note.body.trim() || "Untitled reflection")}</span>
+      <textarea
+        class="passage-note-body-input"
+        data-edit-field="passage-note-body"
+        data-note-id="${escapeHtml(note.id)}"
+        aria-label="${escapeHtml(note.noteType === "research" ? "Research note body" : "Inspiration note body")}"
+        rows="3"
+      >${escapeHtml(note.body || "")}</textarea>
     </div>
   `;
 }
@@ -4688,23 +6912,23 @@ function formatImportSourceLabel(source) {
     return "Manual";
   }
 
-  if (source === "scrivener-research") {
-    return "Scrivener research";
+  if (source === "source-research") {
+    return "Research";
   }
 
-  if (source === "scrivener-front-matter") {
+  if (source === "source-front-matter") {
     return "Front matter";
   }
 
-  if (source === "scrivener-comment") {
-    return "Scrivener comment";
+  if (source === "source-comment") {
+    return "Comment";
   }
 
-  if (source === "scrivener-comment-note") {
+  if (source === "source-comment-note") {
     return "Comment note";
   }
 
-  if (source === "scrivener-asset") {
+  if (source === "source-asset") {
     return "Asset";
   }
 
@@ -4724,7 +6948,10 @@ function formatImportSourceLabel(source) {
     return "PDF";
   }
 
-  return source.replace(/^scrivener-/, "Scrivener ");
+  return source
+    .replace(/^source-/, "")
+    .replace(/[-_]/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
 function renderTaskChapterList(tasks) {
@@ -5867,7 +8094,7 @@ async function finalizeNarrationRecording(recordingId, stopError = null) {
     mediaPath: finalRecord.mediaPath,
     startedAtMs: runtime.startedAtMs,
   }));
-  persistCurrentProjectRecord();
+  persistCurrentProjectRecord({ skipProjectFileAutosave: true });
   void saveCurrentProject();
 
   if (stopError) {
@@ -6557,7 +8784,12 @@ function syncSceneDocumentLayout() {
 
   const textarea = editor.querySelector(".editor-document-input");
   const gutter = editor.querySelector("[data-editor-gutter]");
-  if (!(textarea instanceof HTMLTextAreaElement) || !(gutter instanceof HTMLElement)) {
+  const spellcheckLayer = editor.querySelector("[data-spellcheck-layer]");
+  if (
+    !(textarea instanceof HTMLTextAreaElement) ||
+    !(gutter instanceof HTMLElement) ||
+    !(spellcheckLayer instanceof HTMLElement)
+  ) {
     return;
   }
   const selectedSceneId = editor.dataset.sceneEditor ?? "";
@@ -6591,6 +8823,7 @@ function syncSceneDocumentLayout() {
   gutter.innerHTML = Array.from({ length: visualLineCount }, (_, index) => `
     <span class="editor-gutter-line">${lineStartNumber + index}</span>
   `).join("");
+  syncSpellcheckLayer(spellcheckLayer, textarea, selectedSceneId);
   syncInlinePassageDraftLayout();
 }
 
@@ -6622,7 +8855,12 @@ async function loadInitialProjectLibrary() {
     readStoredJson(EDITOR_ACTIVE_PROJECT_ID_KEY) ??
     null;
   const legacyState = loadLegacyProjectState(legacyProjectId);
-  const remoteSeedLibrary = await loadDesktopProjectLibrarySeed();
+  const remoteSeedLibrary = await Promise.race([
+    loadDesktopProjectLibrarySeed(),
+    new Promise((resolve) => {
+      window.setTimeout(() => resolve(null), DESKTOP_PROJECT_LIBRARY_BOOT_TIMEOUT_MS);
+    }),
+  ]);
   const bundledSeedLibrary = remoteSeedLibrary ? null : loadBundledProjectLibrarySeed();
   const workspaceSeedLibrary = remoteSeedLibrary || bundledSeedLibrary || await loadWorkspaceFallbackProjectLibrarySeed();
   const seedLibrary = workspaceSeedLibrary;
@@ -6769,7 +9007,7 @@ function loadLegacyProjectState(projectId = null) {
     editorPrefs: loadEditorPrefs(),
     localAiPrefs: loadLocalAiPrefs(),
     projectTitle: loadProjectTitle(state.workspace?.project?.title ?? ""),
-    projectIntegratorPath: loadStoredString(EDITOR_SCRIVENER_IMPORT_PATH_KEY) ?? "",
+    projectSourcePath: loadStoredString(EDITOR_PROJECT_SOURCE_PATH_KEY) ?? "",
     binderPanelWidth: loadStoredNumber(EDITOR_BINDER_WIDTH_KEY, DEFAULT_BINDER_PANEL_WIDTH),
     consoleDockWidth: loadStoredNumber(EDITOR_CONSOLE_WIDTH_KEY, DEFAULT_CONSOLE_PANEL_WIDTH),
     consoleDockCollapsed: readStoredJson(EDITOR_RIGHT_DOCK_COLLAPSED_KEY) === true,
@@ -6838,7 +9076,7 @@ function mergeProjectLibrarySnapshots(storedLibrary, seedLibrary, legacyState = 
     projectsById.set(merged.id, merged);
   }
 
-  const canonicalSeedProject = seedProjects.find((project) => project.source === "scrivener-import") ?? seedProjects[0] ?? null;
+  const canonicalSeedProject = seedProjects.find((project) => project.source === "project-file") ?? seedProjects[0] ?? null;
   if (canonicalSeedProject) {
     const staleDuplicate = findStaleSeedProjectMatch(
       mergedProjects.filter((project) => project.id !== canonicalSeedProject.id),
@@ -6912,7 +9150,7 @@ function findStaleSeedProjectMatch(projects, seedProject) {
         return false;
       }
 
-      if (project.source === "scrivener-import") {
+      if (project.source === "project-file") {
         return false;
       }
 
@@ -6965,7 +9203,7 @@ function mergeItemsById(storedItems, seedItems) {
 function mergeImportedRecord(storedItem, seedItem) {
   const seedSource = typeof seedItem.source === "string" ? seedItem.source : "";
   const storedSource = typeof storedItem.source === "string" ? storedItem.source : "";
-  const isImported = seedSource.startsWith("scrivener-") || storedSource.startsWith("scrivener-");
+  const isImported = seedSource.startsWith("source-") || storedSource.startsWith("source-");
 
   if (!isImported) {
     return cloneValue(storedItem);
@@ -7022,13 +9260,14 @@ function createDefaultProjectSettingsSnapshot(currentWordCount = 0, now = new Da
   return {
     editorPrefs: createDefaultEditorPrefs(),
     localAiPrefs: createDefaultLocalAiPrefs(),
+    spellcheck: createDefaultSpellcheckProjectSettings(),
     binderPanelWidth: DEFAULT_BINDER_PANEL_WIDTH,
     consoleDockWidth: DEFAULT_CONSOLE_PANEL_WIDTH,
     consoleDockCollapsed: false,
     collapsedChapterIds: [],
     collapsedConsoleChapterIds: createCollapsedConsoleChapterState(),
     projectFilePath: "",
-    projectIntegratorPath: "",
+    projectSourcePath: "",
     writingTargetState: createDefaultWritingTargetRecord(currentWordCount, now),
     writingTargetViewMode: "month",
     writingTargetSelectedDateKey: getLocalDateKey(now),
@@ -7082,13 +9321,14 @@ function normalizeProjectSettingsSnapshot(candidate, projectId = "", currentWord
       normalizedCandidate.collapsedConsoleChapterIds ?? defaults.collapsedConsoleChapterIds,
     ),
     projectFilePath: normalizeProjectFilePath(normalizedCandidate.projectFilePath ?? defaults.projectFilePath),
-    projectIntegratorPath: normalizeProjectFilePath(normalizedCandidate.projectIntegratorPath ?? defaults.projectIntegratorPath),
+    projectSourcePath: normalizeProjectFilePath(normalizedCandidate.projectSourcePath ?? defaults.projectSourcePath),
     writingTargetState,
     writingTargetViewMode,
     writingTargetSelectedDateKey: selectedDateKey,
     writingTargetCalendarMonthKey: calendarMonth
       ? getWritingTargetMonthKey(calendarMonth)
       : defaults.writingTargetCalendarMonthKey,
+    spellcheck: normalizeSpellcheckProjectSettings(normalizedCandidate.spellcheck ?? defaults.spellcheck),
   };
 }
 
@@ -7106,11 +9346,12 @@ function buildProjectSettingsCandidate(candidate) {
     collapsedChapterIds: projectSettings.collapsedChapterIds ?? candidate?.collapsedChapterIds,
     collapsedConsoleChapterIds: projectSettings.collapsedConsoleChapterIds ?? candidate?.collapsedConsoleChapterIds,
     projectFilePath: projectSettings.projectFilePath ?? candidate?.projectFilePath,
-    projectIntegratorPath: projectSettings.projectIntegratorPath ?? candidate?.projectIntegratorPath,
+    projectSourcePath: projectSettings.projectSourcePath ?? candidate?.projectSourcePath,
     writingTargetState: projectSettings.writingTargetState ?? candidate?.writingTargetState,
     writingTargetViewMode: projectSettings.writingTargetViewMode ?? candidate?.writingTargetViewMode,
     writingTargetSelectedDateKey: projectSettings.writingTargetSelectedDateKey ?? candidate?.writingTargetSelectedDateKey,
     writingTargetCalendarMonthKey: projectSettings.writingTargetCalendarMonthKey ?? candidate?.writingTargetCalendarMonthKey,
+    spellcheck: projectSettings.spellcheck ?? candidate?.spellcheck,
   };
 }
 
@@ -7134,11 +9375,12 @@ function createProjectSettingsSnapshotFromState({
       collapsedChapterIds: cloneValue(state.collapsedChapterIds),
       collapsedConsoleChapterIds: cloneValue(state.collapsedConsoleChapterIds),
       projectFilePath: state.projectFilePath,
-      projectIntegratorPath: state.projectIntegratorPath,
+      projectSourcePath: state.projectSourcePath,
       writingTargetState,
       writingTargetViewMode: state.writingTargetViewMode,
       writingTargetSelectedDateKey: state.writingTargetSelectedDateKey,
       writingTargetCalendarMonthKey: state.writingTargetCalendarMonthKey,
+      spellcheck: cloneValue(state.spellcheckProjectSettings),
     },
     projectId,
     currentWordCount,
@@ -7188,7 +9430,7 @@ function normalizeProjectRecord(candidate, legacyState = null) {
     ...cloneValue(candidate),
     editorPrefs: candidate.editorPrefs ?? legacyState?.editorPrefs,
     localAiPrefs: candidate.localAiPrefs ?? legacyState?.localAiPrefs,
-    projectIntegratorPath: candidate.projectIntegratorPath ?? legacyState?.projectIntegratorPath,
+    projectSourcePath: candidate.projectSourcePath ?? legacyState?.projectSourcePath,
   }),
     id,
     getWorkspaceManuscriptWordCount(workspace),
@@ -7381,6 +9623,7 @@ function applyProjectRecord(record) {
   saveWritingTargetState();
   clearWritingTargetDraft();
   clearWritingTargetSnapshotTimer();
+  clearProjectFileAutosaveState();
   if (narrationRecordingRuntime?.timerId) {
     clearInterval(narrationRecordingRuntime.timerId);
   }
@@ -7437,8 +9680,13 @@ function applyProjectRecord(record) {
   state.passageNotes = normalizePassageNotes(record.passageNotes);
   state.selectedTaskId = null;
   state.selectedPassageNoteId = null;
+  state.editingChapterTitleId = null;
+  state.editingSceneTitleId = null;
+  binderTitleClickState = null;
   state.inlinePassageDraft = null;
   state.taskContextMenu = null;
+  state.binderContextMenu = null;
+  state.spellcheckContextMenu = null;
   state.taskComposer = null;
   state.taskPreview = null;
   state.localAiTitleStatus = {};
@@ -7456,7 +9704,8 @@ function applyProjectRecord(record) {
   state.collapsedChapterIds = projectSettings.collapsedChapterIds;
   state.collapsedConsoleChapterIds = projectSettings.collapsedConsoleChapterIds;
   state.projectFilePath = projectSettings.projectFilePath;
-  state.projectIntegratorPath = projectSettings.projectIntegratorPath;
+  state.projectSourcePath = projectSettings.projectSourcePath;
+  state.spellcheckProjectSettings = normalizeSpellcheckProjectSettings(projectSettings.spellcheck);
   state.projectFileHandle = null;
   state.writingTargetViewMode = projectSettings.writingTargetViewMode;
   state.writingTargetSelectedDateKey = projectSettings.writingTargetSelectedDateKey;
@@ -7464,7 +9713,7 @@ function applyProjectRecord(record) {
   state.writingTargetProjectId = record.id;
   state.writingTargetState = cloneValue(projectSettings.writingTargetState);
   writeStoredJsonRaw(EDITOR_PROJECT_FILE_PATH_KEY, state.projectFilePath);
-  writeStoredJsonRaw(EDITOR_SCRIVENER_IMPORT_PATH_KEY, state.projectIntegratorPath);
+  writeStoredJsonRaw(EDITOR_PROJECT_SOURCE_PATH_KEY, state.projectSourcePath);
   writeStoredJsonRaw(EDITOR_BINDER_WIDTH_KEY, state.binderPanelWidth);
   writeStoredJsonRaw(EDITOR_CONSOLE_WIDTH_KEY, state.consoleDockWidth);
   persistConsoleDockCollapsedState(state.consoleDockCollapsed);
@@ -7483,7 +9732,7 @@ function syncLegacyProjectStorageFromState() {
 
   writeStoredJsonRaw(EDITOR_PROJECT_TITLE_KEY, state.projectTitle);
   writeStoredJsonRaw(EDITOR_PROJECT_FILE_PATH_KEY, state.projectFilePath);
-  writeStoredJsonRaw(EDITOR_SCRIVENER_IMPORT_PATH_KEY, state.projectIntegratorPath);
+  writeStoredJsonRaw(EDITOR_PROJECT_SOURCE_PATH_KEY, state.projectSourcePath);
   writeStoredJsonRaw(EDITOR_DRAFTS_KEY, state.sceneDrafts);
   writeStoredJsonRaw(EDITOR_STRUCTURE_KEY, state.structureDrafts);
   writeStoredJsonRaw(EDITOR_TEMPLATE_DRAFTS_KEY, state.templateDrafts);
@@ -7493,7 +9742,72 @@ function syncLegacyProjectStorageFromState() {
   writeStoredJsonRaw(EDITOR_LOCAL_AI_PREFS_KEY, state.localAiPrefs);
 }
 
-function persistCurrentProjectRecord() {
+function getProjectFileAutosaveTarget() {
+  return {
+    projectId: state.activeProjectId ?? state.workspace?.project?.id ?? null,
+    filePath: normalizeProjectFilePath(state.projectFilePath),
+    fileHandle: state.projectFileHandle ?? null,
+  };
+}
+
+function clearProjectFileAutosaveTimer() {
+  if (!state.projectFileAutosaveTimer) {
+    return;
+  }
+
+  window.clearTimeout(state.projectFileAutosaveTimer);
+  state.projectFileAutosaveTimer = null;
+}
+
+function beginProjectFileAutosaveSuppression() {
+  state.projectFileAutosaveSuppressionDepth += 1;
+}
+
+function endProjectFileAutosaveSuppression() {
+  if (state.projectFileAutosaveSuppressionDepth > 0) {
+    state.projectFileAutosaveSuppressionDepth -= 1;
+  }
+
+  if (state.projectFileAutosaveSuppressionDepth === 0 && state.projectFileAutosaveDirty) {
+    queueProjectFileAutosave();
+  }
+}
+
+function queueProjectFileAutosave() {
+  if (
+    !state.projectFileAutosaveDirty ||
+    state.projectFileAutosaveSuppressionDepth > 0 ||
+    !hasProjectFileDestination()
+  ) {
+    return;
+  }
+
+  clearProjectFileAutosaveTimer();
+  if (state.projectFileBusy) {
+    return;
+  }
+
+  state.projectFileAutosaveTimer = window.setTimeout(() => {
+    state.projectFileAutosaveTimer = null;
+    void flushProjectFileAutosave();
+  }, PROJECT_FILE_AUTOSAVE_DELAY_MS);
+}
+
+function markProjectFileAutosaveDirty() {
+  state.projectFileAutosaveDirty = true;
+  state.projectFileAutosaveRevision += 1;
+  state.projectFileAutosaveTarget = getProjectFileAutosaveTarget();
+  queueProjectFileAutosave();
+}
+
+function clearProjectFileAutosaveState() {
+  clearProjectFileAutosaveTimer();
+  state.projectFileAutosaveDirty = false;
+  state.projectFileAutosaveTarget = null;
+  state.projectFileAutosaveRevision = 0;
+}
+
+function persistCurrentProjectRecord(options = {}) {
   const record = createProjectLibraryRecordFromState();
   if (!record) {
     return;
@@ -7513,6 +9827,10 @@ function persistCurrentProjectRecord() {
   };
   writeStoredJsonRaw(EDITOR_PROJECT_LIBRARY_KEY, snapshot);
   writeStoredJsonRaw(EDITOR_ACTIVE_PROJECT_ID_KEY, record.id);
+
+  if (options.skipProjectFileAutosave !== true) {
+    markProjectFileAutosaveDirty();
+  }
 }
 
 function loadSelectedProject() {
@@ -7532,8 +9850,9 @@ function loadSelectedProject() {
     state.workspace.selectionDefaults.lineId ?? state.scenes[0]?.blocks[0]?.blockId ?? null,
   );
   syncWritingTargetState({ forceReload: true });
+  refreshWritingTargetSessionLifecycle({ reason: "load-project" });
   render();
-  recordWritingTargetSnapshot({ immediate: true, reason: "load-project" });
+  recordWritingTargetSnapshot({ immediate: true, reason: "load-project", skipProjectFileAutosave: true });
   if (state.workspace?.project?.stats) {
     reportBrowserLog("info", "project-library", "Loaded saved project from library.", {
       projectId: record.id,
@@ -7610,11 +9929,11 @@ function hasProjectFileDestination() {
   return Boolean(state.projectFileHandle || hasProjectFilePath(state.projectFilePath));
 }
 
-function setProjectFilePath(pathValue, handle = null) {
+function setProjectFilePath(pathValue, handle = null, options = {}) {
   state.projectFilePath = normalizeProjectFilePath(pathValue);
   state.projectFileHandle = handle;
   writeStoredJsonRaw(EDITOR_PROJECT_FILE_PATH_KEY, state.projectFilePath);
-  persistCurrentProjectRecord();
+  persistCurrentProjectRecord({ skipProjectFileAutosave: options.skipProjectFileAutosave === true });
 }
 
 function createProjectLibrarySnapshotForFile() {
@@ -7630,6 +9949,7 @@ async function saveProjectLibraryToBrowserHandle(handle, snapshot = createProjec
     throw new Error("A browser file handle is required.");
   }
 
+  const saveRevision = state.projectFileAutosaveRevision;
   state.projectFileBusy = true;
   state.projectFileStatus = "Saving project file...";
   renderHeader();
@@ -7639,7 +9959,7 @@ async function saveProjectLibraryToBrowserHandle(handle, snapshot = createProjec
     await writable.write(JSON.stringify(snapshot, null, 2));
     await writable.close();
     const savedLabel = handle.name || getSuggestedProjectFileName();
-    setProjectFilePath(savedLabel, handle);
+    setProjectFilePath(savedLabel, handle, { skipProjectFileAutosave: true });
     state.projectFileStatus = `Saved to ${savedLabel}`;
     reportBrowserLog("info", "project-file", "Saved the current project file.", {
       filePath: savedLabel,
@@ -7647,6 +9967,9 @@ async function saveProjectLibraryToBrowserHandle(handle, snapshot = createProjec
       title: state.projectTitle,
       mode: "browser-handle",
     });
+    if (state.projectFileAutosaveRevision === saveRevision) {
+      clearProjectFileAutosaveState();
+    }
     renderHeader();
     return savedLabel;
   } catch (error) {
@@ -7670,6 +9993,7 @@ async function saveProjectLibraryToFile(filePath, snapshot = createProjectLibrar
     throw new Error("A project file path is required.");
   }
 
+  const saveRevision = state.projectFileAutosaveRevision;
   state.projectFileBusy = true;
   state.projectFileStatus = "Saving project file...";
   renderHeader();
@@ -7690,7 +10014,7 @@ async function saveProjectLibraryToFile(filePath, snapshot = createProjectLibrar
     const savedPath = typeof response.value?.filePath === "string" && response.value.filePath.trim()
       ? response.value.filePath.trim()
       : resolvedPath;
-    setProjectFilePath(savedPath, null);
+    setProjectFilePath(savedPath, null, { skipProjectFileAutosave: true });
     state.projectFileStatus = `Saved to ${savedPath}`;
     reportBrowserLog("info", "project-file", "Saved the current project file.", {
       filePath: savedPath,
@@ -7698,6 +10022,9 @@ async function saveProjectLibraryToFile(filePath, snapshot = createProjectLibrar
       title: state.projectTitle,
       mode: "desktop-path",
     });
+    if (state.projectFileAutosaveRevision === saveRevision) {
+      clearProjectFileAutosaveState();
+    }
     renderHeader();
     return savedPath;
   } catch (error) {
@@ -7711,7 +10038,52 @@ async function saveProjectLibraryToFile(filePath, snapshot = createProjectLibrar
     throw error;
   } finally {
     state.projectFileBusy = false;
+    if (state.projectFileAutosaveDirty) {
+      queueProjectFileAutosave();
+    }
     renderHeader();
+  }
+}
+
+async function flushProjectFileAutosave() {
+  if (
+    !state.projectFileAutosaveDirty ||
+    state.projectFileAutosaveSuppressionDepth > 0 ||
+    !hasProjectFileDestination() ||
+    state.projectFileBusy
+  ) {
+    return;
+  }
+
+  const target = state.projectFileAutosaveTarget;
+  const currentTarget = getProjectFileAutosaveTarget();
+  if (
+    !target ||
+    target.projectId !== currentTarget.projectId ||
+    target.filePath !== currentTarget.filePath ||
+    target.fileHandle !== currentTarget.fileHandle
+  ) {
+    clearProjectFileAutosaveState();
+    return;
+  }
+
+  clearProjectFileAutosaveTimer();
+  state.projectFileStatus = "Autosaving project file...";
+  renderHeader();
+
+  const saveRevision = state.projectFileAutosaveRevision;
+  try {
+    await saveCurrentProject();
+  } catch {
+    // Save errors are already surfaced by the save helpers.
+  }
+
+  if (state.projectFileAutosaveRevision === saveRevision) {
+    clearProjectFileAutosaveState();
+  }
+
+  if (state.projectFileAutosaveDirty) {
+    queueProjectFileAutosave();
   }
 }
 
@@ -7753,7 +10125,7 @@ async function loadProjectLibrarySnapshotIntoState(loadedSnapshot, options = {})
 
   applyProjectRecord(record);
   if (typeof options.filePath === "string" && options.filePath.trim()) {
-    setProjectFilePath(options.filePath, options.fileHandle ?? null);
+    setProjectFilePath(options.filePath, options.fileHandle ?? null, { skipProjectFileAutosave: true });
   }
   refreshScenes();
   state.selectedIssueId = state.workspace.selectionDefaults.issueId ?? null;
@@ -7765,7 +10137,7 @@ async function loadProjectLibrarySnapshotIntoState(loadedSnapshot, options = {})
   syncWritingTargetState({ forceReload: true });
   state.projectFileStatus = `Loaded ${mergedProjects.length} project${mergedProjects.length === 1 ? "" : "s"} from ${options.sourceLabel ?? "file"}`;
   render();
-  recordWritingTargetSnapshot({ immediate: true, reason: options.reason ?? "load-project-file" });
+  recordWritingTargetSnapshot({ immediate: true, reason: options.reason ?? "load-project-file", skipProjectFileAutosave: true });
 
   if (state.workspace?.project?.stats) {
     reportBrowserLog("info", "project-file", "Loaded a project library from disk.", {
@@ -7808,6 +10180,9 @@ async function loadProjectLibraryFromBrowserHandle(handle) {
     renderHeader();
   } finally {
     state.projectFileBusy = false;
+    if (state.projectFileAutosaveDirty) {
+      queueProjectFileAutosave();
+    }
     renderHeader();
   }
 }
@@ -8037,13 +10412,40 @@ async function loadProjectLibraryFromFile() {
 }
 
 async function saveCurrentProject() {
-  commitWritingTargetDraft();
-  recordWritingTargetSnapshot({ immediate: true, reason: "save-project" });
-  if (state.projectFileHandle) {
-    try {
-      await saveProjectLibraryToBrowserHandle(state.projectFileHandle);
-    } catch {
-      // The browser-library save still succeeded; the file status now carries the error.
+  beginProjectFileAutosaveSuppression();
+  try {
+    commitWritingTargetDraft();
+    recordWritingTargetSnapshot({ immediate: true, reason: "save-project", skipProjectFileAutosave: true });
+    if (state.projectFileHandle) {
+      try {
+        await saveProjectLibraryToBrowserHandle(state.projectFileHandle);
+      } catch {
+        // The browser-library save still succeeded; the file status now carries the error.
+      }
+      renderHeader();
+      if (state.workspace?.project?.stats) {
+        reportBrowserLog("info", "project-library", "Saved current project to library.", {
+          projectId: state.activeProjectId ?? state.workspace.project.id,
+          title: state.projectTitle,
+          chapters: state.workspace.project.stats.chapterCount,
+          scenes: state.workspace.project.stats.sceneCount,
+          templates: state.workspace.world?.stats?.templateCount ?? 0,
+          target: "browser-handle",
+        });
+      }
+      return;
+    }
+
+    const filePath = normalizeProjectFilePath(state.projectFilePath);
+    if (filePath) {
+      try {
+        await saveProjectLibraryToFile(filePath);
+      } catch {
+        // The browser-library save still succeeded; the file status now carries the error.
+      }
+    } else {
+      state.projectFileStatus = "Saved to the browser project library. Use Save as file to create a manuscript file.";
+      renderHeader();
     }
     renderHeader();
     if (state.workspace?.project?.stats) {
@@ -8053,74 +10455,57 @@ async function saveCurrentProject() {
         chapters: state.workspace.project.stats.chapterCount,
         scenes: state.workspace.project.stats.sceneCount,
         templates: state.workspace.world?.stats?.templateCount ?? 0,
-        target: "browser-handle",
+        target: state.projectFileHandle ? "browser-handle" : "desktop-path",
       });
     }
-    return;
-  }
-
-  const filePath = normalizeProjectFilePath(state.projectFilePath);
-  if (filePath) {
-    try {
-      await saveProjectLibraryToFile(filePath);
-    } catch {
-      // The browser-library save still succeeded; the file status now carries the error.
-    }
-  } else {
-    state.projectFileStatus = "Saved to the browser project library. Use Save as file to create a manuscript file.";
-    renderHeader();
-  }
-  renderHeader();
-  if (state.workspace?.project?.stats) {
-    reportBrowserLog("info", "project-library", "Saved current project to library.", {
-      projectId: state.activeProjectId ?? state.workspace.project.id,
-      title: state.projectTitle,
-      chapters: state.workspace.project.stats.chapterCount,
-      scenes: state.workspace.project.stats.sceneCount,
-      templates: state.workspace.world?.stats?.templateCount ?? 0,
-      target: state.projectFileHandle ? "browser-handle" : "desktop-path",
-    });
+  } finally {
+    endProjectFileAutosaveSuppression();
   }
 }
 
 async function saveCurrentProjectFileAs() {
-  if (canUseBrowserSavePicker()) {
-    try {
-      const handle = await window.showSaveFilePicker({
-        suggestedName: getSuggestedProjectFileName(),
-        types: getProjectFilePickerTypes(),
-      });
-      commitWritingTargetDraft();
-      setProjectFilePath(handle.name || getSuggestedProjectFileName(), handle);
-      const snapshot = createProjectLibrarySnapshotForFile();
-      await saveProjectLibraryToBrowserHandle(handle, snapshot);
-      return;
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") {
-        state.projectFileStatus = "Save As cancelled.";
-        renderHeader();
+  beginProjectFileAutosaveSuppression();
+  try {
+    if (canUseBrowserSavePicker()) {
+      try {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: getSuggestedProjectFileName(),
+          types: getProjectFilePickerTypes(),
+        });
+        commitWritingTargetDraft();
+        setProjectFilePath(handle.name || getSuggestedProjectFileName(), handle, { skipProjectFileAutosave: true });
+        const snapshot = createProjectLibrarySnapshotForFile();
+        await saveProjectLibraryToBrowserHandle(handle, snapshot);
         return;
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          state.projectFileStatus = "Save As cancelled.";
+          renderHeader();
+          return;
+        }
+
+        state.projectFileStatus = `Save picker unavailable: ${error instanceof Error ? error.message : String(error)}`;
+        renderHeader();
       }
-
-      state.projectFileStatus = `Save picker unavailable: ${error instanceof Error ? error.message : String(error)}`;
-      renderHeader();
     }
-  }
 
-  const typedPath = normalizeProjectFilePath(state.projectFilePath);
-  if (hasProjectFilePath(typedPath)) {
+    const typedPath = normalizeProjectFilePath(state.projectFilePath);
+    if (hasProjectFilePath(typedPath)) {
+      commitWritingTargetDraft();
+      setProjectFilePath(typedPath, null, { skipProjectFileAutosave: true });
+      const snapshot = createProjectLibrarySnapshotForFile();
+      await saveProjectLibraryToFile(typedPath, snapshot);
+      return;
+    }
+
     commitWritingTargetDraft();
-    setProjectFilePath(typedPath, null);
     const snapshot = createProjectLibrarySnapshotForFile();
-    await saveProjectLibraryToFile(typedPath, snapshot);
-    return;
+    const downloadedName = downloadProjectLibrarySnapshot(snapshot, typedPath || getSuggestedProjectFileName());
+    state.projectFileStatus = `Downloaded ${downloadedName}. Use Load file to reopen it later.`;
+    renderHeader();
+  } finally {
+    endProjectFileAutosaveSuppression();
   }
-
-  commitWritingTargetDraft();
-  const snapshot = createProjectLibrarySnapshotForFile();
-  const downloadedName = downloadProjectLibrarySnapshot(snapshot, typedPath || getSuggestedProjectFileName());
-  state.projectFileStatus = `Downloaded ${downloadedName}. Use Load file to reopen it later.`;
-  renderHeader();
 }
 
 function createProject() {
@@ -8154,10 +10539,10 @@ function createProject() {
     state.workspace.selectionDefaults.lineId ?? state.scenes[0]?.blocks[0]?.blockId ?? null,
   );
   syncWritingTargetState({ forceReload: true });
-  setProjectFilePath(getSuggestedProjectFilePath(), null);
-  persistCurrentProjectRecord();
+  setProjectFilePath(getSuggestedProjectFilePath(), null, { skipProjectFileAutosave: true });
+  persistCurrentProjectRecord({ skipProjectFileAutosave: true });
   render();
-  recordWritingTargetSnapshot({ immediate: true, reason: "create-project" });
+  recordWritingTargetSnapshot({ immediate: true, reason: "create-project", skipProjectFileAutosave: true });
   if (state.workspace?.project?.stats) {
     reportBrowserLog("info", "project-library", "Created a new project.", {
       projectId: record.id,
@@ -8169,20 +10554,20 @@ function createProject() {
   }
 }
 
-async function importScrivenerProject() {
-  const projectPath = state.projectIntegratorPath.trim();
+async function loadProjectSource() {
+  const projectPath = state.projectSourcePath.trim();
   if (!projectPath) {
-    state.projectIntegratorStatus = "Enter a local Scrivener project path.";
+    state.projectSourceStatus = "Enter a local project source path.";
     renderHeader();
     return;
   }
 
-  state.projectIntegratorBusy = true;
-  state.projectIntegratorStatus = "Importing Scrivener project...";
+  state.projectSourceBusy = true;
+  state.projectSourceStatus = "Loading project source...";
   renderHeader();
 
   try {
-    const response = await fetchJsonFromDesktopApi("/api/project-integrator", {
+    const response = await fetchJsonFromDesktopApi("/api/project-source", {
       method: "POST",
       body: {
         projectPath,
@@ -8190,7 +10575,7 @@ async function importScrivenerProject() {
     });
 
     if (!response.ok) {
-      throw response.error ?? new Error("Scrivener import failed.");
+      throw response.error ?? new Error("Project source load failed.");
     }
 
     const importedLibrary = normalizeProjectLibrarySnapshot(response.value);
@@ -8215,7 +10600,7 @@ async function importScrivenerProject() {
 
     const record = getActiveProjectRecord();
     if (!record) {
-      throw new Error("Unable to activate the imported Scrivener project.");
+      throw new Error("Unable to activate the loaded project source.");
     }
 
     applyProjectRecord(record);
@@ -8228,13 +10613,13 @@ async function importScrivenerProject() {
     );
     syncWritingTargetState({ forceReload: true });
     if (state.workspace?.project?.stats) {
-      state.projectIntegratorStatus = `Imported ${record.title} · ${state.workspace.project.stats.chapterCount} chapters, ${state.workspace.project.stats.sceneCount} scenes`;
+      state.projectSourceStatus = `Loaded ${record.title} · ${state.workspace.project.stats.chapterCount} chapters, ${state.workspace.project.stats.sceneCount} scenes`;
     }
     render();
-    recordWritingTargetSnapshot({ immediate: true, reason: "import-project" });
+    recordWritingTargetSnapshot({ immediate: true, reason: "load-project-source", skipProjectFileAutosave: true });
 
     if (state.workspace?.project?.stats) {
-      reportBrowserLog("info", "project-integrator", "Imported a Scrivener project into saved projects.", {
+      reportBrowserLog("info", "project-source", "Loaded a project source into saved projects.", {
         projectPath,
         projectId: record.id,
         title: record.title,
@@ -8244,14 +10629,14 @@ async function importScrivenerProject() {
       });
     }
   } catch (error) {
-    state.projectIntegratorStatus = `Import failed: ${error instanceof Error ? error.message : String(error)}`;
-    reportBrowserLog("error", "project-integrator", "Scrivener project import failed.", {
+    state.projectSourceStatus = `Load failed: ${error instanceof Error ? error.message : String(error)}`;
+    reportBrowserLog("error", "project-source", "Project source load failed.", {
       projectPath,
       error,
     });
     renderHeader();
   } finally {
-    state.projectIntegratorBusy = false;
+    state.projectSourceBusy = false;
     renderHeader();
   }
 }
@@ -8466,6 +10851,463 @@ function getEditorContextFromEvent(event) {
   };
 }
 
+function getSpellcheckContextFromEvent(editorContext, event) {
+  if (!spellcheckBaseLexicon?.wordList?.length || !editorContext) {
+    return null;
+  }
+
+  const { textarea, contextRange } = editorContext;
+  if (!(textarea instanceof HTMLTextAreaElement)) {
+    return null;
+  }
+
+  const sceneId = String(textarea.dataset.sceneId ?? "");
+  if (!sceneId) {
+    return null;
+  }
+
+  const projectLexicon = buildCurrentProjectSpellcheckLexicon();
+  const explicitSelection = contextRange?.hasExplicitSelection === true;
+  const selectionText = explicitSelection ? String(contextRange.selectedText ?? "").trim() : "";
+  const selectionLooksLikeOneWord = selectionText && !/\s/.test(selectionText);
+  if (explicitSelection && selectionText) {
+    const selectionMisspellings = collectSpellcheckMisspellings(selectionText, {
+      baseLexicon: spellcheckBaseLexicon,
+      projectLexicon,
+      referenceLexicon: spellcheckReferenceLexicon,
+    });
+    if (!selectionMisspellings.length) {
+      return null;
+    }
+
+    const words = getSpellcheckProjectWordsFromSelection(selectionMisspellings);
+    const mode = words.length > 1 ? "selection" : "word";
+    const firstWord = selectionMisspellings[0];
+    return {
+      sceneId,
+      mode,
+      words,
+      word: firstWord?.word ?? selectionText,
+      normalizedWord: firstWord?.normalizedWord ?? normalizeSpellcheckWord(selectionText),
+      startOffset: contextRange.startOffset,
+      endOffset: contextRange.endOffset,
+      selectionText,
+      suggestions: mode === "word"
+        ? suggestSpellcheckAlternatives(firstWord?.word ?? selectionText, {
+          baseLexicon: spellcheckBaseLexicon,
+          projectLexicon,
+          referenceLexicon: spellcheckReferenceLexicon,
+        })
+        : [],
+      x: event.clientX,
+      y: event.clientY,
+      count: words.length,
+    };
+  }
+
+  let wordRange = getSpellcheckWordRangeFromPointer(textarea, event);
+  if (!wordRange) {
+    const caretOffset = Number.isInteger(textarea.selectionStart) ? textarea.selectionStart : contextRange?.startOffset ?? 0;
+    wordRange = getSpellcheckWordRange(textarea.value, caretOffset);
+  }
+
+  if (!wordRange || !wordRange.word) {
+    return null;
+  }
+
+  if (!isSpellcheckMisspelledWord(wordRange.word, {
+    baseLexicon: spellcheckBaseLexicon,
+    projectLexicon,
+    referenceLexicon: spellcheckReferenceLexicon,
+  })) {
+    return null;
+  }
+
+  return {
+    sceneId,
+    mode: "word",
+    words: [wordRange.word],
+    word: wordRange.word,
+    normalizedWord: wordRange.normalizedWord,
+    startOffset: wordRange.startOffset,
+    endOffset: wordRange.endOffset,
+    suggestions: suggestSpellcheckAlternatives(wordRange.word, {
+      baseLexicon: spellcheckBaseLexicon,
+      projectLexicon,
+      referenceLexicon: spellcheckReferenceLexicon,
+    }),
+    x: event.clientX,
+    y: event.clientY,
+    count: 1,
+  };
+}
+
+function getSpellcheckContextFromGrammarCheckTarget(target, event) {
+  if (!spellcheckBaseLexicon?.wordList?.length || !(target instanceof HTMLElement)) {
+    return null;
+  }
+
+  const scene = getSelectedScene() ?? state.scenes[0] ?? null;
+  const sceneId = String(scene?.sceneId ?? "");
+  if (!scene || !sceneId) {
+    return null;
+  }
+
+  const word = String(target.dataset.grammarCheckWord ?? "").trim();
+  const normalizedWord = normalizeSpellcheckWord(word);
+  const firstIndex = Number(target.dataset.grammarCheckFirstIndex);
+  if (!normalizedWord || !Number.isInteger(firstIndex)) {
+    return null;
+  }
+
+  const sourceText = String(scene.editorText ?? "");
+  const originalWord = sourceText.slice(firstIndex, firstIndex + word.length) || word;
+  const projectLexicon = buildCurrentProjectSpellcheckLexicon();
+  const suggestions = suggestSpellcheckAlternatives(originalWord, {
+    baseLexicon: spellcheckBaseLexicon,
+    projectLexicon,
+    referenceLexicon: spellcheckReferenceLexicon,
+  });
+
+  return {
+    sceneId,
+    mode: "word",
+    words: [originalWord],
+    word: originalWord,
+    normalizedWord,
+    startOffset: firstIndex,
+    endOffset: firstIndex + originalWord.length,
+    suggestions,
+    x: event.clientX,
+    y: event.clientY,
+    count: 1,
+  };
+}
+
+function getSpellcheckWordRangeFromPointer(textarea, event) {
+  if (!(textarea instanceof HTMLTextAreaElement) || !(event instanceof MouseEvent)) {
+    return null;
+  }
+
+  const offset = getTextareaOffsetFromPoint(textarea, event.clientX, event.clientY);
+  if (!Number.isInteger(offset)) {
+    return null;
+  }
+
+  return getSpellcheckWordRange(textarea.value, offset);
+}
+
+function getTextareaOffsetFromPoint(textarea, clientX, clientY) {
+  const rect = textarea.getBoundingClientRect();
+  if (!rect.width || !rect.height) {
+    return null;
+  }
+
+  if (
+    clientX < rect.left ||
+    clientX > rect.right ||
+    clientY < rect.top ||
+    clientY > rect.bottom
+  ) {
+    return null;
+  }
+
+  const style = window.getComputedStyle(textarea);
+  const mirror = document.createElement("div");
+  const textNode = document.createTextNode(textarea.value ?? "");
+  mirror.setAttribute("aria-hidden", "true");
+  mirror.setAttribute("role", "presentation");
+  mirror.style.position = "fixed";
+  mirror.style.left = `${Math.round(rect.left)}px`;
+  mirror.style.top = `${Math.round(rect.top)}px`;
+  mirror.style.width = `${Math.round(rect.width)}px`;
+  mirror.style.height = `${Math.round(rect.height)}px`;
+  mirror.style.margin = "0";
+  mirror.style.borderTopStyle = style.borderTopStyle;
+  mirror.style.borderRightStyle = style.borderRightStyle;
+  mirror.style.borderBottomStyle = style.borderBottomStyle;
+  mirror.style.borderLeftStyle = style.borderLeftStyle;
+  mirror.style.borderTopWidth = style.borderTopWidth;
+  mirror.style.borderRightWidth = style.borderRightWidth;
+  mirror.style.borderBottomWidth = style.borderBottomWidth;
+  mirror.style.borderLeftWidth = style.borderLeftWidth;
+  mirror.style.borderTopLeftRadius = style.borderTopLeftRadius;
+  mirror.style.borderTopRightRadius = style.borderTopRightRadius;
+  mirror.style.borderBottomLeftRadius = style.borderBottomLeftRadius;
+  mirror.style.borderBottomRightRadius = style.borderBottomRightRadius;
+  mirror.style.boxSizing = style.boxSizing;
+  mirror.style.font = style.font || "";
+  mirror.style.fontFamily = style.fontFamily;
+  mirror.style.fontSize = style.fontSize;
+  mirror.style.fontStyle = style.fontStyle;
+  mirror.style.fontWeight = style.fontWeight;
+  mirror.style.letterSpacing = style.letterSpacing;
+  mirror.style.lineHeight = style.lineHeight;
+  mirror.style.paddingTop = style.paddingTop;
+  mirror.style.paddingRight = style.paddingRight;
+  mirror.style.paddingBottom = style.paddingBottom;
+  mirror.style.paddingLeft = style.paddingLeft;
+  mirror.style.tabSize = style.tabSize;
+  mirror.style.textIndent = style.textIndent;
+  mirror.style.textTransform = style.textTransform;
+  mirror.style.overflowWrap = style.overflowWrap;
+  mirror.style.wordBreak = style.wordBreak;
+  mirror.style.wordSpacing = style.wordSpacing;
+  mirror.style.whiteSpace = "pre-wrap";
+  mirror.style.overflow = "auto";
+  mirror.style.background = "transparent";
+  mirror.style.color = "transparent";
+  mirror.style.caretColor = "transparent";
+  mirror.style.opacity = "0";
+  mirror.style.pointerEvents = "auto";
+  mirror.style.zIndex = "2147483647";
+  mirror.append(textNode);
+  document.body.append(mirror);
+  mirror.scrollTop = textarea.scrollTop;
+  mirror.scrollLeft = textarea.scrollLeft;
+
+  try {
+    const caretPoint = getCaretPointFromMirror(mirror, clientX, clientY);
+    if (!caretPoint) {
+      return null;
+    }
+
+    return getOffsetFromCaretPoint(mirror, caretPoint);
+  } finally {
+    mirror.remove();
+  }
+}
+
+function getCaretPointFromMirror(mirror, clientX, clientY) {
+  if (typeof document.caretPositionFromPoint === "function") {
+    const position = document.caretPositionFromPoint(clientX, clientY);
+    if (position?.offsetNode && mirror.contains(position.offsetNode)) {
+      return {
+        node: position.offsetNode,
+        offset: position.offset,
+      };
+    }
+  }
+
+  if (typeof document.caretRangeFromPoint === "function") {
+    const range = document.caretRangeFromPoint(clientX, clientY);
+    if (range?.startContainer && mirror.contains(range.startContainer)) {
+      return {
+        node: range.startContainer,
+        offset: range.startOffset,
+      };
+    }
+  }
+
+  return null;
+}
+
+function getOffsetFromCaretPoint(root, caretPoint) {
+  if (!(root instanceof Node) || !caretPoint?.node) {
+    return null;
+  }
+
+  const targetNode = caretPoint.node;
+  const targetOffset = Number(caretPoint.offset);
+  if (!Number.isInteger(targetOffset) || targetOffset < 0) {
+    return null;
+  }
+
+  if (targetNode.nodeType === Node.TEXT_NODE) {
+    return getTextNodeOffsetWithinRoot(root, targetNode, targetOffset);
+  }
+
+  const range = document.createRange();
+  try {
+    range.setStart(root, 0);
+    range.setEnd(targetNode, targetOffset);
+    return range.toString().length;
+  } catch {
+    return null;
+  }
+}
+
+function getTextNodeOffsetWithinRoot(root, targetNode, nodeOffset) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let runningOffset = 0;
+
+  while (walker.nextNode()) {
+    const currentNode = walker.currentNode;
+    const currentLength = currentNode.textContent?.length ?? 0;
+    if (currentNode === targetNode) {
+      return runningOffset + Math.max(0, Math.min(nodeOffset, currentLength));
+    }
+
+    runningOffset += currentLength;
+  }
+
+  return null;
+}
+
+function collectSpellcheckCorpusTexts() {
+  const texts = [];
+
+  if (typeof state.projectTitle === "string" && state.projectTitle.trim()) {
+    texts.push(state.projectTitle);
+  }
+
+  if (state.workspace?.project?.binder) {
+    collectSpellcheckBinderTexts(state.workspace.project.binder, texts);
+  }
+
+  for (const scene of state.scenes) {
+    if (scene?.chapterTitle) {
+      texts.push(scene.chapterTitle);
+    }
+    if (scene?.sceneTitle) {
+      texts.push(scene.sceneTitle);
+    }
+    if (scene?.sceneSynopsis) {
+      texts.push(scene.sceneSynopsis);
+    }
+    if (scene?.editorText) {
+      texts.push(scene.editorText);
+    }
+  }
+
+  for (const task of state.manuscriptTasks) {
+    if (task?.title) {
+      texts.push(task.title);
+    }
+    if (task?.body) {
+      texts.push(task.body);
+    }
+    if (task?.description) {
+      texts.push(task.description);
+    }
+    if (task?.selectedText) {
+      texts.push(task.selectedText);
+    }
+  }
+
+  for (const note of state.passageNotes) {
+    if (note?.title) {
+      texts.push(note.title);
+    }
+    if (note?.body) {
+      texts.push(note.body);
+    }
+    if (note?.selectedText) {
+      texts.push(note.selectedText);
+    }
+  }
+
+  return texts;
+}
+
+function collectSpellcheckProjectCorpusTexts() {
+  const texts = [];
+
+  if (typeof state.projectTitle === "string" && state.projectTitle.trim()) {
+    texts.push(state.projectTitle);
+  }
+
+  if (state.workspace?.project?.binder) {
+    collectSpellcheckBinderTexts(state.workspace.project.binder, texts);
+  }
+
+  for (const scene of state.scenes) {
+    if (scene?.chapterTitle) {
+      texts.push(scene.chapterTitle);
+    }
+    if (scene?.sceneTitle) {
+      texts.push(scene.sceneTitle);
+    }
+    if (scene?.sceneSynopsis) {
+      texts.push(scene.sceneSynopsis);
+    }
+  }
+
+  for (const task of state.manuscriptTasks) {
+    if (task?.title) {
+      texts.push(task.title);
+    }
+  }
+
+  for (const note of state.passageNotes) {
+    if (note?.title) {
+      texts.push(note.title);
+    }
+  }
+
+  return texts;
+}
+
+function buildCurrentProjectSpellcheckLexicon() {
+  const spellcheckProjectSettings = normalizeSpellcheckProjectSettings(state.spellcheckProjectSettings);
+  const texts = [
+    ...collectSpellcheckProjectCorpusTexts(),
+    ...spellcheckProjectSettings.dictionaryWords,
+    ...spellcheckProjectSettings.exceptionWords,
+  ];
+
+  return buildSpellcheckProjectLexicon(texts);
+}
+
+function buildGrammarCheckSummary(scene) {
+  if (!scene || !spellcheckBaseLexicon?.wordList?.length) {
+    return {
+      count: 0,
+      label: "Grammar check",
+    };
+  }
+
+  const projectLexicon = buildCurrentProjectSpellcheckLexicon();
+  const count = countSpellcheckMisspellings(scene.editorText ?? "", {
+    baseLexicon: spellcheckBaseLexicon,
+    projectLexicon,
+    referenceLexicon: spellcheckReferenceLexicon,
+  });
+
+  return {
+    count,
+    label: count === 1 ? "1 flagged word" : `${count} flagged words`,
+  };
+}
+
+function getSpellcheckProjectWordsFromSelection(words) {
+  const source = Array.isArray(words) ? words : [];
+  const normalizedWords = [];
+  const seen = new Set();
+
+  for (const entry of source) {
+    const candidate = typeof entry === "string" ? entry : entry?.word;
+    const normalized = normalizeSpellcheckWord(candidate);
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+
+    seen.add(normalized);
+    const displayWord = String(candidate ?? "").trim();
+    normalizedWords.push(displayWord || normalized);
+  }
+
+  return normalizedWords;
+}
+
+function collectSpellcheckBinderTexts(node, texts) {
+  if (!node || typeof node !== "object" || !Array.isArray(texts)) {
+    return;
+  }
+
+  if (typeof node.title === "string" && node.title.trim()) {
+    texts.push(node.title);
+  }
+
+  if (!Array.isArray(node.children)) {
+    return;
+  }
+
+  for (const child of node.children) {
+    collectSpellcheckBinderTexts(child, texts);
+  }
+}
+
 function getInlinePassagePosition(codeframe, event) {
   const bounds = codeframe.getBoundingClientRect();
   const maxLeft = Math.max(92, codeframe.clientWidth - 390);
@@ -8526,6 +11368,20 @@ function selectWorkspacePane(paneId) {
     return;
   }
 
+  if (normalizedPaneId !== "manuscript" && state.manuscriptFind.open) {
+    state.manuscriptFind = {
+      ...state.manuscriptFind,
+      open: false,
+    };
+  }
+
+  if (normalizedPaneId !== "manuscript" && state.grammarCheckPanel?.open) {
+    state.grammarCheckPanel = {
+      ...state.grammarCheckPanel,
+      open: false,
+    };
+  }
+
   state.activePane = normalizedPaneId;
   render();
 }
@@ -8583,11 +11439,42 @@ function focusEditorWhitespace(clickTarget, event) {
   event.preventDefault();
   clearTaskAnchorPreview({ restoreSelection: false });
 
-  // Keep the current caret/viewport position when the user clicks blank editor
-  // space. Jumping to the end of the scene makes the editor feel like it is
-  // dragging the viewport away from the current reading position.
+  const offset = getTextareaOffsetFromPoint(textarea, event.clientX, event.clientY);
   textarea.focus({ preventScroll: true });
+  const trailingWhitespaceRange = getTrailingWhitespaceRange(textarea.value);
+  if (trailingWhitespaceRange && (!Number.isInteger(offset) || offset >= textarea.value.length)) {
+    textarea.setSelectionRange(
+      trailingWhitespaceRange.start,
+      trailingWhitespaceRange.end,
+      "forward",
+    );
+    return true;
+  }
+
+  if (Number.isInteger(offset)) {
+    const safeOffset = clampEditorOffset(offset, textarea.value.length);
+    textarea.setSelectionRange(safeOffset, safeOffset, "forward");
+  }
   return true;
+}
+
+function getTrailingWhitespaceRange(text) {
+  const source = String(text ?? "");
+  if (!source.length) {
+    return null;
+  }
+
+  const match = source.match(/(\s+)$/u);
+  if (!match) {
+    return null;
+  }
+
+  const trailingWhitespace = match[1];
+  const start = source.length - trailingWhitespace.length;
+  return {
+    start,
+    end: source.length,
+  };
 }
 
 function navigateTaskAnchor(taskId) {
@@ -8637,7 +11524,7 @@ function focusTaskRange(task, options = {}) {
 
   textarea.focus({ preventScroll: true });
   textarea.setSelectionRange(startOffset, endOffset, "forward");
-  centerEditorOnOffset(textarea, startOffset, options);
+  takeToEditorOffset(textarea, startOffset, options);
 }
 
 function previewTaskAnchor(taskId) {
@@ -8715,10 +11602,10 @@ function syncResolvedTaskRange(task, resolvedRange) {
 }
 
 function centerEditorOnCaret(textarea) {
-  centerEditorOnOffset(textarea, textarea.selectionStart);
+  takeToEditorOffset(textarea, textarea.selectionStart);
 }
 
-function centerEditorOnOffset(textarea, offset, options = {}) {
+function takeToEditorOffset(textarea, offset, options = {}) {
   const codeframe = textarea.closest(".scene-editor-codeframe");
   if (!(codeframe instanceof HTMLElement)) {
     return;
@@ -8752,6 +11639,37 @@ function centerEditorOnOffset(textarea, offset, options = {}) {
     top,
     behavior: options.behavior ?? "auto",
   });
+}
+
+function centerEditorOnOffset(textarea, offset, options = {}) {
+  takeToEditorOffset(textarea, offset, options);
+}
+
+function takeToSceneRange(sceneId, startOffset, endOffset = startOffset, options = {}) {
+  const scene = getScene(sceneId);
+  if (!scene) {
+    return false;
+  }
+
+  if (state.selectedSceneId !== scene.sceneId) {
+    selectSceneById(scene.sceneId);
+    window.requestAnimationFrame(() => {
+      takeToSceneRange(sceneId, startOffset, endOffset, options);
+    });
+    return true;
+  }
+
+  const textarea = getEditorTextareaForScene(sceneId);
+  if (!(textarea instanceof HTMLTextAreaElement)) {
+    return false;
+  }
+
+  const safeStart = clampEditorOffset(startOffset, textarea.value.length);
+  const safeEnd = clampEditorOffset(endOffset, textarea.value.length);
+  textarea.focus({ preventScroll: true });
+  textarea.setSelectionRange(Math.min(safeStart, safeEnd), Math.max(safeStart, safeEnd), "forward");
+  takeToEditorOffset(textarea, safeStart, options);
+  return true;
 }
 
 function measureTextareaOffsetTop(textarea, offset) {
@@ -8878,6 +11796,7 @@ function openPassageNoteComposerFromContextMenu(noteType) {
 
   state.sidePanelMode = noteType;
   state.taskContextMenu = null;
+  state.spellcheckContextMenu = null;
   state.taskComposer = null;
   const selectedText = menu.hasExplicitSelection ? String(menu.selectedText ?? "") : "";
   const anchorStartOffset = menu.hasExplicitSelection
@@ -8953,6 +11872,11 @@ function savePassageNoteFromComposer() {
   state.taskComposer = null;
   renderConsolePanel();
   renderTaskContextMenu();
+  if (state.selectedSceneId === note.sceneId) {
+    scrollSelectedPassageNoteIntoView(note.id);
+    return;
+  }
+
   focusPassageNoteRange(note, { behavior: "smooth" });
 }
 
@@ -9020,6 +11944,11 @@ function commitInlinePassageNote() {
   renderManuscriptPanel();
   syncSceneDocumentLayout();
   renderConsolePanel();
+  if (state.selectedSceneId === note.sceneId) {
+    scrollSelectedPassageNoteIntoView(note.id);
+    return;
+  }
+
   focusPassageNoteRange(note, { behavior: "smooth" });
 }
 
@@ -9126,7 +12055,13 @@ function insertInlinePassageVerse(draft, verseText, editorText) {
 
   updateSceneDraft(draft.sceneId, (sceneDraft) => {
     sceneDraft.editorText = nextEditorText;
+    sceneDraft.revisionStats = updateSceneRevisionStats(
+      sceneDraft.revisionStats ?? draft.revisionStats,
+      content,
+      nextEditorText,
+    );
   });
+  syncRevisionPanel(draft.sceneId);
 
   const textarea = getEditorTextareaForScene(draft.sceneId);
   if (textarea instanceof HTMLTextAreaElement) {
@@ -9311,6 +12246,10 @@ function selectPassageNoteFromEditorClick(clickTarget) {
     return false;
   }
 
+  if (clickTarget.selectionEnd <= clickTarget.selectionStart) {
+    return false;
+  }
+
   const note = findPassageNoteAtEditorSelection(
     state.sidePanelMode,
     sceneId,
@@ -9333,6 +12272,10 @@ function selectTaskFromEditorClick(clickTarget) {
 
   const sceneId = clickTarget.dataset.sceneId;
   if (!sceneId) {
+    return false;
+  }
+
+  if (clickTarget.selectionEnd <= clickTarget.selectionStart) {
     return false;
   }
 
@@ -9489,9 +12432,7 @@ function focusPassageNoteRangeInCurrentScene(note, options = {}) {
     codeframe.classList.add("is-passage-note-previewing", `is-${note.noteType}-previewing`);
   }
 
-  textarea.focus({ preventScroll: true });
-  textarea.setSelectionRange(startOffset, endOffset, "forward");
-  centerEditorOnOffset(textarea, startOffset, options);
+  takeToSceneRange(note.sceneId, startOffset, endOffset, options);
 }
 
 function syncResolvedPassageNoteRange(note, resolvedRange) {
@@ -9531,6 +12472,7 @@ function openTaskComposerFromContextMenu(event) {
   }
 
   state.taskContextMenu = null;
+  state.spellcheckContextMenu = null;
   state.taskComposer = {
     ...menu,
     composerType: "task",
@@ -9694,19 +12636,16 @@ function maybeSuggestPassageNoteTitle(note) {
 
 async function requestLocalAiTitle({ userInput, manuscriptContext, projectContext, maxTokens }) {
   try {
-    const response = await fetch("/api/local-ai/generate-title", {
+    const response = await fetchJsonFromDesktopApi("/api/local-ai/generate-title", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
+      body: {
         userInput,
         manuscriptContext,
         projectContext,
         outputFormat: "text",
         maxTokens,
         temperature: 0.25,
-      }),
+      },
     });
 
     if (!response.ok) {
@@ -9716,7 +12655,7 @@ async function requestLocalAiTitle({ userInput, manuscriptContext, projectContex
       };
     }
 
-    const payload = await response.json();
+    const payload = response.value;
     if (!payload.ok) {
       return {
         ok: false,
@@ -9776,6 +12715,7 @@ function applySceneTitle(sceneId, title) {
     draft.sceneTitle = title;
   });
   updateSceneTitleLabel(sceneId, title);
+  updateSceneEditorTitle(sceneId, title);
   updateFocusedLineCard();
 }
 
@@ -9812,30 +12752,155 @@ function completeTask(taskId) {
 }
 
 function hideTaskContextMenu() {
-  if (!state.taskContextMenu) {
+  if (!state.taskContextMenu && !state.binderContextMenu && !state.spellcheckContextMenu) {
     return;
   }
 
   state.taskContextMenu = null;
+  state.binderContextMenu = null;
+  state.spellcheckContextMenu = null;
   renderTaskContextMenu();
 }
 
 function hideTaskSurfaces() {
-  if (!state.taskContextMenu && !state.taskComposer) {
+  if (!state.taskContextMenu && !state.binderContextMenu && !state.spellcheckContextMenu && !state.taskComposer) {
+    return;
+  }
+
+  state.taskContextMenu = null;
+  state.binderContextMenu = null;
+  state.spellcheckContextMenu = null;
+  state.taskComposer = null;
+  renderTaskContextMenu();
+}
+
+function hideBinderContextMenu() {
+  if (!state.binderContextMenu && !state.spellcheckContextMenu) {
+    return;
+  }
+
+  state.binderContextMenu = null;
+  state.spellcheckContextMenu = null;
+  renderTaskContextMenu();
+}
+
+function openBinderContextMenu(kind, identifiers, event) {
+  if ((kind !== "chapter" && kind !== "scene") || !(event instanceof MouseEvent)) {
     return;
   }
 
   state.taskContextMenu = null;
   state.taskComposer = null;
+  state.spellcheckContextMenu = null;
+  state.binderContextMenu = {
+    kind,
+    chapterId: kind === "chapter" ? String(identifiers?.chapterId ?? "") : String(identifiers?.chapterId ?? ""),
+    chapterTitle: String(identifiers?.chapterTitle ?? ""),
+    sceneId: kind === "scene" ? String(identifiers?.sceneId ?? "") : String(identifiers?.sceneId ?? ""),
+    sceneTitle: String(identifiers?.sceneTitle ?? ""),
+    x: event.clientX,
+    y: event.clientY,
+  };
   renderTaskContextMenu();
 }
 
-function updateSceneDraft(sceneId, mutate) {
+function hideSpellcheckContextMenu() {
+  if (!state.spellcheckContextMenu) {
+    return;
+  }
+
+  state.spellcheckContextMenu = null;
+  renderTaskContextMenu();
+}
+
+function applyGrammarCheckWordsToProjectList(targetListKey, sourceWords) {
+  const normalizedSourceWords = getSpellcheckProjectWordsFromSelection(sourceWords);
+  if (!normalizedSourceWords.length) {
+    return false;
+  }
+
+  const currentSettings = normalizeSpellcheckProjectSettings(state.spellcheckProjectSettings);
+  const nextSettings = normalizeSpellcheckProjectSettings({
+    ...currentSettings,
+    [targetListKey]: [
+      ...(currentSettings[targetListKey] ?? []),
+      ...normalizedSourceWords,
+    ],
+  });
+
+  if (
+    nextSettings.dictionaryWords.length === currentSettings.dictionaryWords.length &&
+    nextSettings.exceptionWords.length === currentSettings.exceptionWords.length &&
+    nextSettings.dictionaryWords.every((word, index) => word === currentSettings.dictionaryWords[index]) &&
+    nextSettings.exceptionWords.every((word, index) => word === currentSettings.exceptionWords[index])
+  ) {
+    return false;
+  }
+
+  state.spellcheckProjectSettings = nextSettings;
+  persistCurrentProjectRecord();
+  return true;
+}
+
+function addGrammarCheckWordsToProjectList(targetListKey, sourceWords = null) {
+  const menu = state.spellcheckContextMenu;
+  const words = Array.isArray(sourceWords) ? sourceWords : (menu?.words ?? (menu?.word ? [menu.word] : []));
+  if (!words.length) {
+    hideSpellcheckContextMenu();
+    return;
+  }
+
+  const changed = applyGrammarCheckWordsToProjectList(targetListKey, words);
+  hideSpellcheckContextMenu();
+  if (!changed) {
+    return;
+  }
+
+  renderManuscriptPanel();
+  syncSceneDocumentLayout();
+}
+
+function applySpellcheckSuggestionFromMenu(target) {
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+
+  const sceneId = String(target.dataset.spellcheckSceneId ?? "");
+  const replacement = String(target.dataset.spellcheckReplacement ?? "");
+  const startOffset = Number(target.dataset.spellcheckStartOffset);
+  const endOffset = Number(target.dataset.spellcheckEndOffset);
+
+  if (
+    !sceneId ||
+    !replacement ||
+    !Number.isFinite(startOffset) ||
+    !Number.isFinite(endOffset)
+  ) {
+    return;
+  }
+
+  const textarea = getEditorTextareaForScene(sceneId);
+  hideSpellcheckContextMenu();
+  if (!(textarea instanceof HTMLTextAreaElement)) {
+    return;
+  }
+
+  const safeStart = clampEditorOffset(startOffset, textarea.value.length);
+  const safeEnd = clampEditorOffset(endOffset, textarea.value.length);
+  textarea.focus({ preventScroll: true });
+  textarea.setRangeText(replacement, Math.min(safeStart, safeEnd), Math.max(safeStart, safeEnd), "end");
+  textarea.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function updateSceneDraft(sceneId, mutate, options = {}) {
   const scene = getScene(sceneId);
   if (!scene) {
     return;
   }
 
+  const previousWordCount = getCurrentManuscriptWordCount();
+  const previousWritingTargetRecord = getWritingTargetWorkingRecord();
+  const hadActiveSession = previousWritingTargetRecord?.sessionIsActive === true;
   const draft = cloneValue(state.sceneDrafts[sceneId] ?? createSceneDraft(scene));
   mutate(draft);
   state.sceneDrafts = {
@@ -9844,9 +12909,231 @@ function updateSceneDraft(sceneId, mutate) {
   };
   writeStoredJson(EDITOR_DRAFTS_KEY, state.sceneDrafts);
   refreshScenes();
-  renderHeader();
+  const markSessionActivity = options.markSessionActivity !== false;
+  const currentWordCount = getCurrentManuscriptWordCount();
+
+  if (markSessionActivity) {
+    const currentWritingTargetRecord = getWritingTargetWorkingRecord();
+    const touchedSessionRecord = touchWritingTargetSessionActivity(
+      currentWritingTargetRecord,
+      currentWordCount,
+      new Date(),
+      {
+        reason: options.reason ?? "scene-draft",
+        previousWordCount,
+      },
+    );
+
+    if (touchedSessionRecord) {
+      state.writingTargetState = persistWritingTargetState(touchedSessionRecord);
+      if (state.writingTargetDraft && state.writingTargetDraftProjectId === state.workspace?.project?.id) {
+        state.writingTargetDraft = {
+          ...cloneValue(state.writingTargetDraft),
+          sessionIsActive: state.writingTargetState.sessionIsActive,
+          sessionStartedAt: state.writingTargetState.sessionStartedAt,
+          sessionLastActiveAt: state.writingTargetState.sessionLastActiveAt,
+          sessionConcludedAt: state.writingTargetState.sessionConcludedAt,
+          sessionConcludedReason: state.writingTargetState.sessionConcludedReason,
+          sessionBaselineWordCount: state.writingTargetState.sessionBaselineWordCount,
+          sessionLastWordCount: state.writingTargetState.sessionLastWordCount,
+          sessionSamples: cloneValue(state.writingTargetState.sessionSamples),
+          updatedAt: state.writingTargetState.updatedAt,
+        };
+      }
+      persistCurrentProjectRecord();
+    }
+  }
+
+  const shouldCaptureImmediately = options.immediate === true || !hadActiveSession;
+
+  syncHeaderLiveState();
   syncWritingTargetWindowLiveState();
-  queueWritingTargetSnapshot();
+
+  if (shouldCaptureImmediately) {
+    queueWritingTargetSnapshot({
+      immediate: true,
+      markSessionActivity,
+      reason: options.reason ?? "scene-draft",
+    });
+  }
+
+  if (!shouldCaptureImmediately) {
+    queueWritingTargetSnapshot({
+      markSessionActivity,
+      reason: options.reason ?? "scene-draft",
+    });
+  }
+}
+
+function updateSceneRevisionStats(existingStats, previousText, nextText, now = new Date().toISOString()) {
+  const previous = String(previousText ?? "");
+  const next = String(nextText ?? "");
+  if (previous === next) {
+    return existingStats ?? null;
+  }
+
+  const summary = summarizeSceneTextChange(previous, next);
+  const historyEntry = {
+    id: `revision-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    createdAt: now,
+    updatedAt: now,
+    summary,
+    previousLength: previous.length,
+    nextLength: next.length,
+    deltaCharacters: next.length - previous.length,
+  };
+  const history = Array.isArray(existingStats?.history) ? [...existingStats.history] : [];
+  history.unshift(historyEntry);
+
+  return {
+    editCount: Number(existingStats?.editCount ?? 0) + 1,
+    lastEditedAt: now,
+    lastChangeSummary: summary,
+    history: history.slice(0, 8),
+  };
+}
+
+function summarizeSceneTextChange(previousText, nextText) {
+  const previous = String(previousText ?? "");
+  const next = String(nextText ?? "");
+  if (previous === next) {
+    return "No text change";
+  }
+
+  let start = 0;
+  const previousLength = previous.length;
+  const nextLength = next.length;
+  while (start < previousLength && start < nextLength && previous[start] === next[start]) {
+    start += 1;
+  }
+
+  let previousEnd = previousLength - 1;
+  let nextEnd = nextLength - 1;
+  while (previousEnd >= start && nextEnd >= start && previous[previousEnd] === next[nextEnd]) {
+    previousEnd -= 1;
+    nextEnd -= 1;
+  }
+
+  const removed = previous.slice(start, previousEnd + 1);
+  const added = next.slice(start, nextEnd + 1);
+  const parts = [];
+
+  if (added.length && removed.length) {
+    parts.push(`Replaced ${removed.length} chars with ${added.length} chars`);
+  } else if (added.length) {
+    parts.push(`Inserted ${added.length} chars`);
+  } else if (removed.length) {
+    parts.push(`Removed ${removed.length} chars`);
+  } else {
+    parts.push("Updated passage");
+  }
+
+  const lineDelta = next.split("\n").length - previous.split("\n").length;
+  if (lineDelta !== 0) {
+    parts.push(`${lineDelta > 0 ? "+" : ""}${lineDelta} lines`);
+  }
+
+  return parts.join(" ");
+}
+
+function syncRevisionPanel(sceneId) {
+  if (!REVISION_DRAFTING_UI_ENABLED) {
+    return;
+  }
+
+  if (typeof sceneId !== "string" || !sceneId.trim()) {
+    return;
+  }
+
+  const sceneShell = document.querySelector(`[data-scene-editor-scene-id="${CSS.escape(sceneId)}"]`);
+  if (!(sceneShell instanceof HTMLElement)) {
+    return;
+  }
+
+  const draft = state.sceneDrafts?.[sceneId];
+  const revisionStats = draft?.revisionStats ?? null;
+  const revisionEditCount = Number(revisionStats?.editCount ?? 0);
+  const showRevisionHighlight = Boolean(REVISION_DRAFTING_UI_ENABLED && state.editorPrefs.revisionOverlayEnabled && revisionEditCount > 0);
+  const summary = revisionStats?.lastChangeSummary
+    ? String(revisionStats.lastChangeSummary)
+    : "Track revisions while you edit this passage.";
+  const history = Array.isArray(revisionStats?.history) ? revisionStats.history.slice(0, 3) : [];
+
+  sceneShell.classList.toggle("has-revision-preview", showRevisionHighlight);
+  const codeframe = sceneShell.querySelector(".scene-editor-codeframe");
+  if (codeframe instanceof HTMLElement) {
+    codeframe.classList.toggle("has-revision-preview", showRevisionHighlight);
+  }
+
+  const textarea = sceneShell.querySelector(".editor-document-input");
+  if (textarea instanceof HTMLTextAreaElement) {
+    textarea.classList.toggle("has-revision-preview", showRevisionHighlight);
+  }
+
+  const countNode = sceneShell.querySelector(`[data-revision-count="${CSS.escape(sceneId)}"]`);
+  if (countNode instanceof HTMLElement) {
+    countNode.textContent = `${revisionEditCount} edit${revisionEditCount === 1 ? "" : "s"}`;
+  }
+
+  const summaryNode = sceneShell.querySelector(`[data-revision-summary="${CSS.escape(sceneId)}"]`);
+  if (summaryNode instanceof HTMLElement) {
+    summaryNode.textContent = summary;
+  }
+
+  const historyNode = sceneShell.querySelector(`[data-revision-history="${CSS.escape(sceneId)}"]`);
+  if (historyNode instanceof HTMLElement) {
+    historyNode.innerHTML = history.map((entry) => `
+      <li>
+        <strong>${escapeHtml(entry.summary || "Edited passage")}</strong>
+        <span>${escapeHtml(formatRevisionTimestamp(entry.updatedAt || entry.createdAt || ""))}</span>
+      </li>
+    `).join("");
+  }
+}
+
+function formatRevisionTimestamp(value) {
+  const timestamp = typeof value === "string" ? value.trim() : "";
+  if (!timestamp) {
+    return "";
+  }
+
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return date.toLocaleString();
+}
+
+function toggleRevisionOverlay(sceneId) {
+  if (!REVISION_DRAFTING_UI_ENABLED) {
+    return;
+  }
+
+  state.editorPrefs = normalizeEditorPrefs({
+    ...state.editorPrefs,
+    revisionOverlayEnabled: !state.editorPrefs.revisionOverlayEnabled,
+  });
+  writeStoredJson(EDITOR_PREFS_KEY, state.editorPrefs);
+  persistCurrentProjectRecord();
+  renderManuscriptPanel();
+  syncLayoutWidths();
+  syncSceneDocumentLayout();
+  if (typeof sceneId === "string" && sceneId.trim()) {
+    syncRevisionPanel(sceneId);
+  }
+}
+
+function toggleItalicText() {
+  state.editorPrefs = normalizeEditorPrefs({
+    ...state.editorPrefs,
+    italicText: !state.editorPrefs.italicText,
+  });
+  writeStoredJson(EDITOR_PREFS_KEY, state.editorPrefs);
+  persistCurrentProjectRecord();
+  renderManuscriptPanel();
+  syncLayoutWidths();
+  syncSceneDocumentLayout();
 }
 
 function resetSceneDraft(sceneId) {
@@ -9860,7 +13147,10 @@ function resetSceneDraft(sceneId) {
   writeStoredJson(EDITOR_DRAFTS_KEY, state.sceneDrafts);
   refreshScenes();
   renderHeader();
-  queueWritingTargetSnapshot();
+  queueWritingTargetSnapshot({
+    markSessionActivity: true,
+    reason: "scene-reset",
+  });
 }
 
 function addChapterDraft() {
@@ -9938,6 +13228,17 @@ function selectSceneById(sceneId) {
   state.selectedSceneId = scene.sceneId;
   state.selectedBlockId = scene.blocks[0]?.blockId ?? null;
   render();
+}
+
+function selectChapterById(chapterId) {
+  if (typeof chapterId !== "string" || !chapterId.trim()) {
+    return;
+  }
+
+  const chapterScene = getScenesForChapter(chapterId)[0];
+  if (chapterScene) {
+    selectSceneById(chapterScene.sceneId);
+  }
 }
 
 function toggleChapterCollapse(chapterId) {
@@ -10041,12 +13342,1358 @@ function getEntity(entityId) {
   return state.workspace.world.entities.find((entity) => entity.id === entityId) ?? null;
 }
 
+function stripChapterTitlePrefix(chapterTitle) {
+  return String(chapterTitle ?? "")
+    .replace(/^(?:new\s+)?chapter\s+\d+\s*[:\-–—]?\s*/i, "")
+    .trim();
+}
+
+function getEditableChapterTitle(chapterTitle) {
+  const value = String(chapterTitle ?? "").trim();
+  if (!value) {
+    return "";
+  }
+
+  const stripped = stripChapterTitlePrefix(value);
+  return stripped || value;
+}
+
+function updateBinderChapterTitle(node, chapterId, title) {
+  if (!node || typeof node !== "object") {
+    return false;
+  }
+
+  let updated = false;
+  if (node.kind === "chapter" && node.refId === chapterId) {
+    node.title = title;
+    updated = true;
+  }
+
+  if (Array.isArray(node.children)) {
+    for (const child of node.children) {
+      updated = updateBinderChapterTitle(child, chapterId, title) || updated;
+    }
+  }
+
+  return updated;
+}
+
+function updateChapterTitle(chapterId, title) {
+  if (typeof chapterId !== "string" || !chapterId.trim() || !state.workspace?.project) {
+    return;
+  }
+
+  const nextTitle = String(title ?? "");
+  let updated = false;
+
+  if (Array.isArray(state.workspace.project.lines)) {
+    for (const line of state.workspace.project.lines) {
+      if (line.chapterId === chapterId) {
+        line.chapterTitle = nextTitle;
+        updated = true;
+      }
+    }
+  }
+
+  if (state.workspace.project.navigationTargets && typeof state.workspace.project.navigationTargets === "object") {
+    const navigationTarget = state.workspace.project.navigationTargets[chapterId];
+    if (navigationTarget && typeof navigationTarget === "object") {
+      navigationTarget.title = nextTitle;
+      updated = true;
+    }
+  }
+
+  if (state.workspace.project.binder) {
+    updated = updateBinderChapterTitle(state.workspace.project.binder, chapterId, nextTitle) || updated;
+  }
+
+  if (Array.isArray(state.structureDrafts.scenes)) {
+    for (const scene of state.structureDrafts.scenes) {
+      if (scene.chapterId === chapterId) {
+        scene.chapterTitle = nextTitle;
+        updated = true;
+      }
+    }
+  }
+
+  if (!updated) {
+    return;
+  }
+
+  refreshScenes();
+  persistCurrentProjectRecord();
+  updateSceneEditorChapterTitle(chapterId, nextTitle);
+}
+
+function beginChapterTitleEdit(chapterId) {
+  if (typeof chapterId !== "string" || !chapterId.trim()) {
+    return;
+  }
+
+  state.editingChapterTitleId = chapterId;
+  const binderSlot = document.querySelector("#binder-slot");
+  const scrollTop = binderSlot instanceof HTMLElement ? binderSlot.scrollTop : 0;
+  const scrollLeft = binderSlot instanceof HTMLElement ? binderSlot.scrollLeft : 0;
+  renderBinderPanel();
+  window.requestAnimationFrame(() => {
+    const nextBinderSlot = document.querySelector("#binder-slot");
+    if (nextBinderSlot instanceof HTMLElement) {
+      nextBinderSlot.scrollTop = scrollTop;
+      nextBinderSlot.scrollLeft = scrollLeft;
+    }
+
+    const titleInput = document.querySelector(
+      `.binder-chapter-title-input[data-chapter-id="${CSS.escape(chapterId)}"]`,
+    );
+    if (titleInput instanceof HTMLInputElement) {
+      titleInput.focus();
+      titleInput.select();
+    }
+  });
+}
+
+function consumeBinderTitleClick(kind, id) {
+  if (typeof kind !== "string" || !kind.trim() || typeof id !== "string" || !id.trim()) {
+    return false;
+  }
+
+  const now = Date.now();
+  const previous = binderTitleClickState;
+  const isRepeat =
+    previous &&
+    previous.kind === kind &&
+    previous.id === id &&
+    now - previous.timestamp <= BINDER_TITLE_DOUBLE_CLICK_WINDOW_MS;
+
+  if (previous?.timeoutId) {
+    window.clearTimeout(previous.timeoutId);
+  }
+
+  if (isRepeat) {
+    binderTitleClickState = null;
+    return true;
+  }
+
+  const stateSnapshot = {
+    kind,
+    id,
+    timestamp: now,
+    timeoutId: window.setTimeout(() => {
+      if (
+        binderTitleClickState &&
+        binderTitleClickState.kind === stateSnapshot.kind &&
+        binderTitleClickState.id === stateSnapshot.id &&
+        binderTitleClickState.timestamp === stateSnapshot.timestamp
+      ) {
+        binderTitleClickState = null;
+      }
+    }, BINDER_TITLE_DOUBLE_CLICK_WINDOW_MS),
+  };
+  binderTitleClickState = stateSnapshot;
+  return false;
+}
+
+function finishChapterTitleEdit(chapterId) {
+  if (typeof chapterId !== "string" || state.editingChapterTitleId !== chapterId) {
+    return;
+  }
+
+  state.editingChapterTitleId = null;
+  renderBinderPanel();
+}
+
+function beginSceneTitleEdit(sceneId) {
+  if (typeof sceneId !== "string" || !sceneId.trim()) {
+    return;
+  }
+
+  state.editingSceneTitleId = sceneId;
+  const binderSlot = document.querySelector("#binder-slot");
+  const scrollTop = binderSlot instanceof HTMLElement ? binderSlot.scrollTop : 0;
+  const scrollLeft = binderSlot instanceof HTMLElement ? binderSlot.scrollLeft : 0;
+  renderBinderPanel();
+  window.requestAnimationFrame(() => {
+    const nextBinderSlot = document.querySelector("#binder-slot");
+    if (nextBinderSlot instanceof HTMLElement) {
+      nextBinderSlot.scrollTop = scrollTop;
+      nextBinderSlot.scrollLeft = scrollLeft;
+    }
+
+    const titleInput = document.querySelector(
+      `.binder-scene-title-input[data-scene-id="${CSS.escape(sceneId)}"]`,
+    );
+    if (titleInput instanceof HTMLInputElement) {
+      titleInput.focus();
+      titleInput.select();
+    }
+  });
+}
+
+function finishSceneTitleEdit(sceneId) {
+  if (typeof sceneId !== "string" || state.editingSceneTitleId !== sceneId) {
+    return;
+  }
+
+  state.editingSceneTitleId = null;
+  renderBinderPanel();
+}
+
 function updateSceneTitleLabel(sceneId, title) {
   document
     .querySelectorAll(`[data-scene-title-id="${CSS.escape(sceneId)}"] span:last-child`)
     .forEach((node) => {
       node.textContent = title;
     });
+}
+
+function syncSpellcheckLayer(layer, textarea, sceneId) {
+  if (!(layer instanceof HTMLElement) || !(textarea instanceof HTMLTextAreaElement)) {
+    return;
+  }
+
+  if (!spellcheckBaseLexicon?.wordList?.length) {
+    layer.innerHTML = "";
+    return;
+  }
+
+  const projectLexicon = buildCurrentProjectSpellcheckLexicon();
+  layer.innerHTML = `
+    <div class="editor-spellcheck-layer__content">
+      ${renderSpellcheckUnderlineHTML(textarea.value, {
+        baseLexicon: spellcheckBaseLexicon,
+        projectLexicon,
+        referenceLexicon: spellcheckReferenceLexicon,
+        sceneId,
+      })}
+    </div>
+  `;
+
+  const content = layer.querySelector(".editor-spellcheck-layer__content");
+  if (content instanceof HTMLElement) {
+    syncSpellcheckLayerStyle(content, textarea);
+  }
+}
+
+function renderSpellcheckUnderlineHTML(text, lexicons = {}) {
+  const source = String(text ?? "");
+  if (!source.length) {
+    return "";
+  }
+
+  const baseLexicon = lexicons.baseLexicon ?? null;
+  const projectLexicon = lexicons.projectLexicon ?? null;
+  const referenceLexicon = lexicons.referenceLexicon ?? null;
+  const pattern = /[A-Za-z][A-Za-z'’-]*/g;
+  let lastIndex = 0;
+  let output = "";
+
+  for (const match of source.matchAll(pattern)) {
+    const token = String(match[0] ?? "");
+    const index = Number(match.index);
+    if (!Number.isInteger(index) || index < lastIndex) {
+      continue;
+    }
+
+    output += escapeHtml(source.slice(lastIndex, index));
+
+    const isMisspelled = isSpellcheckMisspelledWord(token, {
+      baseLexicon,
+      projectLexicon,
+      referenceLexicon,
+    });
+    const tokenHtml = escapeHtml(token);
+    output += isMisspelled
+      ? `<span class="editor-spellcheck-word is-misspelled">${tokenHtml}</span>`
+      : `<span class="editor-spellcheck-word">${tokenHtml}</span>`;
+
+    lastIndex = index + token.length;
+  }
+
+  output += escapeHtml(source.slice(lastIndex));
+  return output;
+}
+
+function syncSpellcheckLayerStyle(content, textarea) {
+  if (!(content instanceof HTMLElement) || !(textarea instanceof HTMLTextAreaElement)) {
+    return;
+  }
+
+  const style = window.getComputedStyle(textarea);
+  const mirroredProperties = [
+    "boxSizing",
+    "direction",
+    "font",
+    "fontFamily",
+    "fontSize",
+    "fontStyle",
+    "fontVariant",
+    "fontVariantLigatures",
+    "fontWeight",
+    "fontStretch",
+    "fontKerning",
+    "fontFeatureSettings",
+    "fontVariationSettings",
+    "letterSpacing",
+    "lineHeight",
+    "textAlign",
+    "textIndent",
+    "textRendering",
+    "textTransform",
+    "unicodeBidi",
+    "whiteSpace",
+    "wordBreak",
+    "wordSpacing",
+    "overflowWrap",
+    "hyphens",
+    "tabSize",
+    "paddingTop",
+    "paddingRight",
+    "paddingBottom",
+    "paddingLeft",
+  ];
+
+  for (const property of mirroredProperties) {
+    try {
+      content.style[property] = style[property] || "";
+    } catch {
+      // Ignore unsupported style properties in older browsers.
+    }
+  }
+
+  content.style.width = `${Math.round(textarea.clientWidth)}px`;
+  content.style.minHeight = `${Math.round(textarea.scrollHeight)}px`;
+  content.style.color = "rgba(31, 36, 48, 0.02)";
+  content.style.margin = "0";
+}
+
+function updateSceneEditorTitle(sceneId, title) {
+  const titleInput = document.querySelector(
+    `.editor-title-input[data-scene-id="${CSS.escape(sceneId)}"]`,
+  );
+  if (titleInput instanceof HTMLInputElement) {
+    titleInput.value = String(title ?? "");
+  }
+}
+
+function updateSceneEditorChapterTitle(chapterId, title) {
+  const titleNode = document.querySelector(
+    `[data-scene-editor-chapter-title="${CSS.escape(chapterId)}"]`,
+  );
+  if (titleNode instanceof HTMLElement) {
+    titleNode.textContent = formatChapterDisplayTitle(title);
+  }
+}
+
+function updateSceneEditorChapterForScene(sceneId, chapterId, title) {
+  const sceneShell = document.querySelector(
+    `[data-scene-editor-scene-id="${CSS.escape(sceneId)}"]`,
+  );
+  if (!(sceneShell instanceof HTMLElement)) {
+    return false;
+  }
+
+  const titleNode = sceneShell.querySelector("[data-scene-editor-chapter-title]");
+  if (!(titleNode instanceof HTMLElement)) {
+    return false;
+  }
+
+  titleNode.textContent = formatChapterDisplayTitle(title);
+  titleNode.dataset.sceneEditorChapterTitle = chapterId;
+  return true;
+}
+
+function isPersistentScene(scene) {
+  return Boolean(
+    scene &&
+    Array.isArray(scene.blocks) &&
+    scene.blocks.some((block) => Number.isInteger(block.lineNumber)),
+  );
+}
+
+function getPersistentSceneById(sceneId) {
+  const scene = getScene(sceneId);
+  return isPersistentScene(scene) ? scene : null;
+}
+
+function buildSceneGroupsFromProjectLines(lines) {
+  const groups = [];
+  const groupsBySceneId = new Map();
+
+  for (const line of Array.isArray(lines) ? lines : []) {
+    if (!line || typeof line !== "object") {
+      continue;
+    }
+
+    const sceneId = typeof line.sceneId === "string" ? line.sceneId.trim() : "";
+    if (!sceneId) {
+      continue;
+    }
+
+    let group = groupsBySceneId.get(sceneId);
+    if (!group) {
+      group = {
+        sceneId,
+        chapterId: typeof line.chapterId === "string" ? line.chapterId : "",
+        chapterTitle: typeof line.chapterTitle === "string" ? line.chapterTitle : "",
+        sceneTitle: typeof line.sceneTitle === "string" ? line.sceneTitle : "",
+        sceneSynopsis: typeof line.sceneSynopsis === "string" ? line.sceneSynopsis : "",
+        lines: [],
+      };
+      groupsBySceneId.set(sceneId, group);
+      groups.push(group);
+    }
+
+    group.lines.push(line);
+  }
+
+  return groups;
+}
+
+function describeSceneGroups(sceneGroups) {
+  return sceneGroups
+    .map((group) => `${group.sceneId}:${group.chapterId}:${group.chapterTitle}`)
+    .join("|");
+}
+
+function collectBinderNodeIds(node, nodeIds = new Map()) {
+  if (!node || typeof node !== "object") {
+    return nodeIds;
+  }
+
+  if (typeof node.refId === "string" && node.refId.trim() && typeof node.id === "string") {
+    nodeIds.set(node.refId, node.id);
+  }
+
+  if (Array.isArray(node.children)) {
+    for (const child of node.children) {
+      collectBinderNodeIds(child, nodeIds);
+    }
+  }
+
+  return nodeIds;
+}
+
+function buildBinderTreeFromSceneGroups(project, sceneGroups) {
+  const existingNodeIds = collectBinderNodeIds(project?.binder);
+  const rootId =
+    existingNodeIds.get(project?.id) ??
+    (typeof project?.id === "string" && project.id.trim() ? `binder-${project.id}` : "binder-project");
+  const binderRoot = {
+    id: rootId,
+    kind: "project",
+    refId: project?.id ?? "project",
+    title: project?.title ?? "Untitled Project",
+    order: 1,
+    children: [],
+  };
+  const chapterNodes = new Map();
+
+  for (const sceneGroup of sceneGroups) {
+    if (!chapterNodes.has(sceneGroup.chapterId)) {
+      const chapterNodeId =
+        existingNodeIds.get(sceneGroup.chapterId) ??
+        `binder-${sceneGroup.chapterId}`;
+      const chapterNode = {
+        id: chapterNodeId,
+        kind: "chapter",
+        refId: sceneGroup.chapterId,
+        title: sceneGroup.chapterTitle,
+        order: chapterNodes.size + 1,
+        children: [],
+      };
+      chapterNodes.set(sceneGroup.chapterId, chapterNode);
+      binderRoot.children.push(chapterNode);
+    }
+
+    const chapterNode = chapterNodes.get(sceneGroup.chapterId);
+    chapterNode.children.push({
+      id: existingNodeIds.get(sceneGroup.sceneId) ?? `binder-${sceneGroup.sceneId}`,
+      kind: "scene",
+      refId: sceneGroup.sceneId,
+      title: sceneGroup.sceneTitle,
+      order: chapterNode.children.length + 1,
+      children: [],
+    });
+  }
+
+  return binderRoot;
+}
+
+function buildNavigationTargetsFromLines(project, lines) {
+  const targets = {};
+  const firstLine = lines[0];
+
+  if (firstLine) {
+    targets[project.id] = {
+      refId: project.id,
+      kind: "project",
+      title: project.title,
+      lineId: firstLine.blockId,
+      lineNumber: firstLine.lineNumber,
+    };
+  }
+
+  const seenChapters = new Set();
+  const seenScenes = new Set();
+  for (const line of lines) {
+    if (!seenChapters.has(line.chapterId)) {
+      seenChapters.add(line.chapterId);
+      targets[line.chapterId] = {
+        refId: line.chapterId,
+        kind: "chapter",
+        title: line.chapterTitle,
+        lineId: line.blockId,
+        lineNumber: line.lineNumber,
+      };
+    }
+
+    if (!seenScenes.has(line.sceneId)) {
+      seenScenes.add(line.sceneId);
+      targets[line.sceneId] = {
+        refId: line.sceneId,
+        kind: "scene",
+        title: line.sceneTitle,
+        lineId: line.blockId,
+        lineNumber: line.lineNumber,
+      };
+    }
+  }
+
+  return targets;
+}
+
+function reorderSceneGroupsForDropTarget(sceneGroups, sourceSceneId, dropTarget) {
+  const sourceIndex = sceneGroups.findIndex((group) => group.sceneId === sourceSceneId);
+  if (sourceIndex === -1) {
+    return null;
+  }
+
+  const nextGroups = sceneGroups.map((group) => ({
+    ...group,
+    lines: [...group.lines],
+  }));
+  const [movedGroup] = nextGroups.splice(sourceIndex, 1);
+
+  let insertIndex = -1;
+  let targetChapterId = "";
+  let targetChapterTitle = "";
+
+  if (dropTarget.type === "chapter-start") {
+    const targetIndex = nextGroups.findIndex((group) => group.chapterId === dropTarget.chapterId);
+    if (targetIndex === -1) {
+      return null;
+    }
+
+    insertIndex = targetIndex;
+    targetChapterId = nextGroups[targetIndex].chapterId;
+    targetChapterTitle = nextGroups[targetIndex].chapterTitle;
+  } else {
+    const targetIndex = nextGroups.findIndex((group) => group.sceneId === dropTarget.sceneId);
+    if (targetIndex === -1 || dropTarget.sceneId === sourceSceneId) {
+      return null;
+    }
+
+    insertIndex = dropTarget.type === "before" ? targetIndex : targetIndex + 1;
+    targetChapterId = nextGroups[targetIndex].chapterId;
+    targetChapterTitle = nextGroups[targetIndex].chapterTitle;
+  }
+
+  if (insertIndex > sourceIndex) {
+    insertIndex -= 1;
+  }
+
+  movedGroup.chapterId = targetChapterId;
+  movedGroup.chapterTitle = targetChapterTitle;
+  nextGroups.splice(insertIndex, 0, movedGroup);
+
+  return nextGroups;
+}
+
+function rebuildProjectSceneStateFromGroups(project, sceneGroups) {
+  const lines = [];
+  const lineByBlockId = new Map();
+  const sceneMetaBySceneId = new Map();
+  let lineNumber = 1;
+  let currentChapterId = "";
+  let sceneNumberInChapter = 0;
+
+  for (const sceneGroup of sceneGroups) {
+    if (sceneGroup.chapterId !== currentChapterId) {
+      currentChapterId = sceneGroup.chapterId;
+      sceneNumberInChapter = 0;
+    }
+
+    sceneNumberInChapter += 1;
+    sceneMetaBySceneId.set(sceneGroup.sceneId, {
+      chapterId: sceneGroup.chapterId,
+      chapterTitle: sceneGroup.chapterTitle,
+      sceneId: sceneGroup.sceneId,
+      sceneTitle: sceneGroup.sceneTitle,
+    });
+
+    sceneGroup.lines.forEach((line, index) => {
+      const nextLine = {
+        ...line,
+        lineNumber,
+        sceneLineNumber: index + 1,
+        chapterId: sceneGroup.chapterId,
+        chapterTitle: sceneGroup.chapterTitle,
+        sceneId: sceneGroup.sceneId,
+        sceneTitle: sceneGroup.sceneTitle,
+        sceneSynopsis: sceneGroup.sceneSynopsis ?? line.sceneSynopsis ?? "",
+        startsChapter: index === 0 && sceneNumberInChapter === 1,
+        startsScene: index === 0,
+        issueIds: [],
+        eventTagIds: [],
+      };
+      lines.push(nextLine);
+      lineByBlockId.set(nextLine.blockId, nextLine);
+      lineNumber += 1;
+    });
+  }
+
+  const issues = Array.isArray(project?.issues)
+    ? project.issues.map((issue) => {
+        const line = typeof issue?.blockId === "string" ? lineByBlockId.get(issue.blockId) : null;
+        if (line) {
+          line.issueIds.push(issue.id);
+        }
+
+        if (!line) {
+          return { ...issue };
+        }
+
+        return {
+          ...issue,
+          lineNumber: line.lineNumber,
+          sceneLineNumber: line.sceneLineNumber,
+          chapterTitle: line.chapterTitle,
+          sceneTitle: line.sceneTitle,
+        };
+      })
+    : [];
+
+  const eventTags = Array.isArray(project?.eventTags)
+    ? project.eventTags.map((eventTag) => {
+        const line = typeof eventTag?.blockId === "string" ? lineByBlockId.get(eventTag.blockId) : null;
+        if (line) {
+          line.eventTagIds.push(eventTag.id);
+        }
+
+        if (!line) {
+          return { ...eventTag };
+        }
+
+        return {
+          ...eventTag,
+          lineNumber: line.lineNumber,
+          sceneLineNumber: line.sceneLineNumber,
+          chapterTitle: line.chapterTitle,
+          sceneTitle: line.sceneTitle,
+        };
+      })
+    : [];
+
+  return {
+    lines,
+    lineByBlockId,
+    sceneMetaBySceneId,
+    binder: buildBinderTreeFromSceneGroups(project, sceneGroups),
+    navigationTargets: buildNavigationTargetsFromLines(project, lines),
+    issues,
+    eventTags,
+    stats: {
+      chapterCount: new Set(sceneGroups.map((group) => group.chapterId)).size,
+      sceneCount: sceneGroups.length,
+      lineCount: lines.length,
+      issueCount: issues.length,
+      eventCount: eventTags.length,
+      characterCount: Array.isArray(project?.characters) ? project.characters.length : 0,
+    },
+  };
+}
+
+function syncSceneLinkedMetadata(items, sceneMetaBySceneId) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items.map((item) => {
+    const sceneMeta = sceneMetaBySceneId.get(item?.sceneId);
+    if (!sceneMeta) {
+      return { ...item };
+    }
+
+    return {
+      ...item,
+      chapterId: sceneMeta.chapterId,
+      chapterTitle: sceneMeta.chapterTitle,
+      sceneId: sceneMeta.sceneId,
+      sceneTitle: sceneMeta.sceneTitle,
+    };
+  });
+}
+
+function syncSuggestionQueueMetadata(queue, lineByBlockId) {
+  if (!Array.isArray(queue)) {
+    return [];
+  }
+
+  return queue.map((suggestion) => ({
+    ...suggestion,
+    evidence: Array.isArray(suggestion?.evidence)
+      ? suggestion.evidence.map((evidence) => {
+          const line = typeof evidence?.blockId === "string" ? lineByBlockId.get(evidence.blockId) : null;
+          if (!line) {
+            return { ...evidence };
+          }
+
+          return {
+            ...evidence,
+            lineNumber: line.lineNumber,
+            sceneLineNumber: line.sceneLineNumber,
+            chapterTitle: line.chapterTitle,
+            sceneTitle: line.sceneTitle,
+          };
+        })
+      : [],
+  }));
+}
+
+function syncNarrationSessionMetadata(session, lineByBlockId) {
+  if (!session || typeof session !== "object") {
+    return session;
+  }
+
+  const anchor = session.currentAnchor && typeof session.currentAnchor === "object"
+    ? session.currentAnchor
+    : null;
+  const line = anchor?.blockId ? lineByBlockId.get(anchor.blockId) : null;
+  if (!line) {
+    return session;
+  }
+
+  return {
+    ...session,
+    currentAnchor: {
+      ...anchor,
+      chapterId: line.chapterId,
+      sceneId: line.sceneId,
+    },
+    currentLineNumber: line.lineNumber,
+    currentText: line.text,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function syncNarrationAlignmentJobs(jobs, lineByBlockId) {
+  if (!Array.isArray(jobs)) {
+    return [];
+  }
+
+  return jobs.map((job) => {
+    const anchor = job?.request?.anchor;
+    const line = anchor?.blockId ? lineByBlockId.get(anchor.blockId) : null;
+    if (!line) {
+      return { ...job };
+    }
+
+    return {
+      ...job,
+      request: {
+        ...job.request,
+        anchor: {
+          ...anchor,
+          chapterId: line.chapterId,
+          sceneId: line.sceneId,
+        },
+      },
+      result: job.result && typeof job.result === "object"
+        ? {
+            ...job.result,
+            matchedLineNumber: line.lineNumber,
+          }
+        : job.result,
+    };
+  });
+}
+
+function syncVoiceRecordingsMetadata(recordings, lineByBlockId) {
+  if (!Array.isArray(recordings)) {
+    return [];
+  }
+
+  return recordings.map((recording) => {
+    const line = typeof recording?.blockId === "string" ? lineByBlockId.get(recording.blockId) : null;
+    if (!line) {
+      return { ...recording };
+    }
+
+    return {
+      ...recording,
+      chapterId: line.chapterId,
+      chapterTitle: line.chapterTitle,
+      sceneId: line.sceneId,
+      sceneTitle: line.sceneTitle,
+      lineNumber: line.lineNumber,
+    };
+  });
+}
+
+function syncVoiceRenderJobsMetadata(jobs, sceneMetaBySceneId) {
+  if (!Array.isArray(jobs)) {
+    return [];
+  }
+
+  return jobs.map((job) => {
+    const sceneId = typeof job?.request?.sceneId === "string" ? job.request.sceneId : "";
+    if (!sceneId) {
+      return { ...job };
+    }
+
+    const sceneMeta = sceneMetaBySceneId.get(sceneId);
+    if (!sceneMeta) {
+      return { ...job };
+    }
+
+    return {
+      ...job,
+      request: {
+        ...job.request,
+        chapterId: sceneMeta.chapterId,
+      },
+    };
+  });
+}
+
+function moveBinderScene(sceneId, dropTarget) {
+  if (typeof sceneId !== "string" || !sceneId.trim() || !dropTarget || !state.workspace?.project) {
+    return false;
+  }
+
+  if (!getPersistentSceneById(sceneId)) {
+    return false;
+  }
+
+  const sceneGroups = buildSceneGroupsFromProjectLines(state.workspace.project.lines);
+  const nextSceneGroups = reorderSceneGroupsForDropTarget(sceneGroups, sceneId, dropTarget);
+  if (!nextSceneGroups) {
+    return false;
+  }
+
+  if (describeSceneGroups(sceneGroups) === describeSceneGroups(nextSceneGroups)) {
+    return false;
+  }
+
+  const rebuilt = rebuildProjectSceneStateFromGroups(state.workspace.project, nextSceneGroups);
+  state.workspace.project = {
+    ...state.workspace.project,
+    binder: rebuilt.binder,
+    stats: rebuilt.stats,
+    navigationTargets: rebuilt.navigationTargets,
+    lines: rebuilt.lines,
+    issues: rebuilt.issues,
+    eventTags: rebuilt.eventTags,
+  };
+  state.manuscriptTasks = syncSceneLinkedMetadata(state.manuscriptTasks, rebuilt.sceneMetaBySceneId);
+  state.passageNotes = syncSceneLinkedMetadata(state.passageNotes, rebuilt.sceneMetaBySceneId);
+  state.workspace.analysis.suggestionQueue = syncSuggestionQueueMetadata(
+    state.workspace.analysis.suggestionQueue,
+    rebuilt.lineByBlockId,
+  );
+  state.workspace.narration.session = syncNarrationSessionMetadata(
+    state.workspace.narration.session,
+    rebuilt.lineByBlockId,
+  );
+  state.workspace.narration.alignmentJobs = syncNarrationAlignmentJobs(
+    state.workspace.narration.alignmentJobs,
+    rebuilt.lineByBlockId,
+  );
+  state.workspace.voice.recordings = syncVoiceRecordingsMetadata(
+    state.workspace.voice.recordings,
+    rebuilt.lineByBlockId,
+  );
+  state.workspace.voice.renderJobs = syncVoiceRenderJobsMetadata(
+    state.workspace.voice.renderJobs,
+    rebuilt.sceneMetaBySceneId,
+  );
+
+  resetBinderSceneDragState();
+  const existingChapterIds = new Set(
+    [...rebuilt.sceneMetaBySceneId.values()].map((sceneMeta) => sceneMeta.chapterId),
+  );
+  state.collapsedChapterIds = state.collapsedChapterIds.filter((chapterId) => existingChapterIds.has(chapterId));
+  persistCollapsedChapterState(state.activeProjectId, state.collapsedChapterIds);
+  refreshScenes();
+  persistCurrentProjectRecord();
+
+  if (state.selectedSceneId === sceneId) {
+    const movedScene = state.scenes.find((scene) => scene.sceneId === sceneId);
+    if (movedScene) {
+      updateSceneEditorChapterForScene(sceneId, movedScene.chapterId, movedScene.chapterTitle);
+    }
+  }
+
+  renderHeader();
+  renderBinderPanel();
+  renderConsolePanel();
+  syncSceneDocumentLayout();
+  return true;
+}
+
+function deleteSceneFromBinder(sceneId) {
+  const scene = getPersistentSceneById(sceneId);
+  if (!scene || !state.workspace?.project) {
+    hideBinderContextMenu();
+    return false;
+  }
+
+  const confirmed = window.confirm(
+    `Delete "${scene.sceneTitle}"?\n\nThis removes the scene, its tasks, notes, and linked diagnostics.`,
+  );
+  if (!confirmed) {
+    hideBinderContextMenu();
+    return false;
+  }
+
+  return removeScenesFromProject([scene.sceneId]);
+}
+
+function deleteChapterFromBinder(chapterId) {
+  if (!state.workspace?.project) {
+    hideBinderContextMenu();
+    return false;
+  }
+
+  const sceneGroups = buildSceneGroupsFromProjectLines(state.workspace.project.lines);
+  const chapterGroup = sceneGroups.find((group) => group.chapterId === chapterId) ?? null;
+  if (!chapterGroup) {
+    hideBinderContextMenu();
+    return false;
+  }
+
+  const removedSceneIds = sceneGroups
+    .filter((group) => group.chapterId === chapterId)
+    .map((group) => group.sceneId);
+  const confirmed = window.confirm(
+    `Delete "${chapterGroup.chapterTitle}" and all ${removedSceneIds.length} of its scene${removedSceneIds.length === 1 ? "" : "s"}?\n\nThis removes their tasks, notes, and linked diagnostics.`,
+  );
+  if (!confirmed) {
+    hideBinderContextMenu();
+    return false;
+  }
+
+  return removeScenesFromProject(removedSceneIds);
+}
+
+function removeScenesFromProject(removedSceneIds) {
+  if (!state.workspace?.project) {
+    return false;
+  }
+
+  const sceneGroups = buildSceneGroupsFromProjectLines(state.workspace.project.lines);
+  const removedSet = new Set(
+    Array.isArray(removedSceneIds)
+      ? removedSceneIds.filter((sceneId) => typeof sceneId === "string" && sceneId.trim())
+      : [],
+  );
+  const removedGroups = sceneGroups.filter((group) => removedSet.has(group.sceneId));
+  if (!removedGroups.length) {
+    return false;
+  }
+
+  const removedChapterIds = new Set(removedGroups.map((group) => group.chapterId));
+  const fallbackSceneId = getFallbackSceneIdAfterRemoval(sceneGroups, removedSet);
+  const nextSceneGroups = sceneGroups.filter((group) => !removedSet.has(group.sceneId));
+  const rebuilt = rebuildProjectSceneStateFromGroups(state.workspace.project, nextSceneGroups);
+  const remainingSceneIds = new Set(rebuilt.sceneMetaBySceneId.keys());
+  const remainingBlockIds = new Set(rebuilt.lineByBlockId.keys());
+
+  state.workspace.project = {
+    ...state.workspace.project,
+    binder: rebuilt.binder,
+    stats: rebuilt.stats,
+    navigationTargets: rebuilt.navigationTargets,
+    lines: rebuilt.lines,
+    issues: rebuilt.issues,
+    eventTags: rebuilt.eventTags,
+  };
+
+  state.sceneDrafts = Object.fromEntries(
+    Object.entries(state.sceneDrafts).filter(([sceneId]) => !removedSet.has(sceneId)),
+  );
+  state.structureDrafts = {
+    ...cloneValue(state.structureDrafts),
+    scenes: Array.isArray(state.structureDrafts.scenes)
+      ? state.structureDrafts.scenes.filter((draftScene) => {
+          const draftSceneId = String(draftScene?.sceneId ?? "");
+          const draftChapterId = String(draftScene?.chapterId ?? "");
+          return !removedSet.has(draftSceneId) && !removedChapterIds.has(draftChapterId);
+        })
+      : [],
+  };
+  state.localAiTitleStatus = Object.fromEntries(
+    Object.entries(state.localAiTitleStatus).filter(([sceneId]) => !removedSet.has(sceneId)),
+  );
+  state.manuscriptTasks = syncSceneLinkedMetadata(
+    state.manuscriptTasks.filter((task) => remainingSceneIds.has(task.sceneId)),
+    rebuilt.sceneMetaBySceneId,
+  );
+  state.passageNotes = syncSceneLinkedMetadata(
+    state.passageNotes.filter((note) => remainingSceneIds.has(note.sceneId)),
+    rebuilt.sceneMetaBySceneId,
+  );
+
+  if (state.workspace.narration && typeof state.workspace.narration === "object") {
+    state.workspace.narration.alignmentJobs = syncNarrationAlignmentJobs(
+      state.workspace.narration.alignmentJobs,
+      rebuilt.lineByBlockId,
+    ).filter((job) => remainingBlockIds.has(job?.request?.anchor?.blockId));
+
+    const currentSession = state.workspace.narration.session;
+    state.workspace.narration.session =
+      currentSession &&
+      currentSession.currentAnchor &&
+      remainingBlockIds.has(currentSession.currentAnchor.blockId)
+        ? syncNarrationSessionMetadata(currentSession, rebuilt.lineByBlockId)
+        : null;
+  }
+
+  if (state.workspace.voice && typeof state.workspace.voice === "object") {
+    state.workspace.voice.recordings = syncVoiceRecordingsMetadata(
+      state.workspace.voice.recordings,
+      rebuilt.lineByBlockId,
+    ).filter((recording) => remainingBlockIds.has(recording.blockId));
+    state.workspace.voice.renderJobs = syncVoiceRenderJobsMetadata(
+      state.workspace.voice.renderJobs,
+      rebuilt.sceneMetaBySceneId,
+    ).filter((job) => remainingSceneIds.has(job?.request?.sceneId));
+  }
+
+  refreshScenes();
+
+  const fallbackScene = fallbackSceneId ? getScene(fallbackSceneId) : state.scenes[0] ?? null;
+  if (fallbackScene) {
+    syncSelectionFromBlock(fallbackScene.blocks[0]?.blockId ?? null);
+  } else {
+    state.selectedSceneId = null;
+    state.selectedBlockId = null;
+  }
+
+  const currentIssueId = state.selectedIssueId;
+  state.selectedIssueId = currentIssueId && state.workspace.project.issues.some((issue) => issue.id === currentIssueId)
+    ? currentIssueId
+    : currentIssueId
+      ? state.workspace.project.issues[0]?.id ?? null
+      : null;
+  state.selectedTaskId = state.manuscriptTasks.some((task) => task.id === state.selectedTaskId)
+    ? state.selectedTaskId
+    : null;
+  state.selectedPassageNoteId = state.passageNotes.some((note) => note.id === state.selectedPassageNoteId)
+    ? state.selectedPassageNoteId
+    : null;
+  state.inlinePassageDraft = state.inlinePassageDraft && !removedSet.has(state.inlinePassageDraft.sceneId)
+    ? state.inlinePassageDraft
+    : null;
+  state.taskComposer = state.taskComposer && !removedSet.has(state.taskComposer.sceneId)
+    ? state.taskComposer
+    : null;
+  state.taskContextMenu = null;
+  state.binderContextMenu = null;
+  state.spellcheckContextMenu = null;
+  state.taskPreview = state.taskPreview && !removedSet.has(state.taskPreview.sceneId)
+    ? state.taskPreview
+    : null;
+  state.narrationTakeSelection = state.narrationTakeSelection && !removedSet.has(state.narrationTakeSelection.sceneId)
+    ? state.narrationTakeSelection
+    : null;
+  state.editingChapterTitleId = removedChapterIds.has(state.editingChapterTitleId)
+    ? null
+    : state.editingChapterTitleId;
+  state.editingSceneTitleId = removedSet.has(state.editingSceneTitleId)
+    ? null
+    : state.editingSceneTitleId;
+  state.workspace.selectionDefaults = {
+    ...(state.workspace.selectionDefaults ?? {}),
+    lineId: state.selectedBlockId ?? "",
+    issueId: state.selectedIssueId ?? undefined,
+  };
+  binderTitleClickState = null;
+
+  persistCurrentProjectRecord();
+  render();
+  syncSceneDocumentLayout();
+  return true;
+}
+
+function getFallbackSceneIdAfterRemoval(sceneGroups, removedSet) {
+  if (!Array.isArray(sceneGroups) || !(removedSet instanceof Set) || !removedSet.size) {
+    return null;
+  }
+
+  const removedIndices = sceneGroups
+    .map((group, index) => (removedSet.has(group.sceneId) ? index : -1))
+    .filter((index) => index >= 0);
+  if (!removedIndices.length) {
+    return null;
+  }
+
+  const firstRemovedIndex = removedIndices[0];
+  const remainingGroups = sceneGroups.filter((group) => !removedSet.has(group.sceneId));
+  if (!remainingGroups.length) {
+    return null;
+  }
+
+  const preferredGroup = remainingGroups.find(
+    (group) => sceneGroups.findIndex((candidate) => candidate.sceneId === group.sceneId) >= firstRemovedIndex,
+  );
+  return preferredGroup?.sceneId ?? remainingGroups[remainingGroups.length - 1]?.sceneId ?? null;
+}
+
+function trimSceneWhitespace(sceneId) {
+  if (typeof sceneId !== "string" || !sceneId.trim()) {
+    return false;
+  }
+
+  const scene = getScene(sceneId);
+  if (!scene) {
+    return false;
+  }
+
+  const textarea = getEditorTextareaForScene(sceneId);
+  const currentText =
+    textarea instanceof HTMLTextAreaElement
+      ? textarea.value
+      : String(scene.editorText ?? "");
+  const trimmedText = currentText.replace(/\s+$/u, "");
+
+  if (trimmedText === currentText) {
+    return false;
+  }
+
+  updateSceneDraft(sceneId, (draft) => {
+    draft.editorText = trimmedText;
+    draft.revisionStats = updateSceneRevisionStats(draft.revisionStats, currentText, trimmedText);
+  }, {
+    reason: "scene-trim",
+    immediate: true,
+  });
+  syncRevisionPanel(sceneId);
+
+  if (textarea instanceof HTMLTextAreaElement) {
+    textarea.value = trimmedText;
+    textarea.focus({ preventScroll: true });
+    textarea.setSelectionRange(trimmedText.length, trimmedText.length);
+  }
+
+  renderHeader();
+  syncSceneDocumentLayout();
+  return true;
+}
+
+function clearBinderSceneDropIndicators() {
+  document
+    .querySelectorAll(".binder-scene.is-drop-before, .binder-scene.is-drop-after, .binder-chapter.is-drop-start")
+    .forEach((node) => {
+      if (node instanceof HTMLElement) {
+        node.classList.remove("is-drop-before", "is-drop-after", "is-drop-start");
+      }
+    });
+
+  if (binderSceneDragState) {
+    binderSceneDragState.dropTarget = null;
+  }
+}
+
+function resetBinderSceneDragState() {
+  clearBinderSceneDropIndicators();
+
+  if (binderSceneDragState?.sourceElement instanceof HTMLElement) {
+    binderSceneDragState.sourceElement.classList.remove("is-dragging");
+    binderSceneDragState.sourceElement.removeAttribute("aria-grabbed");
+  }
+
+  if (binderSceneDragState?.dragImage instanceof HTMLElement && binderSceneDragState.dragImage.isConnected) {
+    binderSceneDragState.dragImage.remove();
+  }
+
+  binderSceneDragState = null;
+}
+
+function applyBinderSceneDropIndicator(dropTarget) {
+  clearBinderSceneDropIndicators();
+
+  if (!binderSceneDragState || !dropTarget) {
+    return;
+  }
+
+  binderSceneDragState.dropTarget = dropTarget;
+  const selector = dropTarget.type === "chapter-start"
+    ? `[data-binder-chapter-drop-id="${CSS.escape(dropTarget.chapterId)}"]`
+    : `[data-binder-scene-drop-id="${CSS.escape(dropTarget.sceneId)}"]`;
+  const dropElement = document.querySelector(selector);
+  if (!(dropElement instanceof HTMLElement)) {
+    return;
+  }
+
+  if (dropTarget.type === "chapter-start") {
+    dropElement.classList.add("is-drop-start");
+    return;
+  }
+
+  dropElement.classList.add(dropTarget.type === "before" ? "is-drop-before" : "is-drop-after");
+}
+
+function resolveBinderSceneDropTarget(event) {
+  if (!binderSceneDragState) {
+    return null;
+  }
+
+  const target = event.target instanceof Element ? event.target : null;
+  if (!target) {
+    return null;
+  }
+
+  const sceneDropTarget = target.closest("[data-binder-scene-drop-id]");
+  if (sceneDropTarget instanceof HTMLElement) {
+    const sceneId = sceneDropTarget.dataset.binderSceneDropId;
+    if (!sceneId || sceneId === binderSceneDragState.sourceSceneId) {
+      return null;
+    }
+
+    const scene = getPersistentSceneById(sceneId);
+    if (!scene) {
+      return null;
+    }
+
+    const rect = sceneDropTarget.getBoundingClientRect();
+    const placement = event.clientY < rect.top + (rect.height / 2)
+      ? "before"
+      : "after";
+
+    return {
+      type: placement,
+      sceneId,
+      chapterId: scene.chapterId,
+      chapterTitle: scene.chapterTitle,
+    };
+  }
+
+  const chapterDropTarget = target.closest("[data-binder-chapter-drop-id]");
+  if (chapterDropTarget instanceof HTMLElement) {
+    const chapterId = chapterDropTarget.dataset.binderChapterDropId;
+    if (!chapterId) {
+      return null;
+    }
+
+    const firstSceneInChapter = getScenesForChapter(chapterId).find((candidate) => isPersistentScene(candidate));
+    if (!firstSceneInChapter) {
+      return null;
+    }
+
+    return {
+      type: "chapter-start",
+      chapterId: firstSceneInChapter.chapterId,
+      chapterTitle: firstSceneInChapter.chapterTitle,
+    };
+  }
+
+  return null;
+}
+
+function handleBinderSceneDragStart(event) {
+  const target = event.target instanceof Element
+    ? event.target.closest(".binder-scene-button[data-binder-scene-id]")
+    : null;
+  if (!(target instanceof HTMLElement) || target.getAttribute("draggable") !== "true") {
+    return;
+  }
+
+  const sceneId = target.dataset.binderSceneId;
+  const scene = getPersistentSceneById(sceneId);
+  if (!scene) {
+    event.preventDefault();
+    return;
+  }
+
+  resetBinderSceneDragState();
+
+  const rect = target.getBoundingClientRect();
+  let dragImage = null;
+  if (event.dataTransfer) {
+    const clone = target.cloneNode(true);
+    if (clone instanceof HTMLElement) {
+      clone.classList.add("binder-scene-drag-image");
+      clone.style.position = "fixed";
+      clone.style.top = "-1000px";
+      clone.style.left = "-1000px";
+      clone.style.width = `${rect.width}px`;
+      clone.style.pointerEvents = "none";
+      clone.style.opacity = "0.72";
+      clone.style.transform = "scale(0.98)";
+      clone.style.margin = "0";
+      document.body.appendChild(clone);
+      dragImage = clone;
+      event.dataTransfer.setDragImage(
+        clone,
+        Math.max(0, event.clientX - rect.left),
+        Math.max(0, event.clientY - rect.top),
+      );
+    }
+
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", sceneId);
+  }
+
+  binderSceneDragState = {
+    sourceSceneId: sceneId,
+    sourceElement: target,
+    dragImage,
+    dropTarget: null,
+  };
+  target.classList.add("is-dragging");
+  target.setAttribute("aria-grabbed", "true");
+}
+
+function handleBinderSceneDragOver(event) {
+  if (!binderSceneDragState) {
+    return;
+  }
+
+  event.preventDefault();
+  const dropTarget = resolveBinderSceneDropTarget(event);
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = dropTarget ? "move" : "none";
+  }
+
+  if (dropTarget) {
+    applyBinderSceneDropIndicator(dropTarget);
+    return;
+  }
+
+  clearBinderSceneDropIndicators();
+}
+
+function handleBinderSceneDrop(event) {
+  if (!binderSceneDragState) {
+    return;
+  }
+
+  event.preventDefault();
+  const dropTarget = binderSceneDragState.dropTarget ?? resolveBinderSceneDropTarget(event);
+  if (dropTarget) {
+    moveBinderScene(binderSceneDragState.sourceSceneId, dropTarget);
+  }
+
+  resetBinderSceneDragState();
+}
+
+function handleBinderSceneDragEnd() {
+  if (!binderSceneDragState) {
+    return;
+  }
+
+  resetBinderSceneDragState();
 }
 
 function updateFocusedLineCard() {
@@ -10246,6 +14893,11 @@ function syncLayoutWidths(persist = false) {
     "is-binder-panel-compact",
     state.binderPanelWidth <= BINDER_PANEL_COMPACT_THRESHOLD,
   );
+  appRoot.classList.toggle("is-italic-text", state.editorPrefs.italicText === true);
+  appRoot.classList.toggle(
+    "is-revision-overlay-enabled",
+    state.editorPrefs.revisionOverlayEnabled === true,
+  );
 
   appRoot.style.setProperty("--binder-width", `${state.binderPanelWidth}px`);
   appRoot.style.setProperty(
@@ -10332,24 +14984,33 @@ function reportBrowserLog(level, scope, message, context = {}) {
     context: serializeBrowserLogContext(context),
   };
 
-  try {
-    if (navigator.sendBeacon) {
-      const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
-      navigator.sendBeacon("/api/log", blob);
-      return;
+  void postJsonToDesktopHost("/api/log", payload);
+}
+
+async function postJsonToDesktopHost(pathname, payload) {
+  const baseUrls = ["http://127.0.0.1:4310", "http://localhost:4310"];
+  const body = JSON.stringify(payload);
+
+  for (const baseUrl of baseUrls) {
+    try {
+      const response = await fetch(new URL(pathname, baseUrl).toString(), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body,
+        keepalive: true,
+      });
+
+      if (response.ok) {
+        return true;
+      }
+    } catch {
+      // Ignore and try the next desktop host origin.
     }
-  } catch {
-    // Ignore sendBeacon problems and fall back to fetch.
   }
 
-  void fetch("/api/log", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-    keepalive: true,
-  }).catch(() => {});
+  return false;
 }
 
 function serializeBrowserLogContext(context) {
@@ -10402,3 +15063,4 @@ function cloneValue(value) {
 
   return JSON.parse(JSON.stringify(value));
 }
+
