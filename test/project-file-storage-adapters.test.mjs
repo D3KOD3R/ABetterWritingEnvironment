@@ -149,6 +149,16 @@ export async function runProjectFileStorageAdaptersTest() {
     },
   });
 
+  controller.prime();
+  assert.equal(state.projectFileAutosaveDirty, false);
+  assert.equal(state.projectFileAutosaveRevision, 0);
+  assert.equal(timer.scheduled, null);
+  assert.deepEqual(state.projectFileAutosaveTarget, {
+    projectId: "project-1",
+    filePath: "C:\\Projects\\novel.abe-project.json",
+    fileHandle: null,
+  });
+
   controller.markDirty();
   assert.equal(state.projectFileAutosaveDirty, true);
   assert.equal(state.projectFileAutosaveRevision, 1);

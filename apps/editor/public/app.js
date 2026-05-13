@@ -9476,7 +9476,7 @@ function markProjectFileAutosaveDirty() {
   projectFileAutosave.markDirty();
 }
 
-// Intent: make a file-backed project eligible for autosave as soon as it becomes the active project.
+// Intent: sync the autosave destination after project switches without marking a clean project dirty.
 function primeProjectFileAutosave() {
   projectFileAutosave.prime();
 }

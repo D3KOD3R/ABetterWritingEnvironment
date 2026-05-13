@@ -77,6 +77,7 @@ export function createProjectFileAutosaveController({
     queue();
   };
 
+  // Intent: sync the active destination after a project switch without manufacturing dirty state.
   const prime = () => {
     if (
       state.projectFileAutosaveDirty ||
@@ -86,7 +87,8 @@ export function createProjectFileAutosaveController({
       return;
     }
 
-    markDirty();
+    clearTimer();
+    state.projectFileAutosaveTarget = getTarget();
   };
 
   // Intent: write only if the dirty target still matches the active project file destination.
