@@ -30,4 +30,4 @@ Feature reference and process tracker: [features.md](../../features.md)
 ## Audio Production
 
 - Narration follow mode backed by alignment services, Whisper-shaped chunked STT, and the manuscript-style narration panel with verse-armed recording controls.
-- Character voice narration backed by speaker assignments and render jobs, plus a local-first voice narration foundation for profiles, queue state, placeholder rendering, right-side voice rail controls, saved take cards, preview/open actions, and local media pointers.
+- Character voice narration backed by speaker assignments and render jobs, plus a local-first voice narration foundation for profiles, queue state, placeholder rendering, right-side voice rail controls, the narration-mode recording-goals panel, saved take cards, recorded-word session metrics, independent audiobook release dates, preview/open actions, and local media pointers.

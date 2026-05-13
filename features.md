@@ -82,8 +82,8 @@ Character voice narration maps manuscript speaker assignments to voice profiles 
 ### Progress
 
 - Status: Foundation implemented.
-- Repository coverage: characters, speaker assignments, legacy voice routing, narration voice profiles, narration jobs, queue transitions, placeholder rendering, local voice narration storage, right-side voice rail controls, speaker bindings, preview jobs, chapter render jobs, the editor Voice Narration foundation panel, and saved voice-recording cards with preview/open actions.
-- Next work: add editable voice-profile assignment, per-verse voice selection, provider configuration, richer media persistence, and later alignment handoff.
+- Repository coverage: characters, speaker assignments, legacy voice routing, narration voice profiles, narration jobs, queue transitions, placeholder rendering, local voice narration storage, right-side voice rail controls, speaker bindings, preview jobs, chapter render jobs, the editor Voice Narration foundation panel, the narration-mode recording-goals modal, saved voice-recording cards with preview/open actions, and voice narration metrics that track recorded words per session alongside an independent audiobook release date.
+- Next work: add editable voice-profile assignment, per-verse voice selection, provider configuration, richer media persistence, session-history reporting, and later alignment handoff.
 
 ## Feature 06 - World Spine View
 

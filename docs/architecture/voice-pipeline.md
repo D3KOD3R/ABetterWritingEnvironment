@@ -11,6 +11,9 @@ Voice services will manage synthesis and conversion through provider adapters.
 - narration voice profile persistence
 - narration job queue state
 - placeholder render simulation
+- recording-session word counts
+- narration-mode recording-goals UI backed by voice metrics rather than manuscript writing goals
+- audiobook release metrics separate from manuscript release planning
 
 ## Next Responsibilities
 
@@ -22,4 +25,4 @@ Voice services will manage synthesis and conversion through provider adapters.
 
 ## Boundary
 
-Voice providers may vary, but render jobs must remain tied to canonical manuscript locations and explicit speaker assignments.
+Voice providers may vary, but render jobs and narration metrics must remain tied to canonical manuscript locations, explicit speaker assignments, and voice-owned audiobook targets rather than borrowing the manuscript goal state.

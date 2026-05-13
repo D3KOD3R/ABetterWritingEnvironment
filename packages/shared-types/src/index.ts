@@ -230,12 +230,19 @@ export interface VoiceRecordingRecord {
   lineNumber: number;
   verseText: string;
   transcript: string;
+  recordedWordCount?: number;
   mediaPath?: string;
   mediaName?: string;
   mediaMimeType?: string;
   durationMs?: number;
   status: "recorded" | "saved" | "failed";
   createdAt: string;
+  updatedAt: string;
+}
+
+export interface VoiceNarrationMetricsSnapshot {
+  audiobookReleaseDate: string;
+  sessionTargetWords: number;
   updatedAt: string;
 }
 
@@ -503,6 +510,7 @@ export interface VoiceWorkspaceSnapshot {
   bindings: SpeakerVoiceBinding[];
   renderJobs: VoiceRenderJob[];
   recordings: VoiceRecordingRecord[];
+  metrics: VoiceNarrationMetricsSnapshot;
 }
 
 export interface WorkspaceSelectionDefaults {

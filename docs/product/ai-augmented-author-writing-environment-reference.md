@@ -47,7 +47,7 @@ Allows the author to produce full audiobook performances directly inside the wri
 ### Progress
 
 - Status: Foundation implemented.
-- Notes: Speaker assignments, voice profiles, speaker bindings, preview jobs, chapter render jobs, and the right-side voice rail are in place. Next work is editable voice assignment, per-verse voice selection, and real provider adapters.
+- Notes: Speaker assignments, voice profiles, speaker bindings, preview jobs, chapter render jobs, the right-side voice rail, the narration-mode recording-goals modal, and voice narration metrics for per-session recorded words and an independent audiobook release date are in place. Next work is editable voice assignment, per-verse voice selection, session history, and real provider adapters.
 
 ## World Spine View
 
