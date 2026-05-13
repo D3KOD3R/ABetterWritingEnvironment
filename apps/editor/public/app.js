@@ -1,3 +1,4 @@
+// Intent: bootstrap and orchestrate the browser editor while refactor slices move feature logic outward.
 import {
   EDITOR_DRAFTS_KEY,
   EDITOR_ACTIVE_PROJECT_ID_KEY,
@@ -37,6 +38,30 @@ import {
 } from "./editor-model.js";
 import { getPassageNotePlaceholder, renderManuscriptPanelHTML } from "./features/scene-editor.js";
 import { escapeHtml, formatDisplayNumber } from "./shared/ui-utils.js";
+import { createProjectFileAutosaveController } from "./adapters/storage/autosave.js";
+import {
+  buildProjectFilePathFromRoot as buildProjectFilePathFromRootForProjectFile,
+  canUseBrowserOpenPicker,
+  canUseBrowserSavePicker,
+  downloadProjectLibrarySnapshot as downloadProjectLibrarySnapshotFromAdapter,
+  getProjectFilePickerTypes,
+  getProjectRecordFilePath,
+  getSuggestedProjectFileName as getSuggestedProjectFileNameFromTitle,
+  getSuggestedProjectFilePath as getSuggestedProjectFilePathFromProject,
+  hasProjectFileDestination as hasProjectFileDestinationTarget,
+  hasProjectFilePath,
+  normalizeProjectFilePath,
+  persistDesktopProjectFilePathPreference,
+  promptForProjectFileFromInput,
+  readProjectLibraryFromBrowserFile,
+  readProjectLibraryFromBrowserHandle,
+  readProjectLibraryFromDesktopPath,
+  resolveLoadedProjectFileDestination,
+  resolveProjectFilePath,
+  writeProjectLibraryToBrowserHandle,
+  writeProjectLibraryToDesktopPath,
+} from "./adapters/storage/project-file.js";
+import { resolveProjectFileDisplayState } from "./adapters/storage/project-file-display.js";
 import {
   buildSpellcheckProjectLexicon,
   collectSpellcheckMisspellings,
@@ -51,11 +76,12 @@ import {
 } from "./spellcheck.js";
 import {
   getSessionTrackerVisualState,
-  renderWritingTargetCard,
-  renderWritingTargetStrip,
 } from "./features/progress-tracker.js";
 import { renderSessionTrackerPenSvg as renderSessionTrackerPenGlyph } from "./session-tracker-icons.js";
+import { renderEditorChrome } from "./shell/editor-chrome.js";
+import { renderWritingTargetWindowHTML } from "./features/writing-targets/writing-target-window.js";
 
+// Intent: keep shell-wide constants and state visible until each concern moves into its roadmap owner.
 const appRoot = document.querySelector("#app");
 const EDITOR_COLLAPSED_CHAPTERS_KEY = "abe-collapsed-chapters-v1";
 const EDITOR_CONSOLE_COLLAPSED_CHAPTERS_KEY = "abe-console-collapsed-chapters-v1";
@@ -118,6 +144,7 @@ const state = {
   projectFileAutosaveTimer: null,
   projectFileAutosaveRevision: 0,
   projectFileAutosaveSuppressionDepth: 0,
+  projectCacheSuppressionDepth: 0,
   projectSourcePath: "",
   projectSourceStatus: "",
   projectSourceBusy: false,
@@ -202,6 +229,25 @@ let narrationRecordingRuntime = null;
 let voiceRecordingPreviewAudio = null;
 let voiceRecordingPreviewUrl = null;
 
+const projectFileAutosave = createProjectFileAutosaveController({
+  state,
+  delayMs: PROJECT_FILE_AUTOSAVE_DELAY_MS,
+  windowRef: window,
+  getTarget: () => ({
+    projectId: state.activeProjectId ?? state.workspace?.project?.id ?? null,
+    filePath: normalizeProjectFilePath(state.projectFilePath),
+    fileHandle: state.projectFileHandle ?? null,
+  }),
+  hasDestination: () => hasProjectFileDestination(),
+  isBusy: () => state.projectFileBusy,
+  isEnabled: () => state.editorPrefs.projectFileAutosaveEnabled === true,
+  save: () => saveCurrentProject(),
+  setStatus: (status) => {
+    state.projectFileStatus = status;
+  },
+  renderStatus: () => renderHeader(),
+});
+
 registerRuntimeLogging();
 
 boot().catch((error) => {
@@ -216,13 +262,19 @@ boot().catch((error) => {
   `;
 });
 
+// Intent: boot the editor from desktop APIs, bundled seed data, and local browser state in that priority order.
 async function boot() {
-  const seedLibrary = await loadInitialProjectLibrary();
+  const [seedLibrary, desktopSettings] = await Promise.all([
+    loadInitialProjectLibrary(),
+    loadDesktopSettingsSnapshot(),
+  ]);
   state.projectLibrary = seedLibrary.projects;
   state.activeProjectId = seedLibrary.activeProjectId ?? seedLibrary.projects[0]?.id ?? null;
   state.projectLibrarySelectionId = state.activeProjectId;
   state.projectFileHandle = null;
-  state.projectFilePath = loadStoredString(EDITOR_PROJECT_FILE_PATH_KEY) ?? "";
+  state.projectFilePath = desktopSettings.lastProjectFilePathExplicit
+    ? normalizeProjectFilePath(desktopSettings.lastProjectFilePath)
+    : "";
   state.projectFileStatus = "";
   state.projectFileBusy = false;
   state.projectFileAutosaveDirty = false;
@@ -240,6 +292,7 @@ async function boot() {
   state.consoleDockWidth = loadStoredNumber(EDITOR_CONSOLE_WIDTH_KEY, DEFAULT_CONSOLE_PANEL_WIDTH);
   applyProjectRecord(getActiveProjectRecord() ?? state.projectLibrary[0]);
   refreshScenes();
+  await reconnectProjectFileDestinationOnBoot();
   spellcheckBaseLexicon = await ensureSpellcheckBaseLexicon();
   spellcheckReferenceLexicon = await ensureSpellcheckReferenceLexicon();
 
@@ -256,6 +309,7 @@ async function boot() {
   refreshWritingTargetSessionLifecycle({ reason: "boot" });
 
   render();
+  await reconnectProjectFileDestinationOnBoot(desktopSettings);
   syncLayoutWidths();
   recordWritingTargetSnapshot({ immediate: true, reason: "boot", skipProjectFileAutosave: true });
   startSessionTrackerRefreshTimer();
@@ -273,6 +327,7 @@ async function boot() {
   syncSceneDocumentLayout();
 }
 
+// Intent: delegate browser events while the shell still coordinates feature slices during the refactor.
 function wireEvents() {
   if (eventsWired) {
     return;
@@ -1318,16 +1373,20 @@ function wireEvents() {
       clearTaskAnchorPreview({ restoreSelection: false });
       const previousText = getScene(sceneId)?.editorText ?? "";
       trackInlinePassageDraftTyping(sceneId, previousText, target);
+      const activeTypingWordRange = getEditorTypingSpellcheckRange(target);
       updateSceneDraft(sceneId, (draft) => {
         draft.editorText = target.value;
         draft.revisionStats = updateSceneRevisionStats(draft.revisionStats, previousText, target.value);
       });
-      syncSceneDocumentLayout();
-      syncRevisionPanel(sceneId);
-      renderGrammarCheckPanel();
-      centerEditorOnCaret(target);
-      updateFocusedLineCard();
-      updateInlinePassageDraftStatus(target.value);
+      scheduleSceneEditorTypingRefresh(sceneId, target.value, {
+        revisionPanel: true,
+        consoleCard: true,
+        inlinePassageStatus: true,
+        activeTypingWordRange,
+      });
+      if (state.editorPrefs.grammarCheckEnabled !== false) {
+        scheduleSceneEditorSpellcheckRefresh(sceneId);
+      }
     }
   });
 
@@ -1390,6 +1449,35 @@ function wireEvents() {
       persistCurrentProjectRecord();
       renderHeader();
       renderManuscriptPanel();
+      syncSceneDocumentLayout();
+      return;
+    }
+
+    if (target instanceof HTMLInputElement && target.dataset.editorPref) {
+      state.editorPrefs = normalizeEditorPrefs({
+        ...state.editorPrefs,
+        [target.dataset.editorPref]: target.type === "checkbox" ? target.checked : target.value,
+      });
+      if (target.dataset.editorPref === "projectFileAutosaveEnabled" && target.checked !== true) {
+        clearProjectFileAutosaveTimer();
+      }
+      if (target.dataset.editorPref === "grammarCheckEnabled" && target.checked !== true) {
+        clearSceneEditorSpellcheckRefresh();
+      }
+      writeStoredJson(EDITOR_PREFS_KEY, state.editorPrefs);
+      persistCurrentProjectRecord();
+      if (target.dataset.editorPref === "projectFileAutosaveEnabled" && target.checked === true && state.projectFileAutosaveDirty) {
+        queueProjectFileAutosave();
+      }
+      if (target.dataset.editorPref === "grammarCheckEnabled") {
+        syncGrammarCheckPanelHeaderState();
+        if (state.grammarCheckPanel?.open) {
+          renderGrammarCheckPanel();
+        }
+      } else {
+        renderHeader();
+        renderManuscriptPanel();
+      }
       syncSceneDocumentLayout();
       return;
     }
@@ -1488,6 +1576,7 @@ function wireEvents() {
   });
 }
 
+// Intent: orchestrate slot rendering without letting individual panels own whole-app refresh order.
 function render() {
   if (!state.shellReady) {
     renderShell();
@@ -1732,260 +1821,21 @@ function getPassageNoteVerb(noteType) {
 }
 
 function renderHeader() {
-  const workspace = state.workspace;
   const writingTargetSummary = buildWritingTargetSummary();
-  document.querySelector("#hero-slot").innerHTML = `
-    <header class="desktop-chrome">
-      <div class="desktop-menubar">
-        <div class="desktop-menu-cluster">
-          <div class="file-menu ${state.fileMenuOpen ? "is-open" : ""}" data-file-menu>
-            <button
-              class="menu-button"
-              type="button"
-              data-action="toggle-file-menu"
-              aria-expanded="${state.fileMenuOpen ? "true" : "false"}"
-              aria-haspopup="menu"
-            >File</button>
-            ${state.fileMenuOpen ? renderFileMenu() : ""}
-          </div>
-          <div class="desktop-title-cluster">
-            <span class="desktop-app-name">A Better Novel Authoring Environment</span>
-            <input
-              class="project-title-input desktop-project-title"
-              type="text"
-              value="${escapeHtml(state.projectTitle)}"
-              data-edit-field="project-title"
-              aria-label="Project title"
-            />
-          </div>
-        </div>
-        <div class="desktop-menubar-center">
-          <nav class="workspace-tabs" aria-label="Workspace panes">
-            ${renderPaneTab("manuscript", "Manuscript", workspace.settings.executionMode)}
-            ${renderPaneTab("world", "World", "Spines and templates")}
-            ${renderPaneTab("narration", "Narration + Voice", "Whisper follow-track")}
-          </nav>
-        </div>
-        <div class="desktop-stat-strip" aria-label="Project statistics">
-          ${renderStat("Lines", workspace.project.stats.lineCount, "lines")}
-          ${renderWritingTargetToggle(writingTargetSummary)}
-        </div>
-      </div>
-      ${renderWritingTargetStrip(writingTargetSummary)}
-      <div class="desktop-toolbar">
-        ${renderLocalAiSetting()}
-      </div>
-    </header>
-  `;
+  const projectFileAutosaveConnected = hasProjectFileDestination();
+  const projectFileDisplay = getProjectFileDisplayState();
+  document.querySelector("#hero-slot").innerHTML = renderEditorChrome({
+    state,
+    workspace: state.workspace,
+    writingTargetSummary,
+    projectFileAutosaveConnected,
+    projectFileDisplay,
+    createProjectLibraryRecord: createProjectLibraryRecordFromState,
+    getSuggestedProjectFilePath,
+  });
 }
 
-function renderFileMenu() {
-  const projects = state.projectLibrary.length
-    ? state.projectLibrary
-    : (state.workspace ? [createProjectLibraryRecordFromState()] : []);
-  const selectedProjectId = state.projectLibrarySelectionId ?? state.activeProjectId ?? projects[0]?.id ?? "";
-  const selectedProject = projects.find((project) => project.id === selectedProjectId)
-    ?? projects[0]
-    ?? null;
-  const activeProject = projects.find((project) => project.id === state.activeProjectId)
-    ?? selectedProject;
-  const status = activeProject
-    ? `${projects.length} saved project${projects.length === 1 ? "" : "s"}`
-    : "No saved projects yet";
-  const manuscriptStats = activeProject?.workspace?.project?.stats ?? null;
-  const worldStats = activeProject?.workspace?.world?.stats ?? null;
-  const manuscriptStatus = manuscriptStats
-    ? ` · ${manuscriptStats.chapterCount} chapters, ${manuscriptStats.sceneCount} scenes`
-    : "";
-  const templateStatus = worldStats
-    ? ` · ${worldStats.templateCount} templates`
-    : "";
-  const importReport = activeProject?.importReport && typeof activeProject.importReport === "object"
-    ? activeProject.importReport
-    : null;
-  const importedNoteCount = Number(importReport?.importedNotes ?? (Number(importReport?.importedResearchNotes ?? 0) + Number(importReport?.importedFrontMatterNotes ?? 0)));
-  const importedAssetCount = Number(importReport?.importedAssetNotes ?? 0);
-  const archivedCount = Number(importReport?.archivedItems ?? 0);
-  const selectionStatus =
-    selectedProject && activeProject && selectedProject.id !== activeProject.id
-      ? ` · Selected: ${selectedProject.title}`
-      : "";
-  const importStatus = importReport
-    ? ` · Import: ${importedNoteCount} notes${importedAssetCount ? `, ${importedAssetCount} assets` : ""}${archivedCount ? `, ${archivedCount} archived` : ""}`
-    : "";
-  const projectFileStatus = state.projectFilePath
-    ? `Project file: ${state.projectFilePath}`
-    : "No project file selected";
-  const projectFileFeedback = state.projectFileStatus ? ` · ${state.projectFileStatus}` : "";
-  const integratorStatus = state.projectSourceStatus
-    ? ` · Integrator: ${state.projectSourceStatus}`
-    : "";
-
-  return `
-    <div class="file-menu-panel" role="menu" aria-label="File menu">
-      <div class="file-menu-section">
-        <span class="file-menu-label">Project</span>
-        <label class="project-library-select-shell compact">
-          <span>Saved projects</span>
-          <select data-project-library-select aria-label="Saved projects">
-            ${projects.map((project) => `
-              <option value="${escapeHtml(project.id)}" ${project.id === selectedProjectId ? "selected" : ""}>
-                ${escapeHtml(formatProjectLibraryLabel(project))}
-              </option>
-            `).join("")}
-          </select>
-        </label>
-        <div class="file-menu-actions">
-          <button class="tag-button panel-action-button" type="button" data-action="load-project">Load project</button>
-          <button class="tag-button panel-action-button" type="button" data-action="save-project">Save project</button>
-          <button class="tag-button panel-action-button" type="button" data-action="create-project">Create project</button>
-          <button class="tag-button panel-action-button" type="button" data-action="toggle-writing-target-window">
-            Writing target
-          </button>
-        </div>
-      </div>
-      <div class="file-menu-section">
-        <span class="file-menu-label">Project file</span>
-        <label class="project-file-shell compact">
-          <span>Save path</span>
-          <input
-            type="text"
-            value="${escapeHtml(state.projectFilePath)}"
-            data-edit-field="project-file-path"
-            placeholder="${escapeHtml(getSuggestedProjectFilePath())}"
-            aria-label="Project file path"
-            spellcheck="false"
-          />
-        </label>
-        <div class="file-menu-actions">
-          <button
-            class="tag-button panel-action-button"
-            type="button"
-            data-action="save-project-file-as"
-            ${state.projectFileBusy ? "disabled" : ""}
-          >
-            ${state.projectFileBusy ? "Saving..." : "Save as file"}
-          </button>
-          <button
-            class="tag-button panel-action-button"
-            type="button"
-            data-action="load-project-file"
-            ${state.projectFileBusy ? "disabled" : ""}
-          >
-            Load file
-          </button>
-        </div>
-        <p class="project-file-status">
-          ${escapeHtml(projectFileStatus)}${escapeHtml(projectFileFeedback)}
-        </p>
-      </div>
-      <div class="file-menu-section">
-        <span class="file-menu-label">Import</span>
-        <label class="project-source-shell compact">
-          <span>Project source</span>
-          <input
-            type="text"
-            value="${escapeHtml(state.projectSourcePath)}"
-            data-edit-field="project-source-path"
-            placeholder="C:\\Projects\\Novel.abe-project.json or ...\\Project folder"
-            aria-label="Project source path"
-            spellcheck="false"
-          />
-        </label>
-        <div class="file-menu-actions">
-          <button
-            class="tag-button panel-action-button"
-            type="button"
-            data-action="load-project-source"
-            ${state.projectSourceBusy ? "disabled" : ""}
-          >
-            ${state.projectSourceBusy ? "Importing..." : "Load Project Source"}
-          </button>
-        </div>
-      </div>
-      <p class="project-library-status">
-        ${escapeHtml(status)}${activeProject ? ` · Active: ${activeProject.title}` : ""}${escapeHtml(manuscriptStatus)}${escapeHtml(templateStatus)}${escapeHtml(selectionStatus)}${escapeHtml(importStatus)}${escapeHtml(integratorStatus)}
-      </p>
-      <p class="file-menu-shortcuts" aria-label="Keyboard shortcuts">
-        <span>Ctrl+S save</span>
-        <span>Ctrl+Shift+S save as</span>
-        <span>Ctrl+Shift+O load file</span>
-        <span>Ctrl+N new</span>
-        <span>Ctrl+O file</span>
-        <span>Ctrl+Alt+T goals</span>
-        <span>Ctrl+1-4 panes</span>
-        <span>Esc close</span>
-      </p>
-    </div>
-  `;
-}
-
-function formatProjectLibraryLabel(project) {
-  return typeof project?.title === "string" && project.title.trim()
-    ? project.title
-    : "Untitled Project";
-}
-
-function renderLocalAiSetting() {
-  const enabled = state.localAiPrefs.enabled;
-  return `
-    <label class="local-ai-setting">
-      <input
-        type="checkbox"
-        data-local-ai-setting="enabled"
-        ${enabled ? "checked" : ""}
-      />
-      <span>Local AI</span>
-      <strong>${enabled ? "Titles on" : "Titles off"}</strong>
-    </label>
-  `;
-}
-
-function renderPaneTab(paneId, label, detail) {
-  const isActive = state.activePane === paneId;
-  return `
-    <button
-      class="workspace-tab ${isActive ? "is-active" : ""}"
-      type="button"
-      data-action="select-pane"
-      data-pane-id="${escapeHtml(paneId)}"
-      aria-pressed="${isActive ? "true" : "false"}"
-    >
-      <span>${escapeHtml(label)}</span>
-      <strong>${escapeHtml(detail)}</strong>
-    </button>
-  `;
-}
-
-function renderStat(label, value, statKey = "") {
-  return `
-    <div class="chrome-stat"${statKey ? ` data-stat-key="${escapeHtml(statKey)}"` : ""}>
-      <span>${escapeHtml(label)}</span>
-      <strong data-stat-value>${escapeHtml(formatDisplayNumber(value))}</strong>
-    </div>
-  `;
-}
-
-function renderWritingTargetToggle(summary) {
-  const targetLabel = summary?.goalButtonLabel ?? "Writing Goals";
-
-  return `
-    <button
-      class="chrome-stat chrome-target-toggle"
-      type="button"
-      data-writing-target-toggle
-      data-action="toggle-writing-target-window"
-      aria-pressed="${state.writingTargetWindowOpen ? "true" : "false"}"
-      title="Open writing goals (Ctrl+Alt+T)"
-      aria-label="Open writing goals"
-    >
-      <span class="chrome-target-icon" aria-hidden="true">◎</span>
-      <span>Writing Goals</span>
-      <strong data-writing-target-toggle-value>${escapeHtml(targetLabel)}</strong>
-    </button>
-  `;
-}
-
+// Intent: project writing-goal state into the extracted dashboard renderer.
 function renderWritingTargetWindow() {
   const slot = document.querySelector("#writing-target-slot");
   if (!slot) {
@@ -2006,414 +1856,20 @@ function renderWritingTargetWindow() {
   const dashboard = buildWritingTargetDashboardModel(summary);
   const selectedEntry = getWritingTargetSelectedEntryModel(summary, dashboard);
   const dashboardCards = buildWritingTargetDashboardCards(summary, dashboard);
-  const calendarHeaderDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-  const renderCalendarDayCell = (day) => `
-    <button
-      class="writing-target-calendar-day ${day.status.key} ${day.isCurrentMonth ? "" : "is-outside-month"} ${day.isSelected ? "is-selected" : ""} ${day.isToday ? "is-today" : ""}"
-      type="button"
-      data-action="select-writing-target-day"
-      data-date-key="${escapeHtml(day.dateKey)}"
-      aria-pressed="${day.isSelected ? "true" : "false"}"
-      aria-label="${escapeHtml(new Intl.DateTimeFormat(undefined, {
-        weekday: "long",
-        month: "long",
-        day: "numeric",
-        year: "numeric",
-      }).format(day.date))}"
-    >
-      <span class="writing-target-calendar-day-head">
-        <strong>${escapeHtml(String(day.dayNumber))}</strong>
-        <span>${escapeHtml(day.status.label)}</span>
-      </span>
-      <span class="writing-target-calendar-day-count">${escapeHtml(day.entry ? `${formatDisplayNumber(day.wordGain)} words` : "No writing")}</span>
-      <span class="writing-target-calendar-day-progress" aria-hidden="true">
-        <span style="width:${Math.round(day.progressRatio * 100)}%;"></span>
-      </span>
-      <span class="writing-target-calendar-day-indicators" aria-hidden="true">
-        <span class="is-task" title="Tasks completed">
-          <span class="writing-target-calendar-day-indicator-icon" aria-hidden="true">✓</span>
-          <span class="writing-target-calendar-day-indicator-count">${escapeHtml(formatDisplayNumber(day.taskCount || 0))}</span>
-        </span>
-        <span class="is-inspiration" title="Inspirations logged">
-          <span class="writing-target-calendar-day-indicator-icon" aria-hidden="true">✦</span>
-          <span class="writing-target-calendar-day-indicator-count">${escapeHtml(formatDisplayNumber(Math.max(0, Math.round(Number(day.entry?.inspirationCount) || 0))))}</span>
-        </span>
-        <span class="is-issue" title="Issues logged">
-          <span class="writing-target-calendar-day-indicator-icon" aria-hidden="true">!</span>
-          <span class="writing-target-calendar-day-indicator-count">${escapeHtml(formatDisplayNumber(Math.max(0, Math.round(Number(day.entry?.issueCount) || 0))))}</span>
-        </span>
-      </span>
-    </button>
-  `;
-  const renderWeekDayCell = (day) => `
-    <button
-      class="writing-target-week-day ${day.status.key} ${day.isSelected ? "is-selected" : ""}"
-      type="button"
-      data-action="select-writing-target-day"
-      data-date-key="${escapeHtml(day.dateKey)}"
-      aria-pressed="${day.isSelected ? "true" : "false"}"
-    >
-      <span class="writing-target-week-day-name">${escapeHtml(new Intl.DateTimeFormat(undefined, { weekday: "short" }).format(day.date))}</span>
-      <strong>${escapeHtml(String(day.dayNumber))}</strong>
-      <span>${escapeHtml(day.entry ? `${formatDisplayNumber(day.wordGain)} words` : "No writing")}</span>
-      <span class="writing-target-calendar-day-progress" aria-hidden="true">
-        <span style="width:${Math.round(day.progressRatio * 100)}%;"></span>
-      </span>
-      <span class="writing-target-calendar-day-indicators" aria-hidden="true">
-        <span class="is-task" title="Tasks completed">
-          <span class="writing-target-calendar-day-indicator-icon" aria-hidden="true">✓</span>
-          <span class="writing-target-calendar-day-indicator-count">${escapeHtml(formatDisplayNumber(day.taskCount || 0))}</span>
-        </span>
-        <span class="is-inspiration" title="Inspirations logged">
-          <span class="writing-target-calendar-day-indicator-icon" aria-hidden="true">✦</span>
-          <span class="writing-target-calendar-day-indicator-count">${escapeHtml(formatDisplayNumber(Math.max(0, Math.round(Number(day.entry?.inspirationCount) || 0))))}</span>
-        </span>
-        <span class="is-issue" title="Issues logged">
-          <span class="writing-target-calendar-day-indicator-icon" aria-hidden="true">!</span>
-          <span class="writing-target-calendar-day-indicator-count">${escapeHtml(formatDisplayNumber(Math.max(0, Math.round(Number(day.entry?.issueCount) || 0))))}</span>
-        </span>
-      </span>
-    </button>
-  `;
-
-  slot.innerHTML = `
-    <section class="writing-target-window" role="dialog" aria-label="Writing goals">
-      <header class="writing-target-window-header">
-        <div class="writing-target-window-copy">
-          <p class="writing-target-kicker">Writing Goals</p>
-          <h2>Writing Goals</h2>
-          <p class="writing-target-window-subtitle">Plan your pace. Track your progress. Finish strong.</p>
-        </div>
-        <div class="writing-target-dashboard-stats">
-          ${dashboardCards.map((card) => renderWritingTargetCard(card, summary)).join("")}
-        </div>
-        <button
-          class="writing-target-close"
-          type="button"
-          data-action="close-writing-target-window"
-          aria-label="Close writing goals"
-          title="Close"
-        >
-          ×
-        </button>
-      </header>
-      <div class="writing-target-dashboard-body">
-        <section class="writing-target-dashboard-settings" aria-label="Goal settings">
-          <div class="writing-target-section-header">
-            <div>
-              <p class="writing-target-kicker">Goal settings</p>
-              <h3>Goal settings</h3>
-            </div>
-          </div>
-          <div class="writing-target-summary-grid">
-            <label class="writing-target-field">
-              <span>Word target</span>
-              <input
-                type="number"
-                min="1000"
-                step="1000"
-                value="${escapeHtml(String(summary.targetWords))}"
-                data-edit-field="writing-target-field"
-                data-writing-target-field="targetWords"
-                aria-label="Manuscript target words"
-              />
-              <input
-                class="writing-target-range"
-                type="range"
-                min="1000"
-                max="500000"
-                step="1000"
-                value="${escapeHtml(String(summary.targetWords))}"
-                data-edit-field="writing-target-field"
-                data-writing-target-field="targetWords"
-                aria-label="Adjust manuscript target words"
-              />
-            </label>
-            <label class="writing-target-field">
-              <span>Release date</span>
-              <input
-                type="text"
-                value="${escapeHtml(summary.record.releaseDate)}"
-                placeholder="YYYY-MM-DD or DD/MM/YYYY"
-                inputmode="numeric"
-                data-edit-field="writing-target-field"
-                data-writing-target-field="releaseDate"
-                aria-label="Release date"
-              />
-              ${summary.releaseComparisonLabel ? `<small class="writing-target-hint">${escapeHtml(summary.releaseComparisonLabel)}</small>` : ""}
-            </label>
-            <div class="writing-target-row">
-              <label class="writing-target-field">
-                <span>Target cadence</span>
-                <select
-                  data-edit-field="writing-target-field"
-                  data-writing-target-field="targetCadence"
-                  aria-label="Target cadence"
-                >
-                  ${WRITING_TARGET_CADENCE_OPTIONS.map((option) => `
-                    <option value="${escapeHtml(option.value)}" ${summary.record.targetCadence === option.value ? "selected" : ""}>
-                      ${escapeHtml(option.label)}
-                    </option>
-                  `).join("")}
-                </select>
-              </label>
-              <label class="writing-target-field">
-                <span>${escapeHtml(summary.goalTargetLabel)}</span>
-                <input
-                  type="number"
-                  min="100"
-                  step="100"
-                  value="${escapeHtml(String(summary.sessionTargetWords))}"
-                  data-edit-field="writing-target-field"
-                  data-writing-target-field="sessionTargetWords"
-                  aria-label="${escapeHtml(summary.goalTargetLabel)} words"
-                />
-              </label>
-            </div>
-            <div class="writing-target-help-card">
-              <span>About daily target</span>
-              <p>${escapeHtml(summary.goalSyncHint || "Adjust the daily goal to shape the pace of the release forecast.")}</p>
-            </div>
-            <div class="writing-target-row">
-              <label class="writing-target-field">
-                <span>Lookback days</span>
-                <input
-                  type="number"
-                  min="2"
-                  step="1"
-                  max="180"
-                  value="${escapeHtml(String(summary.lookbackDays))}"
-                  data-edit-field="writing-target-field"
-                  data-writing-target-field="lookbackDays"
-                  aria-label="Lookback days"
-                />
-              </label>
-              <label class="writing-target-field">
-                <span>Sessions per day</span>
-                <input
-                  type="number"
-                  min="1"
-                  max="${escapeHtml(String(WRITING_TARGET_MAX_SESSION_TARGETS_PER_DAY))}"
-                  step="1"
-                  value="${escapeHtml(String(summary.sessionsPerDay))}"
-                  data-edit-field="writing-target-field"
-                  data-writing-target-field="sessionsPerDay"
-                  aria-label="Sessions per day"
-                />
-              </label>
-            </div>
-            <label class="writing-target-field">
-              <span>Session time</span>
-              <input
-                type="number"
-                min="${escapeHtml(String(WRITING_TARGET_MIN_SESSION_TIMEOUT_MINUTES))}"
-                max="${escapeHtml(String(WRITING_TARGET_MAX_SESSION_TIMEOUT_MINUTES))}"
-                step="1"
-                value="${escapeHtml(String(summary.sessionTimeoutMinutes))}"
-                data-edit-field="writing-target-field"
-                data-writing-target-field="sessionTimeoutMinutes"
-                aria-label="Session time minutes"
-              />
-            </label>
-            <div class="writing-target-presets">
-              <label class="writing-target-checkbox">
-                <input
-                  type="checkbox"
-                  data-edit-field="writing-target-field"
-                  data-writing-target-field="visibleMetric"
-                  data-metric-key="wordTarget"
-                  ${summary.record.visibleMetrics.includes("wordTarget") ? "checked" : ""}
-                />
-                <span>Word Target</span>
-              </label>
-              <label class="writing-target-checkbox">
-                <input
-                  type="checkbox"
-                  data-edit-field="writing-target-field"
-                  data-writing-target-field="visibleMetric"
-                  data-metric-key="sessionTarget"
-                  ${summary.record.visibleMetrics.includes("sessionTarget") ? "checked" : ""}
-                />
-                <span>${escapeHtml(summary.goalTargetLabel)}</span>
-              </label>
-              <label class="writing-target-checkbox">
-                <input
-                  type="checkbox"
-                  data-edit-field="writing-target-field"
-                  data-writing-target-field="visibleMetric"
-                  data-metric-key="forecast"
-                  ${summary.record.visibleMetrics.includes("forecast") ? "checked" : ""}
-                />
-                <span>Days to release</span>
-              </label>
-              <label class="writing-target-checkbox">
-                <input
-                  type="checkbox"
-                  data-edit-field="writing-target-field"
-                  data-writing-target-field="visibleMetric"
-                  data-metric-key="sessionTracker"
-                  ${summary.record.visibleMetrics.includes("sessionTracker") ? "checked" : ""}
-                />
-                <span>Session tracker</span>
-              </label>
-            </div>
-          </div>
-        </section>
-        <section class="writing-target-dashboard-calendar" aria-label="Calendar view">
-          <div class="writing-target-section-header">
-            <div>
-              <p class="writing-target-kicker">Calendar view</p>
-              <h3>${escapeHtml(dashboard.monthLabel)}</h3>
-            </div>
-            <div class="writing-target-calendar-toolbar">
-              <button class="tag-button panel-action-button" type="button" data-action="writing-target-calendar-prev-month" aria-label="Previous month">‹</button>
-              <button class="tag-button panel-action-button" type="button" data-action="writing-target-calendar-today">Today</button>
-              <button class="tag-button panel-action-button" type="button" data-action="writing-target-calendar-next-month" aria-label="Next month">›</button>
-            </div>
-          </div>
-          <div class="writing-target-view-toggle" role="tablist" aria-label="Calendar view mode">
-            ${[
-              { value: "month", label: "Month" },
-              { value: "week", label: "Week" },
-              { value: "list", label: "List" },
-            ].map((mode) => `
-              <button
-                class="writing-target-view-toggle-button ${dashboard.viewMode === mode.value ? "is-active" : ""}"
-                type="button"
-                data-action="writing-target-set-view-mode"
-                data-view-mode="${escapeHtml(mode.value)}"
-                aria-pressed="${dashboard.viewMode === mode.value ? "true" : "false"}"
-              >
-                ${escapeHtml(mode.label)}
-              </button>
-            `).join("")}
-          </div>
-          ${dashboard.viewMode === "week" ? `
-            <div class="writing-target-week-grid">
-              ${dashboard.weekDays.map((day) => renderWeekDayCell(day)).join("")}
-            </div>
-          ` : dashboard.viewMode === "list" ? `
-            <div class="writing-target-calendar-list">
-              ${dashboard.listEntries.length
-                ? dashboard.listEntries.map((entry) => renderWritingTargetArchiveEntry(entry)).join("")
-                : `<p class="writing-target-archive-empty">Your daily manuscript history will appear here after writing sessions are captured.</p>`}
-            </div>
-          ` : `
-            <div class="writing-target-calendar-grid">
-              ${calendarHeaderDays.map((day) => `<span class="writing-target-calendar-weekday">${escapeHtml(day)}</span>`).join("")}
-              ${dashboard.days.map((day) => renderCalendarDayCell(day)).join("")}
-            </div>
-          `}
-          <div class="writing-target-calendar-legend" aria-label="Calendar legend">
-            <span class="is-on-target">On target</span>
-            <span class="is-good">Good</span>
-            <span class="is-below-target">Below target</span>
-            <span class="is-low">Low</span>
-            <span class="is-no-writing">No writing</span>
-          </div>
-        </section>
-        <aside class="writing-target-dashboard-detail" aria-label="Selected day details">
-          <div class="writing-target-section-header">
-            <div>
-              <p class="writing-target-kicker">Selected day</p>
-              <h3>${escapeHtml(selectedEntry.dateLabel)}</h3>
-            </div>
-            <span class="writing-target-day-status is-${escapeHtml(selectedEntry.statusLabel.toLowerCase().replace(/\s+/g, "-"))}">${escapeHtml(selectedEntry.statusLabel)}</span>
-          </div>
-          <div class="writing-target-day-hero">
-            <div class="writing-target-day-hero-value">
-              ${escapeHtml(formatDisplayNumber(selectedEntry.wordCountValue ?? 0))}
-              <span>words</span>
-            </div>
-            <div class="writing-target-day-hero-meta">
-              <span class="writing-target-day-hero-delta">${escapeHtml(selectedEntry.progressLabel)} vs daily target</span>
-              <span class="writing-target-day-hero-target">${escapeHtml(selectedEntry.dailyTargetLabel)}</span>
-            </div>
-          </div>
-          <div class="writing-target-day-overview">
-            <div>
-              <span>Words</span>
-              <strong>${escapeHtml(selectedEntry.wordCountLabel)}</strong>
-            </div>
-            <div>
-              <span>Daily target</span>
-              <strong>${escapeHtml(selectedEntry.dailyTargetLabel)}</strong>
-            </div>
-            <div>
-              <span>Progress</span>
-              <strong>${escapeHtml(selectedEntry.progressLabel)}</strong>
-            </div>
-          </div>
-          <div class="writing-target-bar" aria-hidden="true">
-            <span style="width:${escapeHtml(`${Math.round(selectedEntry.progressRatio * 100)}%`)}"></span>
-          </div>
-          <div class="writing-target-day-sections">
-            <div>
-              <span>Chapter</span>
-              <strong>${escapeHtml(selectedEntry.chapterTitle)}</strong>
-            </div>
-            <div>
-              <span>Scene</span>
-              <strong>${escapeHtml(selectedEntry.sceneTitle)}</strong>
-            </div>
-            ${selectedEntry.passageExcerpt ? `
-              <div class="writing-target-day-excerpt">
-                <span>Passage</span>
-                <p>${escapeHtml(selectedEntry.passageExcerpt)}</p>
-              </div>
-            ` : ""}
-          </div>
-          <div class="writing-target-day-points">
-            <div class="writing-target-day-point">
-              <span>Tasks</span>
-              <strong>${escapeHtml(selectedEntry.tasksCountLabel)}</strong>
-            </div>
-            <div class="writing-target-day-point">
-              <span>Inspiration</span>
-              <strong>${escapeHtml(selectedEntry.inspirationCountLabel)}</strong>
-            </div>
-            <div class="writing-target-day-point">
-              <span>Issues</span>
-              <strong>${escapeHtml(selectedEntry.issueCountLabel)}</strong>
-            </div>
-          </div>
-          <div class="writing-target-day-session-summary">
-            <div>
-              <span>Session pace</span>
-              <strong>${escapeHtml(summary.sessionWordsPerHourLabel)}</strong>
-            </div>
-            <div>
-              <span>Session status</span>
-              <strong>${escapeHtml(summary.sessionMilestoneStatusText)}</strong>
-            </div>
-            <div>
-              <span>Session elapsed</span>
-              <strong>${escapeHtml(summary.sessionElapsedLabel)}</strong>
-            </div>
-          </div>
-          <label class="writing-target-note-field">
-            <span>Notes</span>
-            <textarea
-              rows="5"
-              data-edit-field="writing-target-field"
-              data-writing-target-field="dailyNote"
-              data-date-key="${escapeHtml(dashboard.selectedDateKey)}"
-              placeholder="Add a note for this day"
-            >${escapeHtml(selectedEntry.noteText || "")}</textarea>
-          </label>
-        </aside>
-      </div>
-      <footer class="writing-target-footer">
-        <button class="tag-button panel-action-button" type="button" data-action="reset-writing-target-goals">Reset to defaults</button>
-        <div class="writing-target-footer-actions">
-          <button class="tag-button panel-action-button" type="button" data-action="cancel-writing-target-goals">Cancel</button>
-          <button class="tag-button panel-action-button is-primary" type="button" data-action="save-writing-target-goals">Save goals</button>
-        </div>
-      </footer>
-    </section>
-  `;
+  slot.innerHTML = renderWritingTargetWindowHTML({
+    summary,
+    dashboard,
+    selectedEntry,
+    dashboardCards,
+    renderWritingTargetArchiveEntry,
+    cadenceOptions: WRITING_TARGET_CADENCE_OPTIONS,
+    maxSessionTargetsPerDay: WRITING_TARGET_MAX_SESSION_TARGETS_PER_DAY,
+    minSessionTimeoutMinutes: WRITING_TARGET_MIN_SESSION_TIMEOUT_MINUTES,
+    maxSessionTimeoutMinutes: WRITING_TARGET_MAX_SESSION_TIMEOUT_MINUTES,
+  });
 }
 
+// Intent: refresh live writing-goal counters without repainting the full application shell.
 function syncWritingTargetWindowLiveState() {
   if (!state.writingTargetWindowOpen) {
     return;
@@ -5092,6 +4548,7 @@ function clampPositiveNumber(candidate, fallback, min = 1, max = Number.POSITIVE
   return Math.min(max, value);
 }
 
+// Intent: keep header menu interactions centralized until the chrome owns its own controller.
 function toggleFileMenu() {
   state.fileMenuOpen = !state.fileMenuOpen;
   renderHeader();
@@ -5497,6 +4954,7 @@ function endLayoutResize() {
   syncLayoutWidths(true);
 }
 
+// Intent: render the binder as the navigable manuscript structure, not a flat document outline.
 function renderBinderPanel() {
   const workspace = state.workspace;
   const chapters = groupScenesByChapter(state.scenes);
@@ -5701,6 +5159,7 @@ function renderSceneNode(scene) {
   `;
 }
 
+// Intent: render the selected manuscript scene while scene-editing behavior is being extracted.
 function renderManuscriptPanel() {
   const selectedScene = getSelectedScene() ?? state.scenes[0];
   const editorMode = state.activePane === "narration" ? "narration" : "manuscript";
@@ -5714,6 +5173,7 @@ function renderManuscriptPanel() {
     selectedScene,
     editorMode,
     grammarCheckSummary: buildGrammarCheckSummary(selectedScene),
+    projectFileDisplay: getProjectFileDisplayState(),
     buildEditorStyle,
     getInlinePassageDraftAnchor,
     formatChapterDisplayTitle,
@@ -5721,6 +5181,7 @@ function renderManuscriptPanel() {
   renderGrammarCheckPanel();
 }
 
+// Intent: render diagnostics, passage notes, and task panels as IDE-like actionable consoles.
 function renderConsolePanel() {
   const slot = document.querySelector("#console-slot");
   if (!(slot instanceof HTMLElement)) {
@@ -5752,6 +5213,7 @@ function renderConsolePanel() {
   `;
 }
 
+// Intent: keep manuscript find/replace state isolated from the editor text model.
 function renderManuscriptFindPanel() {
   const slot = document.querySelector("#find-slot");
   if (!(slot instanceof HTMLElement)) {
@@ -6002,7 +5464,7 @@ function renderManuscriptFindPanelHTML({
   `;
 }
 
-function renderGrammarCheckPanel() {
+function renderGrammarCheckPanel(options = {}) {
   const slot = document.querySelector("#grammar-check-slot");
   if (!(slot instanceof HTMLElement)) {
     return;
@@ -6019,7 +5481,7 @@ function renderGrammarCheckPanel() {
   const selectedSceneChapter = selectedScene?.chapterTitle
     ? formatChapterDisplayTitle(selectedScene.chapterTitle)
     : "Current chapter";
-  const entries = buildGrammarCheckEntries(selectedScene);
+  const entries = buildGrammarCheckEntries(selectedScene, options);
   const previousList = slot.querySelector("[data-grammar-check-list]");
   const previousScrollTop = previousList instanceof HTMLElement ? previousList.scrollTop : 0;
   const previousScrollLeft = previousList instanceof HTMLElement ? previousList.scrollLeft : 0;
@@ -6241,7 +5703,7 @@ function renderGrammarCheckPanelHTML({
   `;
 }
 
-function buildGrammarCheckEntries(scene) {
+function buildGrammarCheckEntries(scene, options = {}) {
   if (!scene || !spellcheckBaseLexicon?.wordList?.length) {
     return [];
   }
@@ -6251,7 +5713,7 @@ function buildGrammarCheckEntries(scene) {
     baseLexicon: spellcheckBaseLexicon,
     projectLexicon,
     referenceLexicon: spellcheckReferenceLexicon,
-  });
+  }, options);
 
   return misspellings
     .map((entry) => ({
@@ -6267,7 +5729,6 @@ function buildGrammarCheckEntries(scene) {
 }
 
 function toggleGrammarCheckPanel() {
-  const editorBookmark = captureManuscriptEditorBookmark();
   const isOpen = state.grammarCheckPanel?.open === true;
   state.activePane = "manuscript";
   state.grammarCheckPanel = {
@@ -6275,13 +5736,8 @@ function toggleGrammarCheckPanel() {
     open: !isOpen,
     selectedWords: isOpen ? state.grammarCheckPanel.selectedWords ?? [] : state.grammarCheckPanel.selectedWords ?? [],
   };
-  renderManuscriptPanel();
-  syncSceneDocumentLayout();
-  if (editorBookmark) {
-    window.requestAnimationFrame(() => {
-      restoreManuscriptEditorBookmark(editorBookmark);
-    });
-  }
+  syncGrammarCheckPanelHeaderState();
+  renderGrammarCheckPanel();
 }
 
 function closeGrammarCheckPanel() {
@@ -6289,18 +5745,12 @@ function closeGrammarCheckPanel() {
     return;
   }
 
-  const editorBookmark = captureManuscriptEditorBookmark();
   state.grammarCheckPanel = {
     ...state.grammarCheckPanel,
     open: false,
   };
-  renderManuscriptPanel();
-  syncSceneDocumentLayout();
-  if (editorBookmark) {
-    window.requestAnimationFrame(() => {
-      restoreManuscriptEditorBookmark(editorBookmark);
-    });
-  }
+  syncGrammarCheckPanelHeaderState();
+  renderGrammarCheckPanel();
 }
 
 function updateGrammarCheckPanelSelection(nextSelectedWords, selectionAnchorIndex = null) {
@@ -6381,6 +5831,43 @@ function selectAllGrammarCheckPanelWords() {
 
 function clearGrammarCheckPanelSelection() {
   updateGrammarCheckPanelSelection([], null);
+}
+
+function syncGrammarCheckPanelHeaderState() {
+  const heading = document.querySelector(".scene-editor-heading");
+  if (!(heading instanceof HTMLElement)) {
+    return;
+  }
+
+  const button = heading.querySelector(".grammar-check-status");
+  const toggle = heading.querySelector(".grammar-check-toggle");
+  const checkbox = heading.querySelector("[data-editor-pref='grammarCheckEnabled']");
+  if (!(button instanceof HTMLButtonElement) || !(toggle instanceof HTMLElement)) {
+    return;
+  }
+
+  const grammarCheckEnabled = state.editorPrefs.grammarCheckEnabled !== false;
+  const grammarCheckPanelOpen = Boolean(state.grammarCheckPanel?.open);
+  const selectedScene = getSelectedScene() ?? state.scenes[0] ?? null;
+  const summary = grammarCheckEnabled
+    ? (buildGrammarCheckSummary(selectedScene)?.label ?? "Grammar check")
+    : "Live off";
+
+  button.setAttribute("aria-pressed", grammarCheckPanelOpen ? "true" : "false");
+  button.title = grammarCheckPanelOpen ? "Close grammar check list" : "Open grammar check list";
+  const buttonLabel = button.querySelector("span");
+  if (buttonLabel instanceof HTMLElement) {
+    buttonLabel.textContent = summary;
+  }
+
+  if (checkbox instanceof HTMLInputElement) {
+    checkbox.checked = grammarCheckEnabled;
+  }
+
+  const toggleLabel = toggle.querySelector("strong");
+  if (toggleLabel instanceof HTMLElement) {
+    toggleLabel.textContent = grammarCheckEnabled ? "On" : "Off";
+  }
 }
 
 function addSelectedGrammarCheckWordsToProjectDictionary() {
@@ -7202,6 +6689,7 @@ function formatChapterDisplayTitle(chapterTitle) {
   return stripped || "Untitled chapter";
 }
 
+// Intent: render structured world spine data as timelines and linked nodes, not loose notes.
 function renderWorldPanel() {
   const workspace = state.workspace;
   document.querySelector("#world-slot").innerHTML = `
@@ -7448,6 +6936,7 @@ function renderSuggestion(suggestion) {
   `;
 }
 
+// Intent: keep narration take state tied to project and manuscript anchors for later voice-service extraction.
 function getVoiceRecordingsForProject(projectId = state.activeProjectId ?? state.workspace?.project?.id ?? "") {
   const recordings = Array.isArray(state.workspace?.voice?.recordings)
     ? state.workspace.voice.recordings
@@ -8762,6 +8251,7 @@ function isPlainObject(candidate) {
   return Boolean(candidate) && typeof candidate === "object" && !Array.isArray(candidate);
 }
 
+// Intent: translate editor preferences into CSS variables without mutating manuscript data.
 function buildEditorStyle() {
   return [
     `--editor-content-width:${state.editorPrefs.editorWidth}px`,
@@ -8776,7 +8266,7 @@ function getFontStack() {
     ?? FONT_OPTIONS[0].stack;
 }
 
-function syncSceneDocumentLayout() {
+function syncSceneDocumentLayout(options = {}) {
   const editor = document.querySelector("[data-scene-editor]");
   if (!(editor instanceof HTMLElement)) {
     return;
@@ -8823,8 +8313,125 @@ function syncSceneDocumentLayout() {
   gutter.innerHTML = Array.from({ length: visualLineCount }, (_, index) => `
     <span class="editor-gutter-line">${lineStartNumber + index}</span>
   `).join("");
-  syncSpellcheckLayer(spellcheckLayer, textarea, selectedSceneId);
+  if (state.editorPrefs.grammarCheckEnabled === false) {
+    spellcheckLayer.innerHTML = "";
+  } else if (options.skipSpellcheck === true) {
+    syncSpellcheckLayerTypingState(spellcheckLayer, options.activeTypingWordRange);
+  } else {
+    syncSpellcheckLayer(spellcheckLayer, textarea, selectedSceneId, options);
+  }
   syncInlinePassageDraftLayout();
+}
+
+const sceneEditorTypingRefreshState = {
+  frameId: null,
+  sceneId: "",
+  editorText: "",
+  activeTypingWordRange: null,
+  layout: false,
+  revisionPanel: false,
+  grammarPanel: false,
+  consoleCard: false,
+  inlinePassageStatus: false,
+};
+
+const sceneEditorSpellcheckRefreshState = {
+  timerId: null,
+  sceneId: "",
+};
+
+// Intent: debounce scene editor overlays so typing remains responsive while diagnostics update.
+const SCENE_EDITOR_SPELLCHECK_REFRESH_DELAY_MS = 180;
+
+function scheduleSceneEditorTypingRefresh(sceneId, editorText, options = {}) {
+  sceneEditorTypingRefreshState.sceneId = sceneId;
+  sceneEditorTypingRefreshState.editorText = editorText;
+  sceneEditorTypingRefreshState.activeTypingWordRange = options.activeTypingWordRange ?? null;
+  sceneEditorTypingRefreshState.layout = true;
+  sceneEditorTypingRefreshState.revisionPanel = options.revisionPanel !== false;
+  sceneEditorTypingRefreshState.grammarPanel = options.grammarPanel !== false;
+  sceneEditorTypingRefreshState.consoleCard = options.consoleCard !== false;
+  sceneEditorTypingRefreshState.inlinePassageStatus = options.inlinePassageStatus !== false;
+
+  if (sceneEditorTypingRefreshState.frameId !== null) {
+    return;
+  }
+
+  sceneEditorTypingRefreshState.frameId = window.requestAnimationFrame(() => {
+    sceneEditorTypingRefreshState.frameId = null;
+    const {
+      sceneId: pendingSceneId,
+      editorText: pendingEditorText,
+      activeTypingWordRange,
+      layout,
+      revisionPanel,
+      grammarPanel,
+      consoleCard,
+      inlinePassageStatus,
+    } = sceneEditorTypingRefreshState;
+
+    sceneEditorTypingRefreshState.layout = false;
+    sceneEditorTypingRefreshState.revisionPanel = false;
+    sceneEditorTypingRefreshState.grammarPanel = false;
+    sceneEditorTypingRefreshState.consoleCard = false;
+    sceneEditorTypingRefreshState.inlinePassageStatus = false;
+    sceneEditorTypingRefreshState.activeTypingWordRange = null;
+
+    if (layout) {
+      syncSceneDocumentLayout({ skipSpellcheck: true });
+    }
+    if (revisionPanel) {
+      syncRevisionPanel(pendingSceneId);
+    }
+    if (consoleCard) {
+      updateFocusedLineCard();
+    }
+    if (inlinePassageStatus) {
+      updateInlinePassageDraftStatus(pendingEditorText);
+    }
+  });
+}
+
+function scheduleSceneEditorSpellcheckRefresh(sceneId) {
+  if (state.editorPrefs.grammarCheckEnabled === false) {
+    return;
+  }
+
+  sceneEditorSpellcheckRefreshState.sceneId = sceneId;
+  if (sceneEditorSpellcheckRefreshState.timerId !== null) {
+    window.clearTimeout(sceneEditorSpellcheckRefreshState.timerId);
+  }
+
+  sceneEditorSpellcheckRefreshState.timerId = window.setTimeout(() => {
+    sceneEditorSpellcheckRefreshState.timerId = null;
+    flushSceneEditorSpellcheckRefresh(sceneEditorSpellcheckRefreshState.sceneId);
+  }, SCENE_EDITOR_SPELLCHECK_REFRESH_DELAY_MS);
+}
+
+function flushSceneEditorSpellcheckRefresh(sceneId) {
+  if (state.editorPrefs.grammarCheckEnabled === false) {
+    return;
+  }
+
+  const textarea = getEditorTextareaForScene(sceneId);
+  if (!(textarea instanceof HTMLTextAreaElement)) {
+    return;
+  }
+
+  const activeTypingWordRange = getEditorTypingSpellcheckRange(textarea);
+  syncSceneDocumentLayout({
+    activeTypingWordRange,
+  });
+  renderGrammarCheckPanel({
+    activeTypingWordRange,
+  });
+}
+
+function clearSceneEditorSpellcheckRefresh() {
+  if (sceneEditorSpellcheckRefreshState.timerId !== null) {
+    window.clearTimeout(sceneEditorSpellcheckRefreshState.timerId);
+    sceneEditorSpellcheckRefreshState.timerId = null;
+  }
 }
 
 function syncInlinePassageDraftLayout() {
@@ -8848,6 +8455,7 @@ function refreshScenes() {
   );
 }
 
+// Intent: reconcile browser, desktop, bundled, and legacy project-library sources during startup.
 async function loadInitialProjectLibrary() {
   const storedLibrary = normalizeProjectLibrarySnapshot(readStoredJson(EDITOR_PROJECT_LIBRARY_KEY));
   const legacyProjectId =
@@ -9104,6 +8712,18 @@ function mergeProjectLibrarySnapshots(storedLibrary, seedLibrary, legacyState = 
 }
 
 function mergeProjectRecords(storedRecord, seedRecord, legacyState = null) {
+  const storedProjectSettings = storedRecord?.projectSettings && typeof storedRecord.projectSettings === "object" && !Array.isArray(storedRecord.projectSettings)
+    ? storedRecord.projectSettings
+    : {};
+  const seedProjectSettings = seedRecord?.projectSettings && typeof seedRecord.projectSettings === "object" && !Array.isArray(seedRecord.projectSettings)
+    ? seedRecord.projectSettings
+    : {};
+  const resolvedProjectFilePath = [
+    seedProjectSettings.projectFilePath,
+    storedProjectSettings.projectFilePath,
+  ]
+    .map((pathValue) => normalizeProjectFilePath(pathValue))
+    .find((pathValue) => hasProjectFilePath(pathValue)) ?? "";
   const merged = {
     ...cloneValue(seedRecord),
     ...cloneValue(storedRecord),
@@ -9124,6 +8744,23 @@ function mergeProjectRecords(storedRecord, seedRecord, legacyState = null) {
     localAiPrefs: normalizeLocalAiPrefs(storedRecord.localAiPrefs ?? seedRecord.localAiPrefs ?? legacyState?.localAiPrefs),
   };
 
+  merged.projectSettings = normalizeProjectSettingsSnapshot(
+    buildProjectSettingsCandidate({
+      ...cloneValue(seedRecord),
+      ...cloneValue(storedRecord),
+      projectSettings: {
+        ...cloneValue(seedProjectSettings),
+        ...cloneValue(storedProjectSettings),
+        projectFilePath: resolvedProjectFilePath,
+      },
+    }),
+    seedRecord.id,
+    getWorkspaceManuscriptWordCount(merged.workspace),
+    new Date(),
+  );
+  merged.editorPrefs = cloneValue(merged.projectSettings.editorPrefs);
+  merged.localAiPrefs = cloneValue(merged.projectSettings.localAiPrefs);
+
   if (merged.workspace?.project && typeof merged.workspace.project === "object") {
     merged.workspace.project = {
       ...merged.workspace.project,
@@ -9133,6 +8770,54 @@ function mergeProjectRecords(storedRecord, seedRecord, legacyState = null) {
   }
 
   return merged;
+}
+
+function buildProjectFilePathFromRoot(projectRoot = "", fileName = getSuggestedProjectFileName()) {
+  return buildProjectFilePathFromRootForProjectFile(projectRoot, fileName);
+}
+
+async function reconnectProjectFileDestinationOnBoot(desktopSettings = null) {
+  const candidatePath = [
+    state.projectFilePath,
+    desktopSettings?.lastProjectFilePathExplicit === true ? desktopSettings?.lastProjectFilePath : "",
+    buildProjectFilePathFromRoot(desktopSettings?.projectRoot ?? ""),
+    getProjectRecordFilePath(getActiveProjectRecord()),
+  ]
+    .map((pathValue) => resolveProjectFilePath(pathValue))
+    .find((pathValue) => hasProjectFilePath(pathValue));
+
+  if (!candidatePath) {
+    return;
+  }
+
+  if (candidatePath !== state.projectFilePath) {
+    setProjectFilePath(candidatePath, null, {
+      skipProjectFileAutosave: true,
+      persistDesktopProjectFilePath: true,
+    });
+  }
+
+  try {
+    const snapshot = await readProjectLibraryFromDesktopPath(candidatePath, {
+      fetchJsonFromDesktopApi,
+    });
+    await loadProjectLibrarySnapshotIntoState(snapshot, {
+      filePath: candidatePath,
+      fileHandle: null,
+      sourceLabel: "project file",
+      reason: "boot-reconnect",
+      mode: "desktop-path",
+    });
+    state.projectFileStatus = `Writing to JSON file: ${candidatePath}`;
+    await persistDesktopProjectFilePath(candidatePath);
+  } catch (error) {
+    state.projectFileStatus = `Project file check failed: ${error instanceof Error ? error.message : String(error)}`;
+    reportBrowserLog("warn", "project-file", "Unable to reconnect the project file on boot.", {
+      filePath: candidatePath,
+      error,
+      mode: "desktop-path",
+    });
+  }
 }
 
 function findStaleSeedProjectMatch(projects, seedProject) {
@@ -9374,7 +9059,7 @@ function createProjectSettingsSnapshotFromState({
       consoleDockCollapsed: state.consoleDockCollapsed,
       collapsedChapterIds: cloneValue(state.collapsedChapterIds),
       collapsedConsoleChapterIds: cloneValue(state.collapsedConsoleChapterIds),
-      projectFilePath: state.projectFilePath,
+      projectFilePath: getProjectFileDisplayState().pathLabel || state.projectFilePath,
       projectSourcePath: state.projectSourcePath,
       writingTargetState,
       writingTargetViewMode: state.writingTargetViewMode,
@@ -9388,6 +9073,7 @@ function createProjectSettingsSnapshotFromState({
   );
 }
 
+// Intent: normalize loaded project records into the app-native save-file contract before use.
 function normalizeProjectRecord(candidate, legacyState = null) {
   if (!candidate || typeof candidate !== "object") {
     return null;
@@ -9678,6 +9364,8 @@ function applyProjectRecord(record) {
   state.templateDrafts = cloneValue(record.templateDrafts ?? createTemplateDrafts());
   state.manuscriptTasks = normalizeManuscriptTasks(record.manuscriptTasks);
   state.passageNotes = normalizePassageNotes(record.passageNotes);
+  state.projectFilePath = getProjectRecordFilePath(record);
+  state.projectFileHandle = null;
   state.selectedTaskId = null;
   state.selectedPassageNoteId = null;
   state.editingChapterTitleId = null;
@@ -9703,7 +9391,6 @@ function applyProjectRecord(record) {
   state.consoleDockCollapsed = projectSettings.consoleDockCollapsed;
   state.collapsedChapterIds = projectSettings.collapsedChapterIds;
   state.collapsedConsoleChapterIds = projectSettings.collapsedConsoleChapterIds;
-  state.projectFilePath = projectSettings.projectFilePath;
   state.projectSourcePath = projectSettings.projectSourcePath;
   state.spellcheckProjectSettings = normalizeSpellcheckProjectSettings(projectSettings.spellcheck);
   state.projectFileHandle = null;
@@ -9725,6 +9412,7 @@ function applyProjectRecord(record) {
   syncLegacyProjectStorageFromState();
 }
 
+// Intent: mirror canonical project-library state into older browser keys during migration only.
 function syncLegacyProjectStorageFromState() {
   if (!state.workspace) {
     return;
@@ -9742,71 +9430,50 @@ function syncLegacyProjectStorageFromState() {
   writeStoredJsonRaw(EDITOR_LOCAL_AI_PREFS_KEY, state.localAiPrefs);
 }
 
-function getProjectFileAutosaveTarget() {
-  return {
-    projectId: state.activeProjectId ?? state.workspace?.project?.id ?? null,
-    filePath: normalizeProjectFilePath(state.projectFilePath),
-    fileHandle: state.projectFileHandle ?? null,
-  };
-}
-
 function clearProjectFileAutosaveTimer() {
-  if (!state.projectFileAutosaveTimer) {
-    return;
-  }
-
-  window.clearTimeout(state.projectFileAutosaveTimer);
-  state.projectFileAutosaveTimer = null;
+  projectFileAutosave.clearTimer();
 }
 
 function beginProjectFileAutosaveSuppression() {
-  state.projectFileAutosaveSuppressionDepth += 1;
+  projectFileAutosave.beginSuppression();
 }
 
 function endProjectFileAutosaveSuppression() {
-  if (state.projectFileAutosaveSuppressionDepth > 0) {
-    state.projectFileAutosaveSuppressionDepth -= 1;
-  }
-
-  if (state.projectFileAutosaveSuppressionDepth === 0 && state.projectFileAutosaveDirty) {
-    queueProjectFileAutosave();
-  }
+  projectFileAutosave.endSuppression();
 }
 
 function queueProjectFileAutosave() {
-  if (
-    !state.projectFileAutosaveDirty ||
-    state.projectFileAutosaveSuppressionDepth > 0 ||
-    !hasProjectFileDestination()
-  ) {
-    return;
-  }
-
-  clearProjectFileAutosaveTimer();
-  if (state.projectFileBusy) {
-    return;
-  }
-
-  state.projectFileAutosaveTimer = window.setTimeout(() => {
-    state.projectFileAutosaveTimer = null;
-    void flushProjectFileAutosave();
-  }, PROJECT_FILE_AUTOSAVE_DELAY_MS);
+  projectFileAutosave.queue();
 }
 
 function markProjectFileAutosaveDirty() {
-  state.projectFileAutosaveDirty = true;
-  state.projectFileAutosaveRevision += 1;
-  state.projectFileAutosaveTarget = getProjectFileAutosaveTarget();
-  queueProjectFileAutosave();
+  projectFileAutosave.markDirty();
+}
+
+// Intent: make a file-backed project eligible for autosave as soon as it becomes the active project.
+function primeProjectFileAutosave() {
+  projectFileAutosave.prime();
 }
 
 function clearProjectFileAutosaveState() {
-  clearProjectFileAutosaveTimer();
-  state.projectFileAutosaveDirty = false;
-  state.projectFileAutosaveTarget = null;
-  state.projectFileAutosaveRevision = 0;
+  projectFileAutosave.clearState();
 }
 
+function beginProjectCacheSuppression() {
+  state.projectCacheSuppressionDepth += 1;
+}
+
+function endProjectCacheSuppression() {
+  if (state.projectCacheSuppressionDepth > 0) {
+    state.projectCacheSuppressionDepth -= 1;
+  }
+}
+
+function shouldPersistProjectCache() {
+  return state.projectCacheSuppressionDepth === 0;
+}
+
+// Intent: keep in-browser project records synchronized with the active app-native project snapshot.
 function persistCurrentProjectRecord(options = {}) {
   const record = createProjectLibraryRecordFromState();
   if (!record) {
@@ -9825,8 +9492,10 @@ function persistCurrentProjectRecord(options = {}) {
     activeProjectId: record.id,
     projects: nextProjects,
   };
-  writeStoredJsonRaw(EDITOR_PROJECT_LIBRARY_KEY, snapshot);
-  writeStoredJsonRaw(EDITOR_ACTIVE_PROJECT_ID_KEY, record.id);
+  if (shouldPersistProjectCache()) {
+    writeStoredJsonRaw(EDITOR_PROJECT_LIBRARY_KEY, snapshot);
+    writeStoredJsonRaw(EDITOR_ACTIVE_PROJECT_ID_KEY, record.id);
+  }
 
   if (options.skipProjectFileAutosave !== true) {
     markProjectFileAutosaveDirty();
@@ -9852,6 +9521,10 @@ function loadSelectedProject() {
   syncWritingTargetState({ forceReload: true });
   refreshWritingTargetSessionLifecycle({ reason: "load-project" });
   render();
+  primeProjectFileAutosave();
+  if (hasProjectFilePath(state.projectFilePath)) {
+    void persistDesktopProjectFilePath(state.projectFilePath);
+  }
   recordWritingTargetSnapshot({ immediate: true, reason: "load-project", skipProjectFileAutosave: true });
   if (state.workspace?.project?.stats) {
     reportBrowserLog("info", "project-library", "Loaded saved project from library.", {
@@ -9864,78 +9537,63 @@ function loadSelectedProject() {
   }
 }
 
-function normalizeProjectFilePath(value) {
-  return typeof value === "string" ? value.trim() : "";
-}
-
+// Intent: expose project-file labels through the shared display resolver so chrome and panels stay consistent.
 function getSuggestedProjectFilePath() {
-  const title = normalizeProjectFileName(state.projectTitle || state.workspace?.project?.title || "Untitled Project");
-  const projectRoot = typeof state.workspace?.settings?.projectRoot === "string"
-    ? state.workspace.settings.projectRoot.trim()
-    : "";
-  const fileName = `${title || "untitled-project"}.abe-project.json`;
-  if (!projectRoot) {
-    return fileName;
-  }
-
-  const normalizedRoot = projectRoot.replace(/[\\/]+$/, "");
-  return `${normalizedRoot}\\${fileName}`;
-}
-
-function normalizeProjectFileName(value) {
-  return String(value ?? "")
-    .trim()
-    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, "-")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "")
-    .toLowerCase();
+  return getSuggestedProjectFilePathFromProject({
+    projectTitle: state.projectTitle || state.workspace?.project?.title || "Untitled Project",
+    projectRoot: state.workspace?.settings?.projectRoot ?? "",
+  });
 }
 
 function getSuggestedProjectFileName() {
-  const title = normalizeProjectFileName(state.projectTitle || state.workspace?.project?.title || "Untitled Project");
-  return `${title || "untitled-project"}.abe-project.json`;
-}
-
-function canUseBrowserSavePicker() {
-  return typeof window.showSaveFilePicker === "function";
-}
-
-function canUseBrowserOpenPicker() {
-  return typeof window.showOpenFilePicker === "function";
-}
-
-function getProjectFilePickerTypes() {
-  return [
-    {
-      description: "ABetterNovelAuthoringEnvironment project file",
-      accept: {
-        "application/json": [".json"],
-      },
-    },
-  ];
-}
-
-function getProjectFileInputAccept() {
-  return ".json,application/json";
-}
-
-function hasProjectFilePath(value) {
-  const normalized = normalizeProjectFilePath(value);
-  return Boolean(normalized) && /[\\/]/.test(normalized);
+  return getSuggestedProjectFileNameFromTitle(state.projectTitle || state.workspace?.project?.title || "Untitled Project");
 }
 
 function hasProjectFileDestination() {
-  return Boolean(state.projectFileHandle || hasProjectFilePath(state.projectFilePath));
+  return hasProjectFileDestinationTarget({
+    fileHandle: state.projectFileHandle,
+    filePath: state.projectFilePath,
+  });
+}
+
+function getProjectFileDisplayState() {
+  return resolveProjectFileDisplayState({
+    projectFilePath: state.projectFilePath,
+    projectFileHandle: state.projectFileHandle,
+    projectLibrary: state.projectLibrary,
+    activeProjectId: state.activeProjectId,
+    projectLibrarySelectionId: state.projectLibrarySelectionId,
+  });
+}
+
+async function persistDesktopProjectFilePath(filePath, explicit = true) {
+  await persistDesktopProjectFilePathPreference(filePath, {
+    explicit,
+    fetchJsonFromDesktopApi,
+    onError: (error, resolvedPath) => {
+      reportBrowserLog("warn", "settings", "Unable to persist the desktop project file path.", {
+        error,
+        filePath: resolvedPath,
+      });
+    },
+  });
 }
 
 function setProjectFilePath(pathValue, handle = null, options = {}) {
-  state.projectFilePath = normalizeProjectFilePath(pathValue);
+  state.projectFilePath = resolveProjectFilePath(pathValue);
   state.projectFileHandle = handle;
-  writeStoredJsonRaw(EDITOR_PROJECT_FILE_PATH_KEY, state.projectFilePath);
+  if (shouldPersistProjectCache()) {
+    writeStoredJsonRaw(EDITOR_PROJECT_FILE_PATH_KEY, state.projectFilePath);
+  }
   persistCurrentProjectRecord({ skipProjectFileAutosave: options.skipProjectFileAutosave === true });
+  if (options.persistDesktopProjectFilePath === true) {
+    void persistDesktopProjectFilePath(state.projectFilePath, hasProjectFilePath(state.projectFilePath));
+  } else if (options.clearDesktopProjectFilePath === true) {
+    void persistDesktopProjectFilePath("", false);
+  }
 }
 
+// Intent: build the canonical payload written to every `.abe-project.json` destination.
 function createProjectLibrarySnapshotForFile() {
   persistCurrentProjectRecord();
   return {
@@ -9950,16 +9608,20 @@ async function saveProjectLibraryToBrowserHandle(handle, snapshot = createProjec
   }
 
   const saveRevision = state.projectFileAutosaveRevision;
+  const browserHandleProjectFilePath = state.projectFilePath || handle.name || "";
   state.projectFileBusy = true;
   state.projectFileStatus = "Saving project file...";
   renderHeader();
 
   try {
-    const writable = await handle.createWritable();
-    await writable.write(JSON.stringify(snapshot, null, 2));
-    await writable.close();
-    const savedLabel = handle.name || getSuggestedProjectFileName();
-    setProjectFilePath(savedLabel, handle, { skipProjectFileAutosave: true });
+    const savedLabel = await writeProjectLibraryToBrowserHandle(handle, snapshot, {
+      fallbackFileName: getSuggestedProjectFileName(),
+    });
+    setProjectFilePath(browserHandleProjectFilePath || savedLabel, handle, {
+      skipProjectFileAutosave: true,
+      persistDesktopProjectFilePath: hasProjectFilePath(browserHandleProjectFilePath),
+      clearDesktopProjectFilePath: !hasProjectFilePath(browserHandleProjectFilePath),
+    });
     state.projectFileStatus = `Saved to ${savedLabel}`;
     reportBrowserLog("info", "project-file", "Saved the current project file.", {
       filePath: savedLabel,
@@ -9983,10 +9645,14 @@ async function saveProjectLibraryToBrowserHandle(handle, snapshot = createProjec
     throw error;
   } finally {
     state.projectFileBusy = false;
+    if (state.projectFileAutosaveDirty) {
+      queueProjectFileAutosave();
+    }
     renderHeader();
   }
 }
 
+// Intent: write project saves through the desktop path bridge when the host exposes a durable filesystem path.
 async function saveProjectLibraryToFile(filePath, snapshot = createProjectLibrarySnapshotForFile()) {
   const resolvedPath = normalizeProjectFilePath(filePath);
   if (!resolvedPath) {
@@ -9999,22 +9665,13 @@ async function saveProjectLibraryToFile(filePath, snapshot = createProjectLibrar
   renderHeader();
 
   try {
-    const response = await fetchJsonFromDesktopApi("/api/project-file/save", {
-      method: "POST",
-      body: {
-        filePath: resolvedPath,
-        snapshot,
-      },
+    const savedPath = await writeProjectLibraryToDesktopPath(resolvedPath, snapshot, {
+      fetchJsonFromDesktopApi,
     });
-
-    if (!response.ok) {
-      throw response.error ?? new Error("Project file save failed.");
-    }
-
-    const savedPath = typeof response.value?.filePath === "string" && response.value.filePath.trim()
-      ? response.value.filePath.trim()
-      : resolvedPath;
-    setProjectFilePath(savedPath, null, { skipProjectFileAutosave: true });
+    setProjectFilePath(savedPath, null, {
+      skipProjectFileAutosave: true,
+      persistDesktopProjectFilePath: true,
+    });
     state.projectFileStatus = `Saved to ${savedPath}`;
     reportBrowserLog("info", "project-file", "Saved the current project file.", {
       filePath: savedPath,
@@ -10045,48 +9702,7 @@ async function saveProjectLibraryToFile(filePath, snapshot = createProjectLibrar
   }
 }
 
-async function flushProjectFileAutosave() {
-  if (
-    !state.projectFileAutosaveDirty ||
-    state.projectFileAutosaveSuppressionDepth > 0 ||
-    !hasProjectFileDestination() ||
-    state.projectFileBusy
-  ) {
-    return;
-  }
-
-  const target = state.projectFileAutosaveTarget;
-  const currentTarget = getProjectFileAutosaveTarget();
-  if (
-    !target ||
-    target.projectId !== currentTarget.projectId ||
-    target.filePath !== currentTarget.filePath ||
-    target.fileHandle !== currentTarget.fileHandle
-  ) {
-    clearProjectFileAutosaveState();
-    return;
-  }
-
-  clearProjectFileAutosaveTimer();
-  state.projectFileStatus = "Autosaving project file...";
-  renderHeader();
-
-  const saveRevision = state.projectFileAutosaveRevision;
-  try {
-    await saveCurrentProject();
-  } catch {
-    // Save errors are already surfaced by the save helpers.
-  }
-
-  if (state.projectFileAutosaveRevision === saveRevision) {
-    clearProjectFileAutosaveState();
-  }
-
-  if (state.projectFileAutosaveDirty) {
-    queueProjectFileAutosave();
-  }
-}
-
+// Intent: load project files into active state and immediately retarget autosave to the loaded destination.
 async function loadProjectLibrarySnapshotIntoState(loadedSnapshot, options = {}) {
   const loadedLibrary = normalizeProjectLibrarySnapshot(loadedSnapshot);
   const loadedProjects = loadedLibrary.projects
@@ -10124,9 +9740,17 @@ async function loadProjectLibrarySnapshotIntoState(loadedSnapshot, options = {})
   }
 
   applyProjectRecord(record);
-  if (typeof options.filePath === "string" && options.filePath.trim()) {
-    setProjectFilePath(options.filePath, options.fileHandle ?? null, { skipProjectFileAutosave: true });
-  }
+  const loadedDestination = resolveLoadedProjectFileDestination({
+    requestedFilePath: options.filePath,
+    recordFilePath: getProjectRecordFilePath(record),
+    fileHandle: options.fileHandle ?? null,
+    useRecordFilePath: options.useRecordFilePathAsDestination === true,
+  });
+  setProjectFilePath(loadedDestination.filePath, loadedDestination.fileHandle, {
+    skipProjectFileAutosave: true,
+    persistDesktopProjectFilePath: loadedDestination.isDurablePath,
+    clearDesktopProjectFilePath: !loadedDestination.isDurablePath,
+  });
   refreshScenes();
   state.selectedIssueId = state.workspace.selectionDefaults.issueId ?? null;
   state.selectedNodeId = state.workspace.selectionDefaults.nodeId ?? null;
@@ -10137,6 +9761,7 @@ async function loadProjectLibrarySnapshotIntoState(loadedSnapshot, options = {})
   syncWritingTargetState({ forceReload: true });
   state.projectFileStatus = `Loaded ${mergedProjects.length} project${mergedProjects.length === 1 ? "" : "s"} from ${options.sourceLabel ?? "file"}`;
   render();
+  primeProjectFileAutosave();
   recordWritingTargetSnapshot({ immediate: true, reason: options.reason ?? "load-project-file", skipProjectFileAutosave: true });
 
   if (state.workspace?.project?.stats) {
@@ -10162,9 +9787,10 @@ async function loadProjectLibraryFromBrowserHandle(handle) {
   renderHeader();
 
   try {
-    const file = await handle.getFile();
-    await loadProjectLibraryFromBrowserFile(file, {
-      filePath: handle.name || getSuggestedProjectFileName(),
+    const snapshot = await readProjectLibraryFromBrowserHandle(handle);
+    await loadProjectLibrarySnapshotIntoState(snapshot, {
+      // Intent: browser handles provide the writable destination even though they hide the absolute path.
+      filePath: "",
       fileHandle: handle,
       sourceLabel: "browser file",
       reason: "load-project-file",
@@ -10197,12 +9823,11 @@ async function loadProjectLibraryFromBrowserFile(file, options = {}) {
   renderHeader();
 
   try {
-    const content = await file.text();
-    const snapshot = JSON.parse(content.replace(/^\uFEFF/, ""));
+    const snapshot = await readProjectLibraryFromBrowserFile(file);
     await loadProjectLibrarySnapshotIntoState(snapshot, {
       filePath: typeof options.filePath === "string" && options.filePath.trim()
         ? options.filePath
-        : file.name || getSuggestedProjectFileName(),
+        : "",
       fileHandle: options.fileHandle ?? null,
       sourceLabel: options.sourceLabel ?? "browser file",
       reason: options.reason ?? "load-project-file",
@@ -10218,104 +9843,15 @@ async function loadProjectLibraryFromBrowserFile(file, options = {}) {
     renderHeader();
   } finally {
     state.projectFileBusy = false;
+    if (state.projectFileAutosaveDirty) {
+      queueProjectFileAutosave();
+    }
     renderHeader();
   }
 }
 
-function promptForProjectFileFromInput() {
-  return new Promise((resolve, reject) => {
-    if (!document.body) {
-      resolve(null);
-      return;
-    }
-
-    const input = document.createElement("input");
-    let settled = false;
-
-    const cleanup = () => {
-      input.removeEventListener("change", handleChange);
-      input.removeEventListener("cancel", handleCancel);
-      window.removeEventListener("focus", handleWindowFocus);
-      input.remove();
-    };
-
-    const finish = (file) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      cleanup();
-      resolve(file);
-    };
-
-    const fail = (error) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      cleanup();
-      reject(error);
-    };
-
-    const handleChange = () => {
-      finish(input.files?.[0] ?? null);
-    };
-
-    const handleCancel = () => {
-      finish(null);
-    };
-
-    const handleWindowFocus = () => {
-      window.removeEventListener("focus", handleWindowFocus);
-      window.setTimeout(() => {
-        if (!settled) {
-          finish(input.files?.[0] ?? null);
-        }
-      }, 50);
-    };
-
-    input.type = "file";
-    input.accept = getProjectFileInputAccept();
-    input.multiple = false;
-    input.tabIndex = -1;
-    input.style.position = "fixed";
-    input.style.left = "-9999px";
-    input.style.top = "-9999px";
-    input.style.width = "1px";
-    input.style.height = "1px";
-    input.style.opacity = "0";
-
-    input.addEventListener("change", handleChange);
-    input.addEventListener("cancel", handleCancel);
-    window.addEventListener("focus", handleWindowFocus);
-    document.body.appendChild(input);
-
-    try {
-      if (typeof input.showPicker === "function") {
-        input.showPicker();
-      } else {
-        input.click();
-      }
-    } catch (error) {
-      fail(error);
-    }
-  });
-}
-
 function downloadProjectLibrarySnapshot(snapshot, fileName = getSuggestedProjectFileName()) {
-  const resolvedFileName = normalizeProjectFilePath(fileName) || getSuggestedProjectFileName();
-  const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: "application/json" });
-  const downloadUrl = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = downloadUrl;
-  anchor.download = resolvedFileName;
-  anchor.rel = "noopener";
-  anchor.style.display = "none";
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
-  return resolvedFileName;
+  return downloadProjectLibrarySnapshotFromAdapter(snapshot, { fileName });
 }
 
 async function loadProjectLibraryFromFile() {
@@ -10350,7 +9886,8 @@ async function loadProjectLibraryFromFile() {
     const file = await promptForProjectFileFromInput();
     if (file) {
       await loadProjectLibraryFromBrowserFile(file, {
-        filePath: file.name || getSuggestedProjectFileName(),
+        // Intent: the loaded project record should decide the durable path, not the previous selection.
+        filePath: "",
         fileHandle: null,
         sourceLabel: "browser file",
         reason: "load-project-file",
@@ -10379,18 +9916,10 @@ async function loadProjectLibraryFromFile() {
   renderHeader();
 
   try {
-    const response = await fetchJsonFromDesktopApi("/api/project-file/load", {
-      method: "POST",
-      body: {
-        filePath,
-      },
+    const snapshot = await readProjectLibraryFromDesktopPath(filePath, {
+      fetchJsonFromDesktopApi,
     });
-
-    if (!response.ok) {
-      throw response.error ?? new Error("Project file load failed.");
-    }
-
-    await loadProjectLibrarySnapshotIntoState(response.value, {
+    await loadProjectLibrarySnapshotIntoState(snapshot, {
       filePath,
       fileHandle: null,
       sourceLabel: "desktop file",
@@ -10412,6 +9941,7 @@ async function loadProjectLibraryFromFile() {
 }
 
 async function saveCurrentProject() {
+  beginProjectCacheSuppression();
   beginProjectFileAutosaveSuppression();
   try {
     commitWritingTargetDraft();
@@ -10460,10 +9990,12 @@ async function saveCurrentProject() {
     }
   } finally {
     endProjectFileAutosaveSuppression();
+    endProjectCacheSuppression();
   }
 }
 
 async function saveCurrentProjectFileAs() {
+  beginProjectCacheSuppression();
   beginProjectFileAutosaveSuppression();
   try {
     if (canUseBrowserSavePicker()) {
@@ -10473,7 +10005,12 @@ async function saveCurrentProjectFileAs() {
           types: getProjectFilePickerTypes(),
         });
         commitWritingTargetDraft();
-        setProjectFilePath(handle.name || getSuggestedProjectFileName(), handle, { skipProjectFileAutosave: true });
+        const browserHandleProjectFilePath = handle.name || getSuggestedProjectFileName();
+        setProjectFilePath(browserHandleProjectFilePath, handle, {
+          skipProjectFileAutosave: true,
+          persistDesktopProjectFilePath: hasProjectFilePath(browserHandleProjectFilePath),
+          clearDesktopProjectFilePath: !hasProjectFilePath(browserHandleProjectFilePath),
+        });
         const snapshot = createProjectLibrarySnapshotForFile();
         await saveProjectLibraryToBrowserHandle(handle, snapshot);
         return;
@@ -10492,7 +10029,10 @@ async function saveCurrentProjectFileAs() {
     const typedPath = normalizeProjectFilePath(state.projectFilePath);
     if (hasProjectFilePath(typedPath)) {
       commitWritingTargetDraft();
-      setProjectFilePath(typedPath, null, { skipProjectFileAutosave: true });
+      setProjectFilePath(typedPath, null, {
+        skipProjectFileAutosave: true,
+        persistDesktopProjectFilePath: true,
+      });
       const snapshot = createProjectLibrarySnapshotForFile();
       await saveProjectLibraryToFile(typedPath, snapshot);
       return;
@@ -10505,6 +10045,7 @@ async function saveCurrentProjectFileAs() {
     renderHeader();
   } finally {
     endProjectFileAutosaveSuppression();
+    endProjectCacheSuppression();
   }
 }
 
@@ -10815,6 +10356,7 @@ function loadLocalAiPrefs() {
   return normalizeLocalAiPrefs(readStoredJson(EDITOR_LOCAL_AI_PREFS_KEY));
 }
 
+// Intent: resolve DOM events back to stable scene and selection context for anchored editor actions.
 function getEditorContextFromEvent(event) {
   const target = event.target instanceof Element ? event.target : null;
   if (!target || target.closest("[data-inline-passage-draft]")) {
@@ -11102,6 +10644,29 @@ function getCaretPointFromMirror(mirror, clientX, clientY) {
   return null;
 }
 
+async function loadDesktopSettingsSnapshot() {
+  const settingsResponse = await fetchJsonFromDesktopApi("/api/settings");
+  if (!settingsResponse.ok) {
+    reportBrowserLog("warn", "settings", "Unable to load the desktop settings snapshot.", {
+      error: settingsResponse.error,
+      attemptedUrls: settingsResponse.attemptedUrls,
+    });
+    return {
+      projectRoot: "",
+      lastProjectFilePath: "",
+    };
+  }
+
+  const candidate = settingsResponse.value && typeof settingsResponse.value === "object"
+    ? settingsResponse.value
+    : {};
+  return {
+    projectRoot: normalizeProjectFilePath(candidate.projectRoot ?? ""),
+    lastProjectFilePath: normalizeProjectFilePath(candidate.lastProjectFilePath ?? ""),
+    lastProjectFilePathExplicit: candidate.lastProjectFilePathExplicit === true,
+  };
+}
+
 function getOffsetFromCaretPoint(root, caretPoint) {
   if (!(root instanceof Node) || !caretPoint?.node) {
     return null;
@@ -11361,6 +10926,7 @@ function trimTextRange(value, startOffset, endOffset, hasExplicitSelection) {
   };
 }
 
+// Intent: switch high-level workspaces while preserving editor-focused layout and selection state.
 function selectWorkspacePane(paneId) {
   const normalizedPaneId = paneId === "voice" ? "narration" : paneId;
 
@@ -11788,6 +11354,7 @@ function clearTaskAnchorPreview(options = {}) {
   state.taskPreview = null;
 }
 
+// Intent: start anchored inspiration/research notes from the active manuscript selection.
 function openPassageNoteComposerFromContextMenu(noteType) {
   const menu = state.taskContextMenu;
   if (!menu || (noteType !== "inspiration" && noteType !== "research")) {
@@ -12521,6 +12088,7 @@ function saveTaskFromComposer() {
   renderTaskContextMenu();
 }
 
+// Intent: ask local AI for advisory titles without letting model output mutate structure silently.
 async function suggestSceneTitle(sceneId) {
   const scene = getScene(sceneId);
   if (!scene || !state.localAiPrefs.enabled) {
@@ -12892,6 +12460,7 @@ function applySpellcheckSuggestionFromMenu(target) {
   textarea.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
+// Intent: apply scene text edits through draft state so canonical project structure stays recoverable.
 function updateSceneDraft(sceneId, mutate, options = {}) {
   const scene = getScene(sceneId);
   if (!scene) {
@@ -12907,7 +12476,7 @@ function updateSceneDraft(sceneId, mutate, options = {}) {
     ...state.sceneDrafts,
     [sceneId]: draft,
   };
-  writeStoredJson(EDITOR_DRAFTS_KEY, state.sceneDrafts);
+  writeStoredJsonRaw(EDITOR_DRAFTS_KEY, state.sceneDrafts);
   refreshScenes();
   const markSessionActivity = options.markSessionActivity !== false;
   const currentWordCount = getCurrentManuscriptWordCount();
@@ -12940,10 +12509,10 @@ function updateSceneDraft(sceneId, mutate, options = {}) {
           updatedAt: state.writingTargetState.updatedAt,
         };
       }
-      persistCurrentProjectRecord();
     }
   }
 
+  persistCurrentProjectRecord();
   const shouldCaptureImmediately = options.immediate === true || !hadActiveSession;
 
   syncHeaderLiveState();
@@ -13153,6 +12722,7 @@ function resetSceneDraft(sceneId) {
   });
 }
 
+// Intent: create manuscript structure drafts as explicit binder entities with stable IDs.
 function addChapterDraft() {
   const timestamp = Date.now();
   const sceneId = `draft-scene-${timestamp}`;
@@ -13546,7 +13116,41 @@ function updateSceneTitleLabel(sceneId, title) {
     });
 }
 
-function syncSpellcheckLayer(layer, textarea, sceneId) {
+function getEditorTypingSpellcheckRange(textarea) {
+  if (!(textarea instanceof HTMLTextAreaElement)) {
+    return null;
+  }
+
+  if (document.activeElement !== textarea) {
+    return null;
+  }
+
+  if (!Number.isInteger(textarea.selectionStart) || textarea.selectionStart !== textarea.selectionEnd) {
+    return null;
+  }
+
+  const caretOffset = textarea.selectionStart;
+  const source = String(textarea.value ?? "");
+  const previousChar = caretOffset > 0 ? source[caretOffset - 1] : "";
+  const nextChar = caretOffset < source.length ? source[caretOffset] : "";
+  const currentWordBoundary = /[A-Za-z'’-]/;
+  if (!currentWordBoundary.test(previousChar) && !currentWordBoundary.test(nextChar)) {
+    return null;
+  }
+
+  const range = getSpellcheckWordRange(source, caretOffset);
+  if (!range) {
+    return null;
+  }
+
+  if (caretOffset < range.startOffset || caretOffset > range.endOffset) {
+    return null;
+  }
+
+  return range;
+}
+
+function syncSpellcheckLayer(layer, textarea, sceneId, options = {}) {
   if (!(layer instanceof HTMLElement) || !(textarea instanceof HTMLTextAreaElement)) {
     return;
   }
@@ -13564,7 +13168,7 @@ function syncSpellcheckLayer(layer, textarea, sceneId) {
         projectLexicon,
         referenceLexicon: spellcheckReferenceLexicon,
         sceneId,
-      })}
+      }, options)}
     </div>
   `;
 
@@ -13574,12 +13178,13 @@ function syncSpellcheckLayer(layer, textarea, sceneId) {
   }
 }
 
-function renderSpellcheckUnderlineHTML(text, lexicons = {}) {
+function renderSpellcheckUnderlineHTML(text, lexicons = {}, options = {}) {
   const source = String(text ?? "");
   if (!source.length) {
     return "";
   }
 
+  const activeTypingWordRange = options.activeTypingWordRange ?? options.excludeRange ?? null;
   const baseLexicon = lexicons.baseLexicon ?? null;
   const projectLexicon = lexicons.projectLexicon ?? null;
   const referenceLexicon = lexicons.referenceLexicon ?? null;
@@ -13601,16 +13206,53 @@ function renderSpellcheckUnderlineHTML(text, lexicons = {}) {
       projectLexicon,
       referenceLexicon,
     });
+    if (
+      activeTypingWordRange &&
+      index === Number(activeTypingWordRange.startOffset) &&
+      index + token.length === Number(activeTypingWordRange.endOffset)
+    ) {
+      output += escapeHtml(token);
+      lastIndex = index + token.length;
+      continue;
+    }
     const tokenHtml = escapeHtml(token);
     output += isMisspelled
-      ? `<span class="editor-spellcheck-word is-misspelled">${tokenHtml}</span>`
-      : `<span class="editor-spellcheck-word">${tokenHtml}</span>`;
+      ? `<span class="editor-spellcheck-word is-misspelled" data-spellcheck-start="${index}" data-spellcheck-end="${index + token.length}">${tokenHtml}</span>`
+      : `<span class="editor-spellcheck-word" data-spellcheck-start="${index}" data-spellcheck-end="${index + token.length}">${tokenHtml}</span>`;
 
     lastIndex = index + token.length;
   }
 
   output += escapeHtml(source.slice(lastIndex));
   return output;
+}
+
+function syncSpellcheckLayerTypingState(layer, activeTypingWordRange) {
+  if (!(layer instanceof HTMLElement)) {
+    return;
+  }
+
+  const content = layer.querySelector(".editor-spellcheck-layer__content");
+  if (!(content instanceof HTMLElement)) {
+    return;
+  }
+
+  content.querySelectorAll(".editor-spellcheck-word.is-typing-active").forEach((word) => {
+    word.classList.remove("is-typing-active");
+  });
+
+  const startOffset = Number(activeTypingWordRange?.startOffset);
+  const endOffset = Number(activeTypingWordRange?.endOffset);
+  if (!Number.isInteger(startOffset) || !Number.isInteger(endOffset)) {
+    return;
+  }
+
+  const activeWord = content.querySelector(
+    `.editor-spellcheck-word[data-spellcheck-start="${startOffset}"][data-spellcheck-end="${endOffset}"]`,
+  );
+  if (activeWord instanceof HTMLElement) {
+    activeWord.classList.add("is-typing-active");
+  }
 }
 
 function syncSpellcheckLayerStyle(content, textarea) {
@@ -14700,6 +14342,7 @@ function updateFocusedLineCard() {
   renderConsolePanel();
 }
 
+// Intent: isolate browser localStorage reads so corrupt values fail safely instead of breaking boot.
 function readStoredJson(storageKey) {
   if (!("localStorage" in window)) {
     return null;
@@ -14958,6 +14601,7 @@ function writeStoredJsonRaw(storageKey, value) {
   }
 }
 
+// Intent: bridge browser runtime failures back to the desktop host logger when available.
 function registerRuntimeLogging() {
   window.addEventListener("error", (event) => {
     reportBrowserLog("error", "window", event.message || "Unhandled browser error.", {

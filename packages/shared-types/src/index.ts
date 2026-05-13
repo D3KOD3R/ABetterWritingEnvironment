@@ -1,3 +1,4 @@
+// Intent: define cross-package DTOs for workspace snapshots, analysis, audio, voice, and local AI contracts.
 import type {
   BinderNode,
   Character,
@@ -21,6 +22,7 @@ import type {
   VoiceRenderJob,
 } from "../../job-contracts/src/index.ts";
 
+// Intent: describe provider capabilities without tying UI or services to one runtime implementation.
 export type ExecutionMode = "local-only" | "hybrid";
 export type ProviderAvailability = "ready" | "disabled";
 
@@ -29,6 +31,8 @@ export interface DesktopSettingsSnapshot {
   modelRoot: string;
   assetRoot: string;
   projectRoot: string;
+  lastProjectFilePath: string;
+  lastProjectFilePathExplicit: boolean;
 }
 
 export interface AnalysisProviderDescriptor {
@@ -52,6 +56,7 @@ export interface VoiceProviderDescriptor {
   synthesisMode: "local" | "hybrid";
 }
 
+// Intent: keep analysis outputs reviewable and navigable through manuscript anchors.
 export interface AnalysisIssueSuggestion {
   category: IssueCategory;
   severity: IssueSeverity;
@@ -178,6 +183,7 @@ export interface DreamScapeIdeaInput {
   now?: string;
 }
 
+// Intent: define audio and voice requests around manuscript anchors, sessions, and explicit jobs.
 export interface StartNarrationSessionInput {
   project: Project;
   sessionLabel: string;
@@ -290,6 +296,7 @@ export interface VoiceServiceContract {
   queueChapterRender(input: VoiceChapterRenderInput): VoiceRenderJob;
 }
 
+// Intent: define editor workspace DTOs as view models derived from canonical manuscript and world schemas.
 export interface WorkspaceNavigationTarget {
   refId: string;
   kind: "project" | "chapter" | "scene";
@@ -450,6 +457,7 @@ export interface WorldWorkspaceSnapshot {
   edges: TimelineEdgeRecord[];
 }
 
+// Intent: preserve AI suggestions as review queues with visible evidence before canonical data changes.
 export interface AnalysisWorkspaceSnapshot {
   provider: AnalysisProviderDescriptor;
   lastJob: AnalysisJob;
@@ -524,6 +532,7 @@ export interface EditorWorkspaceSnapshot {
   selectionDefaults: WorkspaceSelectionDefaults;
 }
 
+// Intent: provide small formatting helpers for view models while keeping domain records in schema packages.
 export function formatCharacterRecord(character: Character): CharacterRecord {
   return {
     id: character.id,

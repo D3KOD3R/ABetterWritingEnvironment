@@ -1,3 +1,4 @@
+// Intent: re-export local AI service contracts and provider adapters from one service entrypoint.
 export type {
   AiModelTier,
   AiTaskType,

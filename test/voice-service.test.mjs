@@ -1,3 +1,4 @@
+// Intent: verify voice service speaker bindings, previews, and render job contract behavior.
 import assert from "node:assert/strict";
 
 import {

@@ -5,6 +5,7 @@ This agent is the single source of truth whenever we're working through the `fix
 ## Primary files
 - `.voice/voice-issues.md` is the canonical backlog for this repo (legacy location; every `fix issues` run begins here).
 - `voiceissues/voice-issues.md` is the repo-local alternative when this repo opts into the `voiceissues/` directory.
+- `voiceissues/issues/issue-XXXX/` stores per-issue transcripts and attachments, and `voiceissues/incoming/` is the screenshot staging folder.
 - `voice_issue_daemon.py`, `voice_hotkey_daemon.py`, and `speech_server.py` are the helpers that feed these files; `codex_review_issues.ps1` / `codex_review_issues.sh` exercise them via `codex --full-auto`.
 - `.voice_config.json` (or `.voice_config.sample.json`) keeps repo aliases, repo paths, stop phrases, and the URLs used by the real-time transcript server.
 - Seeded target repos include a root `AGENTS.md` pointer with a first-page `fix issues` rule that sends Codex to `voiceissues/VoiceIssuesAgent.md` and the active issues file.
@@ -17,10 +18,11 @@ This agent is the single source of truth whenever we're working through the `fix
    - Mark the entry `[x]` with a short clarifying note (e.g., `(fixed in voice_gui_app.py)`), or
    - Leave it `[ ]` and explain in the final response why it still needs attention.
    - Preserve the issue prefix like `[#12]` when you edit text so spoken references stay stable across follow-up issues.
-5. Do not declare the task complete until every entry that was present at the start of the session is either resolved or explained.
-6. If new issues appear while you work, append them immediately and keep them in scope; reopen the checklist after resolving the original queue to capture the additions.
-7. Report in the final reply which issues were completed and which remain, citing their text and line number from `.voice/voice-issues.md` (or `voiceissues/voice-issues.md`, whichever you edited) so the user can verify the changes.
-8. When the backlog is empty, mention the acceptance options in your reply: trust mode (fix and tick in one run) or the two-step mode (propose completions first, then mark them after confirmation).
+5. When an issue includes screenshots, inspect the matching folder under `voiceissues/issues/issue-XXXX/` and use the screenshot inbox only as staging.
+6. Do not declare the task complete until every entry that was present at the start of the session is either resolved or explained.
+7. If new issues appear while you work, append them immediately and keep them in scope; reopen the checklist after resolving the original queue to capture the additions.
+8. Report in the final reply which issues were completed and which remain, citing their text and line number from `.voice/voice-issues.md` (or `voiceissues/voice-issues.md`, whichever you edited) so the user can verify the changes.
+9. When the backlog is empty, mention the acceptance options in your reply: trust mode (fix and tick in one run) or the two-step mode (propose completions first, then mark them after confirmation).
 
 ## Tooling reminders
 - `voice_issue_daemon.py` and `voice_hotkey_daemon.py` split transcripts by the configured `nextIssue` / `stop` phrases, honor `load repo <alias>`, and append to the issues file immediately.

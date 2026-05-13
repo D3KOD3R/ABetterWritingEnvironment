@@ -1,3 +1,4 @@
+// Intent: provide an in-memory audio service for narration sessions and anchor-aware alignment jobs.
 import { createCompletedJob } from "../../../packages/job-contracts/src/index.ts";
 import type {
   AlignNarrationInput,
@@ -6,6 +7,7 @@ import type {
   StartNarrationSessionInput,
 } from "../../../packages/shared-types/src/index.ts";
 
+// Intent: model narration follow behavior behind the audio contract without embedding UI state.
 export function createInMemoryAudioService(): AudioServiceContract {
   let sessionSequence = 0;
   let alignmentSequence = 0;
@@ -18,6 +20,7 @@ export function createInMemoryAudioService(): AudioServiceContract {
       alignmentStrategy: "anchor-tracked incremental alignment",
     },
     startNarrationSession(input: StartNarrationSessionInput): NarrationSessionSnapshot {
+      // Intent: start tracking from a canonical manuscript anchor rather than screen position.
       sessionSequence += 1;
       const now = input.now ?? new Date().toISOString();
 
@@ -34,6 +37,7 @@ export function createInMemoryAudioService(): AudioServiceContract {
       };
     },
     alignNarration(input: AlignNarrationInput) {
+      // Intent: record alignment as a completed job so future ASR providers can share the same lifecycle.
       alignmentSequence += 1;
       const now = input.now ?? new Date().toISOString();
 

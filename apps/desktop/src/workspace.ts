@@ -1,3 +1,4 @@
+// Intent: compose the desktop workspace snapshot from canonical project, analysis, audio, voice, and world data.
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -84,6 +85,10 @@ export interface ProjectArchiveItem {
 export interface ProjectSettingsSnapshot {
   editorPrefs: Record<string, unknown>;
   localAiPrefs: Record<string, unknown>;
+  spellcheck: {
+    dictionaryWords: string[];
+    exceptionWords: string[];
+  };
   binderPanelWidth: number;
   consoleDockWidth: number;
   consoleDockCollapsed: boolean;
@@ -126,6 +131,7 @@ export interface ProjectLibrarySeedSnapshot {
   projects: ProjectLibrarySeedRecord[];
 }
 
+// Intent: locate bundled project assets from the desktop package without hard-coding caller cwd.
 const SERVA_VITAE_BUNDLED_PROJECT_LIBRARY_PATH = fileURLToPath(
   new URL(
     "../../../apps/editor/public/serva-vitae-project-library.js",
@@ -148,6 +154,7 @@ const DREAM_SCAPE_IDEA = {
     "A powerful scene where an old corridor beacon wakes beneath Khepri and makes the treaty silence feel staged rather than accidental.",
 };
 
+// Intent: provide project-save settings defaults when imported or bundled records predate newer schema fields.
 function createDefaultProjectSettingsSnapshot(generatedAt: string): ProjectSettingsSnapshot {
   const parsedDate = new Date(generatedAt);
   const effectiveDate = Number.isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
@@ -156,6 +163,10 @@ function createDefaultProjectSettingsSnapshot(generatedAt: string): ProjectSetti
   return {
     editorPrefs: {},
     localAiPrefs: { enabled: true },
+    spellcheck: {
+      dictionaryWords: [],
+      exceptionWords: [],
+    },
     binderPanelWidth: 320,
     consoleDockWidth: 320,
     consoleDockCollapsed: false,
@@ -316,6 +327,7 @@ export function createDesktopWorkspaceSnapshot(): EditorWorkspaceSnapshot {
   };
 }
 
+// Intent: expose the bundled project-library seed through the desktop API for browser bootstrapping.
 export function createServaVitaeProjectLibrarySeed(): ProjectLibrarySeedSnapshot {
   if (cachedServaVitaeProjectLibrarySeed) {
     return cachedServaVitaeProjectLibrarySeed;
@@ -328,8 +340,9 @@ export function createServaVitaeProjectLibrarySeed(): ProjectLibrarySeedSnapshot
 function loadBundledServaVitaeProjectLibrarySeed(): ProjectLibrarySeedSnapshot {
   try {
     const bundled = readFileSync(SERVA_VITAE_BUNDLED_PROJECT_LIBRARY_PATH, "utf8");
+    // Intent: allow generated seed files to carry ownership comments without breaking fallback loading.
     const match = bundled.match(
-      /^window\.__ABE_SERVA_VITAE_PROJECT_LIBRARY__\s*=\s*([\s\S]+);\s*$/,
+      /^(?:\s*\/\/[^\n]*\n)*\s*window\.__ABE_SERVA_VITAE_PROJECT_LIBRARY__\s*=\s*([\s\S]+);\s*$/,
     );
     if (!match) {
       throw new Error("Unable to parse the bundled Serva Vitae project library snapshot.");
@@ -408,6 +421,7 @@ function cloneValue(value: unknown) {
   return JSON.parse(JSON.stringify(value));
 }
 
+// Intent: build a deterministic fixture project that exercises manuscript anchors, diagnostics, and narration links.
 function buildSeedProject(): {
   project: Project;
   anchors: ProjectAnchors;
@@ -648,6 +662,7 @@ function buildSeedProject(): {
   };
 }
 
+// Intent: build structured world data that proves templates, entities, spines, and links work together.
 function buildSeedWorld(project: Project, anchors: ProjectAnchors): WorldModel {
   let world = createWorldModel({
     id: "world-quiet-index",
@@ -929,6 +944,7 @@ function buildSeedWorld(project: Project, anchors: ProjectAnchors): WorldModel {
   return world;
 }
 
+// Intent: flatten canonical manuscript structure into editor-facing line records while preserving anchor IDs.
 function buildProjectSnapshot(
   project: Project,
   binder: ReturnType<typeof buildBinderTree>,
@@ -1095,6 +1111,7 @@ function buildNavigationTargets(
   return targets;
 }
 
+// Intent: convert structured world schema into UI-ready timeline, entity, and template records.
 function buildWorldSnapshot(project: Project, world: WorldModel): WorldWorkspaceSnapshot {
   const nodeById = new Map(world.nodes.map((node) => [node.id, node]));
   const spineById = new Map(world.spines.map((spine) => [spine.id, spine]));
@@ -1132,6 +1149,7 @@ function buildWorldSnapshot(project: Project, world: WorldModel): WorldWorkspace
   };
 }
 
+// Intent: convert analysis-service suggestions into reviewable UI queue records with manuscript evidence.
 function buildSuggestionQueue(
   project: Project,
   suggestions: AnalysisSuggestion[],

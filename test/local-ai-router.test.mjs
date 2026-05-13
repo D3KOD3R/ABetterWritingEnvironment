@@ -1,3 +1,4 @@
+// Intent: verify local AI routing preserves provider boundaries and tier selection contracts.
 import assert from "node:assert/strict";
 import {
   LocalAiRouter,

@@ -1,3 +1,4 @@
+// Intent: verify project source loading preserves save-file data and provenance for project libraries.
 import assert from "node:assert/strict";
 import { copyFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { spawnSync } from "node:child_process";

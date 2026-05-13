@@ -1,3 +1,5 @@
+// Intent: own editor-side state normalization, draft records, task records, and scene derivation helpers.
+// Intent: keep storage keys centralized so project save migration can reason about every browser cache.
 export const EDITOR_DRAFTS_KEY = "abe-scene-drafts-v1";
 export const EDITOR_PREFS_KEY = "abe-editor-prefs-v1";
 export const EDITOR_LOCAL_AI_PREFS_KEY = "abe-local-ai-prefs-v1";
@@ -32,12 +34,17 @@ export const FONT_SIZE_OPTIONS = [16, 18, 20, 22];
 export const LINE_HEIGHT_OPTIONS = [1.5, 1.7, 1.9, 2.1];
 export const EDITOR_WIDTH_OPTIONS = [560, 680, 760, 840];
 
+// Intent: define safe editor preference defaults before user or project-specific settings are applied.
 export function createDefaultEditorPrefs() {
   return {
     fontFamilyId: "story-serif",
     fontSize: 18,
     lineHeight: 1.7,
     editorWidth: 760,
+    projectFileAutosaveEnabled: true,
+    grammarCheckEnabled: true,
+    revisionOverlayEnabled: false,
+    italicText: false,
   };
 }
 
@@ -47,10 +54,37 @@ export function createDefaultLocalAiPrefs() {
   };
 }
 
+export function createDefaultSpellcheckProjectSettings() {
+  return {
+    dictionaryWords: [],
+    exceptionWords: [],
+  };
+}
+
 export function normalizeLocalAiPrefs(candidate) {
   const defaults = createDefaultLocalAiPrefs();
   return {
     enabled: typeof candidate?.enabled === "boolean" ? candidate.enabled : defaults.enabled,
+  };
+}
+
+export function normalizeSpellcheckProjectSettings(candidate) {
+  const defaults = createDefaultSpellcheckProjectSettings();
+  const normalizedCandidate = candidate && typeof candidate === "object" && !Array.isArray(candidate)
+    ? candidate
+    : {};
+
+  return {
+    dictionaryWords: normalizeSpellcheckWordList(
+      normalizedCandidate.dictionaryWords ??
+      normalizedCandidate.dictionary ??
+      defaults.dictionaryWords,
+    ),
+    exceptionWords: normalizeSpellcheckWordList(
+      normalizedCandidate.exceptionWords ??
+      normalizedCandidate.exceptions ??
+      defaults.exceptionWords,
+    ),
   };
 }
 
@@ -68,15 +102,68 @@ export function normalizeEditorPrefs(candidate) {
   const editorWidth = EDITOR_WIDTH_OPTIONS.includes(Number(candidate?.editorWidth))
     ? Number(candidate.editorWidth)
     : defaults.editorWidth;
+  const revisionOverlayEnabled =
+    typeof candidate?.revisionOverlayEnabled === "boolean"
+      ? candidate.revisionOverlayEnabled
+      : defaults.revisionOverlayEnabled;
+  const projectFileAutosaveEnabled =
+    typeof candidate?.projectFileAutosaveEnabled === "boolean"
+      ? candidate.projectFileAutosaveEnabled
+      : defaults.projectFileAutosaveEnabled;
+  const grammarCheckEnabled =
+    typeof candidate?.grammarCheckEnabled === "boolean"
+      ? candidate.grammarCheckEnabled
+      : defaults.grammarCheckEnabled;
+  const italicText =
+    typeof candidate?.italicText === "boolean"
+      ? candidate.italicText
+      : defaults.italicText;
 
   return {
     fontFamilyId,
     fontSize,
     lineHeight,
     editorWidth,
+    projectFileAutosaveEnabled,
+    grammarCheckEnabled,
+    revisionOverlayEnabled,
+    italicText,
   };
 }
 
+function normalizeSpellcheckWordList(candidate) {
+  if (!Array.isArray(candidate)) {
+    return [];
+  }
+
+  const normalizedWords = [];
+  const seen = new Set();
+
+  for (const item of candidate) {
+    const normalized = normalizeSpellcheckWord(item);
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+
+    seen.add(normalized);
+    normalizedWords.push(normalized);
+  }
+
+  return normalizedWords;
+}
+
+function normalizeSpellcheckWord(word) {
+  const normalized = String(word ?? "")
+    .normalize("NFKC")
+    .replace(/[’‘]/g, "'")
+    .trim()
+    .toLowerCase()
+    .replace(/^[^a-z]+|[^a-z]+$/g, "");
+
+  return /[a-z]/.test(normalized) ? normalized : "";
+}
+
+// Intent: derive scene records from canonical workspace lines plus draft structure without mutating the project.
 export function buildSceneRecords(workspace, sceneDrafts = {}, structureDrafts = {}) {
   const baseScenes = [];
   const baseSceneMap = new Map();
@@ -203,6 +290,7 @@ export function createTemplateDrafts() {
   return [];
 }
 
+// Intent: validate and normalize anchored task records before the issue console renders or persists them.
 export function normalizeManuscriptTasks(candidate) {
   if (!Array.isArray(candidate)) {
     return [];
@@ -310,6 +398,7 @@ export function normalizePassageNotes(candidate) {
     }));
 }
 
+// Intent: create actionable manuscript tasks that retain a resolvable scene range.
 export function createManuscriptTask(scene, selection, now = new Date().toISOString()) {
   const startOffset = Number(selection?.startOffset);
   const endOffset = Number(selection?.endOffset);
@@ -468,6 +557,7 @@ export function updatePassageNoteTitle(notes, noteId, title) {
   );
 }
 
+// Intent: summarize anchored task state for binder badges and chapter-level console groups.
 export function countRemainingTasksByChapter(tasks) {
   const counts = {};
 
@@ -562,6 +652,7 @@ export function completeManuscriptTask(tasks, taskId, now = new Date().toISOStri
   );
 }
 
+// Intent: project flat scene records back into chapter groups for binder and rendering surfaces.
 export function groupScenesByChapter(scenes) {
   const chapterMap = new Map();
 
@@ -667,6 +758,7 @@ export function findBlockById(scenes, blockId) {
   return null;
 }
 
+// Intent: isolate cloning so draft helpers do not leak object references into canonical workspace data.
 function cloneValue(value) {
   if (typeof structuredClone === "function") {
     return structuredClone(value);

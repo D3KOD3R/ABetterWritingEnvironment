@@ -1,3 +1,4 @@
+// Intent: verify world schema templates, entities, spines, and cross-links remain structured.
 import assert from "node:assert/strict";
 
 import {

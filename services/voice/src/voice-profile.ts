@@ -1,3 +1,4 @@
+// Intent: define and normalize narration voice profiles independently of any one speech engine.
 export type NarrationVoiceEngineType =
   | "local-placeholder"
   | "external-placeholder"
@@ -44,6 +45,7 @@ const ENGINE_TYPES = new Set<NarrationVoiceEngineType>([
   "system-voice-placeholder",
 ]);
 
+// Intent: create voice profiles with explicit engine metadata instead of provider-specific loose settings.
 export function createVoiceProfile(input: CreateVoiceProfileInput): VoiceProfile {
   const id = nonEmpty(input.id, "Voice profile id");
   const displayName = nonEmpty(input.displayName, "Voice profile display name");
@@ -78,6 +80,7 @@ export function createVoiceProfile(input: CreateVoiceProfileInput): VoiceProfile
 }
 
 export function createDemoVoiceProfiles(now?: string): VoiceProfile[] {
+  // Intent: provide representative local, external, system, and conversion profiles for workflow testing.
   return [
     createVoiceProfile({
       id: "voice-profile-lantern",
@@ -137,6 +140,7 @@ export function createDemoVoiceProfiles(now?: string): VoiceProfile[] {
 }
 
 export function normalizeVoiceProfile(candidate: unknown): VoiceProfile | null {
+  // Intent: restore persisted voice profiles only when required identity and engine fields are valid.
   if (!isRecord(candidate)) {
     return null;
   }

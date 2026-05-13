@@ -1,3 +1,4 @@
+// Intent: verify local AI service contracts handle tiers, prompts, and unavailable providers.
 import assert from "node:assert/strict";
 
 import {

@@ -1,9 +1,10 @@
+// Intent: expose the desktop HTTP surface that serves the editor, workspace data, settings, and local services.
 import { readFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, extname, relative, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { createDesktopSettingsSnapshot } from "./settings.ts";
+import { createDesktopSettingsSnapshot, updateDesktopSettingsSnapshot } from "./settings.ts";
 import {
   createDesktopWorkspaceSnapshot,
   createServaVitaeProjectLibrarySeed,
@@ -22,6 +23,7 @@ import {
   type AiRequest,
 } from "../../../services/local-ai/index.ts";
 
+// Intent: resolve every editor asset relative to this module so desktop launchers can run from any cwd.
 const INDEX_HTML_PATH = fileURLToPath(new URL("../../editor/public/index.html", import.meta.url));
 const EDITOR_PUBLIC_ROOT = fileURLToPath(new URL("../../editor/public/", import.meta.url));
 const SERVA_VITAE_PROJECT_LIBRARY_JS_PATH = fileURLToPath(
@@ -62,6 +64,7 @@ export interface DesktopHttpRequest {
 
 const localAiRouter = new LocalAiRouter(new LlamaCppProvider());
 
+// Intent: serve read-only editor assets and boot snapshots for simple GET requests.
 export function createDesktopResponse(pathname: string): DesktopHttpResponse {
   if (pathname === "/" || pathname === "/index.html") {
     return textResponse(200, "text/html; charset=utf-8", readFileSync(INDEX_HTML_PATH, "utf8"));
@@ -193,6 +196,7 @@ export function createDesktopResponse(pathname: string): DesktopHttpResponse {
 export async function createDesktopResponseForRequest(
   request: DesktopHttpRequest,
 ): Promise<DesktopHttpResponse> {
+  // Intent: handle mutating desktop bridge routes separately from static asset requests.
   const method = (request.method ?? "GET").toUpperCase();
 
   if (method === "POST" && request.pathname === "/api/log") {
@@ -239,6 +243,19 @@ export async function createDesktopResponseForRequest(
         message: error instanceof Error ? error.message : "Unable to load the project source.",
       }, apiCorsHeaders());
     }
+  }
+
+  if (method === "POST" && request.pathname === "/api/settings") {
+    const body = parseJsonBody(request.body);
+    const lastProjectFilePath = typeof body.lastProjectFilePath === "string"
+      ? body.lastProjectFilePath.trim()
+      : "";
+    const lastProjectFilePathExplicit = body.lastProjectFilePathExplicit === true;
+    const snapshot = updateDesktopSettingsSnapshot({
+      lastProjectFilePath,
+      lastProjectFilePathExplicit,
+    });
+    return textResponse(200, "application/json; charset=utf-8", JSON.stringify(snapshot), apiCorsHeaders());
   }
 
   if (method === "POST" && request.pathname === "/api/project-file/save") {
@@ -449,6 +466,7 @@ export async function createDesktopResponseForRequest(
 }
 
 function serveEditorPublicAsset(pathname: string): DesktopHttpResponse | null {
+  // Intent: safely expose editor-public assets without allowing path traversal outside the public root.
   const normalizedPathname = pathname.startsWith("/") ? pathname.slice(1) : pathname;
   if (!normalizedPathname || normalizedPathname.endsWith("/")) {
     return null;
@@ -478,6 +496,7 @@ function textResponse(
   body: string,
   extraHeaders: Record<string, string> = {},
 ): DesktopHttpResponse {
+  // Intent: apply consistent no-store headers so local editor assets reflect current workspace changes.
   return {
     statusCode,
     headers: {
@@ -527,6 +546,7 @@ function createAiRouteRequest(
   request: DesktopHttpRequest,
   defaults: Pick<AiRequest, "taskType" | "outputFormat">,
 ): AiRequest {
+  // Intent: normalize browser AI payloads before they cross the local provider boundary.
   const body = parseJsonBody(request.body);
   return {
     taskType: body.taskType ?? defaults.taskType,
@@ -564,6 +584,7 @@ function normalizeFilePath(candidate: unknown): string {
 }
 
 async function writeJsonFile(filePath: string, value: unknown): Promise<string> {
+  // Intent: create parent folders automatically so project-save paths can be chosen freely.
   const resolvedPath = resolvePath(filePath);
   await mkdir(dirname(resolvedPath), { recursive: true });
   await writeFile(resolvedPath, JSON.stringify(value, null, 2), "utf8");

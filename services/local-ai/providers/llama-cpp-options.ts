@@ -1,3 +1,4 @@
+// Intent: normalize llama.cpp provider configuration from environment and explicit overrides.
 import type { AiModelTier } from "../local-ai-types.ts";
 
 export type LlamaCppProviderOptions = {

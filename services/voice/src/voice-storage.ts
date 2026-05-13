@@ -1,3 +1,4 @@
+// Intent: persist local voice narration profiles and jobs through a small browser-storage boundary.
 import type { NarrationJob } from "./narration-job.ts";
 import { normalizeNarrationJobs } from "./narration-job.ts";
 import type { VoiceProfile } from "./voice-profile.ts";
@@ -19,6 +20,7 @@ export interface VoiceNarrationStorageSnapshot {
   updatedAt: string;
 }
 
+// Intent: expose focused profile/job accessors over one versioned voice narration storage snapshot.
 export function loadVoiceProfiles(storage: VoiceNarrationStorageLike | undefined): VoiceProfile[] {
   return loadVoiceNarrationSnapshot(storage).voiceProfiles;
 }
@@ -54,6 +56,7 @@ export function saveNarrationJobs(
 export function loadVoiceNarrationSnapshot(
   storage: VoiceNarrationStorageLike | undefined,
 ): VoiceNarrationStorageSnapshot {
+  // Intent: tolerate missing or corrupt browser storage by returning an empty voice workspace.
   if (!storage) {
     return createEmptySnapshot();
   }
@@ -91,6 +94,7 @@ function persistVoiceNarrationSnapshot(
 }
 
 function normalizeSnapshot(candidate: unknown): VoiceNarrationStorageSnapshot {
+  // Intent: sanitize persisted voice state before it re-enters service or editor workflows.
   if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
     return createEmptySnapshot();
   }

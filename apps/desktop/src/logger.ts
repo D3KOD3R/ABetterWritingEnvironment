@@ -1,3 +1,4 @@
+// Intent: provide file-backed desktop logging without coupling browser features to filesystem details.
 import { appendFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 

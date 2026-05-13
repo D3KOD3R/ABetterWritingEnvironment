@@ -1,3 +1,4 @@
+// Intent: provide local-first manuscript analysis that returns anchored diagnostics and story suggestions.
 import {
   createManuscriptAnchor,
   resolveManuscriptAnchor,
@@ -26,6 +27,7 @@ import type {
   WorkspaceLinkSuggestion,
 } from "../../../packages/shared-types/src/index.ts";
 
+// Intent: expose a provider-shaped local analysis service so UI code never depends on a specific model.
 export function createLocalAnalysisService(): AnalysisServiceContract {
   const provider = {
     id: "local-rule-analysis",
@@ -54,6 +56,7 @@ function analyze(
   now: string | undefined,
   provider: AnalysisServiceContract["provider"],
 ): AnalysisBatch {
+  // Intent: produce deterministic anchored diagnostics that model providers can later replace or augment.
   const timestamp = now ?? new Date().toISOString();
   const issues: AnalysisIssueSuggestion[] = [];
   const events: AnalysisEventSuggestion[] = [];
@@ -176,6 +179,7 @@ function exploreDreamScape(
   input: DreamScapeIdeaInput,
   provider: AnalysisServiceContract["provider"],
 ): AnalysisBatch {
+  // Intent: turn user story ideas into reviewable, evidence-linked suggestions before structure changes.
   const timestamp = input.now ?? new Date().toISOString();
   const suggestions = buildDreamScapeSuggestions(
     input.project,
@@ -260,6 +264,7 @@ function getSpeakerLabel(project: Project, blockId: string): string | undefined 
 }
 
 function buildWorldSuggestions(project: Project, world: WorldModel): AnalysisWorldSuggestion[] {
+  // Intent: suggest missing world structure from manuscript evidence without mutating canonical world data.
   const suggestions: AnalysisWorldSuggestion[] = [];
   let sequence = 0;
   let stationTemplateSuggestionId: string | undefined;
@@ -313,6 +318,7 @@ function buildDreamScapeSuggestions(
   ideaTitle: string,
   ideaText: string,
 ): AnalysisSuggestion[] {
+  // Intent: map creative what-if ideas to manuscript or timeline placement using explicit evidence anchors.
   const idea = `${ideaTitle} ${ideaText}`.toLowerCase();
   const evidence = [
     findAnchorByNeedle(project, "treaty"),
@@ -421,6 +427,7 @@ function createTemplateSuggestion(
   id: string,
   evidence: ManuscriptAnchor,
 ): TemplateCreationSuggestion {
+  // Intent: express template creation as a pending review item, not an automatic schema mutation.
   return {
     id,
     suggestionType: "template",
@@ -502,6 +509,7 @@ function createCrossSpineSuggestion(
 }
 
 function findAnchorByNeedle(project: Project, needle: string): ManuscriptAnchor | undefined {
+  // Intent: resolve rule evidence back to canonical manuscript anchors instead of storing raw text only.
   const lowerNeedle = needle.toLowerCase();
 
   for (const chapter of project.chapters) {

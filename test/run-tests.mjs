@@ -1,3 +1,4 @@
+// Intent: run the repository's focused contract tests as one lightweight Node test harness.
 import { runAnalysisServiceTest } from "./analysis-service.test.mjs";
 import { runAudioServiceTest } from "./audio-service.test.mjs";
 import { runDesktopApplicationTest } from "./desktop-application.test.mjs";
@@ -5,7 +6,9 @@ import { runEditorModelTest } from "./editor-model.test.mjs";
 import { runLocalAiRouterContractTest } from "./local-ai-router.test.mjs";
 import { runLocalAiServiceTest } from "./local-ai-service.test.mjs";
 import { runManuscriptSchemaTest } from "./manuscript-schema.test.mjs";
+import { runProjectFileStorageAdaptersTest } from "./project-file-storage-adapters.test.mjs";
 import { runProjectSourceTest } from "./project-source.test.mjs";
+import { runSpellcheckTest } from "./spellcheck.test.mjs";
 import { runVoiceNarrationFoundationTest } from "./voice-narration-foundation.test.mjs";
 import { runVoiceServiceTest } from "./voice-service.test.mjs";
 import { runWorldSchemaTest } from "./world-schema.test.mjs";
@@ -40,8 +43,16 @@ const tests = [
     run: runManuscriptSchemaTest,
   },
   {
+    name: "project file storage adapters isolate save paths and autosave state",
+    run: runProjectFileStorageAdaptersTest,
+  },
+  {
     name: "project source loader produces reportable project data and provenance",
     run: runProjectSourceTest,
+  },
+  {
+    name: "spellcheck utilities extract words and propose alternatives",
+    run: runSpellcheckTest,
   },
   {
     name: "voice service creates speaker bindings and render jobs",

@@ -1,3 +1,4 @@
+// Intent: define structured worldbuilding templates, entities, timeline spines, and graph links.
 import type { ManuscriptAnchor } from "../../manuscript-schema/src/index.ts";
 
 export type TemplateFieldType = "text" | "number" | "boolean" | "enum" | "list";
@@ -222,6 +223,7 @@ const DEFAULT_SEQUENCES: WorldSequences = {
   link: 0,
 };
 
+// Intent: create the canonical structured world model used by timelines, templates, and entities.
 export function createWorldModel(input: CreateWorldModelInput): WorldModel {
   const title = nonEmpty(input.title, "World model title");
   const now = resolveNow(input.now);
@@ -309,6 +311,7 @@ export function addWorldTemplate(
   return { world: updated, template };
 }
 
+// Intent: instantiate template-backed entities while preserving typed field validation and ancestry.
 export function instantiateWorldEntity(
   world: WorldModel,
   templateId: string,
@@ -399,6 +402,7 @@ export function addTimelineSpine(
   return { world: updated, spine };
 }
 
+// Intent: add ordered timeline nodes that can carry entity links and manuscript anchors.
 export function addTimelineNode(
   world: WorldModel,
   spineId: string,
@@ -482,6 +486,7 @@ export function linkTimelineNodes(
   return { world: updated, edge };
 }
 
+// Intent: connect first appearances to both manuscript evidence and optional timeline nodes.
 export function registerEntityIntroduction(
   world: WorldModel,
   input: RegisterEntityIntroductionInput,
@@ -577,6 +582,7 @@ function ensureEntity(world: WorldModel, entityId: string): WorldEntity {
   return entity;
 }
 
+// Intent: keep schema invariants enforced through shared private validators.
 function ensureNode(world: WorldModel, nodeId: string): TimelineNode {
   const node = world.nodes.find((candidate) => candidate.id === nodeId);
 

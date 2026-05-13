@@ -1,3 +1,4 @@
+// Intent: verify voice narration profiles, queues, storage, and placeholder rendering stay deterministic.
 import assert from "node:assert/strict";
 
 import {

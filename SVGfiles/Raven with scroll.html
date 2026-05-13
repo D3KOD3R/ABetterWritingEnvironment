@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Raven Save Icon - Side Profile</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: #0f1720;
+      font-family: Arial, sans-serif;
+    }
+
+    .preview {
+      width: 360px;
+      height: 280px;
+      display: grid;
+      place-items: center;
+      border-radius: 24px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.08);
+      box-shadow: 0 8px 30px rgba(0,0,0,0.18);
+    }
+
+    .preview svg {
+      width: 300px;
+      height: auto;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div class="preview">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 220" width="320" height="220">
+  <defs>
+    <linearGradient id="bodyGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2a303a"/>
+      <stop offset="1" stop-color="#080a0d"/>
+    </linearGradient>
+    <linearGradient id="wingGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#353d48"/>
+      <stop offset="1" stop-color="#090b10"/>
+    </linearGradient>
+    <linearGradient id="scrollGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f8eed0"/>
+      <stop offset="1" stop-color="#e1cea0"/>
+    </linearGradient>
+  </defs>
+
+  <style>
+    .raven {
+      transform-origin: 160px 110px;
+      animation: hover 2.6s ease-in-out infinite;
+    }
+
+    .near-wing {
+      transform-origin: 110px 118px;
+      animation: nearFlap 1.05s ease-in-out infinite;
+    }
+
+    .far-wing {
+      transform-origin: 183px 98px;
+      animation: farFlap 1.05s ease-in-out infinite;
+    }
+
+    .scroll {
+      transform-origin: 156px 158px;
+      animation: scrollSwing 2.6s ease-in-out infinite;
+    }
+
+    .shadow {
+      transform-origin: 160px 192px;
+      animation: shadowPulse 2.6s ease-in-out infinite;
+      opacity: 0.10;
+    }
+
+    @keyframes hover {
+      0%, 100% { transform: translateY(0px); }
+      50%      { transform: translateY(-4px); }
+    }
+
+    @keyframes nearFlap {
+      0%, 100% { transform: rotate(10deg) translateY(0px); }
+      50%      { transform: rotate(24deg) translateY(5px); }
+    }
+
+    @keyframes farFlap {
+      0%, 100% { transform: rotate(-8deg) translateY(0px); }
+      50%      { transform: rotate(-20deg) translateY(-8px); }
+    }
+
+    @keyframes scrollSwing {
+      0%, 100% { transform: rotate(0deg) translateY(0px); }
+      50%      { transform: rotate(2deg) translateY(2px); }
+    }
+
+    @keyframes shadowPulse {
+      0%, 100% { transform: scaleX(1); opacity: 0.10; }
+      50%      { transform: scaleX(0.9); opacity: 0.06; }
+    }
+  </style>
+
+  <!-- ground shadow -->
+  <ellipse class="shadow" cx="160" cy="194" rx="78" ry="13" fill="#000000" />
+
+  <g class="raven">
+    <!-- far wing (upper, straighter like reference) -->
+    <g class="far-wing">
+      <path fill="url(#wingGrad)" d="
+        M151 88
+        C176 62, 222 55, 274 61
+        C258 68, 241 74, 226 84
+        C251 88, 279 96, 300 108
+        C276 105, 248 108, 224 114
+        C245 116, 269 125, 289 138
+        C261 132, 228 129, 201 122
+        C182 117, 164 106, 151 88
+        Z"/>
+      <path fill="#1a2028" opacity="0.85" d="
+        M162 89
+        C185 84, 214 86, 241 94
+        C223 97, 203 101, 185 106
+        C204 109, 225 116, 242 124
+        C219 120, 197 117, 177 111
+        C168 107, 163 99, 162 89
+        Z"/>
+    </g>
+
+    <!-- near wing (lower, rounded like reference) -->
+    <g class="near-wing">
+      <path fill="url(#wingGrad)" d="
+        M136 118
+        C119 110, 95 111, 73 120
+        C50 130, 30 149, 17 173
+        C34 165, 50 160, 64 160
+        C44 176, 31 195, 25 216
+        C43 204, 59 195, 76 192
+        C63 212, 59 231, 61 246
+        C78 227, 89 208, 97 191
+        C103 175, 110 158, 122 143
+        C129 134, 135 126, 136 118
+        Z"
+        transform="translate(0,-12) scale(1,0.82)" />
+      <path fill="#151b22" opacity="0.85" d="
+        M121 126
+        C101 127, 79 137, 61 151
+        C75 149, 89 150, 101 155
+        C87 168, 77 182, 72 198
+        C86 184, 97 171, 108 156
+        C114 147, 119 137, 121 126
+        Z"/>
+    </g>
+
+    <!-- tail -->
+    <g fill="#0b0d11">
+      <path d="M222 125 C238 122, 252 124, 267 129 C253 137, 238 144, 225 147 Z"/>
+      <path d="M244 125 L284 118 L249 132 Z"/>
+      <path d="M246 128 L290 130 L249 136 Z"/>
+      <path d="M244 131 L280 143 L247 139 Z"/>
+    </g>
+
+    <!-- body -->
+    <g>
+      <path fill="url(#bodyGrad)" d="
+        M76 113
+        C98 97, 130 92, 165 97
+        C188 100, 208 108, 222 122
+        C214 134, 198 144, 178 150
+        C153 158, 125 160, 100 154
+        C79 149, 63 137, 59 124
+        C58 119, 64 116, 76 113
+        Z"/>
+      <path fill="#11161d" d="
+        M101 110
+        C124 104, 152 105, 176 110
+        C162 120, 147 128, 128 132
+        C107 137, 85 136, 72 129
+        C73 120, 84 114, 101 110
+        Z"/>
+      <path fill="#0b0d12" d="M162 132 C174 139, 181 149, 183 159 C169 156, 157 147, 153 136 Z"/>
+    </g>
+
+    <!-- head and beak -->
+    <g>
+      <path fill="url(#bodyGrad)" d="
+        M56 104
+        C67 95, 85 92, 98 99
+        C106 104, 108 113, 102 121
+        C95 130, 80 133, 67 127
+        C55 122, 49 112, 56 104
+        Z"/>
+      <circle cx="82" cy="110" r="3.6" fill="#e4e9f5"/>
+      <circle cx="82.6" cy="110.6" r="1.2" fill="#0a0c10"/>
+      <path fill="#c8b17d" d="M49 106 L15 103 L47 117 Z"/>
+      <path fill="#9f8960" d="M48 108 L24 106 L47 113 Z"/>
+      <path fill="#1a2028" opacity="0.7" d="M60 101 C71 96 84 97 93 102 C80 103 69 106 60 101 Z"/>
+    </g>
+
+    <!-- claws -->
+    <g stroke="#9b7a36" stroke-width="3.2" stroke-linecap="round" fill="none">
+      <path d="M131 149 L125 159"/>
+      <path d="M149 150 L154 160"/>
+      <path d="M125 159 L119 163"/>
+      <path d="M125 159 L128 166"/>
+      <path d="M125 159 L133 163"/>
+      <path d="M154 160 L147 164"/>
+      <path d="M154 160 L156 167"/>
+      <path d="M154 160 L161 163"/>
+    </g>
+
+    <!-- scroll -->
+    <g class="scroll">
+      <ellipse cx="141" cy="160" rx="42" ry="8" fill="#000000" opacity="0.06"/>
+      <g>
+        <rect x="113" y="146" width="56" height="22" rx="8" fill="url(#scrollGrad)" stroke="#af8f4d" stroke-width="1.8"/>
+        <circle cx="113" cy="157" r="9" fill="url(#scrollGrad)" stroke="#af8f4d" stroke-width="1.8"/>
+        <circle cx="169" cy="157" r="9" fill="url(#scrollGrad)" stroke="#af8f4d" stroke-width="1.8"/>
+        <circle cx="113" cy="157" r="4.4" fill="none" stroke="#c8ab69" stroke-width="1.2"/>
+        <circle cx="169" cy="157" r="4.4" fill="none" stroke="#c8ab69" stroke-width="1.2"/>
+        <path d="M126 153 H156 M126 158 H151 M126 163 H156" stroke="#baa067" stroke-width="1.4" stroke-linecap="round"/>
+      </g>
+    </g>
+  </g>
+</svg>
+
+  </div>
+</body>
+</html>

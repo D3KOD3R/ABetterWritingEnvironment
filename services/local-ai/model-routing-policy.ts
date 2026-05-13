@@ -1,5 +1,7 @@
+// Intent: choose the smallest suitable local model tier for editor-side AI requests.
 import type { AiModelTier, AiRequest } from "./local-ai-types.ts";
 
+// Intent: choose model tiers by task complexity while allowing explicit caller override.
 export function selectModelTier(request: AiRequest): AiModelTier {
   if (request.preferredTier) {
     return request.preferredTier;

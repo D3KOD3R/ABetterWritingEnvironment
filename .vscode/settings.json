@@ -1,0 +1,11 @@
+{
+  "liveServer.settings.root": "apps/editor/public",
+  "liveServer.settings.ignoreFiles": [
+    "**/logs/**",
+    "**/*.abe-project.json",
+    "**/~$*",
+    "**/*.docx",
+    "**/SVGfiles/**",
+    "**/SaveTestFile/**"
+  ]
+}

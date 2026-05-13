@@ -1,5 +1,7 @@
+// Intent: build compact prompts for local AI title and writing-assistance requests.
 import type { AiRequest } from "./local-ai-types.ts";
 
+// Intent: build provider-neutral prompts that preserve local-first manuscript-assistance boundaries.
 export function buildLocalAiPrompt(request: AiRequest): {
   systemPrompt: string;
   userPrompt: string;
@@ -29,6 +31,7 @@ export function buildLocalAiPrompt(request: AiRequest): {
 }
 
 function getTaskInstruction(request: AiRequest): string {
+  // Intent: keep task-specific behavior explicit instead of scattering prompt text through UI callers.
   switch (request.taskType) {
     case "generate_chapter_titles":
       return "Generate short literary chapter title options.";

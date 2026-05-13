@@ -1,3 +1,4 @@
+// Intent: model narration render job lifecycle and manuscript-linked audio output metadata.
 import type { ManuscriptAnchor } from "../../../packages/manuscript-schema/src/index.ts";
 
 export type NarrationJobStatus = "draft" | "queued" | "rendering" | "rendered" | "failed" | "cancelled";
@@ -46,6 +47,7 @@ const JOB_STATUSES = new Set<NarrationJobStatus>([
   "cancelled",
 ]);
 
+// Intent: create narration jobs with manuscript anchors and source snapshots that remain traceable after edits.
 export function createNarrationJob(input: CreateNarrationJobInput): NarrationJob {
   const id = nonEmpty(input.id, "Narration job id");
   const projectId = nonEmpty(input.projectId, "Narration job project id");
@@ -90,6 +92,7 @@ export function createNarrationJob(input: CreateNarrationJobInput): NarrationJob
 }
 
 export function normalizeNarrationJob(candidate: unknown): NarrationJob | null {
+  // Intent: reject malformed persisted jobs instead of weakening render queue invariants.
   if (!isRecord(candidate)) {
     return null;
   }
@@ -153,6 +156,7 @@ export function normalizeNarrationJobs(candidate: unknown): NarrationJob[] {
 }
 
 export function queueNarrationJob(job: NarrationJob, now?: string): NarrationJob {
+  // Intent: move jobs into the render queue only from states that can be retried safely.
   assertTransition(job, ["draft", "failed"], "queue");
 
   return stripOptionalFields(withUpdatedJob(job, {
@@ -225,6 +229,7 @@ function withUpdatedJob(
   patch: Partial<NarrationJob>,
   now?: string,
 ): NarrationJob {
+  // Intent: apply lifecycle patches through a clone so callers never share mutable job references.
   return cloneNarrationJob({
     ...job,
     ...patch,
@@ -243,6 +248,7 @@ function stripOptionalFields(job: NarrationJob, fields: Array<"error" | "outputA
 }
 
 function normalizeManuscriptAnchor(candidate: unknown): ManuscriptAnchor | null {
+  // Intent: preserve manuscript addressability when restoring jobs from persisted storage.
   if (!isRecord(candidate)) {
     return null;
   }

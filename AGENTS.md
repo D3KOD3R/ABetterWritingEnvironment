@@ -219,6 +219,38 @@ Does not own:
 - speech engine internals
 - voice engine internals
 
+## Editor shell maintenance rules
+
+When changing `apps/editor`, follow the refactor roadmap in `docs/architecture/editor-application-roadmap.md`.
+
+- Keep `apps/editor/public/app.js` as a thin bootstrap and orchestration shell.
+- Put new feature logic into `apps/editor/public/features/*`, state logic into `apps/editor/public/state`, browser bridge code into `apps/editor/public/adapters`, and reusable helpers into `apps/editor/public/shared`.
+- Do not add new feature-specific behavior to `app.js` when a slice, adapter, or shared helper can own it.
+- Avoid direct imports between feature slices unless there is a clear shared helper or selector boundary.
+- Treat persistence, autosave, spellcheck, and panel orchestration as separate concerns with their own owners.
+- Prefer small feature modules with explicit contracts over adding more top-level functions to the shell.
+- When extracting code, preserve the dependency direction defined in the roadmap: bootstrap -> shell -> feature slices -> shared helpers -> packages.
+
+### Refactor checkpoint
+
+Current roadmap phase:
+- Phase 1: shell/store boundary extraction
+
+Completed slice:
+- `apps/editor/public/shell/editor-chrome.js` now owns the top editor chrome, file menu, pane tabs, autosave toggle, local AI toggle, and writing-goal CTA markup.
+- `apps/editor/public/features/writing-targets/writing-target-window.js` now owns the full writing-goals window markup.
+- `apps/editor/public/app.js` still owns the editor runtime, persistence logic, and feature-level behavior.
+
+Next slice:
+- Extract the project-file persistence and autosave adapters out of `apps/editor/public/app.js` before splitting the remaining manuscript and side-panel surfaces.
+
+Verification for the current slice:
+- `node --check apps/editor/public/app.js`
+- `node --check apps/editor/public/shell/editor-chrome.js`
+- `node --check apps/editor/public/features/writing-targets/writing-target-window.js`
+- `node --check test/desktop-application.test.mjs`
+- `npm test`
+
 ### `services/analysis`
 Owns:
 - manuscript diagnostics
@@ -654,6 +686,8 @@ When making changes in this repository:
 - preserve contracts unless migration is intentional
 - avoid speculative renames of shared schema
 - if the user has edited CSS or styling in this repo, treat those changes as intentional interface work and do not revert, normalize, or overwrite them unless the user explicitly asks
+- add a brief intent comment at the top of each new module and before each major logical section so future readers know why the block exists
+- keep intent comments concise and about ownership or purpose, not line-by-line narration of obvious code
 - update or add types when introducing new cross-module behavior
 - add tests around domain behavior, not only UI rendering
 - document major decisions when they affect shared architecture

@@ -1,3 +1,4 @@
+// Intent: verify audio service narration sessions and alignment jobs remain anchor-aware.
 import assert from "node:assert/strict";
 
 import {

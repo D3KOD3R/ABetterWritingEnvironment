@@ -1,3 +1,4 @@
+// Intent: render the manuscript scene editor surface from editor state and feature-owned display inputs.
 import {
   EDITOR_WIDTH_OPTIONS,
   FONT_OPTIONS,
@@ -6,23 +7,69 @@ import {
 } from "../editor-model.js";
 import { escapeHtml } from "../shared/ui-utils.js";
 
+const REVISION_DRAFTING_UI_ENABLED = false;
+
+// Intent: compose the manuscript panel around shared project-file display data and selected scene content.
 export function renderManuscriptPanelHTML({
   state,
   selectedScene,
   editorMode,
+  grammarCheckSummary,
+  projectFileDisplay,
   buildEditorStyle,
   getInlinePassageDraftAnchor,
+  formatChapterDisplayTitle = (value) => String(value ?? "").trim() || "Untitled chapter",
 }) {
+  const safeProjectFileDisplay = projectFileDisplay ?? {
+    displayName: "Untitled project file",
+    tooltip: "No project file selected",
+  };
+  const grammarCheckEnabled = state?.editorPrefs?.grammarCheckEnabled !== false;
+  const grammarCheckLabel = grammarCheckSummary?.label
+    ? String(grammarCheckSummary.label)
+    : "Grammar check";
+  const grammarCheckPanelOpen = Boolean(state?.grammarCheckPanel?.open);
+  const grammarCheckButtonTitle = grammarCheckPanelOpen
+    ? "Close grammar check list"
+    : "Open grammar check list";
+  const grammarCheckToggleLabel = grammarCheckEnabled ? "On" : "Off";
+
   return `
-    <div class="panel-heading">
+    <div class="panel-heading scene-editor-heading">
       <p class="panel-kicker">Scene Editor</p>
-      <h2>Scene Editor Viewport</h2>
+      <p class="scene-editor-project-title project-file-tooltip" data-file-path-tooltip="${escapeHtml(safeProjectFileDisplay.tooltip)}">
+        <span class="scene-editor-project-title__text">${escapeHtml(safeProjectFileDisplay.displayName)}</span>
+      </p>
+      <div class="scene-editor-heading__grammar">
+        <label class="grammar-check-toggle">
+          <input
+            type="checkbox"
+            data-editor-pref="grammarCheckEnabled"
+            ${grammarCheckEnabled ? "checked" : ""}
+            aria-label="Enable live grammar checking"
+          />
+          <span>Grammar check</span>
+          <strong>${escapeHtml(grammarCheckToggleLabel)}</strong>
+        </label>
+        <button
+          class="grammar-check-status"
+          type="button"
+          data-action="toggle-grammar-check-panel"
+          aria-pressed="${grammarCheckPanelOpen ? "true" : "false"}"
+          title="${escapeHtml(grammarCheckButtonTitle)}"
+        >
+          <strong>Grammar check</strong>
+          <span>${escapeHtml(grammarCheckEnabled ? grammarCheckLabel : "Live off")}</span>
+        </button>
+      </div>
     </div>
     ${selectedScene ? renderSceneEditorHTML(selectedScene, {
       state,
       editorMode,
+      grammarCheckSummary,
       buildEditorStyle,
       getInlinePassageDraftAnchor,
+      formatChapterDisplayTitle,
     }) : ""}
   `;
 }
@@ -30,19 +77,39 @@ export function renderManuscriptPanelHTML({
 export function renderSceneEditorHTML(scene, {
   state,
   editorMode,
+  grammarCheckSummary,
   buildEditorStyle,
   getInlinePassageDraftAnchor,
+  formatChapterDisplayTitle,
 }) {
+  // Intent: keep manuscript and narration modes in one render surface while their controllers are extracted.
   const mode = editorMode === "narration" ? "narration" : "manuscript";
   const hasDraft = Boolean(state.sceneDrafts[scene.sceneId]);
+  const revisionStats = state.sceneDrafts?.[scene.sceneId]?.revisionStats ?? null;
+  const revisionEditCount = Number(revisionStats?.editCount ?? 0);
+  const showRevisionHighlight = Boolean(
+    REVISION_DRAFTING_UI_ENABLED &&
+    state.editorPrefs?.revisionOverlayEnabled &&
+    revisionEditCount > 0,
+  );
   const localAiStatus = state.localAiTitleStatus[scene.sceneId];
   const narrationSelection = mode === "narration" && state.narrationTakeSelection?.sceneId === scene.sceneId
     ? state.narrationTakeSelection
     : null;
   const narrationSession = mode === "narration" ? state.narrationTakeSession : null;
+  const chapterTitle = typeof formatChapterDisplayTitle === "function"
+    ? formatChapterDisplayTitle(scene.chapterTitle)
+    : String(scene.chapterTitle ?? "").trim() || "Untitled chapter";
 
   return `
-    <section class="scene-editor-shell ${mode === "narration" ? "narration-editor-shell" : ""}">
+    <section
+      class="scene-editor-shell ${mode === "narration" ? "narration-editor-shell" : ""} ${showRevisionHighlight ? "has-revision-preview" : ""}"
+      data-scene-editor-scene-id="${escapeHtml(scene.sceneId)}"
+    >
+      <div class="scene-editor-context">
+        <span>Chapter</span>
+        <strong data-scene-editor-chapter-title="${escapeHtml(scene.chapterId)}">${escapeHtml(chapterTitle)}</strong>
+      </div>
       <div class="scene-editor-header">
         <div class="editor-title-row">
           <input
@@ -51,6 +118,7 @@ export function renderSceneEditorHTML(scene, {
             value="${escapeHtml(scene.sceneTitle)}"
             data-edit-field="scene-title"
             data-scene-id="${escapeHtml(scene.sceneId)}"
+            data-scene-title-id="${escapeHtml(scene.sceneId)}"
             aria-label="Scene title"
           />
           <button
@@ -82,29 +150,91 @@ export function renderSceneEditorHTML(scene, {
                 value: String(value),
                 label: `${value}px`,
               })), String(state.editorPrefs.editorWidth))}
+              <button
+                class="tag-button editor-action-button editor-toggle-button"
+                type="button"
+                data-action="toggle-italic-text"
+                aria-pressed="${state.editorPrefs.italicText === true ? "true" : "false"}"
+              >${state.editorPrefs.italicText === true ? "Italic on" : "Italic text"}</button>
             `}
           ${hasDraft ? `<button class="tag-button editor-action-button" data-action="reset-scene-draft" data-scene-id="${escapeHtml(scene.sceneId)}">Revert local draft</button>` : ""}
         </div>
       </div>
+      ${REVISION_DRAFTING_UI_ENABLED ? renderRevisionPanel(scene, state, revisionStats) : ""}
 
       <div
-        class="scene-editor-codeframe ${mode === "narration" ? "narration-editor-frame" : ""}"
+        class="scene-editor-codeframe ${mode === "narration" ? "narration-editor-frame" : ""} ${showRevisionHighlight ? "has-revision-preview" : ""}"
         data-scene-editor="${escapeHtml(scene.sceneId)}"
         style="${escapeHtml(buildEditorStyle())}"
       >
         <div class="editor-document-gutter" data-editor-gutter aria-hidden="true"></div>
         <div class="editor-document-body">
+          <div class="editor-spellcheck-layer" data-spellcheck-layer aria-hidden="true"></div>
           <textarea
-            class="editor-document-input"
+            class="editor-document-input ${showRevisionHighlight ? "has-revision-preview" : ""}"
             data-edit-field="editor-text"
             data-scene-id="${escapeHtml(scene.sceneId)}"
-            spellcheck="true"
+            spellcheck="false"
+            lang="en-US"
+            autocapitalize="off"
           >${escapeHtml(scene.editorText ?? "")}</textarea>
         </div>
         ${renderInlinePassageDraftHTML(scene, state, getInlinePassageDraftAnchor)}
       </div>
     </section>
   `;
+}
+
+function renderRevisionPanel(scene, state, revisionStats) {
+  // Intent: keep dormant revision UI markup isolated until the drafting workflow is re-enabled.
+  const revisionEditCount = Number(revisionStats?.editCount ?? 0);
+  const revisionHistory = Array.isArray(revisionStats?.history) ? revisionStats.history : [];
+  const revisionOverlayEnabled = state.editorPrefs?.revisionOverlayEnabled === true;
+  const summary = revisionStats?.lastChangeSummary
+    ? String(revisionStats.lastChangeSummary)
+    : "Track revisions while you edit this passage.";
+
+  return `
+    <div class="scene-revision-panel ${revisionOverlayEnabled ? "is-enabled" : ""} ${revisionEditCount > 0 ? "has-history" : ""}">
+      <div class="scene-revision-panel__header">
+        <div class="scene-revision-panel__title">
+          <span>Revisions</span>
+          <strong data-revision-count="${escapeHtml(scene.sceneId)}">${escapeHtml(`${revisionEditCount} edit${revisionEditCount === 1 ? "" : "s"}`)}</strong>
+        </div>
+        <button
+          class="tag-button editor-action-button"
+          type="button"
+          data-action="toggle-revision-overlay"
+          data-scene-id="${escapeHtml(scene.sceneId)}"
+        >${revisionOverlayEnabled ? "Hide highlights" : "Show highlights"}</button>
+      </div>
+      <p class="scene-revision-panel__summary" data-revision-summary="${escapeHtml(scene.sceneId)}">${escapeHtml(summary)}</p>
+      ${revisionHistory.length ? `
+        <ul class="scene-revision-panel__history" data-revision-history="${escapeHtml(scene.sceneId)}">
+          ${revisionHistory.slice(0, 3).map((entry) => `
+            <li>
+              <strong>${escapeHtml(entry.summary || "Edited passage")}</strong>
+              <span>${escapeHtml(formatRevisionTimestamp(entry.updatedAt || entry.createdAt || ""))}</span>
+            </li>
+          `).join("")}
+        </ul>
+      ` : ""}
+    </div>
+  `;
+}
+
+function formatRevisionTimestamp(value) {
+  const timestamp = typeof value === "string" ? value.trim() : "";
+  if (!timestamp) {
+    return "";
+  }
+
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return date.toLocaleString();
 }
 
 export function getPassageNotePlaceholder(noteType) {
@@ -114,6 +244,7 @@ export function getPassageNotePlaceholder(noteType) {
 }
 
 function renderInlinePassageDraftHTML(scene, state, getInlinePassageDraftAnchor) {
+  // Intent: render anchored note drafts beside the text they will attach to.
   const draft = state.inlinePassageDraft;
   if (!draft || draft.sceneId !== scene.sceneId) {
     return "";
@@ -160,6 +291,7 @@ function renderInlinePassageDraftHTML(scene, state, getInlinePassageDraftAnchor)
 }
 
 function renderNarrationRecordingTools(scene, selection, session) {
+  // Intent: expose narration-take controls without embedding recording runtime logic in the renderer.
   const statusLabel = session?.status === "recording"
     ? `Recording ${session.elapsedLabel ?? "0:00"}`
     : selection

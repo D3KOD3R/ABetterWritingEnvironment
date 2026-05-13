@@ -1,3 +1,4 @@
+// Intent: define canonical manuscript identity, anchors, issues, events, characters, and speaker mappings.
 export type ManuscriptBlockKind = "narration" | "dialogue";
 export type IssueSeverity = "info" | "warning" | "error";
 export type IssueCategory =
@@ -242,6 +243,7 @@ const DEFAULT_SEQUENCES: ManuscriptSequences = {
   speakerAssignment: 0,
 };
 
+// Intent: create the canonical project container that all editor and service anchors resolve against.
 export function createProject(input: CreateProjectInput): Project {
   const title = nonEmpty(input.title, "Project title");
   const now = resolveNow(input.now);
@@ -328,6 +330,7 @@ export function addScene(
   };
 }
 
+// Intent: append addressable manuscript blocks while preserving chapter, scene, paragraph, and speaker targets.
 export function addBlock(
   project: Project,
   sceneId: string,
@@ -497,6 +500,7 @@ export function assignSpeaker(
   };
 }
 
+// Intent: project manuscript hierarchy into binder nodes without losing canonical IDs.
 export function buildBinderTree(project: Project): BinderNode {
   return {
     id: `binder-${project.id}`,
@@ -548,6 +552,7 @@ export function buildManuscriptIndex(project: Project): ManuscriptIndexEntry[] {
   return entries;
 }
 
+// Intent: create validated manuscript anchors for diagnostics, event tags, narration, and notes.
 export function createManuscriptAnchor(
   project: Project,
   input: AnchorInput,
@@ -653,6 +658,7 @@ export function addIssueRecord(
   };
 }
 
+// Intent: store event pins as structured, anchor-backed story events.
 export function addEventTag(
   project: Project,
   input: AddEventTagInput,
@@ -693,6 +699,7 @@ interface BlockLocation extends SceneLocation {
   block: ManuscriptBlock;
 }
 
+// Intent: keep hierarchy lookup helpers private so callers use validated public anchor APIs.
 function findSceneLocation(project: Project, sceneId: string): SceneLocation | null {
   for (let chapterIndex = 0; chapterIndex < project.chapters.length; chapterIndex += 1) {
     const chapter = project.chapters[chapterIndex];

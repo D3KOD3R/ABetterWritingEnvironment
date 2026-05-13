@@ -1,3 +1,4 @@
+// Intent: verify canonical manuscript anchors, issues, events, and speaker assignments remain resolvable.
 import assert from "node:assert/strict";
 
 import {

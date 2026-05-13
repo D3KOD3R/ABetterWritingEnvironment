@@ -1,3 +1,4 @@
+// Intent: provide tiny browser-safe formatting helpers shared across editor feature modules.
 export function escapeHtml(value) {
   return String(value)
     .replaceAll("&", "&amp;")

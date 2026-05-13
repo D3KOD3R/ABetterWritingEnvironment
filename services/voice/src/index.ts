@@ -1,3 +1,4 @@
+// Intent: provide voice preview, speaker binding, and chapter render service behavior behind contracts.
 import { createCompletedJob } from "../../../packages/job-contracts/src/index.ts";
 import type {
   CreateSpeakerBindingsInput,
@@ -13,6 +14,7 @@ export * from "./voice-queue.ts";
 export * from "./voice-profile.ts";
 export * from "./voice-storage.ts";
 
+// Intent: seed stable demo profiles so speaker bindings can be exercised before real voice providers exist.
 const VOICE_PROFILES: SpeakerVoiceProfile[] = [
   {
     id: "voice-narrator-lantern",
@@ -44,6 +46,7 @@ const VOICE_PROFILES: SpeakerVoiceProfile[] = [
   },
 ];
 
+// Intent: expose voice behavior through the shared service contract while provider adapters evolve.
 export function createInMemoryVoiceService(): VoiceServiceContract {
   let bindingSequence = 0;
   let renderSequence = 0;
@@ -118,6 +121,7 @@ export function createInMemoryVoiceService(): VoiceServiceContract {
 }
 
 function resolveVoiceProfileId(speakerLabel: string, role: "narrator" | "character"): string {
+  // Intent: keep demo speaker-to-voice mapping deterministic for tests and local previews.
   const lower = speakerLabel.toLowerCase();
 
   if (role === "narrator") {
@@ -143,6 +147,7 @@ function resolvePreviewText(
   input: CreateSpeakerBindingsInput["project"],
   blockId: string,
 ): string {
+  // Intent: use canonical block text as preview copy for speaker bindings.
   for (const chapter of input.chapters) {
     for (const scene of chapter.scenes) {
       const block = scene.blocks.find((candidate) => candidate.id === blockId);

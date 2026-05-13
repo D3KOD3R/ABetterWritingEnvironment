@@ -1,3 +1,4 @@
+// Intent: define local AI provider, request, and routing contracts shared by local model adapters.
 export type AiModelTier = "tiny" | "standard" | "large";
 
 export type AiTaskType =

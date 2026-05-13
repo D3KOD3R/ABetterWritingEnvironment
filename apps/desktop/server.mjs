@@ -1,3 +1,4 @@
+// Intent: launch the local desktop HTTP host used by the browser editor and service adapters.
 import http from "node:http";
 
 import { createDesktopResponseForRequest } from "./src/http-app.ts";

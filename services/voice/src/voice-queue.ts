@@ -1,3 +1,4 @@
+// Intent: manage in-memory narration render queues with explicit state transitions.
 import { createNarrationJob, type CreateNarrationJobInput, type NarrationJob, type NarrationJobStatus, cancelNarrationJob, cloneNarrationJob, failNarrationJob, markNarrationJobRendered, queueNarrationJob, startNarrationJobRendering } from "./narration-job.ts";
 
 export interface VoiceQueueListFilter {
@@ -17,6 +18,7 @@ export interface VoiceQueueService {
   getJob(jobId: string): NarrationJob | null;
 }
 
+// Intent: keep queue mutation deterministic and clone-based until a durable job runner is introduced.
 export function createVoiceQueue(initialJobs: NarrationJob[] = []): VoiceQueueService {
   const jobs = new Map<string, NarrationJob>();
 
@@ -25,6 +27,7 @@ export function createVoiceQueue(initialJobs: NarrationJob[] = []): VoiceQueueSe
   }
 
   function listJobs(filter?: VoiceQueueListFilter): NarrationJob[] {
+    // Intent: expose filtered snapshots without leaking mutable queue internals.
     const statusFilter = normalizeStatusFilter(filter?.status);
     const projectId = typeof filter?.projectId === "string" && filter.projectId.trim()
       ? filter.projectId.trim()
@@ -80,6 +83,7 @@ export function createVoiceQueue(initialJobs: NarrationJob[] = []): VoiceQueueSe
 }
 
 function requireJob(jobs: Map<string, NarrationJob>, jobId: string): NarrationJob {
+  // Intent: fail fast when callers attempt transitions on unknown jobs.
   const job = jobs.get(jobId);
 
   if (!job) {

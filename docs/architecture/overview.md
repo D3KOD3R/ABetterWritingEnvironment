@@ -49,4 +49,22 @@ This foundation keeps the product aligned with a writer's IDE and worldbuilding 
 - narration follow status
 - character voice routing and render jobs
 
+The center scene-editor surface now lives in `apps/editor/public/features/scene-editor.js`, which keeps the manuscript shell reusable while the surrounding app continues to orchestrate the rest of the workspace.
+
 That separation is the key correction from the earlier bootstrap. The editor renders author workflows, while the desktop host owns composition and runtime lifecycle.
+
+## Parallel Worktree Topology
+
+The repository uses `main` as the canonical manuscript shell integration line.
+
+- The root checkout is the manuscript shell that everything else plugs into.
+- `Run GUI.bat` and `Run Manuscript Shell.bat` both launch the root `main` shell on port `4310`.
+- `Run Manuscript Shell Worktree.bat` launches the isolated `feature/manuscript-shell` worktree on port `4311` for shell-specific refactors that should not disturb the integration line.
+- `Run Voice Service.bat` launches the isolated `feature/voice-service` worktree on port `4312`.
+- `Run World Service.bat` launches the isolated `feature/world-service` worktree on port `4313`.
+
+This lets shell-oriented work stay anchored to `main` while still allowing parallel development and side-by-side testing of voice and world subsystems in separate worktrees.
+
+## Editor Refactor Roadmap
+
+The editor shell refactor plan is documented in [Editor Application Refactor Roadmap](./editor-application-roadmap.md). Use that document as the migration order for splitting `apps/editor/public/app.js` into maintainable feature, service, and state modules.

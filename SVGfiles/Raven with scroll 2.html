@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Anchor-based Raven Save Icon Preview</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: #0f1720;
+      font-family: Arial, sans-serif;
+    }
+
+    .preview {
+      width: 980px;
+      height: 520px;
+      display: grid;
+      place-items: center;
+      border-radius: 28px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.02));
+      border: 1px solid rgba(255,255,255,0.08);
+      box-shadow: 0 12px 36px rgba(0,0,0,0.20);
+      overflow: hidden;
+    }
+
+    .preview svg {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div class="preview">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 540" width="1000" height="540" role="img" aria-label="Anchor-based raven holding a scroll save icon">
+  <defs>
+    <linearGradient id="bodyGrad" x1="0.15" y1="0.10" x2="0.95" y2="0.92">
+      <stop offset="0%" stop-color="#39414f"/>
+      <stop offset="42%" stop-color="#171d26"/>
+      <stop offset="100%" stop-color="#07090d"/>
+    </linearGradient>
+
+    <linearGradient id="wingGradFar" x1="0.12" y1="0.10" x2="0.95" y2="0.85">
+      <stop offset="0%" stop-color="#45505f"/>
+      <stop offset="45%" stop-color="#1a212b"/>
+      <stop offset="100%" stop-color="#06080b"/>
+    </linearGradient>
+
+    <linearGradient id="wingGradNear" x1="0.10" y1="0.10" x2="0.85" y2="0.96">
+      <stop offset="0%" stop-color="#313946"/>
+      <stop offset="45%" stop-color="#141b24"/>
+      <stop offset="100%" stop-color="#06080c"/>
+    </linearGradient>
+
+    <linearGradient id="tailGrad" x1="0.0" y1="0.0" x2="1.0" y2="1.0">
+      <stop offset="0%" stop-color="#242a33"/>
+      <stop offset="100%" stop-color="#05070a"/>
+    </linearGradient>
+
+    <linearGradient id="beakGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#dac18f"/>
+      <stop offset="100%" stop-color="#9f7c43"/>
+    </linearGradient>
+
+    <linearGradient id="scrollGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fbf0d6"/>
+      <stop offset="100%" stop-color="#ddc896"/>
+    </linearGradient>
+
+    <filter id="softShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="12"/>
+    </filter>
+
+    <filter id="bodyShadow" x="-25%" y="-25%" width="150%" height="150%">
+      <feDropShadow dx="0" dy="10" stdDeviation="9" flood-color="#000000" flood-opacity="0.16"/>
+    </filter>
+  </defs>
+
+  <style>
+    /* Shared anchor roots keep everything tied together */
+    .raven {
+      transform-origin: 500px 240px;
+      animation: hover 2.8s ease-in-out infinite;
+    }
+
+    .farWing {
+      transform-origin: 518px 166px;
+      animation: flapFar 1.15s ease-in-out infinite;
+    }
+
+    .nearWing {
+      transform-origin: 334px 232px;
+      animation: flapNear 1.15s ease-in-out infinite;
+    }
+
+    .scrollGroup {
+      transform-origin: 568px 323px;
+      animation: scrollSwing 2.8s ease-in-out infinite;
+    }
+
+    .groundShadow {
+      transform-origin: 555px 396px;
+      animation: shadowPulse 2.8s ease-in-out infinite;
+      opacity: 0.12;
+    }
+
+    @keyframes hover {
+      0%, 100% { transform: translateY(0px); }
+      50%      { transform: translateY(-4px); }
+    }
+
+    @keyframes flapFar {
+      0%, 100% { transform: rotate(-4deg) translateY(0px); }
+      50%      { transform: rotate(-11deg) translateY(-5px); }
+    }
+
+    @keyframes flapNear {
+      0%, 100% { transform: rotate(7deg) translateY(0px); }
+      50%      { transform: rotate(15deg) translateY(5px); }
+    }
+
+    @keyframes scrollSwing {
+      0%, 100% { transform: rotate(0deg) translateY(0px); }
+      50%      { transform: rotate(1.8deg) translateY(2px); }
+    }
+
+    @keyframes shadowPulse {
+      0%, 100% { transform: scaleX(1); opacity: 0.12; }
+      50%      { transform: scaleX(0.92); opacity: 0.07; }
+    }
+  </style>
+
+  <!-- anchor comments:
+       beak_tip=(84, 184), beak_base_top=(176, 176), head_back=(300, 180),
+       neck_top=(360, 168), near_wing_root=(334, 232), far_wing_root=(518, 166),
+       hump=(522, 126), tail_root_top=(810, 158), belly_mid=(604, 256) -->
+
+  <ellipse class="groundShadow" cx="560" cy="400" rx="330" ry="26" fill="#000000" filter="url(#softShadow)"/>
+
+  <g class="raven">
+    <g class="farWing">
+      <path d="M 518,166
+C 608,128 697,118 792,124
+C 844,126 888,132 926,146
+C 902,152 874,157 844,160
+C 887,165 927,172 972,170
+C 922,178 876,181 828,181
+C 870,187 909,197 945,210
+C 893,207 839,203 780,198
+C 707,192 624,182 518,166
+Z" fill="url(#wingGradFar)"/>
+      <path d="M 548,160
+C 647,150 734,153 822,165
+C 785,173 746,183 708,197
+C 751,206 791,219 831,238
+C 765,225 700,207 636,186
+C 604,176 576,168 548,160
+Z" fill="#0f141b" opacity="0.42"/>
+    </g>
+
+    <path d="M 810,158
+C 852,151 905,150 956,138
+C 920,153 889,160 856,166
+C 914,168 946,170 980,168
+C 936,178 893,180 846,181
+C 901,186 930,191 952,198
+C 912,202 872,201 826,198
+C 807,194 794,191 782,188
+C 793,177 800,167 810,158
+Z" fill="url(#tailGrad)"/>
+    <path d="M 812 156 L 932 136 L 819 170 Z" fill="#0b0d11"/>
+    <path d="M 817 166 L 980 166 L 820 178 Z" fill="#090b10"/>
+    <path d="M 812 176 L 944 198 L 816 187 Z" fill="#0b0d12"/>
+
+    <path d="M 360,168
+C 402,160 454,144 500,132
+C 507,126 515,124 522,126
+C 575,130 635,140 706,150
+C 757,157 790,160 810,158
+C 810,168 805,184 782,188
+C 736,230 676,251 604,256
+C 537,278 438,277 376,252
+C 349,246 330,238 330,228
+C 343,210 350,189 360,168
+Z" fill="url(#bodyGrad)" filter="url(#bodyShadow)"/>
+    <path d="M 386,176
+C 444,146 500,134 560,133
+C 628,135 704,148 774,167
+C 720,186 659,202 593,215
+C 519,229 449,227 392,214
+C 342,202 328,188 386,176
+Z" fill="#5c6777" opacity="0.15"/>
+
+    <path d="M 176,176
+C 205,160 246,160 284,170
+C 310,178 324,192 300,180
+C 312,202 308,215 292,222
+C 258,236 224,236 194,224
+C 174,216 158,205 170,202
+C 164,190 165,182 176,176
+Z" fill="url(#bodyGrad)"/>
+    <path d="M 228,174
+C 260,168 287,170 309,178
+C 295,183 274,188 247,191
+C 224,193 206,189 194,182
+C 203,177 214,175 228,174
+Z" fill="#424b58" opacity="0.22"/>
+
+    <g class="nearWing">
+      <path d="M 334,232
+C 281,224 220,242 167,279
+C 115,316 82,362 56,420
+C 88,401 116,389 145,384
+C 124,419 114,455 118,488
+C 145,470 169,444 186,409
+C 193,443 203,473 220,493
+C 243,458 261,416 277,363
+C 296,302 312,260 334,232
+Z" fill="url(#wingGradNear)"/>
+      <path d="M 300,254
+C 250,270 208,300 166,342
+C 192,338 226,348 254,364
+C 224,399 203,432 188,462
+C 213,442 232,416 249,383
+C 270,341 288,298 300,254
+Z" fill="#0f141b" opacity="0.50"/>
+    </g>
+
+    <path d="M 84,184
+C 112,176 139,172 176,176
+C 182,184 182,194 170,202
+C 138,197 113,195 84,184
+C 92,191 92,187 84,184
+Z" fill="url(#beakGrad)"/>
+    <path d="M 134 184 C 151 181 164 180 176 183 C 176 188 175 193 170 202 C 156 198 144 196 134 184 Z" fill="#8f7041" opacity="0.72"/>
+
+    <g id="eye">
+      <circle cx="208" cy="184" r="7.5" fill="#f0f4fb"/>
+      <circle cx="209.8" cy="185.1" r="3.3" fill="#0a0c11"/>
+      <circle cx="206.2" cy="182.0" r="1.2" fill="#ffffff" opacity="0.95"/>
+    </g>
+
+    <g class="scrollGroup">
+      
+  <g id="claws" stroke="#967536" stroke-width="6" stroke-linecap="round" fill="none">
+    <path d="M 548 283 L 535 304"/>
+    <path d="M 586 285 L 600 304"/>
+    <path d="M 535 304 L 521 316"/>
+    <path d="M 535 304 L 546 318"/>
+    <path d="M 600 304 L 613 316"/>
+    <path d="M 600 304 L 589 318"/>
+  </g>
+
+      
+  <g id="scroll">
+    <ellipse cx="568" cy="326" rx="88" ry="16" fill="#000000" opacity="0.08"/>
+    <rect x="500" y="302" width="136" height="42" rx="18" fill="url(#scrollGrad)" stroke="#b08c49" stroke-width="5"/>
+    <circle cx="500" cy="323" r="18" fill="url(#scrollGrad)" stroke="#b08c49" stroke-width="5"/>
+    <circle cx="636" cy="323" r="18" fill="url(#scrollGrad)" stroke="#b08c49" stroke-width="5"/>
+    <circle cx="500" cy="323" r="8.5" fill="none" stroke="#cfb474" stroke-width="3"/>
+    <circle cx="636" cy="323" r="8.5" fill="none" stroke="#cfb474" stroke-width="3"/>
+    <path d="M 527 313 H 605 M 527 323 H 598 M 527 333 H 606" stroke="#b79c64" stroke-width="3.5" stroke-linecap="round"/>
+  </g>
+
+    </g>
+  </g>
+</svg>
+
+  </div>
+</body>
+</html>

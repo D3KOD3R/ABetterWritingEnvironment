@@ -1,3 +1,4 @@
+// Intent: keep inline session-tracker pen SVG assets local to the writing-target feature.
 const SESSION_TRACKER_SLEEPING_PEN_SVG = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 170" width="260" height="170" aria-hidden="true" focusable="false">
   <style>

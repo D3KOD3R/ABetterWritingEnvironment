@@ -1,13 +1,19 @@
+// Intent: render writing-target and session-tracker UI fragments without owning editor persistence.
 import { renderSessionTrackerPenSvg } from "../session-tracker-icons.js";
 import { escapeHtml, formatDisplayNumber } from "../shared/ui-utils.js";
 
+// Intent: render only the visible metrics selected by writing-goal state.
 export function renderWritingTargetStrip(summary) {
   const visibleMetrics = summary?.visibleMetrics ?? [];
+  const renderedCards = visibleMetrics.map((metric) => (
+    metric?.key === "sessionTracker"
+      ? renderSessionTrackerPanel(summary)
+      : renderWritingTargetCard(metric, summary)
+  ));
   return `
     <div class="desktop-target-strip" aria-label="Writing target metrics" data-writing-target-strip>
       <div class="desktop-target-strip__metrics">
-        ${visibleMetrics.map((metric) => renderWritingTargetCard(metric, summary)).join("")}
-        ${renderSessionTrackerPanel(summary)}
+        ${renderedCards.join("")}
       </div>
     </div>
   `;
@@ -27,6 +33,7 @@ export function buildSessionTrackerMetric(summary) {
       sessionStartTimeLabel: "—",
       sessionMinutesLapsedLabel: "0",
       sessionIsActive: false,
+      sessionPaceActive: false,
       sessionIdleLabel: "Idle",
       wpmValue: 0,
       wpmLabel: "0.00",
@@ -39,7 +46,6 @@ export function buildSessionTrackerMetric(summary) {
   const requiredWordsPerMinute = Number(summary.sessionRequiredWordsPerMinute) || 0;
   const paceRatio = Number(summary.sessionWordsPerMinuteRatio);
   const statusText = summary.sessionWordsPerMinuteStatusText ?? "";
-
   return {
     key: "sessionTracker",
     label: "Session tracker",
@@ -52,6 +58,7 @@ export function buildSessionTrackerMetric(summary) {
     sessionStartTimeLabel: summary.sessionStartTimeLabel ?? "—",
     sessionMinutesLapsedLabel: formatDisplayNumber(Math.max(0, Math.floor(Number(summary.sessionMinutesLapsed ?? 0)))),
     sessionIsActive: summary.sessionIsActive === true,
+    sessionPaceActive: summary.sessionPaceActive === true,
     sessionIdleLabel: summary.sessionIdleLabel ?? "Idle",
     wpmValue: currentWordsPerMinute,
     wpmLabel: summary.sessionWordsPerMinuteLabel ?? "0/min",
@@ -67,11 +74,13 @@ export function buildSessionTrackerMetric(summary) {
   };
 }
 
+// Intent: choose the pen visual from live session pace without affecting session state.
 export function getSessionTrackerVisualState(summary, tracker) {
   const isLiveSession = summary?.sessionIsActive === true;
+  const isPaceActive = summary?.sessionPaceActive === true || tracker?.sessionPaceActive === true;
   const currentWordsPerMinute = Number(summary?.sessionWordsPerMinute ?? tracker?.wpmValue ?? 0);
 
-  if (!isLiveSession || Math.round(currentWordsPerMinute) <= 0) {
+  if (!isLiveSession || !isPaceActive || Math.round(currentWordsPerMinute) <= 0) {
     return { key: "sleeping" };
   }
 
@@ -106,8 +115,9 @@ export function renderSessionTrackerPanel(summary) {
   const tracker = buildSessionTrackerMetric(summary);
   const paceRatio = Math.max(0, Math.min(1, Number(summary?.sessionWordsPerMinuteRatio ?? tracker.progress ?? 0)));
   const isLiveSession = summary?.sessionIsActive === true;
+  const isPaceActive = summary?.sessionPaceActive === true || tracker.sessionPaceActive === true;
   const visualState = getSessionTrackerVisualState(summary, tracker);
-  const paceStatus = isLiveSession
+  const paceStatus = isPaceActive
     ? summary?.sessionWordsPerMinuteOverTarget
       ? "You’re outperforming"
       : summary?.sessionWordsPerMinuteStatusText === "On track"
@@ -117,7 +127,7 @@ export function renderSessionTrackerPanel(summary) {
           : "Need more pace"
     : "Idle";
   const progressWidth = Math.max(0, Math.min(100, Math.round((Number(summary?.currentSessionWords ?? 0) / Math.max(1, Number(summary?.sessionTargetWordsPerSession ?? 0))) * 100)));
-  const paceColor = isLiveSession
+  const paceColor = isPaceActive
     ? summary?.sessionWordsPerMinuteBarColor ?? "rgb(113, 215, 177)"
     : "rgba(31, 36, 48, 0.26)";
 
@@ -192,6 +202,7 @@ export function renderSessionTrackerClockIcon() {
   `;
 }
 
+// Intent: render generic writing-target cards from normalized metric records.
 export function renderWritingTargetCard(metric, summary) {
   const value = metric.value ?? "—";
   const leftLabel = metric.leftLabel ?? "";

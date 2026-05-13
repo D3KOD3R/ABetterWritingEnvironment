@@ -1,3 +1,4 @@
+// Intent: define long-running job request, status, and result contracts shared by services.
 import type { ManuscriptAnchor } from "../../manuscript-schema/src/index.ts";
 
 export type JobType = "analysis" | "alignment" | "voice-preview" | "voice-render";
@@ -61,6 +62,7 @@ export type VoiceRenderJob =
   | BaseJob<"voice-preview", VoiceRenderJobRequest, VoiceRenderJobResult>
   | BaseJob<"voice-render", VoiceRenderJobRequest, VoiceRenderJobResult>;
 
+// Intent: create deterministic completed jobs for synchronous local providers while preserving async job shape.
 export function createCompletedJob<TType extends JobType, TRequest, TResult>(
   id: string,
   type: TType,

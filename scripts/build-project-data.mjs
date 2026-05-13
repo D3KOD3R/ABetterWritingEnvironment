@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Intent: build browser-loadable project seed data from the canonical app-native project file.
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 

@@ -1,3 +1,4 @@
+// Intent: verify editor-model helpers preserve scene drafts, preferences, tasks, and passage notes.
 import assert from "node:assert/strict";
 
 import {
@@ -7,6 +8,7 @@ import {
   countRemainingTasksByChapter,
   createDefaultEditorPrefs,
   createDefaultLocalAiPrefs,
+  createDefaultSpellcheckProjectSettings,
   createDraftBlock,
   createManuscriptTask,
   createPassageNote,
@@ -19,6 +21,7 @@ import {
   normalizeEditorPrefs,
   normalizeLocalAiPrefs,
   normalizePassageNotes,
+  normalizeSpellcheckProjectSettings,
   resolveManuscriptTaskRange,
   updateManuscriptTaskTitle,
   updatePassageNoteBody,
@@ -157,10 +160,25 @@ export function runEditorModelTest() {
       fontSize: 22,
       lineHeight: 1.9,
       editorWidth: 840,
+      projectFileAutosaveEnabled: true,
+      grammarCheckEnabled: true,
+      revisionOverlayEnabled: false,
+      italicText: false,
     },
   );
   assert.deepEqual(normalizeLocalAiPrefs({}), createDefaultLocalAiPrefs());
   assert.deepEqual(normalizeLocalAiPrefs({ enabled: false }), { enabled: false });
+  assert.deepEqual(normalizeSpellcheckProjectSettings({}), createDefaultSpellcheckProjectSettings());
+  assert.deepEqual(
+    normalizeSpellcheckProjectSettings({
+      dictionaryWords: ["Khepri", "khepri", "Halcyon"],
+      exceptions: ["Mara", "mara", "  "],
+    }),
+    {
+      dictionaryWords: ["khepri", "halcyon"],
+      exceptionWords: ["mara"],
+    },
+  );
 
   const task = createManuscriptTask(
     scenes[0],

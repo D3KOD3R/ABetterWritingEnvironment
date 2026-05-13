@@ -1,3 +1,4 @@
+// Intent: verify local analysis returns anchored issue, event, world, and dream-scaping suggestions.
 import assert from "node:assert/strict";
 
 import {

@@ -1,3 +1,4 @@
+// Intent: adapt OpenAI-compatible llama.cpp servers to the repository's local AI provider contract.
 import type {
   AiModelTier,
   AiRequest,
@@ -20,6 +21,7 @@ type LlamaChatCompletionResponse = {
   }>;
 };
 
+// Intent: isolate llama.cpp transport details behind the local AI provider interface.
 export class LlamaCppProvider implements LocalAiProvider {
   readonly providerName = "llama.cpp";
   readonly baseUrl: string;
@@ -40,6 +42,7 @@ export class LlamaCppProvider implements LocalAiProvider {
   }
 
   async isAvailable(): Promise<boolean> {
+    // Intent: use a cheap health check before sending manuscript content to the local server.
     try {
       const response = await this.fetchWithTimeout(`${this.baseUrl}/health`, {
         method: "GET",
@@ -57,6 +60,7 @@ export class LlamaCppProvider implements LocalAiProvider {
     systemPrompt: string;
     userPrompt: string;
   }): Promise<AiResult> {
+    // Intent: translate provider responses and failures into stable local AI result objects.
     const { request, selectedTier, systemPrompt, userPrompt } = args;
     const modelName = this.modelByTier[selectedTier];
 
@@ -124,6 +128,7 @@ export class LlamaCppProvider implements LocalAiProvider {
   }
 
   private async fetchWithTimeout(input: string, init: RequestInit): Promise<Response> {
+    // Intent: bound localhost calls so editor actions do not hang when the model server is down.
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
 

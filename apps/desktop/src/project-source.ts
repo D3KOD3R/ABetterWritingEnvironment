@@ -1,3 +1,4 @@
+// Intent: load app-native project files into normalized saved-project library snapshots.
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 
@@ -12,6 +13,7 @@ export interface ProjectSourceOptions {
   now?: string;
 }
 
+// Intent: load user-selected project files but fall back to the bundled seed when the source is invalid.
 export function loadProjectLibrarySeedFromPath(
   projectPath: string,
   options: ProjectSourceOptions = {},
@@ -36,6 +38,7 @@ export function loadProjectLibrarySeedFromPath(
 }
 
 export function resolveProjectSourcePath(projectPath: string): string {
+  // Intent: accept either an explicit `.abe-project.json` file or a folder containing one.
   const resolvedPath = path.resolve(String(projectPath ?? ""));
   if (!existsSync(resolvedPath)) {
     throw new Error(`Project source path does not exist: ${resolvedPath}`);
@@ -77,6 +80,7 @@ function normalizeProjectLibrarySnapshot(
   candidate: unknown,
   now?: string,
 ): ProjectLibrarySeedSnapshot {
+  // Intent: enforce the saved-project library contract before the browser consumes imported state.
   if (!candidate || typeof candidate !== "object") {
     throw new Error("Project library snapshot must be an object.");
   }
@@ -108,6 +112,7 @@ function normalizeProjectLibraryRecord(
   now?: string,
   index = 0,
 ): ProjectLibrarySeedRecord {
+  // Intent: backfill optional save fields so older project files remain loadable.
   if (!candidate || typeof candidate !== "object") {
     throw new Error("Project record must be an object.");
   }
@@ -145,6 +150,10 @@ function normalizeProjectLibraryRecord(
     projectSettings: normalizeObject(project.projectSettings, "projectSettings", {
       projectFilePath: "",
       projectSourcePath: "",
+      spellcheck: {
+        dictionaryWords: [],
+        exceptionWords: [],
+      },
     }),
     editorPrefs: normalizeObject(project.editorPrefs, "editorPrefs"),
     localAiPrefs: normalizeObject(project.localAiPrefs, "localAiPrefs", { enabled: true }),
@@ -184,6 +193,7 @@ function normalizeObject<T extends Record<string, unknown>>(
 }
 
 function findFirstMatchingFile(rootPath: string, predicate: (filePath: string) => boolean) {
+  // Intent: locate app-native project files in nested project folders without reviving legacy import formats.
   for (const entry of readdirSync(rootPath, { withFileTypes: true })) {
     const entryPath = path.join(rootPath, entry.name);
     if (entry.isFile() && predicate(entryPath)) {

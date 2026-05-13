@@ -1,3 +1,4 @@
+// Intent: smoke test the desktop host, project-file routes, editor modules, and bundled workspace assets.
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -9,6 +10,7 @@ import {
   createDesktopResponseForRequest,
 } from "../apps/desktop/src/http-app.ts";
 import { createDesktopWorkspaceSnapshot } from "../apps/desktop/src/workspace.ts";
+import { resolveLoadedProjectFilePath } from "../apps/editor/public/shared/project-file-path.js";
 
 export async function runDesktopApplicationTest() {
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -37,6 +39,21 @@ export async function runDesktopApplicationTest() {
   assert.equal(workspace.voice.renderJobs.length, 2);
   assert.equal(workspace.project.navigationTargets["scene-0002"].lineNumber, 4);
   assert.match(workspace.analysis.suggestionQueue[0].title, /Station/);
+  assert.equal(
+    resolveLoadedProjectFilePath(
+      "C:\\Users\\ASUS\\Desktop\\Repos\\ABetterNovelAuthoringEnvironment\\SaveTestFile\\project-serva-vitae.abe-project.json",
+      "C:\\Users\\ASUS\\Desktop\\Repos\\ABetterNovelAuthoringEnvironment\\project-serva-vitae.abe-project.json",
+    ),
+    "C:\\Users\\ASUS\\Desktop\\Repos\\ABetterNovelAuthoringEnvironment\\SaveTestFile\\project-serva-vitae.abe-project.json",
+  );
+  assert.equal(
+    resolveLoadedProjectFilePath(
+      "",
+      "C:\\Users\\ASUS\\Desktop\\Repos\\ABetterNovelAuthoringEnvironment\\SaveTestFile\\project-serva-vitae.abe-project.json",
+    ),
+    "C:\\Users\\ASUS\\Desktop\\Repos\\ABetterNovelAuthoringEnvironment\\SaveTestFile\\project-serva-vitae.abe-project.json",
+  );
+  assert.equal(resolveLoadedProjectFilePath("", ""), "");
 
   const root = createDesktopResponse("/");
   assert.equal(root.statusCode, 200);
@@ -53,6 +70,20 @@ export async function runDesktopApplicationTest() {
   assert.equal(parsed.analysis.provider.id, "local-rule-analysis");
   assert.equal(parsed.analysis.lastJob.result.suggestionCount, 3);
   assert.equal(parsed.voice.provider.id, "local-voice-suite");
+
+  const settingsResponse = createDesktopResponse("/api/settings");
+  assert.equal(settingsResponse.statusCode, 200);
+  const desktopSettings = JSON.parse(settingsResponse.body);
+  assert.equal(typeof desktopSettings.lastProjectFilePath, "string");
+  assert.equal(typeof desktopSettings.lastProjectFilePathExplicit, "boolean");
+  const updateSettingsResponse = await createDesktopResponseForRequest({
+    method: "POST",
+    pathname: "/api/settings",
+    body: JSON.stringify({
+      lastProjectFilePath: desktopSettings.lastProjectFilePath,
+    }),
+  });
+  assert.equal(updateSettingsResponse.statusCode, 200);
 
   const projectLibraryResponse = createDesktopResponse("/api/project-library");
   assert.equal(projectLibraryResponse.statusCode, 200);
@@ -137,8 +168,32 @@ export async function runDesktopApplicationTest() {
   assert.match(bundledProjectLibrary.body, /window\.__ABE_SERVA_VITAE_PROJECT_LIBRARY__/);
   assert.match(bundledProjectLibrary.body, /project-serva-vitae/);
 
+  const shellScript = readFileSync(path.join(repoRoot, "apps/editor/public/shell/editor-chrome.js"), "utf8");
+  const sceneEditorModuleScript = readFileSync(
+    path.join(repoRoot, "apps/editor/public/features/scene-editor.js"),
+    "utf8",
+  );
+  const writingTargetWindowScript = readFileSync(
+    path.join(repoRoot, "apps/editor/public/features/writing-targets/writing-target-window.js"),
+    "utf8",
+  );
+  const projectFileAdapterScript = readFileSync(
+    path.join(repoRoot, "apps/editor/public/adapters/storage/project-file.js"),
+    "utf8",
+  );
+  const autosaveAdapterScript = readFileSync(
+    path.join(repoRoot, "apps/editor/public/adapters/storage/autosave.js"),
+    "utf8",
+  );
+  const projectFileDisplayScript = readFileSync(
+    path.join(repoRoot, "apps/editor/public/adapters/storage/project-file-display.js"),
+    "utf8",
+  );
   const appScript = createDesktopResponse("/app.js");
   assert.equal(appScript.statusCode, 200);
+  assert.match(appScript.body, /adapters\/storage\/project-file\.js/);
+  assert.match(appScript.body, /adapters\/storage\/autosave\.js/);
+  assert.match(appScript.body, /adapters\/storage\/project-file-display\.js/);
   assert.doesNotMatch(appScript.body, /Add narration block/);
   assert.doesNotMatch(appScript.body, /Add dialogue block/);
   assert.doesNotMatch(appScript.body, /Scene Synopsis/);
@@ -194,26 +249,42 @@ export async function runDesktopApplicationTest() {
   assert.match(appScript.body, /runNativeTextEditCommand/);
   assert.match(appScript.body, /event\.shiftKey \? "redo" : "undo"/);
   assert.match(appScript.body, /focusProjectLibrarySelect/);
-  assert.match(appScript.body, /Saved projects/);
-  assert.match(appScript.body, /Project file/);
-  assert.match(appScript.body, /project-file-path/);
-  assert.match(appScript.body, /project-file-status/);
-  assert.match(appScript.body, /Save as file/);
-  assert.match(appScript.body, /Load file/);
   assert.match(appScript.body, /canUseBrowserSavePicker/);
   assert.match(appScript.body, /canUseBrowserOpenPicker/);
   assert.match(appScript.body, /promptForProjectFileFromInput/);
   assert.match(appScript.body, /downloadProjectLibrarySnapshot/);
-  assert.match(appScript.body, /project-library-select/);
-  assert.match(appScript.body, /project-library-status/);
-  assert.match(appScript.body, /file-menu-shortcuts/);
+  assert.match(appScript.body, /reconnectProjectFileDestinationOnBoot/);
+  assert.match(appScript.body, /buildProjectFilePathFromRoot/);
+  assert.match(appScript.body, /getProjectRecordFilePath/);
   assert.match(appScript.body, /toggle-console-collapse/);
   assert.match(appScript.body, /console-dock-toggle/);
-  assert.match(appScript.body, /Load Project Source/);
   assert.match(appScript.body, /Project sources/);
   assert.match(appScript.body, /Project archive/);
   assert.match(appScript.body, /source-archive/);
   assert.match(appScript.body, /task-source/);
+  assert.match(shellScript, /Saved projects/);
+  assert.match(shellScript, /Project file/);
+  assert.match(shellScript, /Autosave project file/);
+  assert.match(shellScript, /Writing to JSON file/);
+  assert.match(shellScript, /Waiting for file/);
+  assert.match(appScript.body, /Writing to JSON file:/);
+  assert.match(sceneEditorModuleScript, /projectFileDisplay/);
+  assert.match(sceneEditorModuleScript, /data-file-path-tooltip="\$\{escapeHtml\(safeProjectFileDisplay\.tooltip\)\}"/);
+  assert.match(shellScript, /project-title-input/);
+  assert.match(shellScript, /data-file-path-tooltip="\$\{escapeHtml\(safeProjectFileDisplay\.tooltip\)\}"/);
+  assert.match(shellScript, /project-file-path/);
+  assert.match(shellScript, /project-file-status/);
+  assert.match(projectFileAdapterScript, /writeProjectLibraryToDesktopPath/);
+  assert.match(projectFileAdapterScript, /readProjectLibraryFromBrowserFile/);
+  assert.match(projectFileDisplayScript, /resolveProjectFileDisplayState/);
+  assert.match(projectFileDisplayScript, /resolveProjectFileDisplayPath/);
+  assert.match(autosaveAdapterScript, /createProjectFileAutosaveController/);
+  assert.match(shellScript, /Save as file/);
+  assert.match(shellScript, /Load file/);
+  assert.match(shellScript, /project-library-select/);
+  assert.match(shellScript, /project-library-status/);
+  assert.match(shellScript, /file-menu-shortcuts/);
+  assert.match(shellScript, /Load Project Source/);
   assert.match(appScript.body, /EDITOR_PROJECT_LIBRARY_KEY/);
   assert.match(appScript.body, /EDITOR_ACTIVE_PROJECT_ID_KEY/);
   assert.match(appScript.body, /task-badge/);
@@ -222,15 +293,14 @@ export async function runDesktopApplicationTest() {
   assert.match(appScript.body, /task-reference/);
   assert.match(appScript.body, /task-title-input/);
   assert.match(appScript.body, /passage-note-title-input/);
-  assert.match(appScript.body, /Local AI/);
+  assert.match(shellScript, /Local AI/);
   assert.match(appScript.body, /suggest-scene-title/);
   assert.match(appScript.body, /api\/local-ai\/generate-title/);
   assert.doesNotMatch(appScript.body, />Issues<\/h2>/);
   assert.doesNotMatch(appScript.body, /Inspiration Notes<\/h2>/);
   assert.doesNotMatch(appScript.body, /Research Notes<\/h2>/);
-  assert.match(appScript.body, /project-title-input/);
-  assert.match(appScript.body, /project-source-path/);
-  assert.match(appScript.body, /select-pane/);
+  assert.match(shellScript, /project-source-path/);
+  assert.match(shellScript, /select-pane/);
   assert.match(appScript.body, /formatChapterDisplayTitle/);
   assert.match(appScript.body, /binder-chapter-order/);
   assert.match(appScript.body, /binder-chapter-title/);
@@ -247,9 +317,11 @@ export async function runDesktopApplicationTest() {
   assert.match(appScript.body, /if \(editField === "scene-title"\) \{[\s\S]*?updateSceneTitleLabel\(sceneId, target\.value\);[\s\S]*?updateSceneEditorTitle\(sceneId, target\.value\);/);
   assert.match(appScript.body, /binder-nav-action-short/);
   assert.match(appScript.body, /toggle-writing-target-window/);
-  assert.match(appScript.body, /writing-target-window/);
-  assert.match(appScript.body, /data-action="close-writing-target-window"/);
-  assert.match(appScript.body, /Writing Goals/);
+  assert.match(writingTargetWindowScript, /renderWritingTargetWindowHTML/);
+  assert.match(writingTargetWindowScript, /writing-target-window/);
+  assert.match(writingTargetWindowScript, /data-action="close-writing-target-window"/);
+  assert.match(writingTargetWindowScript, /Writing Goals/);
+  assert.match(writingTargetWindowScript, /writing-target-window-copy/);
   assert.doesNotMatch(appScript.body, /renderStat\("Words", getCurrentManuscriptWordCount\(\), "words"\)/);
   assert.doesNotMatch(appScript.body, /renderStat\("Issues", workspace\.project\.stats\.issueCount, "issues"\)/);
   assert.doesNotMatch(appScript.body, /renderStat\("Events", workspace\.project\.stats\.eventCount, "events"\)/);
@@ -326,58 +398,58 @@ export async function runDesktopApplicationTest() {
   assert.doesNotMatch(appScript.body, /Seed 30-day sample/);
   assert.doesNotMatch(appScript.body, /seed-writing-target-data/);
   assert.match(appScript.body, /EDITOR_WRITING_TARGETS_KEY/);
-  assert.match(appScript.body, /Ctrl\+Alt\+T/);
-  assert.match(appScript.body, /Ctrl\+S save/);
-  assert.match(appScript.body, /Ctrl\+Shift\+S save as/);
-  assert.match(appScript.body, /Ctrl\+Shift\+O load file/);
-  assert.match(appScript.body, /Ctrl\+N new/);
-  assert.match(appScript.body, /Ctrl\+O file/);
-  assert.match(appScript.body, /Ctrl\+1-4 panes/);
-  assert.match(appScript.body, /Esc close/);
-  assert.match(appScript.body, /Words/);
-  assert.match(appScript.body, /Days to release/);
+  assert.match(shellScript, /Ctrl\+Alt\+T/);
+  assert.match(shellScript, /Ctrl\+S save/);
+  assert.match(shellScript, /Ctrl\+Shift\+S save as/);
+  assert.match(shellScript, /Ctrl\+Shift\+O load file/);
+  assert.match(shellScript, /Ctrl\+N new/);
+  assert.match(shellScript, /Ctrl\+O file/);
+  assert.match(shellScript, /Ctrl\+1-4 panes/);
+  assert.match(shellScript, /Esc close/);
+  assert.match(writingTargetWindowScript, /Words/);
+  assert.match(writingTargetWindowScript, /Days to release/);
   assert.match(appScript.body, /const DEFAULT_SESSION_TIMEOUT_MINUTES = 20;/);
-  assert.match(appScript.body, /writing-target-dashboard-stats/);
-  assert.match(appScript.body, /writing-target-dashboard-body/);
-  assert.match(appScript.body, /writing-target-dashboard-settings/);
-  assert.match(appScript.body, /writing-target-dashboard-calendar/);
-  assert.match(appScript.body, /writing-target-dashboard-detail/);
-  assert.match(appScript.body, /writing-target-window-copy/);
-  assert.match(appScript.body, /writing-target-view-toggle/);
-  assert.match(appScript.body, /writing-target-calendar-grid/);
-  assert.match(appScript.body, /writing-target-calendar-day-progress/);
-  assert.match(appScript.body, /writing-target-calendar-day-indicators/);
-  assert.match(appScript.body, /writing-target-calendar-day-indicator-icon/);
-  assert.match(appScript.body, /writing-target-calendar-day-indicator-count/);
-  assert.match(appScript.body, /writing-target-week-grid/);
-  assert.match(appScript.body, /writing-target-day-overview/);
-  assert.match(appScript.body, /writing-target-day-points/);
-  assert.match(appScript.body, /writing-target-day-session-summary/);
-  assert.match(appScript.body, /writing-target-day-hero/);
-  assert.match(appScript.body, /writing-target-note-field/);
-  assert.match(appScript.body, /writing-target-footer-actions/);
-  assert.match(appScript.body, /writing-target-help-card/);
-  assert.match(appScript.body, /Goal settings/);
-  assert.match(appScript.body, /Calendar view/);
-  assert.match(appScript.body, /Selected day/);
-  assert.match(appScript.body, /Save goals/);
-  assert.match(appScript.body, /Cancel/);
-  assert.match(appScript.body, /Reset to defaults/);
-  assert.match(appScript.body, /Month/);
-  assert.match(appScript.body, /Week/);
-  assert.match(appScript.body, /List/);
-  assert.match(appScript.body, /writing-target-archive/);
-  assert.match(appScript.body, /YYYY-MM-DD or DD\/MM\/YYYY/);
-  assert.match(appScript.body, /targetCadence/);
-  assert.match(appScript.body, /writing-target-range/);
-  assert.match(appScript.body, /Daily target/);
-  assert.match(appScript.body, /data-metric-key="sessionTracker"/);
+  assert.match(writingTargetWindowScript, /writing-target-dashboard-stats/);
+  assert.match(writingTargetWindowScript, /writing-target-dashboard-body/);
+  assert.match(writingTargetWindowScript, /writing-target-dashboard-settings/);
+  assert.match(writingTargetWindowScript, /writing-target-dashboard-calendar/);
+  assert.match(writingTargetWindowScript, /writing-target-dashboard-detail/);
+  assert.match(writingTargetWindowScript, /writing-target-window-copy/);
+  assert.match(writingTargetWindowScript, /writing-target-view-toggle/);
+  assert.match(writingTargetWindowScript, /writing-target-calendar-grid/);
+  assert.match(writingTargetWindowScript, /writing-target-calendar-day-progress/);
+  assert.match(writingTargetWindowScript, /writing-target-calendar-day-indicators/);
+  assert.match(writingTargetWindowScript, /writing-target-calendar-day-indicator-icon/);
+  assert.match(writingTargetWindowScript, /writing-target-calendar-day-indicator-count/);
+  assert.match(writingTargetWindowScript, /writing-target-week-grid/);
+  assert.match(writingTargetWindowScript, /writing-target-day-overview/);
+  assert.match(writingTargetWindowScript, /writing-target-day-points/);
+  assert.match(writingTargetWindowScript, /writing-target-day-session-summary/);
+  assert.match(writingTargetWindowScript, /writing-target-day-hero/);
+  assert.match(writingTargetWindowScript, /writing-target-note-field/);
+  assert.match(writingTargetWindowScript, /writing-target-footer-actions/);
+  assert.match(writingTargetWindowScript, /writing-target-help-card/);
+  assert.match(writingTargetWindowScript, /Goal settings/);
+  assert.match(writingTargetWindowScript, /Calendar view/);
+  assert.match(writingTargetWindowScript, /Selected day/);
+  assert.match(writingTargetWindowScript, /Save goals/);
+  assert.match(writingTargetWindowScript, /Cancel/);
+  assert.match(writingTargetWindowScript, /Reset to defaults/);
+  assert.match(writingTargetWindowScript, /Month/);
+  assert.match(writingTargetWindowScript, /Week/);
+  assert.match(writingTargetWindowScript, /List/);
+  assert.match(writingTargetWindowScript, /writing-target-archive/);
+  assert.match(writingTargetWindowScript, /YYYY-MM-DD or DD\/MM\/YYYY/);
+  assert.match(writingTargetWindowScript, /targetCadence/);
+  assert.match(writingTargetWindowScript, /writing-target-range/);
+  assert.match(writingTargetWindowScript, /Daily target/);
+  assert.match(writingTargetWindowScript, /data-metric-key="sessionTracker"/);
   assert.match(appScript.body, /goalSyncSource/);
   assert.match(appScript.body, /goalSyncHint/);
   assert.match(appScript.body, /syncWritingTargetGoalFields/);
-  assert.match(appScript.body, /sessionsPerDay/);
-  assert.match(appScript.body, /sessionTimeoutMinutes/);
-  assert.match(appScript.body, /Session time/);
+  assert.match(writingTargetWindowScript, /sessionsPerDay/);
+  assert.match(writingTargetWindowScript, /sessionTimeoutMinutes/);
+  assert.match(writingTargetWindowScript, /Session time/);
   assert.match(appScript.body, /DEFAULT_SESSION_TARGETS_PER_DAY = 5/);
   assert.match(appScript.body, /toggle-console-chapter-collapse/);
   assert.match(appScript.body, /collapsedConsoleChapterIds/);
@@ -626,12 +698,14 @@ export async function runDesktopApplicationTest() {
   });
   assert.equal(browserLog.statusCode, 204);
 
-  const localAiUnsupportedMethod = await createDesktopResponseForRequest({
+  const settingsUpdate = await createDesktopResponseForRequest({
     method: "POST",
     pathname: "/api/settings",
-    body: "{}",
+    body: JSON.stringify({
+      lastProjectFilePath: desktopSettings.lastProjectFilePath,
+    }),
   });
-  assert.equal(localAiUnsupportedMethod.statusCode, 405);
+  assert.equal(settingsUpdate.statusCode, 200);
 
   const missing = createDesktopResponse("/missing");
   assert.equal(missing.statusCode, 404);
