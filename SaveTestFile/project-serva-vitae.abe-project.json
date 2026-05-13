@@ -6,7 +6,7 @@
       "title": "Project Serva Vitae",
       "source": "project-file",
       "createdAt": "2026-04-21T05:00:00.000Z",
-      "updatedAt": "2026-05-13T23:31:14.119Z",
+      "updatedAt": "2026-05-13T23:32:01.104Z",
       "workspace": {
         "generatedAt": "2026-04-21T05:00:00.000Z",
         "workspaceTitle": "ABetterNovelAuthoringEnvironment",
@@ -19011,8 +19011,8 @@
         "localAiPrefs": {
           "enabled": true
         },
-        "binderPanelWidth": 473,
-        "consoleDockWidth": 576,
+        "binderPanelWidth": 547,
+        "consoleDockWidth": 564,
         "consoleDockCollapsed": false,
         "collapsedChapterIds": [],
         "collapsedConsoleChapterIds": {
@@ -19646,7 +19646,7 @@
               "date": "2026-05-14",
               "wordCount": 71395,
               "wordDelta": -39,
-              "capturedAt": "2026-05-13T23:31:14.087Z",
+              "capturedAt": "2026-05-13T23:32:01.074Z",
               "chapterId": "draft-chapter-1777528152393",
               "chapterTitle": "",
               "sceneId": "draft-scene-1777528152393",
@@ -19657,7 +19657,7 @@
               "noteText": ""
             }
           ],
-          "updatedAt": "2026-05-13T23:31:14.087Z"
+          "updatedAt": "2026-05-13T23:32:01.074Z"
         },
         "writingTargetViewMode": "month",
         "writingTargetSelectedDateKey": "2026-05-01",
