@@ -6,7 +6,7 @@
       "title": "Project Serva Vitae",
       "source": "project-file",
       "createdAt": "2026-04-21T05:00:00.000Z",
-      "updatedAt": "2026-05-13T23:32:01.104Z",
+      "updatedAt": "2026-05-13T23:35:21.006Z",
       "workspace": {
         "generatedAt": "2026-04-21T05:00:00.000Z",
         "workspaceTitle": "ABetterNovelAuthoringEnvironment",
@@ -16994,7 +16994,7 @@
           "chapterTitle": "",
           "sceneTitle": "This is a test for the save function ",
           "sceneSynopsis": "",
-          "editorText": "Mark didn't know how he ended up on this wretched plain. ",
+          "editorText": "Testing the save function 5",
           "blocks": [
             {
               "blockId": "draft-block-draft-scene-1777528152393-1",
@@ -17008,81 +17008,81 @@
             }
           ],
           "revisionStats": {
-            "editCount": 28,
-            "lastEditedAt": "2026-05-13T23:30:39.673Z",
-            "lastChangeSummary": "Removed 1 chars",
+            "editCount": 60,
+            "lastEditedAt": "2026-05-13T23:34:32.147Z",
+            "lastChangeSummary": "Inserted 1 chars",
             "history": [
               {
-                "id": "revision-1778715039673-1fvn3k",
-                "createdAt": "2026-05-13T23:30:39.673Z",
-                "updatedAt": "2026-05-13T23:30:39.673Z",
-                "summary": "Removed 1 chars",
-                "previousLength": 58,
-                "nextLength": 57,
-                "deltaCharacters": -1
+                "id": "revision-1778715272147-pu3mes",
+                "createdAt": "2026-05-13T23:34:32.147Z",
+                "updatedAt": "2026-05-13T23:34:32.147Z",
+                "summary": "Inserted 1 chars",
+                "previousLength": 26,
+                "nextLength": 27,
+                "deltaCharacters": 1
               },
               {
-                "id": "revision-1778715039613-31hoga",
-                "createdAt": "2026-05-13T23:30:39.613Z",
-                "updatedAt": "2026-05-13T23:30:39.613Z",
-                "summary": "Removed 1 chars",
-                "previousLength": 59,
-                "nextLength": 58,
-                "deltaCharacters": -1
+                "id": "revision-1778715271765-apudmg",
+                "createdAt": "2026-05-13T23:34:31.765Z",
+                "updatedAt": "2026-05-13T23:34:31.765Z",
+                "summary": "Inserted 1 chars",
+                "previousLength": 25,
+                "nextLength": 26,
+                "deltaCharacters": 1
               },
               {
-                "id": "revision-1778715039566-md7jpw",
-                "createdAt": "2026-05-13T23:30:39.566Z",
-                "updatedAt": "2026-05-13T23:30:39.566Z",
-                "summary": "Removed 1 chars",
-                "previousLength": 60,
-                "nextLength": 59,
-                "deltaCharacters": -1
+                "id": "revision-1778715266285-srjdd9",
+                "createdAt": "2026-05-13T23:34:26.285Z",
+                "updatedAt": "2026-05-13T23:34:26.285Z",
+                "summary": "Inserted 1 chars",
+                "previousLength": 24,
+                "nextLength": 25,
+                "deltaCharacters": 1
               },
               {
-                "id": "revision-1778715039520-r4p7wr",
-                "createdAt": "2026-05-13T23:30:39.520Z",
-                "updatedAt": "2026-05-13T23:30:39.520Z",
-                "summary": "Removed 1 chars",
-                "previousLength": 61,
-                "nextLength": 60,
-                "deltaCharacters": -1
+                "id": "revision-1778715266178-cm9i0e",
+                "createdAt": "2026-05-13T23:34:26.178Z",
+                "updatedAt": "2026-05-13T23:34:26.178Z",
+                "summary": "Inserted 1 chars",
+                "previousLength": 23,
+                "nextLength": 24,
+                "deltaCharacters": 1
               },
               {
-                "id": "revision-1778715039473-hir468",
-                "createdAt": "2026-05-13T23:30:39.473Z",
-                "updatedAt": "2026-05-13T23:30:39.473Z",
-                "summary": "Removed 1 chars",
-                "previousLength": 62,
-                "nextLength": 61,
-                "deltaCharacters": -1
+                "id": "revision-1778715266090-2tdutt",
+                "createdAt": "2026-05-13T23:34:26.090Z",
+                "updatedAt": "2026-05-13T23:34:26.090Z",
+                "summary": "Inserted 1 chars",
+                "previousLength": 22,
+                "nextLength": 23,
+                "deltaCharacters": 1
               },
               {
-                "id": "revision-1778715039426-ir2zu7",
-                "createdAt": "2026-05-13T23:30:39.426Z",
-                "updatedAt": "2026-05-13T23:30:39.426Z",
-                "summary": "Removed 1 chars",
-                "previousLength": 63,
-                "nextLength": 62,
-                "deltaCharacters": -1
+                "id": "revision-1778715266043-q4qaad",
+                "createdAt": "2026-05-13T23:34:26.043Z",
+                "updatedAt": "2026-05-13T23:34:26.043Z",
+                "summary": "Inserted 1 chars",
+                "previousLength": 21,
+                "nextLength": 22,
+                "deltaCharacters": 1
               },
               {
-                "id": "revision-1778715039367-z1i4mr",
-                "createdAt": "2026-05-13T23:30:39.367Z",
-                "updatedAt": "2026-05-13T23:30:39.367Z",
-                "summary": "Removed 1 chars",
-                "previousLength": 64,
-                "nextLength": 63,
-                "deltaCharacters": -1
+                "id": "revision-1778715265846-jzgey7",
+                "createdAt": "2026-05-13T23:34:25.846Z",
+                "updatedAt": "2026-05-13T23:34:25.846Z",
+                "summary": "Inserted 1 chars",
+                "previousLength": 20,
+                "nextLength": 21,
+                "deltaCharacters": 1
               },
               {
-                "id": "revision-1778715039323-76mvy7",
-                "createdAt": "2026-05-13T23:30:39.323Z",
-                "updatedAt": "2026-05-13T23:30:39.323Z",
-                "summary": "Removed 1 chars",
-                "previousLength": 65,
-                "nextLength": 64,
-                "deltaCharacters": -1
+                "id": "revision-1778715265770-t7xrkf",
+                "createdAt": "2026-05-13T23:34:25.770Z",
+                "updatedAt": "2026-05-13T23:34:25.770Z",
+                "summary": "Inserted 1 chars",
+                "previousLength": 19,
+                "nextLength": 20,
+                "deltaCharacters": 1
               }
             ]
           }
@@ -19011,13 +19011,12 @@
         "localAiPrefs": {
           "enabled": true
         },
-        "binderPanelWidth": 547,
-        "consoleDockWidth": 564,
+        "binderPanelWidth": 621,
+        "consoleDockWidth": 584,
         "consoleDockCollapsed": false,
         "collapsedChapterIds": [],
         "collapsedConsoleChapterIds": {
           "issueTasks": [
-            "chapter-0001",
             "chapter-0002",
             "chapter-0003",
             "chapter-0004"
@@ -19045,12 +19044,12 @@
             "sessionTracker"
           ],
           "sessionBaselineWordCount": 71434,
-          "sessionLastWordCount": 71395,
+          "sessionLastWordCount": 71389,
           "dailyBaselineDateKey": "2026-05-14",
           "dailyBaselineWordCount": 71434,
           "sessionIsActive": true,
           "sessionStartedAt": "2026-05-13T23:24:58.235Z",
-          "sessionLastActiveAt": "2026-05-13T23:30:41.995Z",
+          "sessionLastActiveAt": "2026-05-13T23:34:32.955Z",
           "sessionConcludedAt": "",
           "sessionConcludedReason": "",
           "sessionSamples": [
@@ -19077,6 +19076,22 @@
             {
               "capturedAt": "2026-05-13T23:30:41.995Z",
               "wordCount": 71395
+            },
+            {
+              "capturedAt": "2026-05-13T23:33:28.721Z",
+              "wordCount": 71384
+            },
+            {
+              "capturedAt": "2026-05-13T23:34:22.413Z",
+              "wordCount": 71385
+            },
+            {
+              "capturedAt": "2026-05-13T23:34:27.084Z",
+              "wordCount": 71388
+            },
+            {
+              "capturedAt": "2026-05-13T23:34:32.955Z",
+              "wordCount": 71389
             }
           ],
           "sessionHistory": [
@@ -19644,20 +19659,20 @@
             },
             {
               "date": "2026-05-14",
-              "wordCount": 71395,
-              "wordDelta": -39,
-              "capturedAt": "2026-05-13T23:32:01.074Z",
-              "chapterId": "draft-chapter-1777528152393",
-              "chapterTitle": "",
-              "sceneId": "draft-scene-1777528152393",
-              "sceneTitle": "This is a test for the save function ",
-              "passageExcerpt": "Mark didn't know how he ended up on this wretched plain.",
+              "wordCount": 71389,
+              "wordDelta": -45,
+              "capturedAt": "2026-05-13T23:35:20.975Z",
+              "chapterId": "chapter-0004",
+              "chapterTitle": "Chapter 4: Oasis",
+              "sceneId": "scene-0027",
+              "sceneTitle": "Europa",
+              "passageExcerpt": "The metallic clang of a transport pod coupling with the airlock bay shattered the mess's still silent hum.…",
               "issueCount": 0,
               "inspirationCount": 0,
               "noteText": ""
             }
           ],
-          "updatedAt": "2026-05-13T23:32:01.074Z"
+          "updatedAt": "2026-05-13T23:35:20.974Z"
         },
         "writingTargetViewMode": "month",
         "writingTargetSelectedDateKey": "2026-05-01",

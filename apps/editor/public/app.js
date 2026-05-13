@@ -80,11 +80,13 @@ import {
 import { renderSessionTrackerPenSvg as renderSessionTrackerPenGlyph } from "./session-tracker-icons.js";
 import { renderEditorChrome } from "./shell/editor-chrome.js";
 import { renderWritingTargetWindowHTML } from "./features/writing-targets/writing-target-window.js";
+import {
+  PROJECT_STATE_STORAGE_KEYS,
+  createEditorStorage,
+} from "./adapters/storage/editor-storage.js";
 
 // Intent: keep shell-wide constants and state visible until each concern moves into its roadmap owner.
 const appRoot = document.querySelector("#app");
-const EDITOR_COLLAPSED_CHAPTERS_KEY = "abe-collapsed-chapters-v1";
-const EDITOR_CONSOLE_COLLAPSED_CHAPTERS_KEY = "abe-console-collapsed-chapters-v1";
 const EDITOR_RIGHT_DOCK_COLLAPSED_KEY = "abe-right-dock-collapsed-v1";
 const EDITOR_BINDER_WIDTH_KEY = "abe-binder-width-v1";
 const EDITOR_CONSOLE_WIDTH_KEY = "abe-console-width-v1";
@@ -118,6 +120,30 @@ const MIN_BINDER_PANEL_WIDTH = 220;
 const MIN_CONSOLE_PANEL_WIDTH = 260;
 const MIN_MANUSCRIPT_PANEL_WIDTH = 560;
 const PANEL_RESIZER_WIDTH = 8;
+
+const {
+  loadCollapsedChapterIds,
+  loadCollapsedConsoleChapterIds,
+  loadEditorPrefs,
+  loadLocalAiPrefs,
+  loadManuscriptTasks,
+  loadPassageNotes,
+  loadProjectTitle,
+  loadSceneDrafts,
+  loadStoredNumber,
+  loadStoredString,
+  loadStructureDrafts,
+  loadTemplateDrafts,
+  normalizeChapterIdList,
+  persistCollapsedChapterState,
+  persistCollapsedConsoleChapterState,
+  persistConsoleDockCollapsedState,
+  readStoredJson,
+  writeStoredJsonRaw,
+} = createEditorStorage({
+  reportBrowserLog,
+  windowRef: window,
+});
 const CONSOLE_DOCK_COLLAPSED_WIDTH = 52;
 const BINDER_PANEL_COMPACT_THRESHOLD = 280;
 const WRITING_TARGET_VISIBLE_METRICS_SCHEMA_VERSION = 2;
@@ -10316,46 +10342,6 @@ function createBlankWorkspaceSnapshot(baseWorkspace, projectId, title, now) {
   };
 }
 
-function loadSceneDrafts() {
-  const candidate = readStoredJson(EDITOR_DRAFTS_KEY);
-  return candidate && typeof candidate === "object" ? candidate : {};
-}
-
-function loadStructureDrafts() {
-  const candidate = readStoredJson(EDITOR_STRUCTURE_KEY);
-  return candidate && typeof candidate === "object"
-    ? candidate
-    : createStructureDrafts();
-}
-
-function loadTemplateDrafts() {
-  const candidate = readStoredJson(EDITOR_TEMPLATE_DRAFTS_KEY);
-  return Array.isArray(candidate) ? candidate : createTemplateDrafts();
-}
-
-function loadManuscriptTasks() {
-  return normalizeManuscriptTasks(readStoredJson(EDITOR_TASKS_KEY));
-}
-
-function loadPassageNotes() {
-  return normalizePassageNotes(readStoredJson(EDITOR_PASSAGE_NOTES_KEY));
-}
-
-function loadProjectTitle(defaultTitle) {
-  const candidate = readStoredJson(EDITOR_PROJECT_TITLE_KEY);
-  return typeof candidate === "string" && candidate.trim()
-    ? candidate
-    : defaultTitle;
-}
-
-function loadEditorPrefs() {
-  return normalizeEditorPrefs(readStoredJson(EDITOR_PREFS_KEY));
-}
-
-function loadLocalAiPrefs() {
-  return normalizeLocalAiPrefs(readStoredJson(EDITOR_LOCAL_AI_PREFS_KEY));
-}
-
 // Intent: resolve DOM events back to stable scene and selection context for anchored editor actions.
 function getEditorContextFromEvent(event) {
   const target = event.target instanceof Element ? event.target : null;
@@ -14343,164 +14329,6 @@ function updateFocusedLineCard() {
 }
 
 // Intent: isolate browser localStorage reads so corrupt values fail safely instead of breaking boot.
-function readStoredJson(storageKey) {
-  if (!("localStorage" in window)) {
-    return null;
-  }
-
-  try {
-    const value = window.localStorage.getItem(storageKey);
-    return value ? JSON.parse(value) : null;
-  } catch (error) {
-    reportBrowserLog("warn", "storage", `Unable to read ${storageKey}.`, { error, storageKey });
-    console.warn(`Unable to read ${storageKey}`, error);
-    return null;
-  }
-}
-
-function loadCollapsedChapterIds(projectId) {
-  if (typeof projectId !== "string" || !projectId.trim()) {
-    return [];
-  }
-
-  const candidate = readStoredJson(EDITOR_COLLAPSED_CHAPTERS_KEY);
-  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
-    return [];
-  }
-
-  return normalizeChapterIdList(candidate[projectId]);
-}
-
-function persistCollapsedChapterState(projectId, chapterIds) {
-  if (typeof projectId !== "string" || !projectId.trim()) {
-    return;
-  }
-
-  const candidate = readStoredJson(EDITOR_COLLAPSED_CHAPTERS_KEY);
-  const snapshot = candidate && typeof candidate === "object" && !Array.isArray(candidate)
-    ? { ...candidate }
-    : {};
-  const normalizedChapterIds = normalizeChapterIdList(chapterIds);
-
-  if (normalizedChapterIds.length) {
-    snapshot[projectId] = normalizedChapterIds;
-  } else {
-    delete snapshot[projectId];
-  }
-
-  if (Object.keys(snapshot).length) {
-    writeStoredJsonRaw(EDITOR_COLLAPSED_CHAPTERS_KEY, snapshot);
-    return;
-  }
-
-  if ("localStorage" in window) {
-    window.localStorage.removeItem(EDITOR_COLLAPSED_CHAPTERS_KEY);
-  }
-}
-
-function loadCollapsedConsoleChapterIds(projectId) {
-  if (typeof projectId !== "string" || !projectId.trim()) {
-    return {
-      issueTasks: [],
-      issues: [],
-      inspiration: [],
-      research: [],
-    };
-  }
-
-  const candidate = readStoredJson(EDITOR_CONSOLE_COLLAPSED_CHAPTERS_KEY);
-  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
-    return {
-      issueTasks: [],
-      issues: [],
-      inspiration: [],
-      research: [],
-    };
-  }
-
-  const snapshot = candidate[projectId];
-  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
-    return {
-      issueTasks: [],
-      issues: [],
-      inspiration: [],
-      research: [],
-    };
-  }
-
-  return {
-    issueTasks: normalizeChapterIdList(snapshot.issueTasks),
-    issues: normalizeChapterIdList(snapshot.issues),
-    inspiration: normalizeChapterIdList(snapshot.inspiration),
-    research: normalizeChapterIdList(snapshot.research),
-  };
-}
-
-function persistCollapsedConsoleChapterState(projectId, collapsedByPanel) {
-  if (typeof projectId !== "string" || !projectId.trim()) {
-    return;
-  }
-
-  const candidate = readStoredJson(EDITOR_CONSOLE_COLLAPSED_CHAPTERS_KEY);
-  const snapshot = candidate && typeof candidate === "object" && !Array.isArray(candidate)
-    ? { ...candidate }
-    : {};
-  const normalized = {
-    issueTasks: normalizeChapterIdList(collapsedByPanel?.issueTasks),
-    issues: normalizeChapterIdList(collapsedByPanel?.issues),
-    inspiration: normalizeChapterIdList(collapsedByPanel?.inspiration),
-    research: normalizeChapterIdList(collapsedByPanel?.research),
-  };
-
-  if (
-    normalized.issueTasks.length ||
-    normalized.issues.length ||
-    normalized.inspiration.length ||
-    normalized.research.length
-  ) {
-    snapshot[projectId] = normalized;
-  } else {
-    delete snapshot[projectId];
-  }
-
-  if (Object.keys(snapshot).length) {
-    writeStoredJsonRaw(EDITOR_CONSOLE_COLLAPSED_CHAPTERS_KEY, snapshot);
-    return;
-  }
-
-  if ("localStorage" in window) {
-    window.localStorage.removeItem(EDITOR_CONSOLE_COLLAPSED_CHAPTERS_KEY);
-  }
-}
-
-function normalizeChapterIdList(candidate) {
-  if (!Array.isArray(candidate)) {
-    return [];
-  }
-
-  return [...new Set(candidate.filter((chapterId) => typeof chapterId === "string" && chapterId.trim()))];
-}
-
-function persistConsoleDockCollapsedState(isCollapsed) {
-  if (!("localStorage" in window)) {
-    return;
-  }
-
-  try {
-    if (isCollapsed) {
-      window.localStorage.setItem(EDITOR_RIGHT_DOCK_COLLAPSED_KEY, JSON.stringify(true));
-    } else {
-      window.localStorage.removeItem(EDITOR_RIGHT_DOCK_COLLAPSED_KEY);
-    }
-  } catch (error) {
-    reportBrowserLog("warn", "storage", "Unable to persist console dock state.", {
-      error,
-      storageKey: EDITOR_RIGHT_DOCK_COLLAPSED_KEY,
-    });
-    console.warn("Unable to persist console dock state", error);
-  }
-}
-
 function syncLayoutWidths(persist = false) {
   const workspace = document.querySelector(".workspace-grid");
   const binderWidth = clampNumber(state.binderPanelWidth, MIN_BINDER_PANEL_WIDTH, Number.POSITIVE_INFINITY);
@@ -14569,35 +14397,11 @@ function clampNumber(value, min, max) {
   return Math.min(Math.max(numericValue, min), max);
 }
 
-function loadStoredString(storageKey) {
-  const candidate = readStoredJson(storageKey);
-  return typeof candidate === "string" && candidate.trim() ? candidate : "";
-}
-
-function loadStoredNumber(storageKey, fallback) {
-  const candidate = readStoredJson(storageKey);
-  const value = Number(candidate);
-  return Number.isFinite(value) && value > 0 ? value : fallback;
-}
-
 function writeStoredJson(storageKey, value) {
   writeStoredJsonRaw(storageKey, value);
 
   if (PROJECT_STATE_STORAGE_KEYS.has(storageKey)) {
     persistCurrentProjectRecord();
-  }
-}
-
-function writeStoredJsonRaw(storageKey, value) {
-  if (!("localStorage" in window)) {
-    return;
-  }
-
-  try {
-    window.localStorage.setItem(storageKey, JSON.stringify(value));
-  } catch (error) {
-    reportBrowserLog("warn", "storage", `Unable to write ${storageKey}.`, { error, storageKey });
-    console.warn(`Unable to write ${storageKey}`, error);
   }
 }
 
@@ -14688,17 +14492,6 @@ function serializeBrowserLogValue(value) {
 
   return value;
 }
-
-const PROJECT_STATE_STORAGE_KEYS = new Set([
-  EDITOR_DRAFTS_KEY,
-  EDITOR_STRUCTURE_KEY,
-  EDITOR_TEMPLATE_DRAFTS_KEY,
-  EDITOR_TASKS_KEY,
-  EDITOR_PASSAGE_NOTES_KEY,
-  EDITOR_PROJECT_TITLE_KEY,
-  EDITOR_PREFS_KEY,
-  EDITOR_LOCAL_AI_PREFS_KEY,
-]);
 
 function cloneValue(value) {
   if (typeof structuredClone === "function") {

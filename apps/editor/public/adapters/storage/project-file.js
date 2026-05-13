@@ -71,61 +71,6 @@ export function getProjectFileHandleDisplayPath(fileHandle) {
     : "";
 }
 
-//Manual Debug. The resolve loaded project file destination is prioritising the projects saved location 
-// from a record as opposed to using the most recent loaded project path.
-
-// export function resolveLoadedProjectFileDestination({
-//   requestedFilePath = "",
-//   recordFilePath = "",
-//   fileHandle = null,
-//   useRecordFilePath = false,
-// } = {}) {
-//   const requested = normalizeProjectFilePath(requestedFilePath);
-//   if (hasProjectFilePath(requested)) {
-//     return {
-//       filePath: requested,
-//       fileHandle,
-//       isDurablePath: true,
-//     };
-//   }
-
-//   const record = normalizeProjectFilePath(recordFilePath);
-//   const handleDisplayPath = getProjectFileHandleDisplayPath(fileHandle);
-//   if (handleDisplayPath) {
-//     const recordBaseName = getProjectFilePathBaseName(record);
-//     if (
-//       hasProjectFilePath(record) &&
-//       recordBaseName.toLowerCase() === handleDisplayPath.toLowerCase()
-//     ) {
-//       return {
-//         filePath: record,
-//         fileHandle,
-//         isDurablePath: true,
-//       };
-//     }
-
-//     return {
-//       filePath: handleDisplayPath,
-//       fileHandle,
-//       isDurablePath: false,
-//     };
-//   }
-
-//   if (useRecordFilePath && hasProjectFilePath(record)) {
-//     return {
-//       filePath: record,
-//       fileHandle: null,
-//       isDurablePath: true,
-//     };
-//   }
-
-//   return {
-//     filePath: "",
-//     fileHandle: null,
-//     isDurablePath: false,
-//   };
-// }
-
 export function resolveLoadedProjectFileDestination({
   requestedFilePath = "",
   recordFilePath = "",
@@ -133,17 +78,30 @@ export function resolveLoadedProjectFileDestination({
   useRecordFilePath = false,
 } = {}) {
   const requested = normalizeProjectFilePath(requestedFilePath);
-  const handleDisplayPath = getProjectFileHandleDisplayPath(fileHandle);
-
-  // PRIORITY 1: Explicitly requested path (Desktop Load)
   if (hasProjectFilePath(requested)) {
-    return { filePath: requested, fileHandle, isDurablePath: true };
+    return {
+      filePath: requested,
+      fileHandle,
+      isDurablePath: true,
+    };
   }
 
-  // PRIORITY 2: Browser File Handle
-  // If we have a handle, we strictly ignore the record path because 
-  // the user just manually picked this file.
+  const record = normalizeProjectFilePath(recordFilePath);
+  const handleDisplayPath = getProjectFileHandleDisplayPath(fileHandle);
+
   if (handleDisplayPath) {
+    const recordBaseName = getProjectFilePathBaseName(record);
+    if (
+      hasProjectFilePath(record) &&
+      recordBaseName.toLowerCase() === handleDisplayPath.toLowerCase()
+    ) {
+      return {
+        filePath: record,
+        fileHandle,
+        isDurablePath: true,
+      };
+    }
+
     return {
       filePath: handleDisplayPath,
       fileHandle,
@@ -151,13 +109,19 @@ export function resolveLoadedProjectFileDestination({
     };
   }
 
-  // PRIORITY 3: Fallback to record only if no active load context exists
-  const record = normalizeProjectFilePath(recordFilePath);
   if (useRecordFilePath && hasProjectFilePath(record)) {
-    return { filePath: record, fileHandle: null, isDurablePath: true };
+    return {
+      filePath: record,
+      fileHandle: null,
+      isDurablePath: true,
+    };
   }
 
-  return { filePath: "", fileHandle: null, isDurablePath: false };
+  return {
+    filePath: "",
+    fileHandle: null,
+    isDurablePath: false,
+  };
 }
 
 export function hasProjectFileDestination({ fileHandle = null, filePath = "" } = {}) {
