@@ -93,6 +93,14 @@ export function runEditorModelTest() {
     {
       scenes: [
         {
+          sceneId: "scene-1",
+          chapterId: "chapter-1",
+          chapterTitle: "Arrival Vector",
+          sceneTitle: "Docking Approach",
+          sceneSynopsis: "Structure metadata for an existing scene.",
+          initialText: "",
+        },
+        {
           sceneId: "draft-scene-1",
           chapterId: "draft-chapter-1",
           chapterTitle: "New Chapter",
@@ -113,6 +121,7 @@ export function runEditorModelTest() {
   assert.equal(scenes[1].sceneTitle, "New Scene");
   assert.equal(scenes[1].blocks[0].text, "A blank route opens for a new scene.");
   assert.equal(scenes[1].editorText, "A blank route opens for a new scene.");
+  assert.equal(scenes.filter((scene) => scene.sceneId === "scene-1").length, 1);
   assert.equal(findSceneByBlockId(scenes, draftBlock.blockId)?.sceneId, "scene-1");
   assert.equal(findBlockById(scenes, "block-1")?.text, "The frigate crawled toward Halcyon Station in silence.");
   assert.equal(groupScenesByChapter(scenes).length, 2);

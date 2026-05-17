@@ -9,6 +9,68 @@ import { escapeHtml } from "../shared/ui-utils.js";
 
 const REVISION_DRAFTING_UI_ENABLED = false;
 
+// Intent: keep the scene editor's word-count labels consistent across the template and live DOM updates.
+export function formatSceneEditorWordCount(wordCount) {
+  const safeWordCount = normalizeSceneEditorWordCount(wordCount);
+  return `${safeWordCount} word${safeWordCount === 1 ? "" : "s"}`;
+}
+
+// Intent: keep the selection readout explicit so the user can distinguish highlighted text from scene totals.
+export function formatSceneEditorSelectionWordCount(wordCount) {
+  const safeWordCount = normalizeSceneEditorWordCount(wordCount);
+  return `${safeWordCount} word${safeWordCount === 1 ? "" : "s"} selected`;
+}
+
+function normalizeSceneEditorWordCount(wordCount) {
+  const numericWordCount = Number(wordCount);
+  if (!Number.isFinite(numericWordCount) || numericWordCount < 0) {
+    return 0;
+  }
+
+  return Math.max(0, Math.round(numericWordCount));
+}
+
+function resolveSceneEditorWordCountFromProjectIndex(projectIndex, sceneId, fallbackText = "") {
+  const scenes = Array.isArray(projectIndex?.scenes) ? projectIndex.scenes : [];
+  const scene = scenes.find((candidate) => candidate?.id === sceneId);
+  const wordCount = Number(scene?.wordCount);
+  if (Number.isFinite(wordCount) && wordCount >= 0) {
+    return Math.max(0, Math.round(wordCount));
+  }
+
+  return countSceneEditorWords(fallbackText);
+}
+
+function resolveSceneEditorChapterWordCountFromProjectIndex(projectIndex, chapterId, fallbackSceneWordCount = 0, activeSceneId = "") {
+  const chapters = Array.isArray(projectIndex?.chapters) ? projectIndex.chapters : [];
+  const chapter = chapters.find((candidate) => candidate?.id === chapterId);
+  const wordCount = Number(chapter?.wordCount);
+  if (Number.isFinite(wordCount) && wordCount >= 0) {
+    return Math.max(0, Math.round(wordCount));
+  }
+
+  const scenes = Array.isArray(projectIndex?.scenes) ? projectIndex.scenes : [];
+  return scenes
+    .filter((candidate) => candidate?.chapterId === chapterId)
+    .reduce((total, candidate) => {
+      if (candidate?.id === activeSceneId) {
+        return total + Math.max(0, Math.round(Number(fallbackSceneWordCount) || 0));
+      }
+
+      const sceneWordCount = Number(candidate?.wordCount);
+      return total + (Number.isFinite(sceneWordCount) && sceneWordCount >= 0 ? Math.max(0, Math.round(sceneWordCount)) : 0);
+    }, 0);
+}
+
+function countSceneEditorWords(value) {
+  const normalizedValue = String(value ?? "").trim();
+  if (!normalizedValue) {
+    return 0;
+  }
+
+  return normalizedValue.split(/\s+/).filter(Boolean).length;
+}
+
 // Intent: compose the manuscript panel around shared project-file display data and selected scene content.
 export function renderManuscriptPanelHTML({
   state,
@@ -16,6 +78,7 @@ export function renderManuscriptPanelHTML({
   editorMode,
   grammarCheckSummary,
   projectFileDisplay,
+  projectIndex,
   buildEditorStyle,
   getInlinePassageDraftAnchor,
   formatChapterDisplayTitle = (value) => String(value ?? "").trim() || "Untitled chapter",
@@ -67,6 +130,7 @@ export function renderManuscriptPanelHTML({
       state,
       editorMode,
       grammarCheckSummary,
+      projectIndex,
       buildEditorStyle,
       getInlinePassageDraftAnchor,
       formatChapterDisplayTitle,
@@ -78,6 +142,7 @@ export function renderSceneEditorHTML(scene, {
   state,
   editorMode,
   grammarCheckSummary,
+  projectIndex,
   buildEditorStyle,
   getInlinePassageDraftAnchor,
   formatChapterDisplayTitle,
@@ -100,6 +165,17 @@ export function renderSceneEditorHTML(scene, {
   const chapterTitle = typeof formatChapterDisplayTitle === "function"
     ? formatChapterDisplayTitle(scene.chapterTitle)
     : String(scene.chapterTitle ?? "").trim() || "Untitled chapter";
+  const sceneWordCount = resolveSceneEditorWordCountFromProjectIndex(
+    projectIndex,
+    scene.sceneId,
+    scene.editorText ?? "",
+  );
+  const chapterWordCount = resolveSceneEditorChapterWordCountFromProjectIndex(
+    projectIndex,
+    scene.chapterId,
+    sceneWordCount,
+    scene.sceneId,
+  );
 
   return `
     <section
@@ -107,8 +183,11 @@ export function renderSceneEditorHTML(scene, {
       data-scene-editor-scene-id="${escapeHtml(scene.sceneId)}"
     >
       <div class="scene-editor-context">
-        <span>Chapter</span>
-        <strong data-scene-editor-chapter-title="${escapeHtml(scene.chapterId)}">${escapeHtml(chapterTitle)}</strong>
+        <div class="scene-editor-context__chapter">
+          <span>Chapter</span>
+          <strong data-scene-editor-chapter-title="${escapeHtml(scene.chapterId)}">${escapeHtml(chapterTitle)}</strong>
+        </div>
+        <span class="scene-editor-context__count" data-scene-editor-chapter-word-count="${escapeHtml(scene.chapterId)}">${escapeHtml(`Chapter words: ${formatSceneEditorWordCount(chapterWordCount)}`)}</span>
       </div>
       <div class="scene-editor-header">
         <div class="editor-title-row">
@@ -180,6 +259,10 @@ export function renderSceneEditorHTML(scene, {
           >${escapeHtml(scene.editorText ?? "")}</textarea>
         </div>
         ${renderInlinePassageDraftHTML(scene, state, getInlinePassageDraftAnchor)}
+      </div>
+      <div class="scene-editor-footer">
+        <span class="scene-editor-footer__selection" data-scene-editor-selection-word-count="${escapeHtml(scene.sceneId)}">${escapeHtml(formatSceneEditorSelectionWordCount(0))}</span>
+        <span class="scene-editor-footer__scene" data-scene-editor-scene-word-count="${escapeHtml(scene.sceneId)}">${escapeHtml(`Scene words: ${formatSceneEditorWordCount(sceneWordCount)}`)}</span>
       </div>
     </section>
   `;

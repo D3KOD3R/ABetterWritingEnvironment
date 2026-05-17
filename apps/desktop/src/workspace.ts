@@ -91,6 +91,8 @@ export interface ProjectSettingsSnapshot {
   };
   binderPanelWidth: number;
   consoleDockWidth: number;
+  userSettingPanelResizerLeftPercent: number | null;
+  userSettingPanelResizerRightPercent: number | null;
   consoleDockCollapsed: boolean;
   collapsedChapterIds: string[];
   collapsedConsoleChapterIds: {
@@ -169,6 +171,8 @@ function createDefaultProjectSettingsSnapshot(generatedAt: string): ProjectSetti
     },
     binderPanelWidth: 320,
     consoleDockWidth: 320,
+    userSettingPanelResizerLeftPercent: null,
+    userSettingPanelResizerRightPercent: null,
     consoleDockCollapsed: false,
     collapsedChapterIds: [],
     collapsedConsoleChapterIds: {

@@ -33,11 +33,11 @@ and less like:
 Each feature of the program is underpinned and numbered in the word doc named "An AI augmented author writing environment." 
 - As you work through each feature, you should create a process header which explains the feature and updates the features.md list. 
 
-## Project save file rules
-- The canonical source of truth for project state is the app-native `*.abe-project.json` save file.
-- Use `SaveTestFile/project-serva-vitae.abe-project.json` as the reference fixture when evolving the save schema.
-- Do not add or retain Scrivener-specific dependencies, field names, route names, file names, or UI labels in active code or schema.
-- If legacy import data is present, treat it as migration or archive data only. The active product flow must remain project-save-file-first.
+## Project work rules. 
+- Whenever you are working on the project you should think in terms of service levels by observing the current project architecture. 
+- When you are working on features, you should decide what level or service the feature is implemented at. If the feature doesn't fall under an existing service, a new service branch should be created. 
+- Do not just continue adding code to the app.js file. This should call services, with logging, so that as features are rolled out, the developer can follow the log trail and fix issues. 
+- Always comment intent before code blocks. 
 
 
 ## Core product pillars
@@ -231,6 +231,14 @@ When changing `apps/editor`, follow the refactor roadmap in `docs/architecture/e
 - Prefer small feature modules with explicit contracts over adding more top-level functions to the shell.
 - When extracting code, preserve the dependency direction defined in the roadmap: bootstrap -> shell -> feature slices -> shared helpers -> packages.
 
+### Project persistence boundary rules
+
+- All project save/load/autosave/import/export behavior must route through `ProjectPersistenceService`.
+- UI code and feature modules must not directly write project data to `localStorage`, filesystem APIs, file handles, or ad hoc JSON blobs.
+- Autosave workflows must call `ProjectPersistenceService` APIs and must not bypass the service with direct file writes.
+- Persistence modules must use contextual names (for example `saveProjectSnapshot`, `loadProjectSnapshotFromFile`, `restoreLastOpenedProject`) instead of vague names like `save`, `load`, or `sync`.
+- Any persistence behavior change requires automated tests or a documented manual verification checklist in the PR/commit notes.
+
 ### Refactor checkpoint
 
 Current roadmap phase:
@@ -239,10 +247,10 @@ Current roadmap phase:
 Completed slice:
 - `apps/editor/public/shell/editor-chrome.js` now owns the top editor chrome, file menu, pane tabs, autosave toggle, local AI toggle, and writing-goal CTA markup.
 - `apps/editor/public/features/writing-targets/writing-target-window.js` now owns the full writing-goals window markup.
-- `apps/editor/public/app.js` still owns the editor runtime, persistence logic, and feature-level behavior.
+- `apps/editor/public/adapters/storage/project-persistence-service.js` now owns project-file save/load/autosave/import/export orchestration, and `app.js` calls it as the persistence boundary.
 
 Next slice:
-- Extract the project-file persistence and autosave adapters out of `apps/editor/public/app.js` before splitting the remaining manuscript and side-panel surfaces.
+- Split remaining manuscript and side-panel runtime behavior out of `apps/editor/public/app.js` after the persistence boundary extraction.
 
 Verification for the current slice:
 - `node --check apps/editor/public/app.js`

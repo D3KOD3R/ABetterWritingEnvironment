@@ -1,6 +1,6 @@
 // Intent: smoke test the desktop host, project-file routes, editor modules, and bundled workspace assets.
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -97,6 +97,8 @@ export async function runDesktopApplicationTest() {
   assert.equal(typeof projectLibrary.projects[0].projectSettings, "object");
   assert.equal(projectLibrary.projects[0].projectSettings.writingTargetViewMode, "month");
   assert.equal(projectLibrary.projects[0].projectSettings.consoleDockCollapsed, false);
+  assert.equal("userSettingPanelResizerLeftPercent" in projectLibrary.projects[0].projectSettings, true);
+  assert.equal("userSettingPanelResizerRightPercent" in projectLibrary.projects[0].projectSettings, true);
   assert.equal(typeof projectLibrary.projects[0].projectSettings.projectSourcePath, "string");
   assert.equal(projectLibrary.projects[0].passageNotes.length, 19);
   assert.equal(projectLibrary.projects[0].sourceArchive.length, 5);
@@ -138,19 +140,42 @@ export async function runDesktopApplicationTest() {
       }),
     });
     assert.equal(saveProjectFileResponse.statusCode, 200);
-    const savedProjectFile = JSON.parse(readFileSync(savedProjectPath, "utf8"));
+    const savedProjectMeta = JSON.parse(saveProjectFileResponse.body);
+    const savedProjectRoot = savedProjectMeta.filePath;
+    const savedManifestPath = path.join(savedProjectRoot, "project.json");
+    const firstSceneId =
+      projectLibrary.projects?.[0]?.projectIndex?.sceneOrder?.[0] ??
+      projectLibrary.projects?.[0]?.workspace?.project?.lines?.[0]?.sceneId ??
+      "scene-0001";
+    const firstScenePath = path.join(
+      savedProjectRoot,
+      "manuscript",
+      "scenes",
+      "project-serva-vitae",
+      `scene_${firstSceneId}.json`,
+    );
+    assert.equal(existsSync(savedProjectRoot), true);
+    assert.equal(statSync(savedProjectRoot).isDirectory(), true);
+    assert.equal(existsSync(savedManifestPath), true);
+    assert.equal(existsSync(firstScenePath), true);
+
+    const savedProjectFile = JSON.parse(readFileSync(savedManifestPath, "utf8"));
     assert.equal(savedProjectFile.activeProjectId, projectLibrary.activeProjectId);
     assert.equal(savedProjectFile.projects.length, 1);
     assert.equal(savedProjectFile.projects[0].title, "Project Serva Vitae");
     assert.equal(savedProjectFile.projects[0].projectSettings.writingTargetViewMode, "month");
     assert.equal(savedProjectFile.projects[0].projectSettings.consoleDockCollapsed, false);
+    assert.equal("userSettingPanelResizerLeftPercent" in savedProjectFile.projects[0].projectSettings, true);
+    assert.equal("userSettingPanelResizerRightPercent" in savedProjectFile.projects[0].projectSettings, true);
     assert.equal(typeof savedProjectFile.projects[0].projectSettings.projectSourcePath, "string");
+    assert.equal(Object.keys(savedProjectFile.projects[0].sceneDrafts ?? {}).length, 0);
+    assert.equal(savedProjectFile.projects[0].workspace.project.lines.every((line) => line.text === ""), true);
 
     const loadProjectFileResponse = await createDesktopResponseForRequest({
       method: "POST",
       pathname: "/api/project-file/load",
       body: JSON.stringify({
-        filePath: savedProjectPath,
+        filePath: savedProjectRoot,
       }),
     });
     assert.equal(loadProjectFileResponse.statusCode, 200);
@@ -158,7 +183,13 @@ export async function runDesktopApplicationTest() {
     assert.equal(loadedProjectFile.activeProjectId, projectLibrary.activeProjectId);
     assert.equal(loadedProjectFile.projects[0].title, "Project Serva Vitae");
     assert.equal(loadedProjectFile.projects[0].projectSettings.writingTargetViewMode, "month");
+    assert.equal("userSettingPanelResizerLeftPercent" in loadedProjectFile.projects[0].projectSettings, true);
+    assert.equal("userSettingPanelResizerRightPercent" in loadedProjectFile.projects[0].projectSettings, true);
     assert.equal(typeof loadedProjectFile.projects[0].projectSettings.projectSourcePath, "string");
+    assert.equal(
+      loadedProjectFile.sceneStore?.["project-serva-vitae"]?.[firstSceneId]?.sceneId,
+      firstSceneId,
+    );
   } finally {
     rmSync(tempProjectDir, { recursive: true, force: true });
   }
@@ -177,12 +208,24 @@ export async function runDesktopApplicationTest() {
     path.join(repoRoot, "apps/editor/public/features/writing-targets/writing-target-window.js"),
     "utf8",
   );
+  const writingGoalsServiceScript = readFileSync(
+    path.join(repoRoot, "apps/editor/public/features/writing-targets/writing-goals-service.js"),
+    "utf8",
+  );
+  const writingGoalsStateServiceScript = readFileSync(
+    path.join(repoRoot, "apps/editor/public/features/writing-targets/writing-goals-state-service.js"),
+    "utf8",
+  );
   const projectFileAdapterScript = readFileSync(
     path.join(repoRoot, "apps/editor/public/adapters/storage/project-file.js"),
     "utf8",
   );
   const autosaveAdapterScript = readFileSync(
     path.join(repoRoot, "apps/editor/public/adapters/storage/autosave.js"),
+    "utf8",
+  );
+  const projectPersistenceServiceScript = readFileSync(
+    path.join(repoRoot, "apps/editor/public/adapters/storage/project-persistence-service.js"),
     "utf8",
   );
   const projectFileDisplayScript = readFileSync(
@@ -192,8 +235,9 @@ export async function runDesktopApplicationTest() {
   const appScript = createDesktopResponse("/app.js");
   assert.equal(appScript.statusCode, 200);
   assert.match(appScript.body, /adapters\/storage\/project-file\.js/);
-  assert.match(appScript.body, /adapters\/storage\/autosave\.js/);
-  assert.match(appScript.body, /adapters\/storage\/project-file-display\.js/);
+  assert.match(appScript.body, /adapters\/storage\/project-persistence-service\.js/);
+  assert.doesNotMatch(appScript.body, /adapters\/storage\/autosave\.js/);
+  assert.doesNotMatch(appScript.body, /adapters\/storage\/project-file-display\.js/);
   assert.doesNotMatch(appScript.body, /Add narration block/);
   assert.doesNotMatch(appScript.body, /Add dialogue block/);
   assert.doesNotMatch(appScript.body, /Scene Synopsis/);
@@ -249,12 +293,12 @@ export async function runDesktopApplicationTest() {
   assert.match(appScript.body, /runNativeTextEditCommand/);
   assert.match(appScript.body, /event\.shiftKey \? "redo" : "undo"/);
   assert.match(appScript.body, /focusProjectLibrarySelect/);
-  assert.match(appScript.body, /canUseBrowserSavePicker/);
-  assert.match(appScript.body, /canUseBrowserOpenPicker/);
-  assert.match(appScript.body, /promptForProjectFileFromInput/);
+  assert.match(projectPersistenceServiceScript, /canUseBrowserSavePicker/);
+  assert.match(projectPersistenceServiceScript, /canUseBrowserOpenPicker/);
+  assert.match(projectPersistenceServiceScript, /promptForProjectFileFromInput/);
   assert.match(appScript.body, /downloadProjectLibrarySnapshot/);
   assert.match(appScript.body, /reconnectProjectFileDestinationOnBoot/);
-  assert.match(appScript.body, /buildProjectFilePathFromRoot/);
+  assert.match(projectPersistenceServiceScript, /buildProjectFilePathFromRoot/);
   assert.match(appScript.body, /getProjectRecordFilePath/);
   assert.match(appScript.body, /toggle-console-collapse/);
   assert.match(appScript.body, /console-dock-toggle/);
@@ -267,7 +311,9 @@ export async function runDesktopApplicationTest() {
   assert.match(shellScript, /Autosave project file/);
   assert.match(shellScript, /Writing to JSON file/);
   assert.match(shellScript, /Waiting for file/);
-  assert.match(appScript.body, /Writing to JSON file:/);
+  assert.match(shellScript, /Saves after 5 seconds of idle editing\./);
+  assert.match(appScript.body, /const PROJECT_FILE_AUTOSAVE_DELAY_MS = 5000;/);
+  assert.match(projectPersistenceServiceScript, /Writing to JSON file:/);
   assert.match(sceneEditorModuleScript, /projectFileDisplay/);
   assert.match(sceneEditorModuleScript, /data-file-path-tooltip="\$\{escapeHtml\(safeProjectFileDisplay\.tooltip\)\}"/);
   assert.match(shellScript, /project-title-input/);
@@ -299,6 +345,9 @@ export async function runDesktopApplicationTest() {
   assert.doesNotMatch(appScript.body, />Issues<\/h2>/);
   assert.doesNotMatch(appScript.body, /Inspiration Notes<\/h2>/);
   assert.doesNotMatch(appScript.body, /Research Notes<\/h2>/);
+  assert.match(appScript.body, /renderSidePanelTab\("issues", "Tasks", taskCount\)/);
+  assert.doesNotMatch(appScript.body, /renderSidePanelTab\("issues", "Issues"/);
+  assert.doesNotMatch(appScript.body, /Issue Console/);
   assert.match(shellScript, /project-source-path/);
   assert.match(shellScript, /select-pane/);
   assert.match(appScript.body, /formatChapterDisplayTitle/);
@@ -315,6 +364,8 @@ export async function runDesktopApplicationTest() {
   assert.match(appScript.body, /beginSceneTitleEdit/);
   assert.match(appScript.body, /updateSceneEditorTitle/);
   assert.match(appScript.body, /if \(editField === "scene-title"\) \{[\s\S]*?updateSceneTitleLabel\(sceneId, target\.value\);[\s\S]*?updateSceneEditorTitle\(sceneId, target\.value\);/);
+  assert.match(appScript.body, /function deleteSceneFromBinder\(sceneId\) \{[\s\S]*?const scene = getScene\(sceneId\);/);
+  assert.match(appScript.body, /function deleteChapterFromBinder\(chapterId\) \{[\s\S]*?const chapterScenes = getScenesForChapter\(chapterId\);/);
   assert.match(appScript.body, /binder-nav-action-short/);
   assert.match(appScript.body, /toggle-writing-target-window/);
   assert.match(writingTargetWindowScript, /renderWritingTargetWindowHTML/);
@@ -327,41 +378,53 @@ export async function runDesktopApplicationTest() {
   assert.doesNotMatch(appScript.body, /renderStat\("Events", workspace\.project\.stats\.eventCount, "events"\)/);
   assert.doesNotMatch(appScript.body, /renderStat\("Chars", workspace\.project\.stats\.characterCount, "chars"\)/);
   assert.match(appScript.body, /writingTargetPointerDownStartedInsideWindow/);
-  assert.match(appScript.body, /sessionWordsPerHourLabel/);
-  assert.match(appScript.body, /sessionMilestoneStatusText/);
-  assert.match(appScript.body, /estimateRecentSessionWordsPerMinute/);
-  assert.match(appScript.body, /const sessionIsLive = sessionLifecycle\.sessionDisplayActive === true;/);
-  assert.match(appScript.body, /if \(!record\.sessionIsActive \|\| !lifecycle\.isConcluded\) \{/);
-  assert.match(appScript.body, /touchWritingTargetSessionActivity/);
+  assert.match(writingGoalsStateServiceScript, /sessionWordsPerHourLabel/);
+  assert.match(writingGoalsStateServiceScript, /sessionMilestoneStatusText/);
+  assert.match(writingGoalsStateServiceScript, /estimateRecentSessionWordsPerMinute/);
+  assert.match(writingGoalsStateServiceScript, /const sessionIsLive = sessionLifecycle\.sessionDisplayActive === true;/);
+  assert.match(writingGoalsStateServiceScript, /if \(!record\.sessionIsActive \|\| !lifecycle\.isConcluded\) \{/);
+  assert.match(writingGoalsStateServiceScript, /touchWritingTargetSessionActivity/);
   assert.match(appScript.body, /syncHeaderLiveState/);
-  assert.match(appScript.body, /const shouldCaptureImmediately = options\.immediate === true/);
-  assert.match(appScript.body, /Idle/);
+  assert.match(writingGoalsServiceScript, /if \(options\.immediate\)/);
+  assert.match(writingGoalsStateServiceScript, /Idle/);
   assert.match(appScript.body, /WRITING_TARGET_SESSION_SEGMENT_CLOSE_BUFFER_MINUTES/);
   assert.match(appScript.body, /WRITING_TARGET_SESSION_NEW_SESSION_BUFFER_MINUTES/);
-  assert.match(appScript.body, /buildWritingTargetSessionLifecycleSummaryText/);
-  assert.match(appScript.body, /sessionLifecycleSummaryText/);
-  assert.match(appScript.body, /data-session-tracker-start-time/);
-  assert.match(appScript.body, /data-session-tracker-words-written/);
-  assert.match(appScript.body, /sessionSamples/);
+  assert.match(writingGoalsStateServiceScript, /buildWritingTargetSessionLifecycleSummaryText/);
+  assert.match(writingGoalsStateServiceScript, /sessionLifecycleSummaryText/);
+  assert.match(writingGoalsServiceScript, /data-session-tracker-start-time/);
+  assert.match(writingGoalsServiceScript, /data-session-tracker-words-written/);
+  assert.match(writingGoalsStateServiceScript, /sessionSamples/);
   assert.match(appScript.body, /WRITING_TARGET_SESSION_PACE_STALE_MINUTES/);
-  assert.match(appScript.body, /sessionPaceActive/);
-  assert.match(appScript.body, /createPassageExcerpt/);
-  assert.match(appScript.body, /passageExcerpt/);
-  assert.match(appScript.body, /getWritingTargetDailyBaselineWordCount/);
-  assert.doesNotMatch(appScript.body, /todaysEntry/);
-  assert.match(appScript.body, /filter\(\(entry\) => entry\.date < todayKey\)[\s\S]*?\.at\(-1\)/);
-  assert.match(appScript.body, /dailyBaselineDateKey/);
-  assert.match(appScript.body, /dailyBaselineWordCount/);
-  assert.match(appScript.body, /const dailyWords = currentWordCount - dailyBaselineWordCount;/);
-  assert.match(appScript.body, /progress: sessionTargetWords > 0 \? Math\.min\(1, Math\.max\(0, dailyWords\) \/ sessionTargetWords\) : 0,/);
+  assert.match(writingGoalsStateServiceScript, /sessionPaceActive/);
+  assert.match(writingGoalsStateServiceScript, /createPassageExcerpt/);
+  assert.match(writingGoalsStateServiceScript, /passageExcerpt/);
+  assert.match(writingGoalsStateServiceScript, /getWritingTargetDailyBaselineWordCount/);
+  assert.doesNotMatch(writingGoalsStateServiceScript, /todaysEntry/);
+  assert.match(writingGoalsStateServiceScript, /filter\(\(entry\) => entry\.date < todayKey\)[\s\S]*?\.at\(-1\)/);
+  assert.match(writingGoalsStateServiceScript, /dailyBaselineDateKey/);
+  assert.match(writingGoalsStateServiceScript, /dailyBaselineWordCount/);
+  assert.match(writingGoalsStateServiceScript, /clampWritingTargetDailyBaselineWordCount/);
+  assert.match(writingGoalsStateServiceScript, /resolveWritingTargetDailyBaselineWordCount/);
+  assert.match(writingGoalsStateServiceScript, /function getWritingTargetTodayHistoryEntry\(record, now = new Date\(\)\)/);
+  assert.match(writingGoalsStateServiceScript, /function getWritingTargetPreviousHistoryEntry\(record, now = new Date\(\)\)/);
+  assert.doesNotMatch(appScript.body, /function shouldRebaseWritingTargetDailyBaseline/);
+  assert.doesNotMatch(appScript.body, /return Math\.min\(baseline, normalizedCurrentWordCount\);/);
+  assert.match(writingGoalsStateServiceScript, /const dailyWords = Math\.max\(0, currentWordCount - dailyBaselineWordCount\);/);
+  assert.match(writingGoalsStateServiceScript, /activeProjectRecord\?\.projectIndex\?\.scenes/);
+  assert.match(writingGoalsStateServiceScript, /const indexedWordCountValue = Number\(indexedScene\.wordCount\);/);
+  assert.match(writingGoalsStateServiceScript, /const shouldTrustDraftWordCount = draftWordCount > 0 \|\| sceneId === state\.selectedSceneId \|\| indexedWordCount <= 0;/);
+  assert.match(appScript.body, /persistCurrentProjectRecord\(\{\s*changedSceneIds: \[sceneId\],[\s\S]*?\}\);/);
+  assert.match(writingGoalsStateServiceScript, /progress: sessionTargetWords > 0 \? Math\.min\(1, Math\.max\(0, dailyWords\) \/ sessionTargetWords\) : 0,/);
   assert.match(appScript.body, /syncWritingTargetWindowLiveState\(\);[\s\S]*?queueWritingTargetSnapshot\(/);
-  assert.match(appScript.body, /buildLiveWritingTargetHistoryEntry/);
+  assert.match(writingGoalsStateServiceScript, /buildLiveWritingTargetHistoryEntry/);
   assert.match(appScript.body, /recordWritingTargetSnapshot/);
   assert.match(appScript.body, /commitWritingTargetDraft/);
-  assert.match(appScript.body, /getProjectRecordById\(projectId\)/);
-  assert.match(appScript.body, /projectRecord\?\.projectSettings\?\.writingTargetState \?\? store\[projectId\]/);
-  assert.match(appScript.body, /function syncWritingTargetCanonicalState\(record\)/);
+  assert.match(writingGoalsStateServiceScript, /getProjectRecordById\(projectId\)/);
+  assert.match(writingGoalsStateServiceScript, /projectRecord\?\.projectSettings\?\.writingTargetState \?\? store\[projectId\]/);
+  assert.match(writingGoalsStateServiceScript, /function syncWritingTargetCanonicalState\(record\)/);
   assert.match(appScript.body, /writingTargetDraftBaseline/);
+  assert.match(appScript.body, /function getProjectRecordWordCountForSettings\(recordLike\)/);
+  assert.match(appScript.body, /getProjectRecordWordCountForSettings\(record\)/);
 
   const sceneEditorScript = createDesktopResponse("/features/scene-editor.js");
   assert.equal(sceneEditorScript.statusCode, 200);
@@ -370,34 +433,41 @@ export async function runDesktopApplicationTest() {
   assert.match(sceneEditorScript.body, /Text Width/);
   assert.match(sceneEditorScript.body, /scene-editor-context/);
   assert.match(sceneEditorScript.body, /data-scene-editor-chapter-title/);
+  assert.match(sceneEditorScript.body, /data-scene-editor-chapter-word-count/);
+  assert.match(sceneEditorScript.body, /data-scene-editor-selection-word-count/);
+  assert.match(sceneEditorScript.body, /data-scene-editor-scene-word-count/);
   assert.match(sceneEditorScript.body, /data-scene-title-id/);
   assert.match(sceneEditorScript.body, /Save to typed verse/);
   assert.match(appScript.body, /function applySceneTitle\(sceneId, title\) \{[\s\S]*?updateSceneEditorTitle\(sceneId, title\);[\s\S]*?updateFocusedLineCard\(\);/);
-  assert.match(appScript.body, /const writingTargetWorkingRecord = getWritingTargetWorkingRecord\(\);/);
+  assert.match(appScript.body, /const writingTargetState = state\.writingTargetState/);
   assert.match(
-    appScript.body,
+    writingGoalsServiceScript,
     /function saveWritingTargetGoals\(\) \{[\s\S]*?commitWritingTargetDraft\(\);[\s\S]*?if \(hasProjectFileDestination\(\)\) \{[\s\S]*?void saveCurrentProject\(\);/,
   );
   assert.match(
-    appScript.body,
+    writingGoalsServiceScript,
     /function closeWritingTargetWindow\(\) \{[\s\S]*?commitWritingTargetDraft\(\);/,
   );
   assert.match(
     appScript.body,
-    /async function saveCurrentProject\(\) \{[\s\S]*?commitWritingTargetDraft\(\);/,
+    /async function saveCurrentProject\(\) \{[\s\S]*?projectPersistenceService\.saveProjectSnapshot\(\{ reason: "save-project" \}\);/,
   );
   assert.match(
     appScript.body,
-    /async function saveCurrentProjectFileAs\(\) \{[\s\S]*?commitWritingTargetDraft\(\);/,
+    /async function saveCurrentProjectFileAs\(\) \{[\s\S]*?projectPersistenceService\.saveProjectSnapshotAs\(\);/,
   );
   assert.match(appScript.body, /saveWritingTargetState/);
   assert.match(appScript.body, /syncWritingTargetWindowLiveState/);
-  assert.match(appScript.body, /data-session-tracker-panel/);
+  assert.match(writingGoalsServiceScript, /data-session-tracker-panel/);
   assert.match(appScript.body, /startWritingTargetWindowRefreshTimer/);
   assert.match(appScript.body, /stopWritingTargetWindowRefreshTimer/);
   assert.doesNotMatch(appScript.body, /Seed 30-day sample/);
   assert.doesNotMatch(appScript.body, /seed-writing-target-data/);
   assert.match(appScript.body, /EDITOR_WRITING_TARGETS_KEY/);
+  assert.match(appScript.body, /writingGoalsLogger:\s*writingGoalsServiceLog/);
+  assert.doesNotMatch(appScript.body, /toggle-writing-target-debug-terminal/);
+  assert.doesNotMatch(appScript.body, /copy-writing-target-debug-log/);
+  assert.doesNotMatch(appScript.body, /hydrateWritingTargetDebugEntriesFromDesktop/);
   assert.match(shellScript, /Ctrl\+Alt\+T/);
   assert.match(shellScript, /Ctrl\+S save/);
   assert.match(shellScript, /Ctrl\+Shift\+S save as/);
@@ -444,9 +514,9 @@ export async function runDesktopApplicationTest() {
   assert.match(writingTargetWindowScript, /writing-target-range/);
   assert.match(writingTargetWindowScript, /Daily target/);
   assert.match(writingTargetWindowScript, /data-metric-key="sessionTracker"/);
-  assert.match(appScript.body, /goalSyncSource/);
-  assert.match(appScript.body, /goalSyncHint/);
-  assert.match(appScript.body, /syncWritingTargetGoalFields/);
+  assert.match(writingGoalsStateServiceScript, /goalSyncSource/);
+  assert.match(writingGoalsStateServiceScript, /goalSyncHint/);
+  assert.match(writingGoalsStateServiceScript, /syncWritingTargetGoalFields/);
   assert.match(writingTargetWindowScript, /sessionsPerDay/);
   assert.match(writingTargetWindowScript, /sessionTimeoutMinutes/);
   assert.match(writingTargetWindowScript, /Session time/);
@@ -456,11 +526,14 @@ export async function runDesktopApplicationTest() {
   assert.match(appScript.body, /console-chapter-group/);
   assert.match(appScript.body, /console-chapter-heading/);
   assert.match(appScript.body, /issueTasks/);
-  assert.match(appScript.body, /On track/);
-  assert.match(appScript.body, /Off track/);
+  assert.match(writingGoalsStateServiceScript, /On track/);
+  assert.match(writingGoalsStateServiceScript, /Off track/);
   assert.match(appScript.body, /data-resize-handle="binder"/);
   assert.match(appScript.body, /data-resize-handle="console"/);
   assert.match(appScript.body, /syncLayoutWidths/);
+  assert.match(appScript.body, /userSettingPanelResizerLeftPercent/);
+  assert.match(appScript.body, /userSettingPanelResizerRightPercent/);
+  assert.match(appScript.body, /persistPanelResizerUserSettings/);
   assert.match(
     appScript.body,
     /function toggleChapterCollapse\(chapterId\) \{[\s\S]*?persistCollapsedChapterState\(state\.activeProjectId, state\.collapsedChapterIds\);[\s\S]*?persistCurrentProjectRecord\(\);[\s\S]*?renderBinderPanel\(\);[\s\S]*?\}/,
@@ -499,11 +572,31 @@ export async function runDesktopApplicationTest() {
   assert.match(progressTrackerModule.body, /writing-target-card-icon/);
   assert.match(progressTrackerModule.body, /Session tracker/);
   assert.match(progressTrackerModule.body, /session-tracker-panel__bar-meta/);
+  assert.match(progressTrackerModule.body, /writing-target-debug-toggle/);
+  assert.match(progressTrackerModule.body, /open-developer-logs/);
 
   const sharedUiUtilsModule = createDesktopResponse("/shared/ui-utils.js");
   assert.equal(sharedUiUtilsModule.statusCode, 200);
   assert.match(sharedUiUtilsModule.body, /function escapeHtml/);
   assert.match(sharedUiUtilsModule.body, /function formatDisplayNumber/);
+
+  const developerLogsPage = createDesktopResponse("/developer-logs.html");
+  assert.equal(developerLogsPage.statusCode, 200);
+  assert.match(developerLogsPage.body, /Developer Logs/);
+  assert.match(developerLogsPage.body, /source-filter/);
+  assert.match(developerLogsPage.body, /category-filter/);
+  assert.match(developerLogsPage.body, /Pause live/);
+
+  const developerLogsScript = createDesktopResponse("/developer-logs.js");
+  assert.equal(developerLogsScript.statusCode, 200);
+  assert.match(developerLogsScript.body, /createDeveloperLogClient/);
+  assert.match(developerLogsScript.body, /createBrowserStorageAdapter/);
+
+  const developerLoggerModule = createDesktopResponse("/shared/developer-logger.js");
+  assert.equal(developerLoggerModule.statusCode, 200);
+  assert.match(developerLoggerModule.body, /createDeveloperLogger/);
+  assert.match(developerLoggerModule.body, /createSource/);
+  assert.match(developerLoggerModule.body, /callsite/);
 
   const editorModel = createDesktopResponse("/editor-model.js");
   assert.equal(editorModel.statusCode, 200);
@@ -612,6 +705,9 @@ export async function runDesktopApplicationTest() {
   assert.match(styles.body, /\.editor-document-input/);
   assert.match(styles.body, /\.editor-gutter-line/);
   assert.match(styles.body, /\.scene-editor-context/);
+  assert.match(styles.body, /\.scene-editor-context__count/);
+  assert.match(styles.body, /\.scene-editor-footer/);
+  assert.match(styles.body, /\.scene-editor-footer__scene/);
 
   const goalsStyles = createDesktopResponse("/writing-goals-dashboard.css");
   assert.equal(goalsStyles.statusCode, 200);
@@ -669,16 +765,21 @@ export async function runDesktopApplicationTest() {
       projectPath: path.join(
         repoRoot,
         "SaveTestFile",
+        "project-serva-vitae.abe-project.json",
       ),
     }),
   });
   assert.equal(projectIntegrator.statusCode, 200);
   const importedProjectLibrary = JSON.parse(projectIntegrator.body);
-  assert.equal(importedProjectLibrary.projects.length, 1);
-  assert.equal(importedProjectLibrary.projects[0].source, "project-file");
-  assert.equal(importedProjectLibrary.projects[0].workspace.project.stats.chapterCount, 4);
-  assert.equal(importedProjectLibrary.projects[0].workspace.project.stats.sceneCount, 29);
-  assert.equal(importedProjectLibrary.projects[0].workspace.world.templates.length, 7);
+  // Intent: project library order can contain older saved-project records, so validate the active source project.
+  const importedProject =
+    importedProjectLibrary.projects.find((entry) => entry.id === importedProjectLibrary.activeProjectId)
+    ?? importedProjectLibrary.projects[0];
+  assert.equal(importedProjectLibrary.projects.length >= 1, true);
+  assert.equal(importedProject.source, "project-file");
+  assert.equal(importedProject.workspace.project.stats.chapterCount, 4);
+  assert.equal(importedProject.workspace.project.stats.sceneCount, 29);
+  assert.equal(importedProject.workspace.world.templates.length, 7);
 
   const projectLibraryCors = await createDesktopResponseForRequest({
     method: "OPTIONS",
@@ -697,6 +798,70 @@ export async function runDesktopApplicationTest() {
     }),
   });
   assert.equal(browserLog.statusCode, 204);
+
+  const runtimeLogSession = await createDesktopResponseForRequest({
+    method: "POST",
+    pathname: "/api/log/session",
+    body: JSON.stringify({}),
+  });
+  assert.equal(runtimeLogSession.statusCode, 200);
+  const runtimeLogSessionBody = JSON.parse(runtimeLogSession.body);
+  assert.equal(runtimeLogSessionBody.ok, true);
+  assert.equal(typeof runtimeLogSessionBody.filePath, "string");
+  assert.match(runtimeLogSessionBody.fileName, /^developer-runtime-session-\d{4}-.+\.txt$/);
+  assert.equal(typeof runtimeLogSessionBody.sessionNumber, "number");
+  assert.equal(runtimeLogSessionBody.keepLatestSessions, 20);
+
+  const runtimeLogPruneSettings = await createDesktopResponseForRequest({
+    method: "POST",
+    pathname: "/api/log/prune-settings",
+    body: JSON.stringify({
+      enabled: true,
+      keepLatestSessions: 20,
+    }),
+  });
+  assert.equal(runtimeLogPruneSettings.statusCode, 200);
+  const runtimeLogPruneSettingsBody = JSON.parse(runtimeLogPruneSettings.body);
+  assert.equal(runtimeLogPruneSettingsBody.ok, true);
+  assert.equal(runtimeLogPruneSettingsBody.autoPruneEnabled, true);
+  assert.equal(runtimeLogPruneSettingsBody.keepLatestSessions, 20);
+
+  const runtimeLogPruneNow = await createDesktopResponseForRequest({
+    method: "POST",
+    pathname: "/api/log/prune",
+    body: JSON.stringify({
+      keepLatestSessions: 20,
+    }),
+  });
+  assert.equal(runtimeLogPruneNow.statusCode, 200);
+  const runtimeLogPruneNowBody = JSON.parse(runtimeLogPruneNow.body);
+  assert.equal(runtimeLogPruneNowBody.ok, true);
+  assert.equal(runtimeLogPruneNowBody.keepLatestSessions, 20);
+
+  const browserLogTail = await createDesktopResponseForRequest({
+    method: "POST",
+    pathname: "/api/log/read",
+    body: JSON.stringify({
+      limit: 20,
+    }),
+  });
+  assert.equal(browserLogTail.statusCode, 200);
+  const browserLogTailBody = JSON.parse(browserLogTail.body);
+  assert.equal(browserLogTailBody.ok, true);
+  assert.equal(typeof browserLogTailBody.filePath, "string");
+  assert.equal(typeof browserLogTailBody.text, "string");
+
+  const browserLogClear = await createDesktopResponseForRequest({
+    method: "POST",
+    pathname: "/api/log/clear",
+    body: JSON.stringify({}),
+  });
+  assert.equal(browserLogClear.statusCode, 200);
+  const browserLogClearBody = JSON.parse(browserLogClear.body);
+  assert.equal(browserLogClearBody.ok, true);
+
+  const writingTargetDebugGet = createDesktopResponse("/api/writing-target-log");
+  assert.equal(writingTargetDebugGet.statusCode, 404);
 
   const settingsUpdate = await createDesktopResponseForRequest({
     method: "POST",

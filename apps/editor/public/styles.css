@@ -276,6 +276,103 @@ select {
   gap: 8px;
 }
 
+.desktop-target-strip__tools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.project-autosave-indicator {
+  display: inline-grid;
+  grid-auto-flow: row;
+  gap: 2px;
+  min-width: 168px;
+  padding: 4px 10px 5px;
+  border: 1px solid rgba(31, 36, 48, 0.14);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 5px 14px rgba(28, 35, 44, 0.06);
+}
+
+.project-autosave-indicator__label {
+  color: var(--ink-soft);
+  font-size: 0.64rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.project-autosave-indicator__status {
+  color: var(--ink);
+  font-size: 0.8rem;
+  letter-spacing: 0.03em;
+}
+
+.project-autosave-indicator__note {
+  color: var(--ink-soft);
+  font-size: 0.67rem;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.project-autosave-indicator.is-ready {
+  border-color: rgba(113, 215, 177, 0.38);
+}
+
+.project-autosave-indicator.is-ready .project-autosave-indicator__status {
+  color: #1c7f5e;
+}
+
+.project-autosave-indicator.is-saving {
+  border-color: rgba(56, 130, 246, 0.34);
+}
+
+.project-autosave-indicator.is-saving .project-autosave-indicator__status {
+  color: #1d4ed8;
+}
+
+.project-autosave-indicator.is-pending {
+  border-color: rgba(217, 119, 6, 0.34);
+}
+
+.project-autosave-indicator.is-pending .project-autosave-indicator__status {
+  color: #b45309;
+}
+
+.project-autosave-indicator.is-waiting,
+.project-autosave-indicator.is-suppressed,
+.project-autosave-indicator.is-off {
+  border-color: rgba(107, 114, 128, 0.34);
+}
+
+.project-autosave-indicator.is-waiting .project-autosave-indicator__status,
+.project-autosave-indicator.is-suppressed .project-autosave-indicator__status,
+.project-autosave-indicator.is-off .project-autosave-indicator__status {
+  color: #4b5563;
+}
+
+.desktop-target-strip__tools-meta {
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.writing-target-debug-toggle {
+  min-height: 28px;
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.writing-target-debug-toggle.is-open {
+  border-color: rgba(184, 92, 56, 0.36);
+  background: rgba(255, 244, 233, 0.92);
+}
+
 .writing-target-card {
   display: grid;
   gap: 6px;
@@ -2173,6 +2270,46 @@ aside#binder-slot {
   font-weight: 600;
 }
 
+.binder-scene {
+  position: relative;
+}
+
+.binder-scene.is-drop-before::before,
+.binder-scene.is-drop-after::after,
+.binder-chapter.is-drop-start .binder-chapter-row::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent 0%, rgba(184, 92, 56, 0.96) 22%, rgba(184, 92, 56, 0.96) 78%, transparent 100%);
+  box-shadow: 0 0 0 4px rgba(184, 92, 56, 0.1);
+  pointer-events: none;
+}
+
+.binder-scene.is-drop-before::before {
+  top: -8px;
+}
+
+.binder-scene.is-drop-after::after {
+  bottom: -8px;
+}
+
+.binder-scene.is-drop-before .binder-scene-button,
+.binder-scene.is-drop-after .binder-scene-button {
+  border-color: rgba(184, 92, 56, 0.36);
+  box-shadow: 0 0 0 1px rgba(184, 92, 56, 0.08) inset, 0 10px 18px rgba(41, 48, 58, 0.08);
+}
+
+.binder-chapter.is-drop-start .binder-chapter-row {
+  position: relative;
+}
+
+.binder-chapter.is-drop-start .binder-chapter-row::after {
+  bottom: -6px;
+}
+
 .binder-collapse-button {
   display: inline-grid;
   place-items: center;
@@ -2197,6 +2334,36 @@ aside#binder-slot {
 
 .binder-chapter.is-collapsed .binder-children {
   display: none;
+}
+
+.binder-scene-drop-slot {
+  position: relative;
+  display: block;
+  min-height: 14px;
+  margin: 4px 0;
+  border-radius: 999px;
+  pointer-events: auto;
+}
+
+.binder-scene-drop-slot::before {
+  content: "";
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  top: 50%;
+  height: 2px;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent 0%, rgba(184, 92, 56, 0.35) 18%, rgba(184, 92, 56, 0.35) 82%, transparent 100%);
+  opacity: 0.55;
+  transition: opacity 120ms ease, box-shadow 120ms ease, background 120ms ease;
+}
+
+.binder-scene-drop-slot.is-drop-before::before,
+.binder-scene-drop-slot.is-drop-after::before {
+  opacity: 1;
+  background: linear-gradient(90deg, transparent 0%, rgba(184, 92, 56, 0.96) 18%, rgba(184, 92, 56, 0.96) 82%, transparent 100%);
+  box-shadow: 0 0 0 4px rgba(184, 92, 56, 0.1);
 }
 
 .binder-kind {
@@ -2304,8 +2471,9 @@ aside#binder-slot {
 .scene-editor-context {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   margin: 0;
   color: var(--ink-soft);
   font-size: 0.72rem;
@@ -2314,12 +2482,33 @@ aside#binder-slot {
   text-transform: uppercase;
 }
 
+.scene-editor-context__chapter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
 .scene-editor-context strong {
   color: var(--accent-deep);
   font-size: 0.92rem;
   font-weight: 700;
   letter-spacing: 0.02em;
   text-transform: none;
+}
+
+.scene-editor-context__count {
+  padding: 7px 10px;
+  border: 1px solid rgba(31, 36, 48, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 250, 243, 0.82);
+  color: var(--accent-deep);
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .scene-editor-project-title {
@@ -2544,6 +2733,32 @@ aside#binder-slot {
   overflow-y: auto;
   overscroll-behavior: contain;
   scroll-behavior: smooth;
+}
+
+.scene-editor-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 10px 16px;
+  padding: 12px 14px;
+  border: 1px solid rgba(31, 36, 48, 0.08);
+  border-radius: 16px;
+  background: rgba(255, 250, 243, 0.82);
+  color: var(--ink);
+  font-size: 0.88rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.scene-editor-footer__selection,
+.scene-editor-footer__scene {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.scene-editor-footer__scene {
+  color: var(--accent-deep);
 }
 
 .editor-document-gutter {

@@ -29,9 +29,19 @@ export function loadProjectLibrarySeedFromPath(
     });
     return snapshot;
   } catch (error) {
+    const cause = error instanceof Error ? error.message : String(error);
+    // Intent: ambiguous project folders must fail visibly instead of loading an unrelated fallback project.
+    if (isAmbiguousProjectSourceMessage(cause)) {
+      logDesktopError("project-source", "Project source folder is ambiguous.", {
+        projectPath,
+        cause,
+      });
+      throw error;
+    }
+
     logDesktopError("project-source", "Using the bundled project library snapshot.", {
       projectPath,
-      cause: error instanceof Error ? error.message : String(error),
+      cause,
     });
     return createServaVitaeProjectLibrarySeed();
   }
@@ -45,7 +55,7 @@ export function resolveProjectSourcePath(projectPath: string): string {
   }
 
   if (statSync(resolvedPath).isFile()) {
-    if (isProjectSaveFile(resolvedPath)) {
+    if (isProjectSaveFile(resolvedPath) || isProjectManifestFile(resolvedPath)) {
       return resolvedPath;
     }
 
@@ -53,27 +63,51 @@ export function resolveProjectSourcePath(projectPath: string): string {
   }
 
   const projectBaseName = path.basename(resolvedPath);
-  const candidates = [
+  const preferredCandidates = [
+    path.join(resolvedPath, "project.json"),
     path.join(resolvedPath, `${projectBaseName}.abe-project.json`),
-    ...readdirSync(resolvedPath, { withFileTypes: true })
-      .filter((entry) => entry.isFile() && isProjectSaveFile(entry.name))
-      .map((entry) => path.join(resolvedPath, entry.name)),
   ];
 
-  const indexPath = candidates.find((candidate) => existsSync(candidate));
-  if (indexPath) {
-    return indexPath;
+  const preferredPath = preferredCandidates.find((candidate) => existsSync(candidate));
+  if (preferredPath) {
+    return preferredPath;
   }
 
-  const recursiveProjectPath = findFirstMatchingFile(
+  // Intent: never silently choose one save file from a folder that contains multiple projects.
+  const directProjectFiles = readdirSync(resolvedPath, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && (isProjectSaveFile(entry.name) || isProjectManifestFile(entry.name)))
+    .map((entry) => path.join(resolvedPath, entry.name))
+    .sort((left, right) => left.localeCompare(right));
+  if (directProjectFiles.length === 1) {
+    return directProjectFiles[0];
+  }
+  if (directProjectFiles.length > 1) {
+    throw new Error(
+      `Multiple project save files found inside ${resolvedPath}. Choose a specific project file instead of the folder.`,
+    );
+  }
+
+  const recursiveProjectPaths = findMatchingFiles(
     resolvedPath,
-    (filePath) => isProjectSaveFile(filePath),
+    (filePath) => isProjectSaveFile(filePath) || isProjectManifestFile(filePath),
+    2,
   );
-  if (recursiveProjectPath) {
-    return recursiveProjectPath;
+  if (recursiveProjectPaths.length === 1) {
+    return recursiveProjectPaths[0];
+  }
+  if (recursiveProjectPaths.length > 1) {
+    throw new Error(
+      `Multiple nested project save files found inside ${resolvedPath}. Choose a specific project file instead of the folder.`,
+    );
   }
 
   throw new Error(`Unable to find a project save file inside ${resolvedPath}.`);
+}
+
+function isAmbiguousProjectSourceMessage(message: string) {
+  // Intent: keep user-directed folder ambiguity distinct from ordinary missing/invalid seed fallback.
+  return message.startsWith("Multiple project save files found")
+    || message.startsWith("Multiple nested project save files found");
 }
 
 function normalizeProjectLibrarySnapshot(
@@ -154,6 +188,8 @@ function normalizeProjectLibraryRecord(
         dictionaryWords: [],
         exceptionWords: [],
       },
+      userSettingPanelResizerLeftPercent: null,
+      userSettingPanelResizerRightPercent: null,
     }),
     editorPrefs: normalizeObject(project.editorPrefs, "editorPrefs"),
     localAiPrefs: normalizeObject(project.localAiPrefs, "localAiPrefs", { enabled: true }),
@@ -192,25 +228,36 @@ function normalizeObject<T extends Record<string, unknown>>(
   } as T;
 }
 
-function findFirstMatchingFile(rootPath: string, predicate: (filePath: string) => boolean) {
-  // Intent: locate app-native project files in nested project folders without reviving legacy import formats.
-  for (const entry of readdirSync(rootPath, { withFileTypes: true })) {
+function findMatchingFiles(rootPath: string, predicate: (filePath: string) => boolean, limit = Number.POSITIVE_INFINITY) {
+  // Intent: locate app-native project files in nested project folders while preserving ambiguity detection.
+  const matches: string[] = [];
+  const entries = readdirSync(rootPath, { withFileTypes: true })
+    .sort((left, right) => left.name.localeCompare(right.name));
+  for (const entry of entries) {
     const entryPath = path.join(rootPath, entry.name);
     if (entry.isFile() && predicate(entryPath)) {
-      return entryPath;
+      matches.push(entryPath);
+      if (matches.length >= limit) {
+        return matches;
+      }
     }
 
     if (entry.isDirectory()) {
-      const found = findFirstMatchingFile(entryPath, predicate);
-      if (found) {
-        return found;
+      const found = findMatchingFiles(entryPath, predicate, limit - matches.length);
+      matches.push(...found);
+      if (matches.length >= limit) {
+        return matches;
       }
     }
   }
 
-  return null;
+  return matches;
 }
 
 function isProjectSaveFile(filePath: string) {
   return filePath.toLowerCase().endsWith(".abe-project.json");
+}
+
+function isProjectManifestFile(filePath: string) {
+  return path.basename(filePath).toLowerCase() === "project.json";
 }

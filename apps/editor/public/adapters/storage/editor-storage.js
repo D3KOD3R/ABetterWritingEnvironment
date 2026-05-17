@@ -1,5 +1,14 @@
 // Intent: keep browser-backed editor cache, preference, and small project-state helpers out of the shell.
+// Guardrail: browser localStorage is temporary prototype runtime storage (`browser-adapter`) and not the final desktop-storage model.
 import {
+  EDITOR_DRAFTS_KEY,
+  EDITOR_LOCAL_AI_PREFS_KEY,
+  EDITOR_PASSAGE_NOTES_KEY,
+  EDITOR_PREFS_KEY,
+  EDITOR_PROJECT_TITLE_KEY,
+  EDITOR_STRUCTURE_KEY,
+  EDITOR_TASKS_KEY,
+  EDITOR_TEMPLATE_DRAFTS_KEY,
   createStructureDrafts,
   createTemplateDrafts,
   normalizeEditorPrefs,
@@ -8,21 +17,29 @@ import {
   normalizePassageNotes,
 } from "../../editor-model.js";
 
+const LEGACY_EDITOR_DRAFTS_KEY = "abe-drafts-v1";
+const LEGACY_EDITOR_STRUCTURE_KEY = "abe-structure-v1";
+const LEGACY_EDITOR_TASKS_KEY = "abe-task-list-v1";
+
 // Intent: keep the storage key list centralized so shell persistence rules can reuse one guard set.
 export const PROJECT_STATE_STORAGE_KEYS = new Set([
-  "abe-drafts-v1",
-  "abe-structure-v1",
-  "abe-template-drafts-v1",
-  "abe-task-list-v1",
-  "abe-passage-notes-v1",
-  "abe-project-title-v1",
-  "abe-editor-prefs-v1",
-  "abe-local-ai-prefs-v1",
+  EDITOR_DRAFTS_KEY,
+  LEGACY_EDITOR_DRAFTS_KEY,
+  EDITOR_STRUCTURE_KEY,
+  LEGACY_EDITOR_STRUCTURE_KEY,
+  EDITOR_TEMPLATE_DRAFTS_KEY,
+  EDITOR_TASKS_KEY,
+  LEGACY_EDITOR_TASKS_KEY,
+  EDITOR_PASSAGE_NOTES_KEY,
+  EDITOR_PROJECT_TITLE_KEY,
+  EDITOR_PREFS_KEY,
+  EDITOR_LOCAL_AI_PREFS_KEY,
 ]);
 
 // Intent: return editor cache helpers that share the same logging and localStorage context.
 export function createEditorStorage({
   reportBrowserLog = () => {},
+  debugStorageAccess = false,
   windowRef = globalThis.window,
 } = {}) {
   // Intent: isolate browser localStorage reads so corrupt values fail safely instead of breaking boot.
@@ -33,7 +50,15 @@ export function createEditorStorage({
 
     try {
       const value = windowRef.localStorage.getItem(storageKey);
-      return value ? JSON.parse(value) : null;
+      const parsedValue = value ? JSON.parse(value) : null;
+      // Intent: keep high-frequency storage probes out of runtime logs unless explicitly profiling storage.
+      if (debugStorageAccess === true) {
+        reportBrowserLog("debug", "storage", `Read ${storageKey}.`, {
+          storageKey,
+          hit: value != null,
+        });
+      }
+      return parsedValue;
     } catch (error) {
       reportBrowserLog("warn", "storage", `Unable to read ${storageKey}.`, { error, storageKey });
       console.warn(`Unable to read ${storageKey}`, error);
@@ -49,6 +74,13 @@ export function createEditorStorage({
 
     try {
       windowRef.localStorage.setItem(storageKey, JSON.stringify(value));
+      // Intent: avoid turning normal preference/cache writes into a log storm during typing.
+      if (debugStorageAccess === true) {
+        reportBrowserLog("debug", "storage", `Wrote ${storageKey}.`, {
+          storageKey,
+          valueType: Array.isArray(value) ? "array" : typeof value,
+        });
+      }
     } catch (error) {
       reportBrowserLog("warn", "storage", `Unable to write ${storageKey}.`, { error, storageKey });
       console.warn(`Unable to write ${storageKey}`, error);
@@ -67,6 +99,17 @@ export function createEditorStorage({
     return Number.isFinite(value) && value > 0 ? value : fallback;
   };
 
+  const readStoredJsonWithFallback = (...storageKeys) => {
+    for (const storageKey of storageKeys) {
+      const candidate = readStoredJson(storageKey);
+      if (candidate !== null) {
+        return candidate;
+      }
+    }
+
+    return null;
+  };
+
   // Intent: normalize chapter id lists once so collapsed-panel persistence stays deterministic.
   const normalizeChapterIdList = (candidate) => {
     if (!Array.isArray(candidate)) {
@@ -78,36 +121,37 @@ export function createEditorStorage({
 
   // Intent: keep persisted scene, template, and preference snapshots safe to read during boot.
   const loadSceneDrafts = () => {
-    const candidate = readStoredJson("abe-drafts-v1");
+    const candidate = readStoredJsonWithFallback(EDITOR_DRAFTS_KEY, LEGACY_EDITOR_DRAFTS_KEY);
     return candidate && typeof candidate === "object" ? candidate : {};
   };
 
   const loadStructureDrafts = () => {
-    const candidate = readStoredJson("abe-structure-v1");
+    const candidate = readStoredJsonWithFallback(EDITOR_STRUCTURE_KEY, LEGACY_EDITOR_STRUCTURE_KEY);
     return candidate && typeof candidate === "object"
       ? candidate
       : createStructureDrafts();
   };
 
   const loadTemplateDrafts = () => {
-    const candidate = readStoredJson("abe-template-drafts-v1");
+    const candidate = readStoredJson(EDITOR_TEMPLATE_DRAFTS_KEY);
     return Array.isArray(candidate) ? candidate : createTemplateDrafts();
   };
 
-  const loadManuscriptTasks = () => normalizeManuscriptTasks(readStoredJson("abe-task-list-v1"));
+  const loadManuscriptTasks = () =>
+    normalizeManuscriptTasks(readStoredJsonWithFallback(EDITOR_TASKS_KEY, LEGACY_EDITOR_TASKS_KEY));
 
-  const loadPassageNotes = () => normalizePassageNotes(readStoredJson("abe-passage-notes-v1"));
+  const loadPassageNotes = () => normalizePassageNotes(readStoredJson(EDITOR_PASSAGE_NOTES_KEY));
 
   const loadProjectTitle = (defaultTitle) => {
-    const candidate = readStoredJson("abe-project-title-v1");
+    const candidate = readStoredJson(EDITOR_PROJECT_TITLE_KEY);
     return typeof candidate === "string" && candidate.trim()
       ? candidate
       : defaultTitle;
   };
 
-  const loadEditorPrefs = () => normalizeEditorPrefs(readStoredJson("abe-editor-prefs-v1"));
+  const loadEditorPrefs = () => normalizeEditorPrefs(readStoredJson(EDITOR_PREFS_KEY));
 
-  const loadLocalAiPrefs = () => normalizeLocalAiPrefs(readStoredJson("abe-local-ai-prefs-v1"));
+  const loadLocalAiPrefs = () => normalizeLocalAiPrefs(readStoredJson(EDITOR_LOCAL_AI_PREFS_KEY));
 
   // Intent: keep chapter-collapse persistence project-scoped and reversible.
   const loadCollapsedChapterIds = (projectId) => {

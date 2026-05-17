@@ -1,4 +1,9 @@
 // Intent: keep project file destination, browser picker, and desktop file I/O rules out of the editor shell.
+// Architecture labels:
+// - `browser-adapter`: compatibility layer for browser-only APIs.
+// - `desktop-storage`: future real project-folder package runtime.
+// - `projectService`: stable boundary the UI should call instead of runtime-specific APIs.
+// Boundary rule: UI/workflow modules must never call File System Access APIs directly.
 import {
   hasProjectFilePath,
   normalizeProjectFilePath,
@@ -65,10 +70,68 @@ export function getProjectFilePathBaseName(filePath) {
   return normalizeProjectFilePath(filePath).split(/[\\/]/).filter(Boolean).at(-1) ?? "";
 }
 
+// Intent: derive the canonical project identity for file-backed projects from the project filename.
+export function getProjectFileIdentity(filePath) {
+  const baseName = getProjectFilePathBaseName(filePath);
+  const withoutProjectSuffix = baseName.replace(/\.abe-project\.json$/i, "");
+  const withoutJsonSuffix = withoutProjectSuffix.replace(/\.json$/i, "");
+  return withoutJsonSuffix
+    .trim()
+    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, "-")
+    .replace(/\s+/g, " ")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
 export function getProjectFileHandleDisplayPath(fileHandle) {
   return typeof fileHandle?.name === "string" && fileHandle.name.trim()
     ? fileHandle.name.trim()
     : "";
+}
+
+// Intent: keep browser file-handle permission checks in the file adapter, not in UI orchestration.
+export async function queryProjectFileHandleWritePermission(fileHandle) {
+  if (!fileHandle || typeof fileHandle.queryPermission !== "function") {
+    return fileHandle ? "granted" : "denied";
+  }
+
+  try {
+    const status = await fileHandle.queryPermission({ mode: "readwrite" });
+    return normalizeProjectFileHandlePermission(status);
+  } catch {
+    return "prompt";
+  }
+}
+
+export async function requestProjectFileHandleWritePermission(fileHandle) {
+  if (!fileHandle) {
+    return "denied";
+  }
+
+  const currentStatus = await queryProjectFileHandleWritePermission(fileHandle);
+  if (currentStatus === "granted" || typeof fileHandle.requestPermission !== "function") {
+    return currentStatus;
+  }
+
+  try {
+    const status = await fileHandle.requestPermission({ mode: "readwrite" });
+    return normalizeProjectFileHandlePermission(status);
+  } catch {
+    return "prompt";
+  }
+}
+
+export async function ensureProjectFileHandleWritePermission(fileHandle, {
+  requestPermission = false,
+} = {}) {
+  const status = requestPermission
+    ? await requestProjectFileHandleWritePermission(fileHandle)
+    : await queryProjectFileHandleWritePermission(fileHandle);
+  return status === "granted";
+}
+
+function normalizeProjectFileHandlePermission(status) {
+  return ["granted", "prompt", "denied"].includes(status) ? status : "prompt";
 }
 
 export function resolveLoadedProjectFileDestination({
@@ -137,6 +200,38 @@ export function canUseBrowserOpenPicker(windowRef = globalThis.window) {
   return typeof windowRef?.showOpenFilePicker === "function";
 }
 
+// Intent: isolate File System Access API calls so UI modules do not depend on browser-only APIs directly.
+export async function pickProjectFileHandleForOpen({
+  windowRef = globalThis.window,
+  types = getProjectFilePickerTypes(),
+} = {}) {
+  if (typeof windowRef?.showOpenFilePicker !== "function") {
+    throw new Error("Open file picker API is unavailable.");
+  }
+
+  const [handle] = await windowRef.showOpenFilePicker({
+    multiple: false,
+    types,
+  });
+  return handle ?? null;
+}
+
+// Intent: isolate File System Access API calls so save workflows stay adapter-owned and portable.
+export async function pickProjectFileHandleForSave({
+  suggestedName = getSuggestedProjectFileName(),
+  windowRef = globalThis.window,
+  types = getProjectFilePickerTypes(),
+} = {}) {
+  if (typeof windowRef?.showSaveFilePicker !== "function") {
+    throw new Error("Save file picker API is unavailable.");
+  }
+
+  return windowRef.showSaveFilePicker({
+    suggestedName,
+    types,
+  });
+}
+
 export function getProjectFilePickerTypes() {
   return [
     {
@@ -150,6 +245,19 @@ export function getProjectFilePickerTypes() {
 
 export function getProjectFileInputAccept() {
   return ".json,application/json";
+}
+
+// Intent: keep new-project title prompts out of the shell so browser-only UI primitives stay adapter-owned.
+export function promptForProjectTitle({
+  message = "Name your new project:",
+  defaultTitle = "Untitled Project",
+  windowRef = globalThis.window,
+} = {}) {
+  if (typeof windowRef?.prompt !== "function") {
+    return defaultTitle;
+  }
+
+  return windowRef.prompt(String(message), String(defaultTitle));
 }
 
 // Intent: persist only durable desktop paths into desktop settings.
@@ -175,9 +283,17 @@ export async function persistDesktopProjectFilePathPreference(filePath, {
 // Intent: keep project-file read/write transports swappable between browser handles and desktop routes.
 export async function writeProjectLibraryToBrowserHandle(handle, snapshot, {
   fallbackFileName = getSuggestedProjectFileName(),
+  requestPermission = false,
 } = {}) {
   if (!handle) {
     throw new Error("A browser file handle is required.");
+  }
+
+  const hasWritePermission = await ensureProjectFileHandleWritePermission(handle, {
+    requestPermission,
+  });
+  if (!hasWritePermission) {
+    throw new Error("Project file write permission is unavailable. Use Ctrl+S or Save as file to re-authorize this file.");
   }
 
   const writable = await handle.createWritable();

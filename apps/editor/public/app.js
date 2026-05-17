@@ -36,32 +36,23 @@ import {
   updatePassageNoteBody,
   updatePassageNoteTitle,
 } from "./editor-model.js";
-import { getPassageNotePlaceholder, renderManuscriptPanelHTML } from "./features/scene-editor.js";
-import { escapeHtml, formatDisplayNumber } from "./shared/ui-utils.js";
-import { createProjectFileAutosaveController } from "./adapters/storage/autosave.js";
 import {
-  buildProjectFilePathFromRoot as buildProjectFilePathFromRootForProjectFile,
-  canUseBrowserOpenPicker,
-  canUseBrowserSavePicker,
-  downloadProjectLibrarySnapshot as downloadProjectLibrarySnapshotFromAdapter,
-  getProjectFilePickerTypes,
+  formatSceneEditorSelectionWordCount,
+  formatSceneEditorWordCount,
+  getPassageNotePlaceholder,
+  renderManuscriptPanelHTML,
+} from "./features/scene-editor.js";
+import { escapeHtml, formatDisplayNumber } from "./shared/ui-utils.js";
+import { createDeveloperLogger } from "./shared/developer-logger.js";
+import {
   getProjectRecordFilePath,
   getSuggestedProjectFileName as getSuggestedProjectFileNameFromTitle,
   getSuggestedProjectFilePath as getSuggestedProjectFilePathFromProject,
-  hasProjectFileDestination as hasProjectFileDestinationTarget,
   hasProjectFilePath,
   normalizeProjectFilePath,
-  persistDesktopProjectFilePathPreference,
-  promptForProjectFileFromInput,
-  readProjectLibraryFromBrowserFile,
-  readProjectLibraryFromBrowserHandle,
-  readProjectLibraryFromDesktopPath,
-  resolveLoadedProjectFileDestination,
+  promptForProjectTitle,
   resolveProjectFilePath,
-  writeProjectLibraryToBrowserHandle,
-  writeProjectLibraryToDesktopPath,
 } from "./adapters/storage/project-file.js";
-import { resolveProjectFileDisplayState } from "./adapters/storage/project-file-display.js";
 import {
   buildSpellcheckProjectLexicon,
   collectSpellcheckMisspellings,
@@ -74,16 +65,19 @@ import {
   normalizeSpellcheckWord,
   suggestSpellcheckAlternatives,
 } from "./spellcheck.js";
-import {
-  getSessionTrackerVisualState,
-} from "./features/progress-tracker.js";
-import { renderSessionTrackerPenSvg as renderSessionTrackerPenGlyph } from "./session-tracker-icons.js";
 import { renderEditorChrome } from "./shell/editor-chrome.js";
-import { renderWritingTargetWindowHTML } from "./features/writing-targets/writing-target-window.js";
+import { createWritingGoalsService } from "./features/writing-targets/writing-goals-service.js";
+import { createWritingGoalsStateService } from "./features/writing-targets/writing-goals-state-service.js";
 import {
   PROJECT_STATE_STORAGE_KEYS,
   createEditorStorage,
 } from "./adapters/storage/editor-storage.js";
+import { createBrowserStorageAdapter } from "./adapters/storage/browser-storage-adapter.js";
+import { createProjectRepository } from "./adapters/storage/project-repository.js";
+import { createPreferencesRepository } from "./adapters/storage/preferences-repository.js";
+import { createProjectService } from "./adapters/storage/project-service.js";
+import { PROJECT_SCHEMA_VERSION } from "./adapters/storage/project-migrations.js";
+import { createProjectPersistenceService } from "./adapters/storage/project-persistence-service.js";
 
 // Intent: keep shell-wide constants and state visible until each concern moves into its roadmap owner.
 const appRoot = document.querySelector("#app");
@@ -101,7 +95,7 @@ const DEFAULT_SESSION_TARGET_WORDS = 5000;
 const DEFAULT_WRITING_TARGET_LOOKBACK_DAYS = 7;
 const DEFAULT_SESSION_TARGETS_PER_DAY = 5;
 const DEFAULT_SESSION_TIMEOUT_MINUTES = 20;
-const PROJECT_FILE_AUTOSAVE_DELAY_MS = 2000;
+const PROJECT_FILE_AUTOSAVE_DELAY_MS = 5000;
 // The tracker uses one idle grace period, then a longer close window, then a new-session window.
 const WRITING_TARGET_SESSION_SEGMENT_CLOSE_BUFFER_MINUTES = 10;
 const WRITING_TARGET_SESSION_NEW_SESSION_BUFFER_MINUTES = 25;
@@ -113,8 +107,12 @@ const WRITING_TARGET_MAX_SESSION_SAMPLES = 20;
 const WRITING_TARGET_SESSION_HISTORY_MAX = 24;
 const WRITING_TARGET_SESSION_PACE_LOOKBACK_MINUTES = 5;
 const WRITING_TARGET_SESSION_PACE_STALE_MINUTES = 0.5;
+const WRITING_TARGET_DEBUG_TYPING_LOG_MIN_INTERVAL_MS = 1000;
 const WRITING_TARGET_GOAL_SYNC_SOURCES = ["releaseDate", "sessionTargetWords"];
 const DESKTOP_PROJECT_LIBRARY_BOOT_TIMEOUT_MS = 50;
+const DEVELOPER_LOG_WINDOW_PATH = "/developer-logs.html";
+const DEVELOPER_LOG_RUNTIME_BRIDGE_KEY = "__ABE_DEVELOPER_LOG_RUNTIME__";
+const DESKTOP_LOG_BRIDGE_WARNING_THROTTLE_MS = 30000;
 const REVISION_DRAFTING_UI_ENABLED = false;
 const MIN_BINDER_PANEL_WIDTH = 220;
 const MIN_CONSOLE_PANEL_WIDTH = 260;
@@ -144,6 +142,22 @@ const {
   reportBrowserLog,
   windowRef: window,
 });
+const browserStorageAdapter = createBrowserStorageAdapter({
+  reportBrowserLog,
+  windowRef: window,
+});
+const projectRepository = createProjectRepository({
+  storageAdapter: browserStorageAdapter,
+  libraryStorageKey: EDITOR_PROJECT_LIBRARY_KEY,
+  activeProjectIdStorageKey: EDITOR_ACTIVE_PROJECT_ID_KEY,
+});
+const preferencesRepository = createPreferencesRepository({
+  storageAdapter: browserStorageAdapter,
+});
+const projectService = createProjectService({
+  projectRepository,
+  preferencesRepository,
+});
 const CONSOLE_DOCK_COLLAPSED_WIDTH = 52;
 const BINDER_PANEL_COMPACT_THRESHOLD = 280;
 const WRITING_TARGET_VISIBLE_METRICS_SCHEMA_VERSION = 2;
@@ -162,6 +176,7 @@ const state = {
   projectLibrarySelectionId: null,
   projectTitle: "",
   projectFileHandle: null,
+  projectFileHandlePermission: "",
   projectFilePath: "",
   projectFileStatus: "",
   projectFileBusy: false,
@@ -169,6 +184,12 @@ const state = {
   projectFileAutosaveTarget: null,
   projectFileAutosaveTimer: null,
   projectFileAutosaveRevision: 0,
+  projectPersistenceDirtyDomains: {},
+  projectEditorWorkingDirtyState: {
+    dirty: false,
+    lastMutationAt: "",
+    domains: {},
+  },
   projectFileAutosaveSuppressionDepth: 0,
   projectCacheSuppressionDepth: 0,
   projectSourcePath: "",
@@ -178,6 +199,8 @@ const state = {
   consoleDockCollapsed: false,
   binderPanelWidth: DEFAULT_BINDER_PANEL_WIDTH,
   consoleDockWidth: DEFAULT_CONSOLE_PANEL_WIDTH,
+  userSettingPanelResizerLeftPercent: null,
+  userSettingPanelResizerRightPercent: null,
   writingTargetWindowOpen: false,
   writingTargetProjectId: null,
   writingTargetState: null,
@@ -221,6 +244,7 @@ const state = {
   editorPrefs: createDefaultEditorPrefs(),
   localAiPrefs: createDefaultLocalAiPrefs(),
   localAiTitleStatus: {},
+  developerLogsWindowOpen: false,
   voiceNarration: loadVoiceNarrationState(),
   scenes: [],
   selectedSceneId: null,
@@ -241,10 +265,9 @@ const state = {
 
 let eventsWired = false;
 let layoutResizeSession = null;
-let writingTargetSnapshotTimer = null;
-let writingTargetWindowRefreshTimer = null;
-let sessionTrackerRefreshTimer = null;
 let writingTargetPointerDownStartedInsideWindow = false;
+let writingTargetDebugLastTypingLogAt = 0;
+let writingTargetDebugLastSceneTypingWordCount = null;
 let binderTitleClickState = null;
 let binderSceneDragState = null;
 let manuscriptFindDragState = null;
@@ -254,25 +277,346 @@ let spellcheckReferenceLexicon = null;
 let narrationRecordingRuntime = null;
 let voiceRecordingPreviewAudio = null;
 let voiceRecordingPreviewUrl = null;
+let lastDesktopLogBridgeWarningAt = 0;
 
-const projectFileAutosave = createProjectFileAutosaveController({
-  state,
-  delayMs: PROJECT_FILE_AUTOSAVE_DELAY_MS,
+// Intent: central developer observability service for cross-module diagnostics and separate log-window streaming.
+const developerLogger = createDeveloperLogger({
   windowRef: window,
-  getTarget: () => ({
-    projectId: state.activeProjectId ?? state.workspace?.project?.id ?? null,
-    filePath: normalizeProjectFilePath(state.projectFilePath),
-    fileHandle: state.projectFileHandle ?? null,
-  }),
-  hasDestination: () => hasProjectFileDestination(),
-  isBusy: () => state.projectFileBusy,
-  isEnabled: () => state.editorPrefs.projectFileAutosaveEnabled === true,
-  save: () => saveCurrentProject(),
-  setStatus: (status) => {
-    state.projectFileStatus = status;
+  storageAdapter: browserStorageAdapter,
+  mirrorConsole: false,
+  persistEntriesToStorage: false,
+  onEntry: (entry) => {
+    void postDeveloperLogEntryToDesktopHost(entry);
   },
-  renderStatus: () => renderHeader(),
 });
+const autosaveCoordinatorLog = developerLogger.createSource("AutosaveCoordinator");
+const projectPersistenceLog = developerLogger.createSource("ProjectPersistenceService");
+const sceneStorageLog = developerLogger.createSource("SceneStorageService");
+const manuscriptStateLog = developerLogger.createSource("ManuscriptStateManager");
+const editorInteractionLog = developerLogger.createSource("EditorInteractionGate");
+const fileAccessBridgeLog = developerLogger.createSource("FileAccessBridge");
+const projectLoadGateLog = developerLogger.createSource("ProjectLoadGate");
+const projectSaveGateLog = developerLogger.createSource("ProjectSaveGate");
+const localStorageAdapterLog = developerLogger.createSource("LocalStorageAdapter");
+const desktopFileSystemLog = developerLogger.createSource("DesktopFileSystemAdapter");
+const uiEventDispatcherLog = developerLogger.createSource("UIEventDispatcher");
+const writingGoalsServiceLog = developerLogger.createSource("WritingGoalsService");
+registerDeveloperLogRuntimeBridge();
+
+const writingGoalsStateLogHooks = {
+  logWritingTargetDebugEvent: () => {},
+  logWritingTargetMetricCheckpoint: () => {},
+  buildWritingTargetDebugTerminalSummary: () => ({
+    open: false,
+    entryCount: 0,
+    recentErrorCount: 0,
+    lastEventLabel: "",
+  }),
+};
+
+const writingGoalsStateService = createWritingGoalsStateService({
+  state,
+  readStoredJson,
+  writeStoredJsonRaw,
+  getProjectRecordById,
+  getActiveProjectRecord,
+  getSelectedScene,
+  countRemainingTasksByChapter,
+  cloneValue,
+  persistCurrentProjectRecord,
+  logWritingTargetDebugEvent: (...args) => writingGoalsStateLogHooks.logWritingTargetDebugEvent(...args),
+  logWritingTargetMetricCheckpoint: (...args) => writingGoalsStateLogHooks.logWritingTargetMetricCheckpoint(...args),
+  buildWritingTargetDebugTerminalSummary: (...args) => writingGoalsStateLogHooks.buildWritingTargetDebugTerminalSummary(...args),
+  EDITOR_WRITING_TARGETS_KEY,
+  DEFAULT_WRITING_TARGET_WORDS,
+  DEFAULT_SESSION_TARGET_WORDS,
+  DEFAULT_WRITING_TARGET_LOOKBACK_DAYS,
+  DEFAULT_SESSION_TARGETS_PER_DAY,
+  DEFAULT_SESSION_TIMEOUT_MINUTES,
+  WRITING_TARGET_SESSION_SEGMENT_CLOSE_BUFFER_MINUTES,
+  WRITING_TARGET_SESSION_NEW_SESSION_BUFFER_MINUTES,
+  WRITING_TARGET_MAX_HISTORY_DAYS,
+  WRITING_TARGET_MAX_SESSION_TARGETS_PER_DAY,
+  WRITING_TARGET_MIN_SESSION_TIMEOUT_MINUTES,
+  WRITING_TARGET_MAX_SESSION_TIMEOUT_MINUTES,
+  WRITING_TARGET_MAX_SESSION_SAMPLES,
+  WRITING_TARGET_SESSION_HISTORY_MAX,
+  WRITING_TARGET_SESSION_PACE_LOOKBACK_MINUTES,
+  WRITING_TARGET_SESSION_PACE_STALE_MINUTES,
+  WRITING_TARGET_GOAL_SYNC_SOURCES,
+  WRITING_TARGET_CADENCE_OPTIONS,
+  WRITING_TARGET_VISIBLE_METRICS_SCHEMA_VERSION,
+  WRITING_TARGET_METRIC_KEYS,
+});
+
+const {
+  syncWritingTargetState,
+  syncWritingTargetPersistedState,
+  getWritingTargetWorkingRecord,
+  beginWritingTargetDraft,
+  clearWritingTargetDraft,
+  commitWritingTargetDraft,
+  loadWritingTargetState,
+  persistWritingTargetState,
+  syncWritingTargetCanonicalState,
+  buildWritingTargetSummary,
+  buildWritingTargetSummaryForRecord,
+  buildWritingTargetMetric,
+  buildWritingTargetArchiveEntries,
+  renderWritingTargetArchiveEntry,
+  buildWritingTargetStreakSummary,
+  getWritingTargetHistoryEntries,
+  getWritingTargetHistoryEntryMap,
+  getWritingTargetMonthKey,
+  parseWritingTargetMonthKey,
+  isWritingTargetDateKey,
+  getWritingTargetStartOfWeek,
+  getWritingTargetSelectedDateKey,
+  primeWritingTargetDashboardSelection,
+  buildWritingTargetDashboardModel,
+  buildLiveWritingTargetHistoryEntry,
+  getWritingTargetDayStatus,
+  buildWritingTargetDashboardCards,
+  getWritingTargetSelectedEntryModel,
+  getCurrentManuscriptWordCount,
+  resolveSceneDraftEditorText,
+  countWords,
+  compactWordCount,
+  formatDayCount,
+  formatMinuteCount,
+  formatClockTimeLabel,
+  formatSessionElapsedLabel,
+  createPassageExcerpt,
+  buildSessionPaceColor,
+  mixRgbColor,
+  formatRgbColor,
+  formatDurationMinutes,
+  formatDateLabel,
+  formatGoalDateLabel,
+  parseLocalDateKey,
+  normalizeWritingTargetCadence,
+  normalizeWritingTargetGoalSyncSource,
+  normalizeWritingTargetVisibleMetrics,
+  getWritingTargetCadenceMeta,
+  getWritingTargetCadenceDays,
+  getWritingTargetGoalSyncSource,
+  getWritingTargetDaysUntilDate,
+  startOfLocalDay,
+  formatSessionAge,
+  syncWritingTargetGoalFields,
+  seedWritingTargetTestData,
+  generateBelievableWritingTargetHistory,
+  seededOffset,
+  addHours,
+  getLocalDateKey,
+  normalizeDateInput,
+  parseFlexibleDateInput,
+  createValidatedDate,
+  addDays,
+  estimateWritingPace,
+  trimWritingTargetHistory,
+  normalizeWritingTargetRecord,
+  getWritingTargetSnapshotContext,
+  createWritingTargetHistoryEntry,
+  createWritingTargetSessionSample,
+  normalizeWritingTargetSessionSamples,
+  normalizeWritingTargetSessionActivityReason,
+  normalizeWritingTargetSessionHistory,
+  addMinutes,
+  getWritingTargetSessionThresholds,
+  getWritingTargetSessionPhase,
+  getWritingTargetSessionPhaseLabel,
+  buildWritingTargetSessionLifecycleSummaryText,
+  getWritingTargetSessionLifecycle,
+  createWritingTargetSessionHistoryEntry,
+  resumeWritingSession,
+  touchWritingTargetSessionActivity,
+  concludeWritingSession,
+  refreshWritingTargetSessionLifecycle,
+  estimateRecentSessionWordsPerMinute,
+  getWritingTargetDailyBaselineWordCount,
+  getWritingTargetTodayHistoryEntry,
+  resolveWritingTargetDailyBaselineWordCount,
+  getWritingTargetPreviousHistoryEntry,
+  clampWritingTargetDailyBaselineWordCount,
+  createDefaultWritingTargetRecord,
+  readWritingTargetStore,
+  clampPositiveNumber,
+} = writingGoalsStateService;
+
+const projectPersistenceService = createProjectPersistenceService({
+  state,
+  windowRef: window,
+  projectService,
+  projectRepository,
+  fetchJsonFromDesktopApi,
+  projectSchemaVersion: PROJECT_SCHEMA_VERSION,
+  autosaveDelayMs: PROJECT_FILE_AUTOSAVE_DELAY_MS,
+  shouldPersistProjectCache: () => shouldPersistProjectCache(),
+  writeProjectFilePathCache: (filePath) => {
+    writeStoredJsonRaw(EDITOR_PROJECT_FILE_PATH_KEY, filePath);
+  },
+  createProjectRecordFromRuntimeState: () => createProjectLibraryRecordFromState(),
+  getActiveProjectRecord: () => getActiveProjectRecord(),
+  normalizeProjectLibrarySnapshot,
+  normalizeProjectRecord,
+  resolveActiveProjectId,
+  activateLoadedProjectRecord: ({
+    projectRecord,
+    reason,
+  }) => {
+    applyProjectRecord(projectRecord);
+    refreshScenes();
+    state.selectedIssueId = state.workspace.selectionDefaults.issueId ?? null;
+    state.selectedNodeId = state.workspace.selectionDefaults.nodeId ?? null;
+    state.selectedEntityId = state.workspace.selectionDefaults.entityId ?? null;
+    syncSelectionFromBlock(
+      state.workspace.selectionDefaults.lineId ?? state.scenes[0]?.blocks[0]?.blockId ?? null,
+    );
+    loadSceneDraftIntoState(state.selectedSceneId ?? state.scenes[0]?.sceneId ?? "");
+    syncWritingTargetState({ forceReload: true });
+    logWritingTargetLoadCheckpoint(reason ?? "load-project-file");
+    render();
+    recordWritingTargetSnapshot({ immediate: true, reason: reason ?? "load-project-file", skipProjectFileAutosave: true });
+  },
+  prepareProjectSnapshotForSave: ({ reason }) => {
+    logWritingTargetDebugEvent("info", "project.save", "Saving current project snapshot.", {
+      reason: reason ?? "save-project",
+      projectId: state.activeProjectId ?? state.workspace?.project?.id ?? "",
+      hasFileHandle: Boolean(state.projectFileHandle),
+      hasFilePath: hasProjectFilePath(state.projectFilePath),
+    });
+    commitWritingTargetDraft();
+    recordWritingTargetSnapshot({ immediate: true, reason: reason ?? "save-project", skipProjectFileAutosave: true });
+  },
+  reportBrowserLog,
+  renderHeader,
+  resolveSuggestedProjectFileName: () => getSuggestedProjectFileName(),
+  onProjectRecordPersisted: ({ projectRecord, persistCache, options }) => {
+    const activeLibraryRecord = state.projectLibrary.find((project) => project.id === state.activeProjectId) ?? null;
+    const indexedScenes = Array.isArray(activeLibraryRecord?.projectIndex?.scenes)
+      ? activeLibraryRecord.projectIndex.scenes
+      : [];
+    const indexedWordTotal = indexedScenes.reduce((total, scene) => {
+      const wordCount = Number(scene?.wordCount);
+      return total + (Number.isFinite(wordCount) && wordCount >= 0 ? Math.max(0, Math.round(wordCount)) : 0);
+    }, 0);
+    logWritingTargetDebugEvent("info", "persist.project-record", "Persisted active project record.", {
+      projectId: projectRecord.id,
+      persistCache,
+      changedSceneIds: Array.isArray(options.changedSceneIds) ? options.changedSceneIds : [],
+      skipProjectFileAutosave: options.skipProjectFileAutosave === true,
+      libraryProjectCount: state.projectLibrary.length,
+      indexedSceneCount: indexedScenes.length,
+      indexedWordTotal,
+      writingTargetHistoryEntries: Array.isArray(state.writingTargetState?.history) ? state.writingTargetState.history.length : 0,
+    }, {
+      skipUpload: Array.isArray(options.changedSceneIds) && options.changedSceneIds.length > 0,
+    });
+  },
+  loggerSources: {
+    autosaveCoordinator: autosaveCoordinatorLog,
+    projectPersistence: projectPersistenceLog,
+    projectLoadGate: projectLoadGateLog,
+    projectSaveGate: projectSaveGateLog,
+    desktopFileSystem: desktopFileSystemLog,
+  },
+});
+
+const writingGoalsService = createWritingGoalsService({
+  state,
+  windowRef: window,
+  documentRef: document,
+  serializeBrowserLogContext,
+  postJsonToDesktopHost,
+  buildWritingTargetSummary,
+  buildWritingTargetDashboardModel,
+  getWritingTargetSelectedEntryModel,
+  buildWritingTargetDashboardCards,
+  renderWritingTargetArchiveEntry,
+  refreshWritingTargetSessionLifecycle,
+  beginWritingTargetDraft,
+  syncWritingTargetCanonicalState,
+  normalizeWritingTargetCadence,
+  isWritingTargetDateKey,
+  getWritingTargetWorkingRecord,
+  cloneValue,
+  getCurrentManuscriptWordCount,
+  createWritingTargetSessionSample,
+  persistWritingTargetState,
+  clearWritingTargetDraft,
+  persistCurrentProjectRecord,
+  getWritingTargetSnapshotContext,
+  createWritingTargetHistoryEntry,
+  trimWritingTargetHistory,
+  resolveWritingTargetDailyBaselineWordCount,
+  normalizeWritingTargetSessionSamples,
+  resumeWritingSession,
+  normalizeWritingTargetSessionActivityReason,
+  buildWritingTargetSummaryForRecord,
+  primeWritingTargetDashboardSelection,
+  commitWritingTargetDraft,
+  createDefaultWritingTargetRecord,
+  getWritingTargetMonthKey,
+  parseWritingTargetMonthKey,
+  parseLocalDateKey,
+  getLocalDateKey,
+  beginProjectFileAutosaveSuppression,
+  endProjectFileAutosaveSuppression,
+  hasProjectFileDestination,
+  saveCurrentProject,
+  renderHeader,
+  writingGoalsLogger: writingGoalsServiceLog,
+  writingGoalsLogSourceName: "WritingGoalsService",
+  getDeveloperLogEntries: () => developerLogger.getEntries(),
+  WRITING_TARGET_CADENCE_OPTIONS,
+  WRITING_TARGET_MAX_SESSION_TARGETS_PER_DAY,
+  WRITING_TARGET_MIN_SESSION_TIMEOUT_MINUTES,
+  WRITING_TARGET_MAX_SESSION_TIMEOUT_MINUTES,
+  WRITING_TARGET_VISIBLE_METRICS_SCHEMA_VERSION,
+  WRITING_TARGET_METRIC_KEYS,
+  WRITING_TARGET_MAX_SESSION_SAMPLES,
+});
+
+const {
+  renderWritingTargetWindow,
+  buildWritingTargetDebugTerminalSummary,
+  normalizeLogLevel,
+  logWritingTargetMetricCheckpoint,
+  buildWritingTargetMetricCheckpointSignature,
+  logWritingTargetDebugEvent,
+  syncWritingTargetWindowLiveState,
+  syncSessionTrackerLiveState,
+  syncHeaderLiveState,
+  patchSessionTrackerPanel,
+  startWritingTargetWindowRefreshTimer,
+  stopWritingTargetWindowRefreshTimer,
+  startSessionTrackerRefreshTimer,
+  stopSessionTrackerRefreshTimer,
+  updateWritingTargetField,
+  syncWritingTargetFieldControls,
+  toggleWritingTargetMetric,
+  toggleWritingTargetWindow,
+  closeWritingTargetWindow,
+  saveWritingTargetGoals,
+  cancelWritingTargetGoals,
+  resetWritingTargetGoals,
+  setWritingTargetViewMode,
+  selectWritingTargetDay,
+  shiftWritingTargetCalendarMonth,
+  jumpWritingTargetCalendarToToday,
+  resetWritingSession,
+  saveWritingTargetState,
+  recordWritingTargetSnapshot,
+  queueWritingTargetSnapshot,
+  clearWritingTargetSnapshotTimer,
+  logWritingTargetLoadCheckpoint,
+} = writingGoalsService;
+
+// Intent: keep writing-goals domain logs routed through the shared writing-goals logger once the UI service is initialized.
+writingGoalsStateLogHooks.logWritingTargetDebugEvent = logWritingTargetDebugEvent;
+writingGoalsStateLogHooks.logWritingTargetMetricCheckpoint = logWritingTargetMetricCheckpoint;
+writingGoalsStateLogHooks.buildWritingTargetDebugTerminalSummary = buildWritingTargetDebugTerminalSummary;
 
 registerRuntimeLogging();
 
@@ -298,6 +642,7 @@ async function boot() {
   state.activeProjectId = seedLibrary.activeProjectId ?? seedLibrary.projects[0]?.id ?? null;
   state.projectLibrarySelectionId = state.activeProjectId;
   state.projectFileHandle = null;
+  state.projectFileHandlePermission = "";
   state.projectFilePath = desktopSettings.lastProjectFilePathExplicit
     ? normalizeProjectFilePath(desktopSettings.lastProjectFilePath)
     : "";
@@ -306,6 +651,12 @@ async function boot() {
   state.projectFileAutosaveDirty = false;
   state.projectFileAutosaveTarget = null;
   state.projectFileAutosaveRevision = 0;
+  state.projectPersistenceDirtyDomains = {};
+  state.projectEditorWorkingDirtyState = {
+    dirty: false,
+    lastMutationAt: "",
+    domains: {},
+  };
   if (state.projectFileAutosaveTimer) {
     window.clearTimeout(state.projectFileAutosaveTimer);
     state.projectFileAutosaveTimer = null;
@@ -318,7 +669,11 @@ async function boot() {
   state.consoleDockWidth = loadStoredNumber(EDITOR_CONSOLE_WIDTH_KEY, DEFAULT_CONSOLE_PANEL_WIDTH);
   applyProjectRecord(getActiveProjectRecord() ?? state.projectLibrary[0]);
   refreshScenes();
-  await reconnectProjectFileDestinationOnBoot();
+  projectPersistenceService.syncActiveProjectFileDestinationFromRecord({
+    persistDesktopProjectFilePath: true,
+    source: "boot",
+  });
+  await reconnectProjectFileDestinationOnBoot(desktopSettings);
   spellcheckBaseLexicon = await ensureSpellcheckBaseLexicon();
   spellcheckReferenceLexicon = await ensureSpellcheckReferenceLexicon();
 
@@ -335,7 +690,6 @@ async function boot() {
   refreshWritingTargetSessionLifecycle({ reason: "boot" });
 
   render();
-  await reconnectProjectFileDestinationOnBoot(desktopSettings);
   syncLayoutWidths();
   recordWritingTargetSnapshot({ immediate: true, reason: "boot", skipProjectFileAutosave: true });
   startSessionTrackerRefreshTimer();
@@ -398,11 +752,15 @@ function wireEvents() {
   document.addEventListener("pointercancel", handleManuscriptFindPointerEnd);
   document.addEventListener("wheel", handleManuscriptFindWheel, { passive: false });
   document.addEventListener("selectionchange", () => {
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLTextAreaElement && activeElement.classList.contains("editor-document-input")) {
+      syncSceneEditorWordCountReadouts(activeElement);
+    }
+
     if (state.activePane !== "narration" || state.narrationTakeSession?.status === "recording") {
       return;
     }
 
-    const activeElement = document.activeElement;
     if (!(activeElement instanceof HTMLTextAreaElement) || !activeElement.classList.contains("editor-document-input")) {
       return;
     }
@@ -465,6 +823,26 @@ function wireEvents() {
     }
 
     const { action } = target.dataset;
+    if (action) {
+      const trackedUserActions = new Set([
+        "load-project",
+        "save-project",
+        "save-project-file-as",
+        "load-project-file",
+        "create-project",
+        "load-project-source",
+        "open-developer-logs",
+        "toggle-writing-target-window",
+        "select-scene",
+      ]);
+      if (trackedUserActions.has(action)) {
+        uiEventDispatcherLog.info("user-action", `ui.action.${action}`, "User triggered UI action.", {
+          action,
+          sceneId: target.dataset.sceneId ?? "",
+          projectId: state.activeProjectId ?? "",
+        });
+      }
+    }
 
     if (
       action !== "add-selection-task" &&
@@ -507,6 +885,12 @@ function wireEvents() {
     if (action === "create-project") {
       hideFileMenu();
       createProject();
+      return;
+    }
+
+    if (action === "open-developer-logs") {
+      hideFileMenu();
+      openDeveloperLogsWindow();
       return;
     }
 
@@ -1433,10 +1817,14 @@ function wireEvents() {
 
     event.preventDefault();
     const normalizedText = pastedText.replace(/\r\n?/g, "\n");
-    const selectionStart = Number.isInteger(target.selectionStart) ? target.selectionStart : target.value.length;
-    const selectionEnd = Number.isInteger(target.selectionEnd) ? target.selectionEnd : selectionStart;
-    target.setRangeText(normalizedText, selectionStart, selectionEnd, "end");
-    target.dispatchEvent(new Event("input", { bubbles: true }));
+    const { insertedWithNativeUndo, fallbackUsed } = insertPastedTextWithUndoFallback(target, normalizedText);
+    editorInteractionLog.info("user-action", "editor.paste", "Inserted pasted text into an editor textarea.", {
+      editField: String(target.dataset.editField ?? ""),
+      sceneId: String(target.dataset.sceneId ?? ""),
+      pastedCharacterCount: normalizedText.length,
+      usedNativeUndoInsertion: insertedWithNativeUndo,
+      fallbackUsed,
+    });
   });
 
   document.addEventListener("change", (event) => {
@@ -1861,2719 +2249,6 @@ function renderHeader() {
   });
 }
 
-// Intent: project writing-goal state into the extracted dashboard renderer.
-function renderWritingTargetWindow() {
-  const slot = document.querySelector("#writing-target-slot");
-  if (!slot) {
-    return;
-  }
-
-  if (!state.writingTargetWindowOpen) {
-    slot.innerHTML = "";
-    return;
-  }
-
-  const summary = buildWritingTargetSummary();
-  if (!summary) {
-    slot.innerHTML = "";
-    return;
-  }
-
-  const dashboard = buildWritingTargetDashboardModel(summary);
-  const selectedEntry = getWritingTargetSelectedEntryModel(summary, dashboard);
-  const dashboardCards = buildWritingTargetDashboardCards(summary, dashboard);
-  slot.innerHTML = renderWritingTargetWindowHTML({
-    summary,
-    dashboard,
-    selectedEntry,
-    dashboardCards,
-    renderWritingTargetArchiveEntry,
-    cadenceOptions: WRITING_TARGET_CADENCE_OPTIONS,
-    maxSessionTargetsPerDay: WRITING_TARGET_MAX_SESSION_TARGETS_PER_DAY,
-    minSessionTimeoutMinutes: WRITING_TARGET_MIN_SESSION_TIMEOUT_MINUTES,
-    maxSessionTimeoutMinutes: WRITING_TARGET_MAX_SESSION_TIMEOUT_MINUTES,
-  });
-}
-
-// Intent: refresh live writing-goal counters without repainting the full application shell.
-function syncWritingTargetWindowLiveState() {
-  if (!state.writingTargetWindowOpen) {
-    return;
-  }
-
-  const windowElement = document.querySelector("#writing-target-slot .writing-target-window");
-  if (!(windowElement instanceof HTMLElement)) {
-    return;
-  }
-
-  const activeElement = document.activeElement;
-  if (
-    activeElement instanceof HTMLElement &&
-    windowElement.contains(activeElement) &&
-    (activeElement instanceof HTMLInputElement ||
-      activeElement instanceof HTMLSelectElement ||
-      activeElement instanceof HTMLTextAreaElement)
-  ) {
-    return;
-  }
-
-  renderWritingTargetWindow();
-}
-
-function syncSessionTrackerLiveState() {
-  refreshWritingTargetSessionLifecycle();
-  syncHeaderLiveState();
-}
-
-function syncHeaderLiveState() {
-  const heroSlot = document.querySelector("#hero-slot");
-  if (!(heroSlot instanceof HTMLElement)) {
-    return;
-  }
-
-  const summary = buildWritingTargetSummary();
-  if (!summary) {
-    return;
-  }
-
-  const wordsStat = heroSlot.querySelector('[data-stat-key="words"] [data-stat-value]');
-  if (wordsStat instanceof HTMLElement) {
-    wordsStat.textContent = formatDisplayNumber(getCurrentManuscriptWordCount());
-  }
-
-  const writingTargetToggle = heroSlot.querySelector("[data-writing-target-toggle-value]");
-  if (writingTargetToggle instanceof HTMLElement) {
-    writingTargetToggle.textContent = summary.goalButtonLabel ?? "Writing Goals";
-  }
-
-  const strip = heroSlot.querySelector("[data-writing-target-strip]");
-  const visibleMetrics = Array.isArray(summary.visibleMetrics) ? summary.visibleMetrics : [];
-  if (strip instanceof HTMLElement) {
-    for (const metric of visibleMetrics) {
-      if (!metric || typeof metric !== "object") {
-        continue;
-      }
-
-      const card = strip.querySelector(`[data-writing-target-card="${CSS.escape(String(metric.key ?? ""))}"]`);
-      if (!(card instanceof HTMLElement)) {
-        continue;
-      }
-
-      const label = card.querySelector("[data-writing-target-card-label]");
-      const value = card.querySelector("[data-writing-target-card-value]");
-      const bar = card.querySelector("[data-writing-target-card-bar]");
-      const progress = card.querySelector("[data-writing-target-card-progress]");
-      const foot = card.querySelector("[data-writing-target-card-foot]");
-      const note = card.querySelector("[data-writing-target-card-note]");
-      const metricProgress = Math.max(0, Math.min(1, Number(metric.progress ?? 0)));
-      const footContent = metric.comparison
-        ? `
-            <span>${escapeHtml(metric.leftLabel ?? "")}</span>
-            <span aria-hidden="true">→</span>
-            <span>${escapeHtml(metric.rightLabel ?? "")}</span>
-          `
-        : `
-            <span>${escapeHtml(metric.leftLabel ?? "")}</span>
-            <span>${escapeHtml(metric.rightLabel ?? "")}</span>
-          `;
-
-      if (label instanceof HTMLElement) {
-        label.lastElementChild ? label.lastElementChild.textContent = String(metric.label ?? "") : label.textContent = String(metric.label ?? "");
-      }
-      if (value instanceof HTMLElement) {
-        value.textContent = String(metric.value ?? "—");
-      }
-      if (bar instanceof HTMLElement) {
-        bar.className = `writing-target-bar ${String(metric.barClass ?? "").trim()}`.trim();
-        if (typeof metric.barStyle === "string" && metric.barStyle.trim()) {
-          bar.setAttribute("style", metric.barStyle);
-        } else {
-          bar.setAttribute("style", "");
-        }
-      }
-      if (progress instanceof HTMLElement) {
-        progress.style.width = `${Math.round(metricProgress * 100)}%`;
-        if (typeof metric.barStyle === "string" && metric.barStyle.trim()) {
-          progress.setAttribute("style", `width:${Math.round(metricProgress * 100)}%;${metric.barStyle}`);
-        } else {
-          progress.setAttribute("style", `width:${Math.round(metricProgress * 100)}%;`);
-        }
-      }
-      if (foot instanceof HTMLElement) {
-        foot.className = `writing-target-foot${metric.comparison ? " is-comparison" : ""}`;
-        foot.innerHTML = footContent;
-      }
-      if (note instanceof HTMLElement) {
-        note.textContent = String(metric.note ?? "");
-      } else if (metric.note) {
-        card.insertAdjacentHTML("beforeend", `<p class="writing-target-note" data-writing-target-card-note>${escapeHtml(metric.note ?? "")}</p>`);
-      }
-    }
-  }
-
-  const panel = document.querySelector("#hero-slot [data-session-tracker-panel]");
-  if (!(panel instanceof HTMLElement)) {
-    return;
-  }
-
-  patchSessionTrackerPanel(panel, summary);
-}
-
-function patchSessionTrackerPanel(panel, summary) {
-  if (!(panel instanceof HTMLElement) || !summary) {
-    return;
-  }
-
-  const tracker = {
-    clockLabel: summary.sessionCurrentTimeLabel ?? "—",
-    wordsWrittenLabel: formatDisplayNumber(Math.round(summary.currentSessionWords ?? 0)),
-    wordsTargetLabel: formatDisplayNumber(Math.round(summary.sessionTargetWordsPerSession ?? 0)),
-    sessionStartTimeLabel: summary.sessionStartTimeLabel ?? "—",
-    sessionMinutesLapsedLabel: summary.sessionMinutesLapsedLabel ?? "0",
-    sessionIdleLabel: summary.sessionIdleLabel ?? "Idle",
-    wpmLabel: summary.sessionWordsPerMinuteLabel ?? "0/min",
-  };
-  const isLiveSession = summary.sessionIsActive === true;
-  const isPaceActive = summary.sessionPaceActive === true;
-  const visualState = getSessionTrackerVisualState(summary, null);
-  const paceStatus = isPaceActive
-    ? summary.sessionWordsPerMinuteOverTarget
-      ? "You’re outperforming"
-      : summary.sessionWordsPerMinuteStatusText === "On track"
-        ? "You’re on pace"
-        : summary.sessionWordsPerMinuteStatusText === "Ahead of pace"
-          ? "You’re outperforming"
-          : "Need more pace"
-    : "Idle";
-  const progressWidth = Math.max(0, Math.min(100, Math.round((Number(summary.currentSessionWords ?? 0) / Math.max(1, Number(summary.sessionTargetWordsPerSession ?? 0))) * 100)));
-  const paceColor = isPaceActive
-    ? summary.sessionWordsPerMinuteBarColor ?? "rgb(113, 215, 177)"
-    : "rgba(31, 36, 48, 0.26)";
-  const bar = panel.querySelector("[data-session-tracker-bar]");
-  const gauge = panel.querySelector("[data-session-tracker-gauge]");
-  const gaugeIcon = panel.querySelector("[data-session-tracker-gauge-icon]");
-  const clock = panel.querySelector("[data-session-tracker-clock]");
-  const wpm = panel.querySelector("[data-session-tracker-wpm]");
-  const paceNote = panel.querySelector("[data-session-tracker-pace-note]");
-  const startTime = panel.querySelector("[data-session-tracker-start-time]");
-  const lapsedLabel = panel.querySelector("[data-session-tracker-lapsed-label]");
-  const lapsedValue = panel.querySelector("[data-session-tracker-lapsed-value]");
-  const wordsWritten = panel.querySelector("[data-session-tracker-words-written]");
-  const wordsTarget = panel.querySelector("[data-session-tracker-words-target]");
-  const progressFill = panel.querySelector("[data-session-tracker-progress-fill]");
-
-  if (bar instanceof HTMLElement) {
-    bar.style.setProperty("--writing-target-bar-color", paceColor);
-    bar.classList.toggle("is-over-target", visualState.key === "flaming");
-  }
-
-  if (gauge instanceof HTMLElement) {
-    gauge.classList.toggle("is-over-target", visualState.key === "flaming");
-  }
-
-  if (gaugeIcon instanceof HTMLElement) {
-    gaugeIcon.innerHTML = renderSessionTrackerPenGlyph(visualState.key);
-  }
-
-  if (clock instanceof HTMLElement) {
-    clock.textContent = tracker.clockLabel;
-  }
-
-  if (wpm instanceof HTMLElement) {
-    wpm.textContent = tracker.wpmLabel;
-  }
-
-  if (paceNote instanceof HTMLElement) {
-    paceNote.textContent = paceStatus;
-  }
-
-  if (startTime instanceof HTMLElement) {
-    startTime.textContent = tracker.sessionStartTimeLabel;
-  }
-
-  if (lapsedLabel instanceof HTMLElement) {
-    lapsedLabel.textContent = isLiveSession ? "Lapsed:" : "Idle:";
-  }
-
-  if (lapsedValue instanceof HTMLElement) {
-    lapsedValue.textContent = isLiveSession
-      ? tracker.sessionMinutesLapsedLabel
-      : tracker.sessionIdleLabel;
-  }
-
-  if (wordsWritten instanceof HTMLElement) {
-    wordsWritten.textContent = tracker.wordsWrittenLabel;
-  }
-
-  if (wordsTarget instanceof HTMLElement) {
-    wordsTarget.textContent = tracker.wordsTargetLabel;
-  }
-
-  if (progressFill instanceof HTMLElement) {
-    progressFill.style.width = `${progressWidth}%`;
-  }
-}
-
-function startWritingTargetWindowRefreshTimer() {
-  stopWritingTargetWindowRefreshTimer();
-  if (!state.writingTargetWindowOpen) {
-    return;
-  }
-
-  writingTargetWindowRefreshTimer = window.setInterval(() => {
-    if (!state.writingTargetWindowOpen) {
-      stopWritingTargetWindowRefreshTimer();
-      return;
-    }
-
-    syncWritingTargetWindowLiveState();
-  }, 15000);
-  syncWritingTargetWindowLiveState();
-}
-
-function stopWritingTargetWindowRefreshTimer() {
-  if (!writingTargetWindowRefreshTimer) {
-    return;
-  }
-
-  window.clearInterval(writingTargetWindowRefreshTimer);
-  writingTargetWindowRefreshTimer = null;
-}
-
-function startSessionTrackerRefreshTimer() {
-  stopSessionTrackerRefreshTimer();
-
-  sessionTrackerRefreshTimer = window.setInterval(() => {
-    refreshWritingTargetSessionLifecycle();
-    syncSessionTrackerLiveState();
-  }, 15000);
-  refreshWritingTargetSessionLifecycle();
-  syncSessionTrackerLiveState();
-}
-
-function stopSessionTrackerRefreshTimer() {
-  if (!sessionTrackerRefreshTimer) {
-    return;
-  }
-
-  window.clearInterval(sessionTrackerRefreshTimer);
-  sessionTrackerRefreshTimer = null;
-}
-
-function updateWritingTargetField(target) {
-  if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) {
-    return;
-  }
-
-  const field = target.dataset.writingTargetField;
-  if (!field) {
-    return;
-  }
-
-  if (field === "visibleMetric") {
-    toggleWritingTargetMetric(target.dataset.metricKey, target.checked);
-    return;
-  }
-
-  const draft = beginWritingTargetDraft();
-  if (!draft) {
-    return;
-  }
-
-  const nextRecord = cloneValue(draft);
-  if (field === "releaseDate") {
-    nextRecord.releaseDate = String(target.value ?? "");
-    nextRecord.goalSyncSource = "releaseDate";
-  } else if (field === "targetWords") {
-    nextRecord.targetWords = String(target.value ?? "");
-  } else if (field === "sessionTargetWords") {
-    nextRecord.sessionTargetWords = String(target.value ?? "");
-    nextRecord.goalSyncSource = "sessionTargetWords";
-  } else if (field === "targetCadence") {
-    nextRecord.targetCadence = normalizeWritingTargetCadence(target.value);
-  } else if (field === "lookbackDays") {
-    nextRecord.lookbackDays = String(target.value ?? "");
-  } else if (field === "sessionsPerDay") {
-    nextRecord.sessionsPerDay = String(target.value ?? "");
-  } else if (field === "sessionTimeoutMinutes") {
-    nextRecord.sessionTimeoutMinutes = String(target.value ?? "");
-  } else if (field === "dailyNote") {
-    const dateKey = String(target.dataset.dateKey ?? "").trim();
-    if (isWritingTargetDateKey(dateKey)) {
-      const history = Array.isArray(nextRecord.history) ? [...nextRecord.history] : [];
-      const entryIndex = history.findIndex((entry) => entry.date === dateKey);
-      if (entryIndex >= 0) {
-        history[entryIndex] = {
-          ...cloneValue(history[entryIndex]),
-          noteText: String(target.value ?? ""),
-        };
-        nextRecord.history = history;
-      }
-    }
-  }
-
-  state.writingTargetDraft = nextRecord;
-  state.writingTargetDraftProjectId = state.workspace?.project?.id ?? null;
-  syncWritingTargetCanonicalState(nextRecord);
-  syncWritingTargetFieldControls(field, target);
-  renderHeader();
-}
-
-function syncWritingTargetFieldControls(field, activeTarget) {
-  if (typeof field !== "string" || !field) {
-    return;
-  }
-
-  const slot = document.querySelector("#writing-target-slot");
-  if (!(slot instanceof HTMLElement)) {
-    return;
-  }
-
-  const controls = slot.querySelectorAll(`[data-writing-target-field="${field}"]`);
-  for (const control of controls) {
-    if (!(control instanceof HTMLInputElement || control instanceof HTMLSelectElement || control instanceof HTMLTextAreaElement)) {
-      continue;
-    }
-
-    if (control === activeTarget) {
-      continue;
-    }
-
-    if (activeTarget instanceof HTMLInputElement && activeTarget.type === "checkbox") {
-      continue;
-    }
-
-    control.value = String(activeTarget.value ?? "");
-  }
-}
-
-function toggleWritingTargetMetric(metricKey, enabled) {
-  if (typeof metricKey !== "string" || !metricKey.trim()) {
-    return;
-  }
-
-  const record = getWritingTargetWorkingRecord();
-  if (!record) {
-    return;
-  }
-
-  const nextMetrics = new Set(record.visibleMetrics ?? WRITING_TARGET_METRIC_KEYS);
-  if (enabled) {
-    nextMetrics.add(metricKey);
-  } else {
-    nextMetrics.delete(metricKey);
-  }
-
-  const nextRecord = {
-    ...cloneValue(record),
-    visibleMetricsVersion: WRITING_TARGET_VISIBLE_METRICS_SCHEMA_VERSION,
-    visibleMetrics: [...nextMetrics].filter((key) => WRITING_TARGET_METRIC_KEYS.includes(key)),
-  };
-
-  if (!nextRecord.visibleMetrics.length) {
-    nextRecord.visibleMetrics = [...WRITING_TARGET_METRIC_KEYS];
-  }
-
-  const draft = beginWritingTargetDraft();
-  if (!draft) {
-    return;
-  }
-
-  state.writingTargetDraft = {
-    ...cloneValue(draft),
-    visibleMetricsVersion: nextRecord.visibleMetricsVersion,
-    visibleMetrics: [...nextRecord.visibleMetrics],
-  };
-  state.writingTargetDraftProjectId = state.workspace?.project?.id ?? null;
-  syncWritingTargetCanonicalState(state.writingTargetDraft);
-  renderHeader();
-  renderWritingTargetWindow();
-}
-
-function syncWritingTargetState(options = {}) {
-  const projectId = state.workspace?.project?.id;
-  if (!projectId) {
-    return null;
-  }
-
-  if (
-    !options.forceReload &&
-    state.writingTargetState &&
-    state.writingTargetProjectId === projectId
-  ) {
-    return state.writingTargetState;
-  }
-
-  const currentWordCount = getCurrentManuscriptWordCount();
-  state.writingTargetState = loadWritingTargetState(projectId, currentWordCount);
-  state.writingTargetProjectId = projectId;
-  return state.writingTargetState;
-}
-
-function syncWritingTargetPersistedState(options = {}) {
-  const projectId = state.workspace?.project?.id;
-  if (!projectId) {
-    return null;
-  }
-
-  if (
-    !options.forceReload &&
-    state.writingTargetState &&
-    state.writingTargetProjectId === projectId
-  ) {
-    return state.writingTargetState;
-  }
-
-  const currentWordCount = getCurrentManuscriptWordCount();
-  state.writingTargetState = loadWritingTargetState(projectId, currentWordCount);
-  state.writingTargetProjectId = projectId;
-  return state.writingTargetState;
-}
-
-function getWritingTargetWorkingRecord() {
-  const projectId = state.workspace?.project?.id;
-  if (
-    projectId &&
-    state.writingTargetDraft &&
-    state.writingTargetDraftProjectId === projectId
-  ) {
-    return state.writingTargetDraft;
-  }
-
-  return syncWritingTargetState({ forceReload: false });
-}
-
-function beginWritingTargetDraft() {
-  const projectId = state.workspace?.project?.id;
-  if (!projectId) {
-    return null;
-  }
-
-  if (
-    state.writingTargetDraft &&
-    state.writingTargetDraftProjectId === projectId
-  ) {
-    return state.writingTargetDraft;
-  }
-
-  const record = syncWritingTargetState({ forceReload: false });
-  if (!record) {
-    return null;
-  }
-
-  state.writingTargetDraftBaseline = cloneValue(record);
-  state.writingTargetDraftProjectId = projectId;
-  state.writingTargetDraft = cloneValue(record);
-  return state.writingTargetDraft;
-}
-
-function clearWritingTargetDraft() {
-  state.writingTargetDraft = null;
-  state.writingTargetDraftProjectId = null;
-  state.writingTargetDraftBaseline = null;
-}
-
-function commitWritingTargetDraft(options = {}) {
-  const record = getWritingTargetWorkingRecord();
-  if (!record) {
-    return null;
-  }
-
-  const persisted = persistWritingTargetState(record);
-  state.writingTargetState = persisted;
-  clearWritingTargetDraft();
-  persistCurrentProjectRecord({ skipProjectFileAutosave: options.skipProjectFileAutosave === true });
-  return persisted;
-}
-
-function loadWritingTargetState(projectId, currentWordCount, now = new Date()) {
-  const store = readWritingTargetStore();
-  const projectRecord = getProjectRecordById(projectId);
-  const candidate = projectRecord?.projectSettings?.writingTargetState ?? store[projectId];
-  const normalized = normalizeWritingTargetRecord(candidate, currentWordCount, now);
-  store[projectId] = normalized;
-  writeStoredJsonRaw(EDITOR_WRITING_TARGETS_KEY, store);
-  return cloneValue(normalized);
-}
-
-function persistWritingTargetState(record) {
-  const projectId = state.workspace?.project?.id;
-  if (!projectId) {
-    return null;
-  }
-
-  const normalized = normalizeWritingTargetRecord(
-    record,
-    getCurrentManuscriptWordCount(),
-    new Date(),
-  );
-  const store = readWritingTargetStore();
-  store[projectId] = normalized;
-  writeStoredJsonRaw(EDITOR_WRITING_TARGETS_KEY, store);
-  return cloneValue(normalized);
-}
-
-function syncWritingTargetCanonicalState(record) {
-  if (!record) {
-    return null;
-  }
-
-  const persisted = persistWritingTargetState(record);
-  if (!persisted) {
-    return null;
-  }
-
-  state.writingTargetState = persisted;
-  persistCurrentProjectRecord();
-  return persisted;
-}
-
-function recordWritingTargetSnapshot(options = {}) {
-  if (writingTargetSnapshotTimer) {
-    window.clearTimeout(writingTargetSnapshotTimer);
-    writingTargetSnapshotTimer = null;
-  }
-
-  if (!state.workspace?.project?.id) {
-    return;
-  }
-
-  const capture = () => {
-    const projectId = state.workspace?.project?.id;
-    if (!projectId) {
-      return;
-    }
-
-    const currentWordCount = getCurrentManuscriptWordCount();
-    const record = getWritingTargetWorkingRecord();
-    if (!record) {
-      return;
-    }
-
-    const now = new Date();
-    const dateKey = getLocalDateKey(now);
-    const nextRecord = cloneValue(record);
-    const history = Array.isArray(nextRecord.history) ? [...nextRecord.history] : [];
-    const previousDailyBaselineDateKey = typeof nextRecord.dailyBaselineDateKey === "string"
-      ? nextRecord.dailyBaselineDateKey.trim()
-      : "";
-    const currentEntry = history.find((entry) => entry.date === dateKey);
-    const previousEntry = [...history]
-      .filter((entry) => entry.date < dateKey)
-      .sort((a, b) => a.date.localeCompare(b.date))
-      .at(-1) ?? null;
-    const context = getWritingTargetSnapshotContext();
-    const nextHistoryEntry = createWritingTargetHistoryEntry(currentWordCount, now, {
-      previousEntry,
-      context,
-    });
-    const markSessionActivity = options.markSessionActivity === true;
-    const nextSessionRecord = markSessionActivity
-      ? (record.sessionIsActive === true
-        ? cloneValue(record)
-        : resumeWritingSession(record, currentWordCount, now, {
-            reason: normalizeWritingTargetSessionActivityReason(options.reason),
-          }))
-      : null;
-
-    if (currentEntry) {
-      history[history.findIndex((entry) => entry.date === dateKey)] = nextHistoryEntry;
-    } else {
-      history.push(nextHistoryEntry);
-    }
-
-    nextRecord.history = trimWritingTargetHistory(history, nextRecord.lookbackDays);
-    if (previousDailyBaselineDateKey !== dateKey) {
-      nextRecord.dailyBaselineDateKey = dateKey;
-      nextRecord.dailyBaselineWordCount = getWritingTargetDailyBaselineWordCount(nextRecord, currentWordCount, now);
-    } else if (!Number.isFinite(Number(nextRecord.dailyBaselineWordCount))) {
-      nextRecord.dailyBaselineWordCount = getWritingTargetDailyBaselineWordCount(nextRecord, currentWordCount, now);
-    }
-    if (nextSessionRecord) {
-      nextRecord.sessionIsActive = true;
-      nextRecord.sessionStartedAt = nextSessionRecord.sessionStartedAt;
-      nextRecord.sessionBaselineWordCount = nextSessionRecord.sessionBaselineWordCount;
-      nextRecord.sessionLastWordCount = currentWordCount;
-      nextRecord.sessionConcludedAt = "";
-      nextRecord.sessionConcludedReason = "";
-      nextRecord.sessionSamples = normalizeWritingTargetSessionSamples(nextSessionRecord.sessionSamples ?? []);
-      if (record.sessionIsActive === true) {
-        nextRecord.sessionSamples = [
-          ...nextRecord.sessionSamples,
-          createWritingTargetSessionSample(currentWordCount, now),
-        ].slice(-WRITING_TARGET_MAX_SESSION_SAMPLES);
-      }
-      nextRecord.sessionLastActiveAt = now.toISOString();
-    }
-    nextRecord.updatedAt = now.toISOString();
-    state.writingTargetState = persistWritingTargetState(nextRecord);
-    persistCurrentProjectRecord({ skipProjectFileAutosave: options.skipProjectFileAutosave === true });
-    if (
-      state.writingTargetDraft &&
-      state.writingTargetDraftProjectId === projectId
-    ) {
-      state.writingTargetDraft = {
-        ...cloneValue(state.writingTargetDraft),
-        history: cloneValue(nextRecord.history),
-        dailyBaselineDateKey: nextRecord.dailyBaselineDateKey,
-        dailyBaselineWordCount: nextRecord.dailyBaselineWordCount,
-        sessionSamples: cloneValue(nextRecord.sessionSamples),
-        sessionLastActiveAt: nextRecord.sessionLastActiveAt,
-        sessionIsActive: nextRecord.sessionIsActive,
-        sessionStartedAt: nextRecord.sessionStartedAt,
-        sessionBaselineWordCount: nextRecord.sessionBaselineWordCount,
-        sessionConcludedAt: nextRecord.sessionConcludedAt,
-        sessionConcludedReason: nextRecord.sessionConcludedReason,
-        sessionLastWordCount: nextRecord.sessionLastWordCount,
-        sessionHistory: cloneValue(nextRecord.sessionHistory),
-        updatedAt: nextRecord.updatedAt,
-      };
-    }
-
-    if (state.writingTargetWindowOpen) {
-      renderWritingTargetWindow();
-    }
-    renderHeader();
-  };
-
-  if (options.immediate) {
-    capture();
-    return;
-  }
-
-  writingTargetSnapshotTimer = window.setTimeout(capture, 750);
-}
-
-function queueWritingTargetSnapshot(options = {}) {
-  recordWritingTargetSnapshot(options);
-}
-
-function clearWritingTargetSnapshotTimer() {
-  if (!writingTargetSnapshotTimer) {
-    return;
-  }
-
-  window.clearTimeout(writingTargetSnapshotTimer);
-  writingTargetSnapshotTimer = null;
-}
-
-function buildWritingTargetSummary() {
-  return buildWritingTargetSummaryForRecord(getWritingTargetWorkingRecord());
-}
-
-function buildWritingTargetSummaryForRecord(record) {
-  if (!record) {
-    return null;
-  }
-
-  const currentWordCount = getCurrentManuscriptWordCount();
-  const now = new Date();
-  const todayKey = getLocalDateKey(now);
-  const workingRecord = cloneValue(record);
-  const syncedRecord = syncWritingTargetGoalFields(cloneValue(record), currentWordCount, now);
-  const pace = estimateWritingPace(syncedRecord, now);
-  const releaseDate = parseLocalDateKey(syncedRecord.releaseDate);
-  const targetWords = clampPositiveNumber(syncedRecord.targetWords, DEFAULT_WRITING_TARGET_WORDS);
-  const sessionTargetWords = clampPositiveNumber(syncedRecord.sessionTargetWords, DEFAULT_SESSION_TARGET_WORDS);
-  const sessionsPerDay = clampPositiveNumber(
-    syncedRecord.sessionsPerDay,
-    DEFAULT_SESSION_TARGETS_PER_DAY,
-    1,
-    WRITING_TARGET_MAX_SESSION_TARGETS_PER_DAY,
-  );
-  const sessionTimeoutMinutes = clampPositiveNumber(
-    syncedRecord.sessionTimeoutMinutes,
-    DEFAULT_SESSION_TIMEOUT_MINUTES,
-    WRITING_TARGET_MIN_SESSION_TIMEOUT_MINUTES,
-    WRITING_TARGET_MAX_SESSION_TIMEOUT_MINUTES,
-  );
-  const targetCadence = normalizeWritingTargetCadence(syncedRecord.targetCadence);
-  const cadenceMeta = getWritingTargetCadenceMeta(targetCadence);
-  const cadenceDays = getWritingTargetCadenceDays(targetCadence);
-  const lookbackDays = clampPositiveNumber(
-    syncedRecord.lookbackDays,
-    DEFAULT_WRITING_TARGET_LOOKBACK_DAYS,
-    2,
-    WRITING_TARGET_MAX_HISTORY_DAYS,
-  );
-  const sessionWords = Math.max(0, currentWordCount - syncedRecord.sessionBaselineWordCount);
-  const storedDailyBaselineDateKey = typeof syncedRecord.dailyBaselineDateKey === "string"
-    ? syncedRecord.dailyBaselineDateKey.trim()
-    : "";
-  const dailyBaselineWordCount =
-    storedDailyBaselineDateKey === todayKey && Number.isFinite(Number(syncedRecord.dailyBaselineWordCount))
-      ? Math.max(0, Math.round(Number(syncedRecord.dailyBaselineWordCount)))
-      : getWritingTargetDailyBaselineWordCount(syncedRecord, currentWordCount, now);
-  const dailyWords = currentWordCount - dailyBaselineWordCount;
-  const remainingWords = Math.max(0, targetWords - currentWordCount);
-  const targetWordsPerDay = cadenceDays > 0 ? sessionTargetWords / cadenceDays : 0;
-  const sessionTargetWordsPerSession = sessionsPerDay > 0 ? sessionTargetWords / sessionsPerDay : sessionTargetWords;
-  const currentSessionIndex = sessionTargetWordsPerSession > 0
-    ? Math.min(sessionsPerDay, Math.max(1, Math.floor(sessionWords / sessionTargetWordsPerSession) + 1))
-    : 1;
-  const currentSessionWords = sessionTargetWordsPerSession > 0
-    ? Math.max(0, sessionWords - ((currentSessionIndex - 1) * sessionTargetWordsPerSession))
-    : sessionWords;
-  const sessionProgress = sessionTargetWordsPerSession > 0
-    ? Math.max(0, Math.min(1, currentSessionWords / sessionTargetWordsPerSession))
-    : 0;
-  const sessionLifecycle = getWritingTargetSessionLifecycle(syncedRecord, now);
-  const sessionIsLive = sessionLifecycle.sessionDisplayActive === true;
-  const sessionLifecycleSummaryText = buildWritingTargetSessionLifecycleSummaryText(sessionLifecycle);
-  const sessionInactiveMinutes = sessionLifecycle.sessionLastActiveAt && !Number.isNaN(sessionLifecycle.sessionLastActiveAt.getTime())
-    ? Math.max(0, (now.getTime() - sessionLifecycle.sessionLastActiveAt.getTime()) / 60000)
-    : Number.POSITIVE_INFINITY;
-  const sessionPaceActive = sessionIsLive && sessionInactiveMinutes < WRITING_TARGET_SESSION_PACE_STALE_MINUTES;
-  const recentSessionWordsPerMinute = sessionPaceActive
-    ? estimateRecentSessionWordsPerMinute(syncedRecord, now)
-    : null;
-  const sessionElapsedMinutes = sessionPaceActive
-    ? Math.max(1 / 60, sessionLifecycle.activeMinutes)
-    : 0;
-  const sessionWordsPerMinute = sessionPaceActive
-    ? (recentSessionWordsPerMinute != null
-      ? recentSessionWordsPerMinute
-      : sessionElapsedMinutes > 0
-        ? sessionWords / sessionElapsedMinutes
-        : 0)
-    : 0;
-  const sessionWordsPerHour = sessionWordsPerMinute * 60;
-  const sessionRequiredWordsPerMinute = sessionTimeoutMinutes > 0
-    ? sessionTargetWordsPerSession / sessionTimeoutMinutes
-    : 0;
-  const sessionWordsPerMinuteRatio = sessionRequiredWordsPerMinute > 0
-    ? sessionWordsPerMinute / sessionRequiredWordsPerMinute
-    : 0;
-  const sessionWordsPerMinuteOverTarget = sessionPaceActive && sessionRequiredWordsPerMinute > 0
-    && sessionWordsPerMinute > sessionRequiredWordsPerMinute;
-  const sessionWordsPerMinuteBarColor = sessionPaceActive
-    ? buildSessionPaceColor(sessionWordsPerMinuteRatio)
-    : "rgba(31, 36, 48, 0.26)";
-  const sessionTargetWordsRemaining = Math.max(0, sessionTargetWordsPerSession - currentSessionWords);
-  const sessionProjectedMilestoneMinutes = sessionWordsPerMinute > 0
-    ? sessionTargetWordsRemaining / sessionWordsPerMinute
-    : null;
-  const sessionProjectedMilestoneLabel =
-    sessionTargetWordsRemaining <= 0
-      ? "Milestone reached"
-      : sessionPaceActive && sessionProjectedMilestoneMinutes != null
-        ? `${formatDurationMinutes(sessionProjectedMilestoneMinutes)} to milestone`
-        : "Idle";
-  const sessionMilestoneStatusText =
-    sessionTargetWordsRemaining <= 0
-      ? "Milestone reached"
-      : sessionPaceActive && sessionProjectedMilestoneMinutes != null && sessionProjectedMilestoneMinutes <= sessionTimeoutMinutes
-        ? "On track"
-      : sessionPaceActive && sessionProjectedMilestoneMinutes != null
-          ? "Off track"
-          : "Idle";
-  const sessionWordsPerMinuteLabel = `${formatDisplayNumber(Math.round(sessionWordsPerMinute))}/min`;
-  const sessionRequiredWordsPerMinuteLabel = `${formatDisplayNumber(Math.round(sessionRequiredWordsPerMinute))}/min`;
-  const sessionWordsPerMinuteSummaryText = sessionTargetWordsRemaining <= 0
-    ? "Milestone reached"
-    : sessionPaceActive
-      ? `${sessionWordsPerMinuteLabel} now · ${sessionRequiredWordsPerMinuteLabel} needed`
-      : "Idle";
-  const sessionWordsPerMinuteStatusText = sessionPaceActive
-    ? sessionWordsPerMinuteOverTarget
-      ? "Ahead of pace"
-      : sessionWordsPerMinuteRatio >= 0.95
-        ? "On track"
-        : "Off track"
-    : "Idle";
-  const sessionPaceSummaryText = sessionPaceActive
-    ? `${formatDisplayNumber(Math.round(sessionWordsPerHour))}/h · ${sessionProjectedMilestoneLabel}`
-    : "Idle";
-  const sessionPaceRatio = sessionPaceActive ? Math.max(0, sessionWordsPerMinuteRatio) : 0;
-  const sessionPacePercentLabel = `${formatDisplayNumber(Math.round(sessionPaceRatio * 100))}%`;
-  const sessionCurrentTimeLabel = formatClockTimeLabel(now);
-  const sessionStartTimeLabel = formatClockTimeLabel(sessionLifecycle.sessionStartedAt ?? now);
-  const sessionMinutesLapsed = sessionIsLive
-    ? Math.max(0, Math.floor(sessionLifecycle.activeMinutes))
-    : 0;
-  const sessionMinutesLapsedLabel = formatDisplayNumber(sessionMinutesLapsed);
-  const sessionElapsedLabel = sessionIsLive
-    ? formatSessionElapsedLabel(sessionLifecycle.activeMinutes, sessionTimeoutMinutes)
-    : "Idle";
-  const sessionLastActiveMinutes = sessionLifecycle.idleMinutes;
-  const sessionStatusText = sessionIsLive
-    ? sessionLastActiveMinutes == null
-      ? "Session baseline set"
-      : `Active · idle ${formatMinuteCount(sessionLastActiveMinutes)}`
-    : "Idle";
-  const sessionIdleLabel = sessionIsLive
-    ? sessionLastActiveMinutes != null
-      ? `${formatMinuteCount(sessionLastActiveMinutes)} idle`
-      : "Active"
-    : `${formatMinuteCount(sessionLastActiveMinutes ?? 0)} idle`;
-  const effectiveWordsPerDay = Math.max(0, pace.wordsPerDay || 0);
-  const projectedDaysToTarget = effectiveWordsPerDay > 0 ? remainingWords / effectiveWordsPerDay : null;
-  const projectedCompletionDate = projectedDaysToTarget != null ? addDays(now, projectedDaysToTarget) : null;
-  const daysUntilRelease = releaseDate ? getWritingTargetDaysUntilDate(releaseDate, now) : null;
-  const requiredDailyWords =
-    releaseDate && daysUntilRelease != null && daysUntilRelease > 0
-      ? Math.max(0, Math.ceil(remainingWords / daysUntilRelease))
-      : null;
-  const projectedReleaseGap = releaseDate && projectedCompletionDate
-    ? Math.ceil((startOfLocalDay(projectedCompletionDate).getTime() - startOfLocalDay(releaseDate).getTime()) / 86400000)
-    : null;
-  const releaseTrackStatus = releaseDate
-    ? projectedReleaseGap == null
-      ? "Need more writing history"
-      : projectedReleaseGap <= 0
-        ? "On track"
-        : `Off track by ${formatDayCount(projectedReleaseGap)}`
-    : `Track ${lookbackDays} days`;
-  const visibleMetrics = normalizeWritingTargetVisibleMetrics(
-    syncedRecord.visibleMetrics,
-    syncedRecord.visibleMetricsVersion,
-  )
-    .map((metricKey) => buildWritingTargetMetric(metricKey, {
-      record: syncedRecord,
-      currentWordCount,
-      sessionWords,
-      dailyWords,
-      sessionsPerDay,
-      sessionTargetWordsPerSession,
-      currentSessionIndex,
-      currentSessionWords,
-      sessionProgress,
-      sessionTimeoutMinutes,
-      sessionStatusText,
-      pace,
-      targetCadence,
-      cadenceMeta,
-      targetWordsPerDay,
-      effectiveWordsPerDay,
-      remainingWords,
-      projectedDaysToTarget,
-      projectedCompletionDate,
-      releaseDate,
-      daysUntilRelease,
-      requiredDailyWords,
-      projectedReleaseGap,
-      releaseTrackStatus,
-      now,
-    }));
-  const archiveEntries = buildWritingTargetArchiveEntries(syncedRecord, now);
-
-  const averageWordsPerDayText = pace.wordsPerDay > 0
-    ? `${formatDisplayNumber(Math.round(pace.wordsPerDay))}/day`
-    : `Need ${lookbackDays} days`;
-  const forecastText = releaseDate
-    ? projectedDaysToTarget != null
-      ? `${formatDayCount(projectedDaysToTarget)} · ${releaseTrackStatus}`
-      : releaseTrackStatus
-    : projectedCompletionDate
-      ? `ETA ${formatDateLabel(projectedCompletionDate)}`
-      : `Track ${lookbackDays} days`;
-  const releaseComparisonLabel = releaseDate
-    ? `${formatGoalDateLabel(releaseDate)} → ${projectedCompletionDate ? formatGoalDateLabel(projectedCompletionDate) : "—"}`
-    : "";
-  const goalSyncSource = getWritingTargetGoalSyncSource(syncedRecord);
-  const goalSyncHint = goalSyncSource === "releaseDate"
-    ? "Release date recalculates the target pace."
-    : "Target pace recalculates the release date.";
-  const streakSummary = buildWritingTargetStreakSummary(syncedRecord.history);
-
-  return {
-    record: workingRecord,
-    syncedRecord,
-    currentWordCount,
-    targetWords,
-    sessionWords,
-    dailyWords,
-    sessionsPerDay,
-    sessionTargetWords,
-    sessionTargetWordsPerSession,
-    currentSessionIndex,
-    currentSessionWords,
-    sessionProgress,
-    sessionStatusText,
-    sessionTimeoutMinutes,
-    lookbackDays,
-    sessionWordsPerHour,
-    sessionWordsPerHourLabel: `${formatDisplayNumber(Math.round(sessionWordsPerHour))}/h`,
-    sessionWordsPerMinute,
-    sessionWordsPerMinuteLabel,
-    sessionRequiredWordsPerMinute,
-    sessionRequiredWordsPerMinuteLabel,
-    sessionWordsPerMinuteRatio,
-    sessionWordsPerMinuteOverTarget,
-    sessionWordsPerMinuteBarColor,
-    sessionPaceRatio,
-    sessionPacePercentLabel,
-    sessionTargetWordsRemaining,
-    sessionProjectedMilestoneMinutes,
-    sessionProjectedMilestoneLabel,
-    sessionMilestoneStatusText,
-    sessionPaceSummaryText,
-    sessionWordsPerMinuteSummaryText,
-    sessionWordsPerMinuteStatusText,
-    targetCadence,
-    targetCadenceLabel: cadenceMeta.label,
-    targetWordsPerDay,
-    effectiveWordsPerDay,
-    releaseDate,
-    daysUntilRelease,
-    requiredDailyWords,
-    averageWordsPerDayText,
-    forecastText,
-    releaseComparisonLabel,
-    goalSyncSource,
-    goalSyncHint,
-    streakCurrentDays: streakSummary.current,
-    streakBestDays: streakSummary.best,
-    streakLabel: streakSummary.current > 0 ? `${formatDisplayNumber(streakSummary.current)} days` : "No streak yet",
-    sessionAgeLabel: sessionIsLive
-      ? formatSessionAge(syncedRecord.sessionStartedAt, now)
-      : "Idle",
-    sessionPaceActive,
-    sessionCurrentTimeLabel,
-    sessionStartTimeLabel,
-    sessionMinutesLapsed,
-    sessionMinutesLapsedLabel,
-    sessionElapsedLabel,
-    sessionIsActive: sessionIsLive,
-    sessionLifecyclePhase: sessionLifecycle.sessionLifecyclePhase,
-    sessionLifecycleSummaryText,
-    sessionIdleGraceMinutes: sessionLifecycle.sessionIdleGraceMinutes,
-    sessionSegmentCloseMinutes: sessionLifecycle.sessionSegmentCloseMinutes,
-    sessionNewSessionMinutes: sessionLifecycle.sessionNewSessionMinutes,
-    sessionIdleLabel,
-    sessionConcludedAt: sessionLifecycle.sessionConcludedAt?.toISOString?.() ?? "",
-    visibleMetrics,
-    projectedDaysToTarget,
-    projectedCompletionDate,
-    projectedReleaseGap,
-    releaseTrackStatus,
-    archiveEntries,
-    targetWordsLabel: compactWordCount(targetWords),
-    goalButtonLabel: `${cadenceMeta.label} ${compactWordCount(sessionTargetWords)}`,
-    goalTargetLabel: cadenceMeta.label,
-    sessionTargetWordsLabel: compactWordCount(sessionTargetWordsPerSession),
-  };
-}
-
-function buildWritingTargetMetric(metricKey, context) {
-  const {
-    record,
-    currentWordCount,
-    sessionWords,
-    dailyWords,
-    sessionsPerDay,
-    sessionTargetWordsPerSession,
-    currentSessionIndex,
-    currentSessionWords,
-    sessionProgress,
-    sessionStatusText,
-    pace,
-    targetCadence,
-    cadenceMeta,
-    targetWordsPerDay,
-    effectiveWordsPerDay,
-    remainingWords,
-    projectedDaysToTarget,
-    projectedCompletionDate,
-    releaseDate,
-    daysUntilRelease,
-    requiredDailyWords,
-    projectedReleaseGap,
-    releaseTrackStatus,
-    now,
-  } = context;
-  const targetWords = clampPositiveNumber(record.targetWords, DEFAULT_WRITING_TARGET_WORDS);
-  const sessionTargetWords = clampPositiveNumber(record.sessionTargetWords, DEFAULT_SESSION_TARGET_WORDS);
-  const lookbackDays = clampPositiveNumber(
-    record.lookbackDays,
-    DEFAULT_WRITING_TARGET_LOOKBACK_DAYS,
-    2,
-    WRITING_TARGET_MAX_HISTORY_DAYS,
-  );
-
-  // Stable keys are required so the live header patcher updates the right card.
-  if (metricKey === "wordTarget") {
-    return {
-      key: metricKey,
-      label: "Word Target",
-      value: formatDisplayNumber(currentWordCount),
-      leftLabel: formatDisplayNumber(currentWordCount),
-      rightLabel: formatDisplayNumber(targetWords),
-      progress: targetWords > 0 ? Math.min(1, currentWordCount / targetWords) : 0,
-      note: remainingWords > 0
-        ? `${formatDisplayNumber(remainingWords)} remaining`
-        : "Target reached",
-    };
-  }
-
-  if (metricKey === "sessionTarget") {
-    return {
-      key: metricKey,
-      label: cadenceMeta?.label ?? "Daily target",
-      value: formatDisplayNumber(dailyWords),
-      leftLabel: formatDisplayNumber(dailyWords),
-      rightLabel: `${formatDisplayNumber(sessionTargetWords)} / ${cadenceMeta?.unitLabel ?? "day"}`,
-      progress: sessionTargetWords > 0 ? Math.min(1, Math.max(0, dailyWords) / sessionTargetWords) : 0,
-      note: `${formatDisplayNumber(Math.max(0, Math.round(targetWordsPerDay || 0)))} / day equivalent`,
-    };
-  }
-
-  if (metricKey === "sessionTracker") {
-    return {
-      key: metricKey,
-      label: "Session tracker",
-      value: `Session ${currentSessionIndex} of ${sessionsPerDay}`,
-      leftLabel: formatDisplayNumber(currentSessionWords),
-      rightLabel: formatDisplayNumber(sessionTargetWordsPerSession),
-      progress: sessionProgress,
-      note: sessionStatusText,
-    };
-  }
-
-  if (releaseDate) {
-    return {
-      key: metricKey,
-      label: "Days to release",
-      value: projectedDaysToTarget != null ? formatDayCount(projectedDaysToTarget) : "—",
-      leftLabel: formatGoalDateLabel(releaseDate),
-      rightLabel: projectedCompletionDate ? formatGoalDateLabel(projectedCompletionDate) : "—",
-      comparison: true,
-      progress: releaseDate && requiredDailyWords > 0
-        ? Math.min(1, (effectiveWordsPerDay || 0) / requiredDailyWords)
-        : targetWords > 0
-          ? Math.min(1, currentWordCount / targetWords)
-          : 0,
-      note: releaseTrackStatus || (requiredDailyWords != null
-        ? `${formatDisplayNumber(requiredDailyWords)}/day to hit release`
-        : "Release date selected"),
-    };
-  }
-
-  const averageLabel = pace.wordsPerDay > 0
-    ? `${formatDisplayNumber(Math.round(pace.wordsPerDay))}/day`
-    : "No pace yet";
-  const completionLabel = projectedCompletionDate
-    ? formatDateLabel(projectedCompletionDate)
-    : `Track ${lookbackDays} days`;
-
-  return {
-    key: metricKey,
-    label: "Days to release",
-    value: projectedDaysToTarget != null ? formatDayCount(projectedDaysToTarget) : "—",
-    leftLabel: averageLabel,
-    rightLabel: completionLabel,
-    progress: targetWords > 0 ? Math.min(1, currentWordCount / targetWords) : 0,
-    note: projectedCompletionDate
-      ? releaseTrackStatus || "Projected"
-      : `Based on ${lookbackDays}-day average`,
-  };
-}
-
-function buildWritingTargetArchiveEntries(record, now = new Date()) {
-  const history = Array.isArray(record?.history) ? [...record.history] : [];
-  const sorted = history
-    .filter((entry) => entry && typeof entry === "object" && typeof entry.date === "string")
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .reverse();
-
-  return sorted.map((entry, index) => {
-    const previous = sorted[index + 1] ?? null;
-    const wordDelta = Number.isFinite(Number(entry.wordDelta))
-      ? Math.round(Number(entry.wordDelta))
-      : previous
-        ? Math.round(Number(entry.wordCount) - Number(previous.wordCount))
-        : Math.round(Number(entry.wordCount) || 0);
-    const date = parseLocalDateKey(entry.date) ?? now;
-    const capturedDate = typeof entry.capturedAt === "string" ? new Date(entry.capturedAt) : null;
-    const capturedLabel = capturedDate && !Number.isNaN(capturedDate.getTime())
-      ? new Intl.DateTimeFormat(undefined, {
-          hour: "numeric",
-          minute: "2-digit",
-        }).format(capturedDate)
-      : "";
-    return {
-      dateLabel: new Intl.DateTimeFormat(undefined, {
-        weekday: "short",
-        month: "short",
-        day: "numeric",
-      }).format(date),
-      dateKey: entry.date,
-      capturedLabel,
-      wordCountLabel: formatDisplayNumber(entry.wordCount),
-      wordDeltaLabel: `${wordDelta >= 0 ? "+" : ""}${formatDisplayNumber(wordDelta)} words`,
-      chapterTitle: entry.chapterTitle || "Unknown chapter",
-      sceneTitle: entry.sceneTitle || "Unknown scene",
-      passageExcerpt: entry.passageExcerpt || "",
-      issueCountLabel: `${formatDisplayNumber(Math.max(0, Math.round(Number(entry.issueCount) || 0)))} issues`,
-      inspirationCountLabel: `${formatDisplayNumber(Math.max(0, Math.round(Number(entry.inspirationCount) || 0)))} inspiration${Math.max(0, Math.round(Number(entry.inspirationCount) || 0)) === 1 ? "" : "s"}`,
-      noteText: typeof entry.noteText === "string" ? entry.noteText : "",
-    };
-  });
-}
-
-function renderWritingTargetArchiveEntry(entry) {
-  return `
-    <article class="writing-target-archive-item">
-      <div class="writing-target-archive-top">
-        <div>
-          <strong>${escapeHtml(entry.dateLabel)}</strong>
-          ${entry.capturedLabel ? `<span>${escapeHtml(entry.capturedLabel)}</span>` : ""}
-        </div>
-        <strong>${escapeHtml(entry.wordDeltaLabel)}</strong>
-      </div>
-      <div class="writing-target-archive-body">
-        <span class="writing-target-archive-chapter">${escapeHtml(entry.chapterTitle)}</span>
-        <strong>${escapeHtml(entry.sceneTitle)}</strong>
-        ${entry.passageExcerpt ? `<span class="writing-target-archive-excerpt">${escapeHtml(entry.passageExcerpt)}</span>` : ""}
-        <span>${escapeHtml(entry.wordCountLabel)} total</span>
-      </div>
-      <div class="writing-target-archive-meta">
-        <span>${escapeHtml(entry.issueCountLabel)}</span>
-        <span>${escapeHtml(entry.inspirationCountLabel)}</span>
-      </div>
-    </article>
-  `;
-}
-
-function buildWritingTargetStreakSummary(history) {
-  const entries = getWritingTargetHistoryEntries({ history });
-  if (!entries.length) {
-    return { current: 0, best: 0 };
-  }
-
-  let best = 0;
-  let run = 0;
-  let previousDate = null;
-  for (const entry of entries) {
-    const entryDate = parseLocalDateKey(entry.date);
-    const hasWriting = Math.max(0, Math.round(Number(entry.wordDelta) || 0)) > 0;
-    const isConsecutive = !previousDate
-      || (entryDate && previousDate && Math.round((entryDate.getTime() - previousDate.getTime()) / 86400000) === 1);
-    if (hasWriting && isConsecutive) {
-      run += 1;
-    } else if (hasWriting) {
-      run = 1;
-    } else {
-      run = 0;
-    }
-    best = Math.max(best, run);
-    previousDate = entryDate;
-  }
-
-  let current = 0;
-  for (let index = entries.length - 1; index >= 0; index -= 1) {
-    const entry = entries[index];
-    const entryDate = parseLocalDateKey(entry.date);
-    const hasWriting = Math.max(0, Math.round(Number(entry.wordDelta) || 0)) > 0;
-    if (!entryDate || !hasWriting) {
-      break;
-    }
-
-    if (index < entries.length - 1) {
-      const nextEntry = entries[index + 1];
-      const nextDate = parseLocalDateKey(nextEntry.date);
-      if (!nextDate || Math.round((nextDate.getTime() - entryDate.getTime()) / 86400000) !== 1) {
-        break;
-      }
-    }
-
-    current += 1;
-  }
-
-  return { current, best };
-}
-
-function getWritingTargetHistoryEntries(record) {
-  return trimWritingTargetHistory(
-    Array.isArray(record?.history) ? record.history : [],
-    clampPositiveNumber(record?.lookbackDays, DEFAULT_WRITING_TARGET_LOOKBACK_DAYS, 2, WRITING_TARGET_MAX_HISTORY_DAYS),
-  );
-}
-
-function getWritingTargetHistoryEntryMap(record) {
-  const entries = getWritingTargetHistoryEntries(record);
-  return new Map(entries.map((entry) => [entry.date, entry]));
-}
-
-function getWritingTargetMonthKey(date = new Date()) {
-  const value = date instanceof Date ? date : parseLocalDateKey(String(date)) ?? new Date();
-  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function parseWritingTargetMonthKey(monthKey) {
-  const trimmed = String(monthKey ?? "").trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  const match = trimmed.match(/^(\d{4})-(\d{2})$/);
-  if (!match) {
-    return null;
-  }
-
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  return createValidatedDate(year, month, 1);
-}
-
-function isWritingTargetDateKey(value) {
-  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
-}
-
-function getWritingTargetStartOfWeek(date) {
-  const value = startOfLocalDay(date instanceof Date ? date : new Date(date));
-  const day = value.getDay();
-  const offset = day === 0 ? -6 : 1 - day;
-  return addDays(value, offset);
-}
-
-function getWritingTargetSelectedDateKey(summary) {
-  const historyEntries = getWritingTargetHistoryEntries(summary?.syncedRecord);
-  const historyDateKeys = new Set(historyEntries.map((entry) => entry.date));
-  const stateKey = isWritingTargetDateKey(state.writingTargetSelectedDateKey) ? state.writingTargetSelectedDateKey : "";
-  if (stateKey && historyDateKeys.has(stateKey)) {
-    return stateKey;
-  }
-
-  const latestHistoryDateKey = historyEntries.at(-1)?.date;
-  if (latestHistoryDateKey) {
-    state.writingTargetSelectedDateKey = latestHistoryDateKey;
-    return latestHistoryDateKey;
-  }
-
-  const todayKey = getLocalDateKey(new Date());
-  state.writingTargetSelectedDateKey = todayKey;
-  return todayKey;
-}
-
-function primeWritingTargetDashboardSelection(summary) {
-  const selectedDateKey = getWritingTargetSelectedDateKey(summary);
-  if (!isWritingTargetDateKey(state.writingTargetCalendarMonthKey)) {
-    state.writingTargetCalendarMonthKey = getWritingTargetMonthKey(parseLocalDateKey(selectedDateKey) ?? new Date());
-  }
-
-  if (!["month", "week", "list"].includes(state.writingTargetViewMode)) {
-    state.writingTargetViewMode = "month";
-  }
-}
-
-function buildWritingTargetDashboardModel(summary) {
-  primeWritingTargetDashboardSelection(summary);
-  const now = new Date();
-  const todayKey = getLocalDateKey(now);
-  const historyEntries = getWritingTargetHistoryEntries(summary?.syncedRecord);
-  const historyMap = getWritingTargetHistoryEntryMap(summary?.syncedRecord);
-  const chapterTasks = countRemainingTasksByChapter(state.manuscriptTasks ?? []);
-  const latestHistoryEntry = historyEntries.at(-1) ?? null;
-  const liveTodayEntry = buildLiveWritingTargetHistoryEntry(summary, historyEntries, now);
-  const liveHistoryEntries = historyEntries.some((entry) => entry.date === todayKey)
-    ? historyEntries.map((entry) => (entry.date === todayKey ? liveTodayEntry : entry))
-    : [...historyEntries, liveTodayEntry].sort((a, b) => a.date.localeCompare(b.date));
-  const liveHistoryMap = new Map(historyMap);
-  liveHistoryMap.set(todayKey, liveTodayEntry);
-  const selectedDateKey = Number(summary?.currentWordCount ?? 0) > Number(latestHistoryEntry?.wordCount ?? 0)
-    ? todayKey
-    : getWritingTargetSelectedDateKey(summary);
-  if (selectedDateKey === todayKey && state.writingTargetSelectedDateKey !== todayKey) {
-    state.writingTargetSelectedDateKey = todayKey;
-    state.writingTargetCalendarMonthKey = getWritingTargetMonthKey(now);
-  }
-
-  const selectedEntry = liveHistoryMap.get(selectedDateKey) ?? liveHistoryEntries.at(-1) ?? null;
-  const selectedDate = parseLocalDateKey(selectedDateKey) ?? parseLocalDateKey(selectedEntry?.date) ?? new Date();
-  const monthDate = parseWritingTargetMonthKey(state.writingTargetCalendarMonthKey) ?? selectedDate;
-  const monthStart = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1, 12, 0, 0, 0);
-  const gridStart = getWritingTargetStartOfWeek(monthStart);
-  const dailyGoalWords = Math.max(1, Math.round(Number(summary?.requiredDailyWords ?? summary?.targetWordsPerDay ?? summary?.record?.sessionTargetWords ?? DEFAULT_SESSION_TARGET_WORDS) || 0));
-  const days = Array.from({ length: 42 }, (_, index) => {
-    const date = addDays(gridStart, index);
-    const dateKey = getLocalDateKey(date);
-    const entry = liveHistoryMap.get(dateKey) ?? null;
-    const wordGain = Math.max(0, Math.round(Number(entry?.wordDelta) || 0));
-    const status = getWritingTargetDayStatus(wordGain, dailyGoalWords, entry);
-    return {
-      dateKey,
-      date,
-      dayNumber: date.getDate(),
-      isCurrentMonth: date.getMonth() === monthStart.getMonth(),
-      isToday: dateKey === getLocalDateKey(new Date()),
-      isSelected: dateKey === selectedDateKey,
-      entry,
-      wordGain,
-      progressRatio: dailyGoalWords > 0 ? Math.max(0, Math.min(1, wordGain / dailyGoalWords)) : 0,
-      wordCount: Math.max(0, Math.round(Number(entry?.wordCount) || 0)),
-      taskCount: entry?.chapterId ? Math.max(0, Math.round(Number(chapterTasks[entry.chapterId]) || 0)) : 0,
-      status,
-    };
-  });
-
-  const visibleWeekStart = getWritingTargetStartOfWeek(selectedDate);
-  const weekDays = Array.from({ length: 7 }, (_, index) => {
-    const date = addDays(visibleWeekStart, index);
-    const dateKey = getLocalDateKey(date);
-    const entry = liveHistoryMap.get(dateKey) ?? null;
-    const wordGain = Math.max(0, Math.round(Number(entry?.wordDelta) || 0));
-    const status = getWritingTargetDayStatus(wordGain, dailyGoalWords, entry);
-    return {
-      dateKey,
-      date,
-      dayNumber: date.getDate(),
-      isToday: dateKey === getLocalDateKey(new Date()),
-      isSelected: dateKey === selectedDateKey,
-      entry,
-      wordGain,
-      progressRatio: dailyGoalWords > 0 ? Math.max(0, Math.min(1, wordGain / dailyGoalWords)) : 0,
-      wordCount: Math.max(0, Math.round(Number(entry?.wordCount) || 0)),
-      taskCount: entry?.chapterId ? Math.max(0, Math.round(Number(chapterTasks[entry.chapterId]) || 0)) : 0,
-      status,
-    };
-  });
-
-  return {
-    historyEntries,
-    historyMap,
-    selectedDateKey,
-    selectedDate,
-    selectedEntry,
-    monthDate,
-    monthLabel: new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" }).format(monthStart),
-    monthKey: getWritingTargetMonthKey(monthStart),
-    dailyGoalWords,
-    days,
-    weekDays,
-    listEntries: [...liveHistoryEntries].reverse(),
-    streak: buildWritingTargetStreakSummary(liveHistoryEntries),
-    viewMode: state.writingTargetViewMode,
-  };
-}
-
-function buildLiveWritingTargetHistoryEntry(summary, historyEntries, now = new Date()) {
-  const currentWordCount = Math.max(0, Math.round(Number(summary?.currentWordCount) || 0));
-  const todayKey = getLocalDateKey(now);
-  const previousEntry = [...historyEntries]
-    .filter((entry) => entry.date < todayKey)
-    .at(-1) ?? null;
-  const liveEntry = createWritingTargetHistoryEntry(currentWordCount, now, {
-    previousEntry,
-    context: getWritingTargetSnapshotContext(now),
-  });
-  const existingTodayEntry = historyEntries.find((entry) => entry.date === todayKey) ?? null;
-
-  if (existingTodayEntry?.noteText) {
-    liveEntry.noteText = existingTodayEntry.noteText;
-  }
-
-  return liveEntry;
-}
-
-function getWritingTargetDayStatus(wordGain, dailyGoalWords, entry) {
-  if (!entry || Math.max(0, Number(wordGain) || 0) <= 0) {
-    return { key: "no-writing", label: "No writing" };
-  }
-
-  const ratio = dailyGoalWords > 0 ? Number(wordGain) / dailyGoalWords : 0;
-  if (ratio >= 1) {
-    return { key: "on-target", label: "On target" };
-  }
-
-  if (ratio >= 0.75) {
-    return { key: "good", label: "Good" };
-  }
-
-  if (ratio >= 0.5) {
-    return { key: "below-target", label: "Below target" };
-  }
-
-  return { key: "low", label: "Low" };
-}
-
-function buildWritingTargetDashboardCards(summary, dashboard) {
-  return [
-    {
-      key: "projectedDays",
-      icon: "⌛",
-      label: "Days to release",
-      value: summary.projectedDaysToTarget != null ? formatDayCount(summary.projectedDaysToTarget) : "—",
-      leftLabel: summary.releaseDate ? formatGoalDateLabel(summary.releaseDate) : `Track ${summary.lookbackDays} days`,
-      rightLabel: summary.projectedCompletionDate ? formatGoalDateLabel(summary.projectedCompletionDate) : "—",
-      comparison: true,
-      note: summary.releaseTrackStatus || `Based on ${summary.lookbackDays}-day average`,
-      progress: Number(summary.targetWords) > 0 ? Math.min(1, summary.currentWordCount / Number(summary.targetWords)) : 0,
-    },
-    {
-      key: "currentPace",
-      icon: "↗",
-      label: "Current pace",
-      value: summary.averageWordsPerDayText,
-      leftLabel: summary.averageWordsPerDayText,
-      rightLabel: `Daily target ${formatDisplayNumber(Math.max(0, Math.round(Number(summary.targetWordsPerDay) || 0)))}`,
-      comparison: true,
-      note: summary.forecastText || "Live pace",
-      progress: summary.targetWordsPerDay > 0 ? Math.min(1, summary.effectiveWordsPerDay / summary.targetWordsPerDay) : 0,
-    },
-    {
-      key: "streak",
-      icon: "🔥",
-      label: "Streak",
-      value: summary.streakCurrentDays > 0 ? formatDisplayNumber(summary.streakCurrentDays) : "—",
-      leftLabel: summary.streakCurrentDays > 0 ? `${formatDisplayNumber(summary.streakCurrentDays)} days` : "No streak yet",
-      rightLabel: `Best ${formatDisplayNumber(summary.streakBestDays)} days`,
-      comparison: true,
-      note: "Writing days",
-      progress: summary.streakBestDays > 0 ? Math.min(1, summary.streakCurrentDays / summary.streakBestDays) : 0,
-    },
-    {
-      key: "sessionTarget",
-      icon: "◎",
-      label: "Session target",
-      value: formatDisplayNumber(summary.sessionTargetWordsPerSession),
-      leftLabel: `${formatDisplayNumber(summary.currentSessionWords)} written`,
-      rightLabel: `${formatDisplayNumber(summary.sessionsPerDay)} sessions/day`,
-      comparison: true,
-      note: `${summary.sessionWordsPerHourLabel || "0/h"} pace`,
-      progress: summary.sessionTargetWordsPerSession > 0 ? Math.min(1, summary.currentSessionWords / summary.sessionTargetWordsPerSession) : 0,
-      barClass: summary.sessionWordsPerMinuteOverTarget ? "is-session-pace is-over-target" : "is-session-pace",
-      barStyle: `--writing-target-bar-color: ${summary.sessionWordsPerMinuteBarColor ?? "rgb(113, 215, 177)"};`,
-    },
-  ];
-}
-
-function getWritingTargetSelectedEntryModel(summary, dashboard) {
-  const entry = dashboard.selectedEntry;
-  if (!entry) {
-    return {
-      dateKey: dashboard.selectedDateKey,
-      dateLabel: new Intl.DateTimeFormat(undefined, {
-        weekday: "long",
-        month: "long",
-        day: "numeric",
-        year: "numeric",
-      }).format(new Date()),
-      wordCountLabel: "0 words",
-      wordDeltaLabel: "0 words",
-      chapterTitle: "Unknown chapter",
-      sceneTitle: "No entry selected",
-      passageExcerpt: "",
-      issueCountLabel: "0 issues",
-      inspirationCountLabel: "0 inspirations",
-      noteText: "",
-      statusLabel: "No writing",
-      progressLabel: "0%",
-      progressRatio: 0,
-      wordCountValue: 0,
-      dailyGoalWords: dashboard.dailyGoalWords,
-      dailyTargetLabel: `${formatDisplayNumber(dashboard.dailyGoalWords)} words`,
-      tasksCountLabel: `${formatDisplayNumber(0)} tasks`,
-      summaryLines: [],
-    };
-  }
-
-  const progressRatio = dashboard.dailyGoalWords > 0
-    ? Math.max(0, Math.min(1, Math.max(0, Number(entry.wordDelta) || 0) / dashboard.dailyGoalWords))
-    : 0;
-  const status = getWritingTargetDayStatus(Number(entry.wordDelta) || 0, dashboard.dailyGoalWords, entry);
-  const chapterTasks = countRemainingTasksByChapter(state.manuscriptTasks ?? []);
-  const taskCount = entry.chapterId ? chapterTasks[entry.chapterId] ?? 0 : 0;
-
-  return {
-    dateKey: entry.date,
-    dateLabel: new Intl.DateTimeFormat(undefined, {
-      weekday: "long",
-      month: "long",
-      day: "numeric",
-      year: "numeric",
-    }).format(parseLocalDateKey(entry.date) ?? new Date()),
-    wordCountValue: Math.max(0, Math.round(Number(entry.wordDelta) || 0)),
-    wordCountLabel: `${formatDisplayNumber(entry.wordDelta)} words`,
-    wordDeltaLabel: `${Number(entry.wordDelta) >= 0 ? "+" : ""}${formatDisplayNumber(entry.wordDelta)} words`,
-    chapterTitle: entry.chapterTitle || "Unknown chapter",
-    sceneTitle: entry.sceneTitle || "Unknown scene",
-    passageExcerpt: entry.passageExcerpt || "",
-    issueCountLabel: `${formatDisplayNumber(Math.max(0, Math.round(Number(entry.issueCount) || 0)))} issues`,
-    inspirationCountLabel: `${formatDisplayNumber(Math.max(0, Math.round(Number(entry.inspirationCount) || 0)))} inspiration${Math.max(0, Math.round(Number(entry.inspirationCount) || 0)) === 1 ? "" : "s"}`,
-    noteText: entry.noteText || "",
-    statusLabel: status.label,
-    progressLabel: `${formatDisplayNumber(Math.round(progressRatio * 100))}%`,
-    progressRatio,
-    dailyGoalWords: dashboard.dailyGoalWords,
-    dailyTargetLabel: `${formatDisplayNumber(dashboard.dailyGoalWords)} words`,
-    tasksCountLabel: `${formatDisplayNumber(taskCount)} tasks`,
-    summaryLines: [
-      `${formatDisplayNumber(Math.max(0, Number(entry.wordCount) || 0))} total`,
-      entry.capturedAt ? `Captured ${new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date(entry.capturedAt))}` : "",
-    ].filter(Boolean),
-  };
-}
-
-function getCurrentManuscriptWordCount() {
-  return state.scenes.reduce((total, scene) => total + countWords(scene.editorText), 0);
-}
-
-function countWords(text) {
-  const value = String(text ?? "").trim();
-  if (!value) {
-    return 0;
-  }
-
-  return value.split(/\s+/).filter(Boolean).length;
-}
-
-function compactWordCount(value) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) {
-    return String(value ?? "");
-  }
-
-  if (Math.abs(number) >= 100000) {
-    return `${Math.round(number / 1000)}k`;
-  }
-
-  if (Math.abs(number) >= 1000) {
-    return new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(number / 1000).replace(/\.0$/, "") + "k";
-  }
-
-  return formatDisplayNumber(number);
-}
-
-function formatDayCount(value) {
-  const number = Math.max(0, Math.ceil(Number(value) || 0));
-  return `${formatDisplayNumber(number)} day${number === 1 ? "" : "s"}`;
-}
-
-function formatMinuteCount(value) {
-  const number = Math.max(0, Math.ceil(Number(value) || 0));
-  return `${formatDisplayNumber(number)} minute${number === 1 ? "" : "s"}`;
-}
-
-function formatClockTimeLabel(date) {
-  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
-    return "";
-  }
-
-  return new Intl.DateTimeFormat(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(date);
-}
-
-function formatSessionElapsedLabel(elapsedMinutes, timeoutMinutes) {
-  const elapsed = Math.max(0, Math.floor(Number(elapsedMinutes) || 0));
-  const timeout = Math.max(0, Math.floor(Number(timeoutMinutes) || 0));
-  return `${formatDisplayNumber(elapsed)} min${elapsed === 1 ? "" : "s"} of ${formatDisplayNumber(timeout)}${timeout === 1 ? " min" : " mins"}`;
-}
-
-function createPassageExcerpt(scene, limit = 18) {
-  const sourceText = String(scene?.editorText ?? scene?.sceneSynopsis ?? scene?.sceneTitle ?? "")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!sourceText) {
-    return "";
-  }
-
-  const words = sourceText.split(/\s+/);
-  if (words.length <= limit) {
-    return sourceText;
-  }
-
-  return `${words.slice(0, limit).join(" ")}…`;
-}
-
-function buildSessionPaceColor(ratio) {
-  const paceRatio = Math.max(0, Math.min(1, Number(ratio) || 0));
-  const red = { r: 232, g: 96, b: 92 };
-  const blue = { r: 90, g: 144, b: 255 };
-  const green = { r: 113, g: 215, b: 177 };
-
-  if (paceRatio <= 0.65) {
-    return formatRgbColor(mixRgbColor(red, blue, paceRatio / 0.65));
-  }
-
-  return formatRgbColor(mixRgbColor(blue, green, (paceRatio - 0.65) / 0.35));
-}
-
-function mixRgbColor(start, end, ratio) {
-  const mix = Math.max(0, Math.min(1, Number(ratio) || 0));
-  return {
-    r: Math.round(start.r + ((end.r - start.r) * mix)),
-    g: Math.round(start.g + ((end.g - start.g) * mix)),
-    b: Math.round(start.b + ((end.b - start.b) * mix)),
-  };
-}
-
-function formatRgbColor(color) {
-  return `rgb(${Math.max(0, Math.min(255, Math.round(color.r)))}, ${Math.max(0, Math.min(255, Math.round(color.g)))}, ${Math.max(0, Math.min(255, Math.round(color.b)))})`;
-}
-
-function formatDurationMinutes(value) {
-  const minutes = Math.max(0, Math.ceil(Number(value) || 0));
-  const hours = Math.floor(minutes / 60);
-  const remainder = minutes % 60;
-  if (hours <= 0) {
-    return `${formatDisplayNumber(remainder)} minute${remainder === 1 ? "" : "s"}`;
-  }
-
-  if (remainder <= 0) {
-    return `${formatDisplayNumber(hours)} hour${hours === 1 ? "" : "s"}`;
-  }
-
-  return `${formatDisplayNumber(hours)} hour${hours === 1 ? "" : "s"} ${formatDisplayNumber(remainder)} minute${remainder === 1 ? "" : "s"}`;
-}
-
-function formatDateLabel(date) {
-  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
-    return "";
-  }
-
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(date);
-}
-
-function formatGoalDateLabel(date) {
-  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
-    return "";
-  }
-
-  const parts = new Intl.DateTimeFormat(undefined, {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  }).formatToParts(date);
-  const day = parts.find((part) => part.type === "day")?.value ?? "";
-  const month = parts.find((part) => part.type === "month")?.value ?? "";
-  const year = parts.find((part) => part.type === "year")?.value ?? "";
-  return [day, month, year].filter(Boolean).join(" ");
-}
-
-function parseLocalDateKey(value) {
-  const key = normalizeDateInput(value);
-  if (!key) {
-    return null;
-  }
-
-  const date = new Date(`${key}T12:00:00`);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function normalizeWritingTargetCadence(value) {
-  const candidate = String(value ?? "").trim().toLowerCase();
-  return candidate === "weekly" ? "weekly" : "daily";
-}
-
-function normalizeWritingTargetGoalSyncSource(value) {
-  const candidate = String(value ?? "").trim();
-  return WRITING_TARGET_GOAL_SYNC_SOURCES.includes(candidate) ? candidate : "";
-}
-
-function normalizeWritingTargetVisibleMetrics(candidateVisibleMetrics, visibleMetricsVersion = 0) {
-  const selectedMetrics = new Set(
-    Array.isArray(candidateVisibleMetrics)
-      ? candidateVisibleMetrics.filter((metricKey) => WRITING_TARGET_METRIC_KEYS.includes(metricKey))
-      : WRITING_TARGET_METRIC_KEYS,
-  );
-
-  // Older records predate the session tracker toggle, so keep that card visible during migration.
-  if (Number(visibleMetricsVersion) < WRITING_TARGET_VISIBLE_METRICS_SCHEMA_VERSION) {
-    selectedMetrics.add("sessionTracker");
-  }
-
-  const orderedMetrics = WRITING_TARGET_METRIC_KEYS.filter((metricKey) => selectedMetrics.has(metricKey));
-  return orderedMetrics.length ? orderedMetrics : [...WRITING_TARGET_METRIC_KEYS];
-}
-
-function getWritingTargetCadenceMeta(cadence) {
-  return WRITING_TARGET_CADENCE_OPTIONS.find((option) => option.value === normalizeWritingTargetCadence(cadence))
-    ?? WRITING_TARGET_CADENCE_OPTIONS[0];
-}
-
-function getWritingTargetCadenceDays(cadence) {
-  return getWritingTargetCadenceMeta(cadence).value === "weekly" ? 7 : 1;
-}
-
-function getWritingTargetGoalSyncSource(record) {
-  const explicitSource = normalizeWritingTargetGoalSyncSource(record?.goalSyncSource);
-  if (explicitSource) {
-    return explicitSource;
-  }
-
-  if (parseLocalDateKey(record?.releaseDate)) {
-    return "releaseDate";
-  }
-
-  const sessionTargetWords = clampPositiveNumber(record?.sessionTargetWords, DEFAULT_SESSION_TARGET_WORDS);
-  return sessionTargetWords !== DEFAULT_SESSION_TARGET_WORDS ? "sessionTargetWords" : "releaseDate";
-}
-
-function getWritingTargetDaysUntilDate(date, now = new Date()) {
-  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
-    return null;
-  }
-
-  return Math.max(
-    0,
-    Math.ceil((startOfLocalDay(date).getTime() - startOfLocalDay(now).getTime()) / 86400000),
-  );
-}
-
-function startOfLocalDay(date) {
-  const copy = new Date(date.getTime());
-  copy.setHours(0, 0, 0, 0);
-  return copy;
-}
-
-function formatSessionAge(sessionStartedAt, now) {
-  if (typeof sessionStartedAt !== "string" || !sessionStartedAt) {
-    return "Session baseline set";
-  }
-
-  const startDate = new Date(sessionStartedAt);
-  if (Number.isNaN(startDate.getTime())) {
-    return "Session baseline set";
-  }
-
-  const days = Math.max(0, Math.floor((now.getTime() - startDate.getTime()) / 86400000));
-  if (days <= 0) {
-    return "Session started today";
-  }
-
-  return `${formatDisplayNumber(days)} day${days === 1 ? "" : "s"} in session`;
-}
-
-function syncWritingTargetGoalFields(record, currentWordCount, now = new Date()) {
-  if (!record || typeof record !== "object") {
-    return record;
-  }
-
-  const nextRecord = { ...record };
-  const targetWords = clampPositiveNumber(nextRecord.targetWords, DEFAULT_WRITING_TARGET_WORDS);
-  const sessionTargetWords = clampPositiveNumber(nextRecord.sessionTargetWords, DEFAULT_SESSION_TARGET_WORDS);
-  const sessionsPerDay = clampPositiveNumber(
-    nextRecord.sessionsPerDay,
-    DEFAULT_SESSION_TARGETS_PER_DAY,
-    1,
-    WRITING_TARGET_MAX_SESSION_TARGETS_PER_DAY,
-  );
-  const sessionTimeoutMinutes = clampPositiveNumber(
-    nextRecord.sessionTimeoutMinutes,
-    DEFAULT_SESSION_TIMEOUT_MINUTES,
-    WRITING_TARGET_MIN_SESSION_TIMEOUT_MINUTES,
-    WRITING_TARGET_MAX_SESSION_TIMEOUT_MINUTES,
-  );
-  const targetCadence = normalizeWritingTargetCadence(nextRecord.targetCadence);
-  const cadenceDays = getWritingTargetCadenceDays(targetCadence);
-  const releaseDate = parseLocalDateKey(nextRecord.releaseDate);
-  const goalSyncSource = getWritingTargetGoalSyncSource(nextRecord);
-  const remainingWords = Math.max(0, targetWords - Math.max(0, Math.round(Number(currentWordCount) || 0)));
-
-  nextRecord.targetWords = targetWords;
-  nextRecord.sessionTargetWords = sessionTargetWords;
-  nextRecord.sessionsPerDay = sessionsPerDay;
-  nextRecord.sessionTimeoutMinutes = sessionTimeoutMinutes;
-  nextRecord.targetCadence = targetCadence;
-  nextRecord.goalSyncSource = goalSyncSource;
-  nextRecord.sessionIsActive = nextRecord.sessionIsActive === true;
-  nextRecord.sessionStartedAt =
-    typeof nextRecord.sessionStartedAt === "string" && nextRecord.sessionStartedAt.trim()
-      ? nextRecord.sessionStartedAt
-      : now.toISOString();
-  nextRecord.sessionLastActiveAt =
-    typeof nextRecord.sessionLastActiveAt === "string" && nextRecord.sessionLastActiveAt.trim()
-      ? nextRecord.sessionLastActiveAt
-      : now.toISOString();
-  nextRecord.sessionConcludedAt = nextRecord.sessionIsActive
-    ? ""
-    : typeof nextRecord.sessionConcludedAt === "string" && nextRecord.sessionConcludedAt.trim()
-      ? nextRecord.sessionConcludedAt
-      : "";
-  nextRecord.sessionConcludedReason = nextRecord.sessionIsActive
-    ? ""
-    : typeof nextRecord.sessionConcludedReason === "string" && nextRecord.sessionConcludedReason.trim()
-      ? nextRecord.sessionConcludedReason
-      : "idle";
-  nextRecord.sessionLastWordCount =
-    Number.isFinite(Number(nextRecord.sessionLastWordCount)) && Number(nextRecord.sessionLastWordCount) >= 0
-      ? Math.max(0, Math.round(Number(nextRecord.sessionLastWordCount)))
-      : Math.max(0, Math.round(Number(currentWordCount) || 0));
-
-  if (goalSyncSource === "releaseDate") {
-    nextRecord.releaseDate = releaseDate ? getLocalDateKey(releaseDate) : "";
-    if (releaseDate) {
-      const daysUntilRelease = getWritingTargetDaysUntilDate(releaseDate, now);
-      if (daysUntilRelease != null && daysUntilRelease > 0) {
-        nextRecord.sessionTargetWords = Math.max(
-          1,
-          Math.ceil((remainingWords / daysUntilRelease) * cadenceDays),
-        );
-      }
-    }
-  } else if (goalSyncSource === "sessionTargetWords") {
-    const wordsPerDay = cadenceDays > 0 ? sessionTargetWords / cadenceDays : 0;
-    if (wordsPerDay > 0) {
-      const projectedDays = remainingWords > 0 ? remainingWords / wordsPerDay : 0;
-      nextRecord.releaseDate = getLocalDateKey(addDays(now, projectedDays));
-    } else {
-      nextRecord.releaseDate = releaseDate ? getLocalDateKey(releaseDate) : "";
-    }
-  }
-
-  return nextRecord;
-}
-
-function seedWritingTargetTestData() {
-  const record = syncWritingTargetState({ forceReload: false });
-  if (!record || !state.workspace?.project?.id) {
-    return;
-  }
-
-  const currentWordCount = getCurrentManuscriptWordCount();
-  const now = new Date();
-  const history = generateBelievableWritingTargetHistory(currentWordCount, 30, now, state.workspace.project.id);
-  const lastEntry = history[history.length - 1];
-  const previousEntry = history[history.length - 2] ?? history[0];
-  const todaysGain = Math.max(0, Number(lastEntry?.wordCount ?? currentWordCount) - Number(previousEntry?.wordCount ?? 0));
-  const todayKey = getLocalDateKey(now);
-  const recentSessionStart = new Date(now.getTime() - (8 * 60000));
-  const recentSessionMidpoint = new Date(now.getTime() - (4 * 60000));
-  const recentSessionStartCount = Math.max(0, currentWordCount - Math.max(140, Math.round(todaysGain * 0.7)));
-  const recentSessionMidCount = Math.max(0, currentWordCount - Math.max(45, Math.round(todaysGain * 0.25)));
-  const nextRecord = {
-    ...cloneValue(record),
-    lookbackDays: 30,
-    history,
-    dailyBaselineDateKey: todayKey,
-    dailyBaselineWordCount: Math.max(0, Math.round(Number(previousEntry?.wordCount ?? 0))),
-    sessionBaselineWordCount: Math.max(0, currentWordCount - Math.max(250, todaysGain)),
-    sessionIsActive: true,
-    sessionStartedAt: addHours(now, -6).toISOString(),
-    sessionLastActiveAt: now.toISOString(),
-    sessionConcludedAt: "",
-    sessionConcludedReason: "",
-    sessionLastWordCount: currentWordCount,
-    sessionSamples: [
-      createWritingTargetSessionSample(recentSessionStartCount, recentSessionStart),
-      createWritingTargetSessionSample(recentSessionMidCount, recentSessionMidpoint),
-      createWritingTargetSessionSample(currentWordCount, now),
-    ],
-    sessionHistory: Array.isArray(record.sessionHistory) ? cloneValue(record.sessionHistory) : [],
-    updatedAt: now.toISOString(),
-  };
-
-  state.writingTargetState = persistWritingTargetState(nextRecord);
-  state.writingTargetProjectId = state.workspace.project.id;
-  clearWritingTargetDraft();
-  persistCurrentProjectRecord();
-  renderHeader();
-  renderWritingTargetWindow();
-}
-
-function generateBelievableWritingTargetHistory(currentWordCount, days, now, projectId) {
-  const dayCount = Math.max(2, Math.min(60, Math.round(Number(days) || 30)));
-  const targetGain = Math.max(
-    0,
-    Math.min(
-      Math.max(0, currentWordCount),
-      Math.max(600, Math.round(Math.max(0, currentWordCount) * 0.16)),
-    ),
-  );
-
-  const rawEntries = [];
-  let rawTotal = 0;
-  for (let index = 0; index < dayCount; index += 1) {
-    const date = addDays(now, index - (dayCount - 1));
-    const weekdayBase = [240, 520, 680, 610, 720, 320, 210][date.getDay()];
-    const trend = Math.round((index / Math.max(1, dayCount - 1)) * 140);
-    const variance = seededOffset(projectId, getLocalDateKey(date), -95, 95);
-    const weight = Math.max(40, weekdayBase + trend + variance);
-    rawEntries.push({
-      date,
-      weight,
-    });
-    rawTotal += weight;
-  }
-
-  const increments = [];
-  let allocated = 0;
-  for (let index = 0; index < rawEntries.length; index += 1) {
-    if (index === rawEntries.length - 1) {
-      increments.push(Math.max(0, targetGain - allocated));
-      continue;
-    }
-
-    const increment = rawTotal > 0
-      ? Math.floor((rawEntries[index].weight / rawTotal) * targetGain)
-      : 0;
-    increments.push(increment);
-    allocated += increment;
-  }
-
-  let wordCount = Math.max(0, currentWordCount - targetGain);
-  const history = [];
-  const scenes = Array.isArray(state.scenes) && state.scenes.length ? [...state.scenes] : [];
-  const issueCount = Math.max(0, Number(state.workspace?.project?.issues?.length ?? 0));
-  const inspirationCount = Math.max(
-    0,
-    Array.isArray(state.passageNotes)
-      ? state.passageNotes.filter((note) => note.noteType === "inspiration").length
-      : 0,
-  );
-  for (let index = 0; index < rawEntries.length; index += 1) {
-    const dateKey = getLocalDateKey(rawEntries[index].date);
-    if (index === rawEntries.length - 1) {
-      wordCount = currentWordCount;
-    } else {
-      wordCount += increments[index];
-    }
-
-    const archiveScene = scenes.length
-      ? scenes[Math.abs(seededOffset(projectId, dateKey, 0, scenes.length - 1))]
-      : getSelectedScene() ?? state.scenes[0] ?? null;
-
-    history.push({
-      date: dateKey,
-      wordCount,
-      capturedAt: new Date(`${dateKey}T12:00:00`).toISOString(),
-      wordDelta: index === 0
-        ? increments[index] ?? wordCount
-        : Math.max(0, wordCount - Number(history[index - 1]?.wordCount ?? 0)),
-      chapterId: archiveScene?.chapterId ?? "",
-      chapterTitle: archiveScene?.chapterTitle ?? "Unknown chapter",
-      sceneId: archiveScene?.sceneId ?? "",
-      sceneTitle: archiveScene?.sceneTitle ?? "Unknown scene",
-      passageExcerpt: createPassageExcerpt(archiveScene),
-      issueCount,
-      inspirationCount,
-    });
-  }
-
-  return history;
-}
-
-function seededOffset(projectId, dateKey, min, max) {
-  const seedText = `${projectId}:${dateKey}`;
-  let hash = 0;
-  for (let index = 0; index < seedText.length; index += 1) {
-    hash = (hash * 31 + seedText.charCodeAt(index)) >>> 0;
-  }
-
-  const normalized = hash / 0xffffffff;
-  return Math.round(min + normalized * (max - min));
-}
-
-function addHours(date, hours) {
-  const next = new Date(date.getTime());
-  next.setHours(next.getHours() + Number(hours || 0));
-  return next;
-}
-
-function getLocalDateKey(date = new Date()) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function normalizeDateInput(value) {
-  const trimmed = String(value ?? "").trim();
-  if (!trimmed) {
-    return "";
-  }
-
-  const date = parseFlexibleDateInput(trimmed);
-  return date ? getLocalDateKey(date) : "";
-}
-
-function parseFlexibleDateInput(value) {
-  const trimmed = String(value ?? "").trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  const isoMatch = trimmed.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
-  if (isoMatch) {
-    const year = Number(isoMatch[1]);
-    const month = Number(isoMatch[2]);
-    const day = Number(isoMatch[3]);
-    return createValidatedDate(year, month, day);
-  }
-
-  const dayFirstMatch = trimmed.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
-  if (dayFirstMatch) {
-    const first = Number(dayFirstMatch[1]);
-    const second = Number(dayFirstMatch[2]);
-    const year = Number(dayFirstMatch[3]);
-    if (first > 12 || second > 12) {
-      return first > 12
-        ? createValidatedDate(year, second, first)
-        : createValidatedDate(year, first, second);
-    }
-
-    return createValidatedDate(year, second, first);
-  }
-
-  const fallback = new Date(`${trimmed}T12:00:00`);
-  return Number.isNaN(fallback.getTime()) ? null : fallback;
-}
-
-function createValidatedDate(year, month, day) {
-  const date = new Date(year, month - 1, day, 12, 0, 0, 0);
-  if (
-    date.getFullYear() !== year ||
-    date.getMonth() !== month - 1 ||
-    date.getDate() !== day
-  ) {
-    return null;
-  }
-
-  return date;
-}
-
-function addDays(date, days) {
-  const next = new Date(date.getTime());
-  next.setDate(next.getDate() + Math.round(Number(days) || 0));
-  return next;
-}
-
-function estimateWritingPace(record, now = new Date()) {
-  const history = Array.isArray(record?.history) ? [...record.history] : [];
-  if (history.length < 2) {
-    return {
-      wordsPerDay: 0,
-      daysSpan: 0,
-      points: history.length,
-    };
-  }
-
-  const lookbackDays = Math.max(2, Number(record?.lookbackDays) || DEFAULT_WRITING_TARGET_LOOKBACK_DAYS);
-  const recentHistory = trimWritingTargetHistory(history, lookbackDays);
-  if (recentHistory.length < 2) {
-    return {
-      wordsPerDay: 0,
-      daysSpan: 0,
-      points: recentHistory.length,
-    };
-  }
-
-  const first = recentHistory[0];
-  const last = recentHistory[recentHistory.length - 1];
-  const firstDate = new Date(`${first.date}T12:00:00`);
-  const lastDate = new Date(`${last.date}T12:00:00`);
-  const daysSpan = Math.max(1, Math.round((lastDate.getTime() - firstDate.getTime()) / 86400000));
-  const wordsGained = Math.max(0, Number(last.wordCount) - Number(first.wordCount));
-
-  return {
-    wordsPerDay: wordsGained / daysSpan,
-    daysSpan,
-    points: recentHistory.length,
-  };
-}
-
-function trimWritingTargetHistory(history, lookbackDays) {
-  const maxHistory = Math.max(30, Number(lookbackDays) || DEFAULT_WRITING_TARGET_LOOKBACK_DAYS) + 30;
-  const sorted = [...history]
-    .filter((entry) => entry && typeof entry === "object" && typeof entry.date === "string")
-    .map((entry) => ({
-      date: getLocalDateKey(new Date(`${entry.date}T12:00:00`)),
-      wordCount: Math.max(0, Math.round(Number(entry.wordCount) || 0)),
-      wordDelta: Math.round(Number(entry.wordDelta) || 0),
-      capturedAt: typeof entry.capturedAt === "string" ? entry.capturedAt : new Date().toISOString(),
-      chapterId: typeof entry.chapterId === "string" ? entry.chapterId : "",
-      chapterTitle: typeof entry.chapterTitle === "string" ? entry.chapterTitle : "",
-      sceneId: typeof entry.sceneId === "string" ? entry.sceneId : "",
-      sceneTitle: typeof entry.sceneTitle === "string" ? entry.sceneTitle : "",
-      passageExcerpt: typeof entry.passageExcerpt === "string" ? entry.passageExcerpt : "",
-      issueCount: Math.max(0, Math.round(Number(entry.issueCount) || 0)),
-      inspirationCount: Math.max(0, Math.round(Number(entry.inspirationCount) || 0)),
-      noteText: typeof entry.noteText === "string" ? entry.noteText : "",
-    }))
-    .sort((a, b) => a.date.localeCompare(b.date));
-
-  const deduped = [];
-  for (const entry of sorted) {
-    const last = deduped[deduped.length - 1];
-    if (last && last.date === entry.date) {
-      deduped[deduped.length - 1] = entry;
-    } else {
-      deduped.push(entry);
-    }
-  }
-
-  return deduped.slice(Math.max(0, deduped.length - maxHistory));
-}
-
-function normalizeWritingTargetRecord(candidate, currentWordCount, now = new Date()) {
-  const defaults = createDefaultWritingTargetRecord(currentWordCount, now);
-  if (!candidate || typeof candidate !== "object") {
-    return defaults;
-  }
-
-  const targetWords = clampPositiveNumber(candidate.targetWords, DEFAULT_WRITING_TARGET_WORDS);
-  const sessionTargetWords = clampPositiveNumber(candidate.sessionTargetWords, DEFAULT_SESSION_TARGET_WORDS);
-  const sessionsPerDay = clampPositiveNumber(
-    candidate.sessionsPerDay,
-    DEFAULT_SESSION_TARGETS_PER_DAY,
-    1,
-    WRITING_TARGET_MAX_SESSION_TARGETS_PER_DAY,
-  );
-  const sessionTimeoutMinutes = clampPositiveNumber(
-    candidate.sessionTimeoutMinutes,
-    DEFAULT_SESSION_TIMEOUT_MINUTES,
-    WRITING_TARGET_MIN_SESSION_TIMEOUT_MINUTES,
-    WRITING_TARGET_MAX_SESSION_TIMEOUT_MINUTES,
-  );
-  const targetCadence = normalizeWritingTargetCadence(candidate.targetCadence);
-  const lookbackDays = clampPositiveNumber(
-    candidate.lookbackDays,
-    DEFAULT_WRITING_TARGET_LOOKBACK_DAYS,
-    2,
-    WRITING_TARGET_MAX_HISTORY_DAYS,
-  );
-  const visibleMetricsVersion = Math.max(0, Math.round(Number(candidate.visibleMetricsVersion) || 0));
-  const visibleMetrics = normalizeWritingTargetVisibleMetrics(candidate.visibleMetrics, visibleMetricsVersion);
-  const sessionBaselineWordCount =
-    Number.isFinite(Number(candidate.sessionBaselineWordCount)) && Number(candidate.sessionBaselineWordCount) >= 0
-      ? Math.max(0, Math.round(Number(candidate.sessionBaselineWordCount)))
-      : currentWordCount;
-  const sessionIsActive = candidate.sessionIsActive === true;
-  const dailyBaselineDateKey =
-    typeof candidate.dailyBaselineDateKey === "string" && candidate.dailyBaselineDateKey.trim()
-      ? getLocalDateKey(new Date(`${candidate.dailyBaselineDateKey}T12:00:00`))
-      : defaults.dailyBaselineDateKey;
-  const dailyBaselineWordCount =
-    Number.isFinite(Number(candidate.dailyBaselineWordCount)) && Number(candidate.dailyBaselineWordCount) >= 0
-      ? Math.max(0, Math.round(Number(candidate.dailyBaselineWordCount)))
-      : getWritingTargetDailyBaselineWordCount(candidate, currentWordCount, now);
-  const sessionStartedAt =
-    typeof candidate.sessionStartedAt === "string" && candidate.sessionStartedAt.trim()
-      ? candidate.sessionStartedAt
-      : defaults.sessionStartedAt;
-  const sessionLastActiveAt =
-    typeof candidate.sessionLastActiveAt === "string" && candidate.sessionLastActiveAt.trim()
-      ? candidate.sessionLastActiveAt
-      : defaults.sessionLastActiveAt;
-  const sessionConcludedAt =
-    typeof candidate.sessionConcludedAt === "string" && candidate.sessionConcludedAt.trim()
-      ? candidate.sessionConcludedAt
-      : defaults.sessionConcludedAt;
-  const releaseDate = normalizeDateInput(candidate.releaseDate);
-  const goalSyncSource = normalizeWritingTargetGoalSyncSource(candidate.goalSyncSource)
-    || (releaseDate ? "releaseDate" : sessionTargetWords !== DEFAULT_SESSION_TARGET_WORDS ? "sessionTargetWords" : "releaseDate");
-  const history = trimWritingTargetHistory(candidate.history ?? defaults.history, lookbackDays);
-  const sessionSamples = normalizeWritingTargetSessionSamples(candidate.sessionSamples ?? defaults.sessionSamples);
-  const sessionHistory = normalizeWritingTargetSessionHistory(candidate.sessionHistory ?? defaults.sessionHistory);
-  const sessionLastWordCount =
-    Number.isFinite(Number(candidate.sessionLastWordCount)) && Number(candidate.sessionLastWordCount) >= 0
-      ? Math.max(0, Math.round(Number(candidate.sessionLastWordCount)))
-      : sessionBaselineWordCount;
-
-  return syncWritingTargetGoalFields({
-    targetWords,
-    releaseDate,
-    sessionTargetWords,
-    sessionsPerDay,
-    sessionTimeoutMinutes,
-    targetCadence,
-    goalSyncSource,
-    lookbackDays,
-    visibleMetricsVersion: Math.max(WRITING_TARGET_VISIBLE_METRICS_SCHEMA_VERSION, visibleMetricsVersion),
-    visibleMetrics: visibleMetrics.length ? visibleMetrics : [...defaults.visibleMetrics],
-    sessionBaselineWordCount,
-    sessionLastWordCount,
-    dailyBaselineDateKey,
-    dailyBaselineWordCount,
-    sessionIsActive,
-    sessionStartedAt,
-    sessionLastActiveAt,
-    sessionConcludedAt,
-    sessionConcludedReason:
-      typeof candidate.sessionConcludedReason === "string" && candidate.sessionConcludedReason.trim()
-        ? candidate.sessionConcludedReason
-        : sessionIsActive
-          ? ""
-          : "idle",
-    sessionSamples: sessionSamples.length ? sessionSamples : defaults.sessionSamples,
-    sessionHistory: sessionHistory.length ? sessionHistory : defaults.sessionHistory,
-    history: history.length ? history : defaults.history,
-    updatedAt:
-      typeof candidate.updatedAt === "string" && candidate.updatedAt.trim()
-        ? candidate.updatedAt
-        : defaults.updatedAt,
-  }, currentWordCount, now);
-}
-
-function getWritingTargetSnapshotContext(now = new Date()) {
-  const scene = getSelectedScene() ?? state.scenes[0] ?? null;
-  const inspirationCount = Array.isArray(state.passageNotes)
-    ? state.passageNotes.filter((note) => note.noteType === "inspiration").length
-    : 0;
-  return {
-    capturedAt: now.toISOString(),
-    chapterId: scene?.chapterId ?? "",
-    chapterTitle: scene?.chapterTitle ?? "Unknown chapter",
-    sceneId: scene?.sceneId ?? "",
-    sceneTitle: scene?.sceneTitle ?? "Unknown scene",
-    passageExcerpt: createPassageExcerpt(scene),
-    issueCount: Math.max(0, Number(state.workspace?.project?.issues?.length ?? 0)),
-    inspirationCount: Math.max(0, inspirationCount),
-  };
-}
-
-function createWritingTargetHistoryEntry(currentWordCount, now = new Date(), options = {}) {
-  const previousEntry = options.previousEntry ?? null;
-  const context = options.context ?? getWritingTargetSnapshotContext(now);
-  const wordCount = Math.max(0, Math.round(Number(currentWordCount) || 0));
-  const previousWordCount = previousEntry ? Math.max(0, Math.round(Number(previousEntry.wordCount) || 0)) : 0;
-  return {
-    date: getLocalDateKey(now),
-    wordCount,
-    wordDelta: previousEntry ? wordCount - previousWordCount : wordCount,
-    capturedAt: typeof context.capturedAt === "string" ? context.capturedAt : now.toISOString(),
-    chapterId: context.chapterId ?? "",
-    chapterTitle: context.chapterTitle ?? "Unknown chapter",
-    sceneId: context.sceneId ?? "",
-    sceneTitle: context.sceneTitle ?? "Unknown scene",
-    passageExcerpt: context.passageExcerpt ?? "",
-    issueCount: Math.max(0, Math.round(Number(context.issueCount) || 0)),
-    inspirationCount: Math.max(0, Math.round(Number(context.inspirationCount) || 0)),
-    noteText: "",
-  };
-}
-
-function createWritingTargetSessionSample(currentWordCount, now = new Date()) {
-  return {
-    capturedAt: now.toISOString(),
-    wordCount: Math.max(0, Math.round(Number(currentWordCount) || 0)),
-  };
-}
-
-function normalizeWritingTargetSessionSamples(samples) {
-  const normalized = Array.isArray(samples)
-    ? samples
-        .filter((sample) => sample && typeof sample === "object")
-        .map((sample) => {
-          const capturedAt = typeof sample.capturedAt === "string" && sample.capturedAt.trim()
-            ? new Date(sample.capturedAt)
-            : new Date();
-          return {
-            capturedAt: Number.isNaN(capturedAt.getTime()) ? new Date().toISOString() : capturedAt.toISOString(),
-            wordCount: Math.max(0, Math.round(Number(sample.wordCount) || 0)),
-          };
-        })
-    : [];
-
-  normalized.sort((a, b) => a.capturedAt.localeCompare(b.capturedAt));
-  return normalized.slice(-WRITING_TARGET_MAX_SESSION_SAMPLES);
-}
-
-function normalizeWritingTargetSessionActivityReason(value) {
-  const candidate = typeof value === "string" ? value.trim() : "";
-  return candidate || "activity";
-}
-
-function normalizeWritingTargetSessionHistory(entries) {
-  const normalized = Array.isArray(entries)
-    ? entries
-        .filter((entry) => entry && typeof entry === "object")
-        .map((entry) => {
-          const startedAt = typeof entry.startedAt === "string" && entry.startedAt.trim()
-            ? new Date(entry.startedAt)
-            : null;
-          const endedAt = typeof entry.endedAt === "string" && entry.endedAt.trim()
-            ? new Date(entry.endedAt)
-            : null;
-          return {
-            startedAt: startedAt && !Number.isNaN(startedAt.getTime()) ? startedAt.toISOString() : new Date().toISOString(),
-            endedAt: endedAt && !Number.isNaN(endedAt.getTime()) ? endedAt.toISOString() : new Date().toISOString(),
-            endedReason: normalizeWritingTargetSessionActivityReason(entry.endedReason),
-            wordCountStart: Math.max(0, Math.round(Number(entry.wordCountStart) || 0)),
-            wordCountEnd: Math.max(0, Math.round(Number(entry.wordCountEnd) || 0)),
-            wordGain: Math.max(0, Math.round(Number(entry.wordGain) || 0)),
-            activeMinutes: Math.max(0, Math.round(Number(entry.activeMinutes) || 0)),
-            idleMinutes: Math.max(0, Math.round(Number(entry.idleMinutes) || 0)),
-            sessionTargetWordsPerSession: Math.max(0, Math.round(Number(entry.sessionTargetWordsPerSession) || 0)),
-            goalReached: entry.goalReached === true,
-          };
-        })
-    : [];
-
-  normalized.sort((a, b) => a.endedAt.localeCompare(b.endedAt));
-  return normalized.slice(-WRITING_TARGET_SESSION_HISTORY_MAX);
-}
-
-function addMinutes(date, minutes) {
-  const next = new Date(date.getTime());
-  next.setMinutes(next.getMinutes() + Math.round(Number(minutes) || 0));
-  return next;
-}
-
-function getWritingTargetSessionThresholds(sessionTimeoutMinutes) {
-  const idleGraceMinutes = clampPositiveNumber(
-    sessionTimeoutMinutes,
-    DEFAULT_SESSION_TIMEOUT_MINUTES,
-    WRITING_TARGET_MIN_SESSION_TIMEOUT_MINUTES,
-    WRITING_TARGET_MAX_SESSION_TIMEOUT_MINUTES,
-  );
-
-  return {
-    idleGraceMinutes,
-    segmentCloseMinutes: idleGraceMinutes + WRITING_TARGET_SESSION_SEGMENT_CLOSE_BUFFER_MINUTES,
-    newSessionMinutes: idleGraceMinutes + WRITING_TARGET_SESSION_NEW_SESSION_BUFFER_MINUTES,
-  };
-}
-
-function getWritingTargetSessionPhase(idleMinutes, thresholds, sessionIsActive) {
-  if (sessionIsActive && idleMinutes < thresholds.idleGraceMinutes) {
-    return "writing";
-  }
-
-  if (idleMinutes < thresholds.segmentCloseMinutes) {
-    return "idle";
-  }
-
-  if (idleMinutes < thresholds.newSessionMinutes) {
-    return "segment-closed";
-  }
-
-  return "new-session";
-}
-
-function getWritingTargetSessionPhaseLabel(phase) {
-  if (phase === "writing") {
-    return "Writing";
-  }
-
-  if (phase === "segment-closed") {
-    return "Segment closed";
-  }
-
-  if (phase === "new-session") {
-    return "New session";
-  }
-
-  return "Idle";
-}
-
-function buildWritingTargetSessionLifecycleSummaryText(sessionLifecycle) {
-  if (!sessionLifecycle) {
-    return "Idle";
-  }
-
-  const phaseLabel = getWritingTargetSessionPhaseLabel(sessionLifecycle.sessionLifecyclePhase);
-  return phaseLabel;
-}
-
-function getWritingTargetSessionLifecycle(record, now = new Date()) {
-  const sessionStartedAt = typeof record?.sessionStartedAt === "string" && record.sessionStartedAt.trim()
-    ? new Date(record.sessionStartedAt)
-    : null;
-  const sessionLastActiveAt = typeof record?.sessionLastActiveAt === "string" && record.sessionLastActiveAt.trim()
-    ? new Date(record.sessionLastActiveAt)
-    : null;
-  const sessionConcludedAt = typeof record?.sessionConcludedAt === "string" && record.sessionConcludedAt.trim()
-    ? new Date(record.sessionConcludedAt)
-    : null;
-  const sessionIsActive = record?.sessionIsActive === true;
-  const sessionTimeoutMinutes = clampPositiveNumber(
-    record?.sessionTimeoutMinutes,
-    DEFAULT_SESSION_TIMEOUT_MINUTES,
-    WRITING_TARGET_MIN_SESSION_TIMEOUT_MINUTES,
-    WRITING_TARGET_MAX_SESSION_TIMEOUT_MINUTES,
-  );
-  const thresholds = getWritingTargetSessionThresholds(sessionTimeoutMinutes);
-  const idleMinutes = sessionLastActiveAt && !Number.isNaN(sessionLastActiveAt.getTime())
-    ? Math.max(0, Math.floor((now.getTime() - sessionLastActiveAt.getTime()) / 60000))
-    : 0;
-  const timedOut = sessionIsActive && idleMinutes >= sessionTimeoutMinutes;
-  const effectiveConcludedAt = sessionConcludedAt && !Number.isNaN(sessionConcludedAt.getTime())
-    ? sessionConcludedAt
-    : timedOut && sessionLastActiveAt && !Number.isNaN(sessionLastActiveAt.getTime())
-      ? addMinutes(sessionLastActiveAt, sessionTimeoutMinutes)
-      : null;
-  const activeAnchor = effectiveConcludedAt && !Number.isNaN(effectiveConcludedAt.getTime())
-    ? effectiveConcludedAt
-    : now;
-  const activeMinutes = sessionStartedAt && !Number.isNaN(sessionStartedAt.getTime())
-    ? Math.max(0, Math.floor((activeAnchor.getTime() - sessionStartedAt.getTime()) / 60000))
-    : 0;
-  const sessionBaselineWordCount =
-    Number.isFinite(Number(record?.sessionBaselineWordCount)) && Number(record.sessionBaselineWordCount) >= 0
-      ? Math.max(0, Math.round(Number(record.sessionBaselineWordCount)))
-      : 0;
-  const sessionLifecyclePhase = getWritingTargetSessionPhase(idleMinutes, thresholds, sessionIsActive && !timedOut);
-
-  return {
-    sessionStartedAt,
-    sessionLastActiveAt,
-    sessionConcludedAt: effectiveConcludedAt,
-    sessionTimeoutMinutes,
-    sessionIdleGraceMinutes: thresholds.idleGraceMinutes,
-    sessionSegmentCloseMinutes: thresholds.segmentCloseMinutes,
-    sessionNewSessionMinutes: thresholds.newSessionMinutes,
-    sessionLifecyclePhase,
-    sessionIsActive: sessionIsActive && !timedOut,
-    sessionDisplayActive: sessionIsActive && !timedOut && idleMinutes < thresholds.idleGraceMinutes,
-    isConcluded: !sessionIsActive || timedOut || Boolean(effectiveConcludedAt),
-    activeMinutes,
-    idleMinutes,
-    sessionBaselineWordCount,
-    sessionLastWordCount: Number.isFinite(Number(record?.sessionLastWordCount))
-      ? Math.max(0, Math.round(Number(record.sessionLastWordCount)))
-      : sessionBaselineWordCount,
-  };
-}
-
-function createWritingTargetSessionHistoryEntry(record, currentWordCount, now = new Date(), reason = "idle") {
-  const lifecycle = getWritingTargetSessionLifecycle(record, now);
-  const endedAt = lifecycle.sessionConcludedAt ?? now;
-  const sessionTargetWordsPerSession = Math.max(
-    0,
-    Math.round(
-      clampPositiveNumber(record?.sessionTargetWords, DEFAULT_SESSION_TARGET_WORDS) /
-        Math.max(1, clampPositiveNumber(record?.sessionsPerDay, DEFAULT_SESSION_TARGETS_PER_DAY, 1, WRITING_TARGET_MAX_SESSION_TARGETS_PER_DAY)),
-    ),
-  );
-  const wordCountStart = lifecycle.sessionBaselineWordCount;
-  const wordCountEnd = Math.max(0, Math.round(Number(currentWordCount) || 0));
-  const wordGain = Math.max(0, wordCountEnd - wordCountStart);
-
-  return {
-    startedAt: lifecycle.sessionStartedAt?.toISOString?.() ?? now.toISOString(),
-    endedAt: endedAt.toISOString(),
-    endedReason: normalizeWritingTargetSessionActivityReason(reason),
-    wordCountStart,
-    wordCountEnd,
-    wordGain,
-    activeMinutes: Math.max(0, Math.round(lifecycle.activeMinutes)),
-    idleMinutes: Math.max(0, Math.round(lifecycle.idleMinutes)),
-    sessionTargetWordsPerSession,
-    goalReached: wordGain >= sessionTargetWordsPerSession,
-  };
-}
-
-function resumeWritingSession(record, currentWordCount = getCurrentManuscriptWordCount(), now = new Date(), options = {}) {
-  if (!record || typeof record !== "object") {
-    return null;
-  }
-
-  const currentCount = Math.max(0, Math.round(Number(currentWordCount) || 0));
-  const startedAt = now.toISOString();
-  const nextRecord = cloneValue(record);
-  nextRecord.sessionIsActive = true;
-  nextRecord.sessionStartedAt = startedAt;
-  nextRecord.sessionLastActiveAt = startedAt;
-  nextRecord.sessionConcludedAt = "";
-  nextRecord.sessionConcludedReason = "";
-  nextRecord.sessionBaselineWordCount = currentCount;
-  nextRecord.sessionLastWordCount = currentCount;
-  nextRecord.sessionSamples = [createWritingTargetSessionSample(currentCount, now)];
-  nextRecord.updatedAt = now.toISOString();
-  if (options.reason) {
-    nextRecord.sessionResumeReason = normalizeWritingTargetSessionActivityReason(options.reason);
-  }
-  return nextRecord;
-}
-
-function touchWritingTargetSessionActivity(record, currentWordCount = getCurrentManuscriptWordCount(), now = new Date(), options = {}) {
-  if (!record || typeof record !== "object") {
-    return null;
-  }
-
-  const currentCount = Math.max(0, Math.round(Number(currentWordCount) || 0));
-  const previousCount = Number.isFinite(Number(options.previousWordCount))
-    ? Math.max(0, Math.round(Number(options.previousWordCount)))
-    : currentCount;
-  const lifecycle = getWritingTargetSessionLifecycle(record, now);
-  const wasActive = record.sessionIsActive === true
-    && !(typeof record.sessionConcludedAt === "string" && record.sessionConcludedAt.trim());
-  const resumeReason = normalizeWritingTargetSessionActivityReason(
-    options.reason ?? (
-      lifecycle.idleMinutes >= lifecycle.sessionNewSessionMinutes
-        ? "new-session"
-        : lifecycle.idleMinutes >= lifecycle.sessionSegmentCloseMinutes
-          ? "segment-reopen"
-          : "resume"
-    ),
-  );
-
-  const nextRecord = wasActive
-    ? cloneValue(record)
-    : resumeWritingSession(record, previousCount, now, {
-        reason: resumeReason,
-      });
-
-  if (!nextRecord) {
-    return null;
-  }
-
-  nextRecord.sessionIsActive = true;
-  nextRecord.sessionLastActiveAt = now.toISOString();
-  nextRecord.sessionConcludedAt = "";
-  nextRecord.sessionConcludedReason = "";
-  nextRecord.sessionBaselineWordCount = wasActive ? nextRecord.sessionBaselineWordCount : previousCount;
-  nextRecord.sessionLastWordCount = currentCount;
-  nextRecord.updatedAt = now.toISOString();
-
-  if (!wasActive) {
-    nextRecord.sessionSamples = [createWritingTargetSessionSample(previousCount, now)];
-  }
-
-  return nextRecord;
-}
-
-function concludeWritingSession(record, currentWordCount = getCurrentManuscriptWordCount(), now = new Date(), reason = "idle") {
-  if (!record || typeof record !== "object") {
-    return null;
-  }
-
-  const lifecycle = getWritingTargetSessionLifecycle(record, now);
-  if (!lifecycle.sessionIsActive && !record.sessionIsActive) {
-    return cloneValue(record);
-  }
-
-  const concludedAt = lifecycle.sessionConcludedAt ?? addMinutes(lifecycle.sessionLastActiveAt ?? now, lifecycle.sessionTimeoutMinutes);
-  const currentCount = Math.max(0, Math.round(Number(currentWordCount) || 0));
-  const nextRecord = cloneValue(record);
-  const history = normalizeWritingTargetSessionHistory(nextRecord.sessionHistory ?? []);
-  const nextHistoryEntry = createWritingTargetSessionHistoryEntry(nextRecord, currentCount, concludedAt, reason);
-
-  nextRecord.sessionIsActive = false;
-  nextRecord.sessionConcludedAt = concludedAt.toISOString();
-  nextRecord.sessionConcludedReason = normalizeWritingTargetSessionActivityReason(reason);
-  nextRecord.sessionLastActiveAt = lifecycle.sessionLastActiveAt?.toISOString?.() ?? concludedAt.toISOString();
-  nextRecord.sessionLastWordCount = currentCount;
-  nextRecord.sessionHistory = [...history, nextHistoryEntry].slice(-WRITING_TARGET_SESSION_HISTORY_MAX);
-  nextRecord.updatedAt = concludedAt.toISOString();
-  return nextRecord;
-}
-
-function refreshWritingTargetSessionLifecycle(options = {}) {
-  const record = getWritingTargetWorkingRecord();
-  if (!record) {
-    return null;
-  }
-
-  const lifecycle = getWritingTargetSessionLifecycle(record);
-  if (!record.sessionIsActive || !lifecycle.isConcluded) {
-    return record;
-  }
-
-  const concludedRecord = concludeWritingSession(record, getCurrentManuscriptWordCount(), new Date(), options.reason ?? "idle");
-  if (!concludedRecord) {
-    return record;
-  }
-
-  state.writingTargetState = persistWritingTargetState(concludedRecord);
-  if (state.writingTargetDraft && state.writingTargetDraftProjectId === state.workspace?.project?.id) {
-    state.writingTargetDraft = {
-      ...cloneValue(state.writingTargetDraft),
-      sessionIsActive: state.writingTargetState.sessionIsActive,
-      sessionConcludedAt: state.writingTargetState.sessionConcludedAt,
-      sessionConcludedReason: state.writingTargetState.sessionConcludedReason,
-      sessionLastActiveAt: state.writingTargetState.sessionLastActiveAt,
-      sessionLastWordCount: state.writingTargetState.sessionLastWordCount,
-      sessionHistory: cloneValue(state.writingTargetState.sessionHistory),
-      updatedAt: state.writingTargetState.updatedAt,
-    };
-  }
-  persistCurrentProjectRecord();
-  return concludedRecord;
-}
-
-function estimateRecentSessionWordsPerMinute(record, now = new Date()) {
-  const samples = normalizeWritingTargetSessionSamples(record?.sessionSamples);
-  if (samples.length < 2) {
-    return null;
-  }
-
-  const recentWindowStart = now.getTime() - (WRITING_TARGET_SESSION_PACE_LOOKBACK_MINUTES * 60000);
-  const recentSamples = samples.filter((sample) => {
-    const capturedAt = new Date(sample.capturedAt);
-    return !Number.isNaN(capturedAt.getTime()) && capturedAt.getTime() >= recentWindowStart;
-  });
-  const paceSamples = recentSamples.length >= 2 ? recentSamples : samples.slice(-2);
-  if (paceSamples.length < 2) {
-    return null;
-  }
-
-  const firstSample = paceSamples[0];
-  const lastSample = paceSamples[paceSamples.length - 1];
-  const firstCapturedAt = new Date(firstSample.capturedAt);
-  const lastCapturedAt = new Date(lastSample.capturedAt);
-  if (Number.isNaN(firstCapturedAt.getTime()) || Number.isNaN(lastCapturedAt.getTime())) {
-    return null;
-  }
-
-  const minutesSpan = Math.max(1 / 60, (lastCapturedAt.getTime() - firstCapturedAt.getTime()) / 60000);
-  const wordsGained = Math.max(0, Number(lastSample.wordCount) - Number(firstSample.wordCount));
-  return wordsGained / minutesSpan;
-}
-
-function getWritingTargetDailyBaselineWordCount(record, currentWordCount, now = new Date()) {
-  const history = trimWritingTargetHistory(
-    Array.isArray(record?.history) ? record.history : [],
-    clampPositiveNumber(record?.lookbackDays, DEFAULT_WRITING_TARGET_LOOKBACK_DAYS, 2, WRITING_TARGET_MAX_HISTORY_DAYS),
-  );
-  if (!history.length) {
-    return 0;
-  }
-
-  const todayKey = getLocalDateKey(now);
-  // Daily progress is measured from the most recent completed day, not today's live snapshot.
-  const previousEntry = [...history]
-    .filter((entry) => entry.date < todayKey)
-    .at(-1) ?? null;
-  if (previousEntry) {
-    return Math.max(0, Math.round(Number(previousEntry.wordCount) || 0));
-  }
-
-  return 0;
-}
-
-function createDefaultWritingTargetRecord(currentWordCount, now = new Date()) {
-  const context = getWritingTargetSnapshotContext(now);
-  return {
-    targetWords: DEFAULT_WRITING_TARGET_WORDS,
-    releaseDate: "",
-    sessionTargetWords: DEFAULT_SESSION_TARGET_WORDS,
-    sessionsPerDay: DEFAULT_SESSION_TARGETS_PER_DAY,
-    sessionTimeoutMinutes: DEFAULT_SESSION_TIMEOUT_MINUTES,
-    targetCadence: "daily",
-    goalSyncSource: "releaseDate",
-    lookbackDays: DEFAULT_WRITING_TARGET_LOOKBACK_DAYS,
-    visibleMetricsVersion: WRITING_TARGET_VISIBLE_METRICS_SCHEMA_VERSION,
-    visibleMetrics: [...WRITING_TARGET_METRIC_KEYS],
-    sessionBaselineWordCount: Math.max(0, Math.round(Number(currentWordCount) || 0)),
-    dailyBaselineDateKey: getLocalDateKey(now),
-    dailyBaselineWordCount: 0,
-    sessionIsActive: false,
-    sessionStartedAt: now.toISOString(),
-    sessionLastActiveAt: now.toISOString(),
-    sessionConcludedAt: "",
-    sessionConcludedReason: "",
-    sessionLastWordCount: Math.max(0, Math.round(Number(currentWordCount) || 0)),
-    sessionSamples: [createWritingTargetSessionSample(currentWordCount, now)],
-    sessionHistory: [],
-    history: [createWritingTargetHistoryEntry(currentWordCount, now, { previousEntry: null, context })],
-    updatedAt: now.toISOString(),
-  };
-}
-
-function readWritingTargetStore() {
-  const candidate = readStoredJson(EDITOR_WRITING_TARGETS_KEY);
-  return candidate && typeof candidate === "object" ? candidate : {};
-}
-
-function clampPositiveNumber(candidate, fallback, min = 1, max = Number.POSITIVE_INFINITY) {
-  const value = Math.round(Number(candidate));
-  if (!Number.isFinite(value) || value < min) {
-    return Math.max(min, Math.round(Number(fallback) || min));
-  }
-
-  return Math.min(max, value);
-}
-
 // Intent: keep header menu interactions centralized until the chrome owns its own controller.
 function toggleFileMenu() {
   state.fileMenuOpen = !state.fileMenuOpen;
@@ -4594,6 +2269,29 @@ function hideFileMenu() {
 
   state.fileMenuOpen = false;
   renderHeader();
+}
+
+function openDeveloperLogsWindow() {
+  const targetUrl = new URL(DEVELOPER_LOG_WINDOW_PATH, window.location.href).toString();
+  const logWindow = window.open(targetUrl, "abe-developer-logs");
+  if (!logWindow) {
+    state.projectFileStatus = "Developer logs window blocked by browser popup settings.";
+    renderHeader();
+    uiEventDispatcherLog.warn("user-action", "developer-logs.open-blocked", "Developer logs window was blocked.", {
+      url: targetUrl,
+    });
+    return;
+  }
+
+  state.developerLogsWindowOpen = true;
+  try {
+    logWindow.focus();
+  } catch {
+    // Best-effort focus only.
+  }
+  uiEventDispatcherLog.info("user-action", "developer-logs.open", "Opened developer logs window.", {
+    url: targetUrl,
+  });
 }
 
 function isTextEditingTarget(target) {
@@ -4635,6 +2333,47 @@ function runNativeTextEditCommand(command) {
   } catch {
     return false;
   }
+}
+
+// Intent: keep paste insertion on the browser undo stack before falling back to scripted textarea writes.
+function insertPastedTextWithUndoFallback(target, normalizedText) {
+  if (!(target instanceof HTMLTextAreaElement)) {
+    return {
+      insertedWithNativeUndo: false,
+      fallbackUsed: false,
+    };
+  }
+
+  const activeElement = document.activeElement;
+  if (activeElement !== target) {
+    target.focus();
+  }
+
+  let insertedWithNativeUndo = false;
+  try {
+    if (typeof document.execCommand === "function") {
+      insertedWithNativeUndo = document.execCommand("insertText", false, normalizedText) === true;
+    }
+  } catch {
+    insertedWithNativeUndo = false;
+  }
+
+  if (insertedWithNativeUndo) {
+    return {
+      insertedWithNativeUndo: true,
+      fallbackUsed: false,
+    };
+  }
+
+  const selectionStart = Number.isInteger(target.selectionStart) ? target.selectionStart : target.value.length;
+  const selectionEnd = Number.isInteger(target.selectionEnd) ? target.selectionEnd : selectionStart;
+  target.setRangeText(normalizedText, selectionStart, selectionEnd, "end");
+  target.dispatchEvent(new Event("input", { bubbles: true }));
+
+  return {
+    insertedWithNativeUndo: false,
+    fallbackUsed: true,
+  };
 }
 
 function handleGlobalKeyboardShortcut(event) {
@@ -4699,6 +2438,13 @@ function handleGlobalKeyboardShortcut(event) {
     return;
   }
 
+  if (event.shiftKey && key === "l") {
+    event.preventDefault();
+    hideFileMenu();
+    openDeveloperLogsWindow();
+    return;
+  }
+
   if (!event.altKey && !event.shiftKey && key === "s") {
     event.preventDefault();
     hideFileMenu();
@@ -4737,173 +2483,6 @@ function handleGlobalKeyboardShortcut(event) {
     }[key]);
   }
 }
-
-function toggleWritingTargetWindow() {
-  if (state.writingTargetWindowOpen) {
-    closeWritingTargetWindow();
-    return;
-  }
-
-  state.writingTargetWindowOpen = true;
-  beginWritingTargetDraft();
-  primeWritingTargetDashboardSelection();
-  renderHeader();
-  renderWritingTargetWindow();
-  startWritingTargetWindowRefreshTimer();
-}
-
-function closeWritingTargetWindow() {
-  stopWritingTargetWindowRefreshTimer();
-  if (!state.writingTargetWindowOpen) {
-    return;
-  }
-
-  commitWritingTargetDraft();
-  state.writingTargetWindowOpen = false;
-  renderHeader();
-  renderWritingTargetWindow();
-}
-
-function saveWritingTargetGoals() {
-  stopWritingTargetWindowRefreshTimer();
-  if (!state.writingTargetWindowOpen) {
-    return;
-  }
-
-  beginProjectFileAutosaveSuppression();
-  commitWritingTargetDraft();
-  state.writingTargetWindowOpen = false;
-  renderHeader();
-  renderWritingTargetWindow();
-  if (hasProjectFileDestination()) {
-    const savePromise = saveCurrentProject();
-    if (false) {
-      void saveCurrentProject();
-    }
-    if (savePromise && typeof savePromise.finally === "function") {
-      savePromise.finally(() => {
-        endProjectFileAutosaveSuppression();
-      });
-      return;
-    }
-  }
-
-  endProjectFileAutosaveSuppression();
-}
-
-function cancelWritingTargetGoals() {
-  stopWritingTargetWindowRefreshTimer();
-  if (!state.writingTargetWindowOpen) {
-    return;
-  }
-
-  const baseline = state.writingTargetDraftBaseline ? cloneValue(state.writingTargetDraftBaseline) : null;
-  clearWritingTargetDraft();
-  if (baseline) {
-    state.writingTargetState = persistWritingTargetState(baseline);
-    persistCurrentProjectRecord();
-  }
-  state.writingTargetWindowOpen = false;
-  renderHeader();
-  renderWritingTargetWindow();
-}
-
-function resetWritingTargetGoals() {
-  const record = beginWritingTargetDraft();
-  if (!record) {
-    return;
-  }
-
-  const defaults = createDefaultWritingTargetRecord(getCurrentManuscriptWordCount(), new Date());
-  const nextRecord = {
-    ...cloneValue(record),
-    targetWords: defaults.targetWords,
-    releaseDate: defaults.releaseDate,
-    sessionTargetWords: defaults.sessionTargetWords,
-    sessionsPerDay: defaults.sessionsPerDay,
-    sessionTimeoutMinutes: defaults.sessionTimeoutMinutes,
-    targetCadence: defaults.targetCadence,
-    goalSyncSource: defaults.goalSyncSource,
-    lookbackDays: defaults.lookbackDays,
-    visibleMetrics: [...defaults.visibleMetrics],
-  };
-
-  state.writingTargetDraft = nextRecord;
-  state.writingTargetDraftProjectId = state.workspace?.project?.id ?? null;
-  syncWritingTargetCanonicalState(nextRecord);
-  renderHeader();
-  renderWritingTargetWindow();
-}
-
-function setWritingTargetViewMode(viewMode) {
-  if (!["month", "week", "list"].includes(viewMode)) {
-    return;
-  }
-
-  state.writingTargetViewMode = viewMode;
-  persistCurrentProjectRecord();
-  renderWritingTargetWindow();
-}
-
-function selectWritingTargetDay(dateKey) {
-  if (!isWritingTargetDateKey(dateKey)) {
-    return;
-  }
-
-  state.writingTargetSelectedDateKey = dateKey;
-  state.writingTargetCalendarMonthKey = getWritingTargetMonthKey(parseLocalDateKey(dateKey) ?? new Date());
-  persistCurrentProjectRecord();
-  renderWritingTargetWindow();
-}
-
-function shiftWritingTargetCalendarMonth(monthOffset) {
-  const currentMonth = parseWritingTargetMonthKey(state.writingTargetCalendarMonthKey) ?? new Date();
-  const nextMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + Number(monthOffset || 0), 1, 12, 0, 0, 0);
-  state.writingTargetCalendarMonthKey = getWritingTargetMonthKey(nextMonth);
-  persistCurrentProjectRecord();
-  renderWritingTargetWindow();
-}
-
-function jumpWritingTargetCalendarToToday() {
-  const today = new Date();
-  state.writingTargetSelectedDateKey = getLocalDateKey(today);
-  state.writingTargetCalendarMonthKey = getWritingTargetMonthKey(today);
-  persistCurrentProjectRecord();
-  renderWritingTargetWindow();
-}
-
-function resetWritingSession() {
-  const record = getWritingTargetWorkingRecord();
-  if (!record) {
-    return;
-  }
-
-  const now = new Date();
-  const currentWordCount = getCurrentManuscriptWordCount();
-  const nextRecord = {
-    ...cloneValue(record),
-    sessionIsActive: true,
-    sessionBaselineWordCount: currentWordCount,
-    sessionStartedAt: now.toISOString(),
-    sessionLastActiveAt: now.toISOString(),
-    sessionConcludedAt: "",
-    sessionConcludedReason: "",
-    sessionLastWordCount: currentWordCount,
-    sessionSamples: [createWritingTargetSessionSample(currentWordCount, now)],
-    updatedAt: now.toISOString(),
-  };
-
-  state.writingTargetState = persistWritingTargetState(nextRecord);
-  clearWritingTargetDraft();
-  persistCurrentProjectRecord();
-  renderHeader();
-  renderWritingTargetWindow();
-}
-
-function saveWritingTargetState() {
-  commitWritingTargetDraft();
-}
-
 function toggleConsoleCollapse() {
   state.consoleDockCollapsed = !state.consoleDockCollapsed;
   persistConsoleDockCollapsedState(state.consoleDockCollapsed);
@@ -5115,9 +2694,32 @@ function renderChapterNode(chapter, chapterNumber, taskCount) {
         }
       </div>
       <div class="binder-children" id="${escapeHtml(childrenId)}" ${isCollapsed ? "hidden" : ""}>
-        ${chapter.scenes.map((scene) => renderSceneNode(scene)).join("")}
+        ${renderBinderSceneDropSlot(chapter.scenes[0], "before", chapter.chapterId)}
+        ${chapter.scenes.map((scene, index) => `
+          ${renderSceneNode(scene)}
+          ${index === chapter.scenes.length - 1 ? renderBinderSceneDropSlot(scene, "after", chapter.chapterId) : ""}
+        `).join("")}
       </div>
     </div>
+  `;
+}
+
+// Intent: provide explicit drag landing zones between scenes so cross-chapter moves can target a concrete insertion point.
+function renderBinderSceneDropSlot(scene, position, chapterId) {
+  const sceneId = typeof scene?.sceneId === "string" ? scene.sceneId : "";
+  const sceneChapterId = typeof scene?.chapterId === "string" ? scene.chapterId : chapterId;
+  if (!sceneId || !sceneChapterId) {
+    return "";
+  }
+
+  return `
+    <div
+      class="binder-scene-drop-slot binder-scene-drop-slot-${escapeHtml(position)}"
+      data-binder-scene-drop-slot-id="${escapeHtml(sceneId)}"
+      data-binder-scene-drop-position="${escapeHtml(position)}"
+      data-binder-scene-drop-chapter-id="${escapeHtml(sceneChapterId)}"
+      aria-hidden="true"
+    ></div>
   `;
 }
 
@@ -5200,6 +2802,7 @@ function renderManuscriptPanel() {
     editorMode,
     grammarCheckSummary: buildGrammarCheckSummary(selectedScene),
     projectFileDisplay: getProjectFileDisplayState(),
+    projectIndex: getActiveProjectRecord()?.projectIndex ?? null,
     buildEditorStyle,
     getInlinePassageDraftAnchor,
     formatChapterDisplayTitle,
@@ -6300,13 +3903,127 @@ function getCurrentManuscriptSelectionText() {
   return activeElement.value.slice(startOffset, endOffset).trim();
 }
 
+// Intent: keep the scene-editor word-count readouts live while the user types or changes a text selection.
+function syncSceneEditorWordCountReadouts(textarea = null) {
+  const activeTextarea = textarea instanceof HTMLTextAreaElement
+    ? textarea
+    : document.activeElement instanceof HTMLTextAreaElement
+      ? document.activeElement
+      : null;
+  if (!(activeTextarea instanceof HTMLTextAreaElement) || !activeTextarea.classList.contains("editor-document-input")) {
+    return;
+  }
+
+  const sceneId = String(activeTextarea.dataset.sceneId ?? "");
+  if (!sceneId) {
+    return;
+  }
+
+  const activeProjectIndex = getActiveProjectRecord()?.projectIndex ?? null;
+  const sceneShell = document.querySelector(`[data-scene-editor-scene-id="${CSS.escape(sceneId)}"]`);
+  if (!(sceneShell instanceof HTMLElement)) {
+    return;
+  }
+
+  const scene = getScene(sceneId);
+  const liveSceneWordCount = countWords(String(activeTextarea.value ?? ""));
+  const persistedSceneWordCount = getProjectIndexSceneWordCount(activeProjectIndex, sceneId);
+  const chapterId = String(scene?.chapterId ?? "");
+  const persistedChapterWordCount = getProjectIndexChapterWordCount(activeProjectIndex, chapterId);
+  const sceneWordCount = liveSceneWordCount;
+  const chapterWordCount = adjustChapterWordCountForLiveScene({
+    activeProjectIndex,
+    chapterId,
+    persistedChapterWordCount,
+    persistedSceneWordCount,
+    liveSceneWordCount,
+  });
+  const selectionWordCount = getSceneEditorSelectionWordCount(activeTextarea);
+
+  const sceneWordCountNode = sceneShell.querySelector("[data-scene-editor-scene-word-count]");
+  if (sceneWordCountNode instanceof HTMLElement) {
+    sceneWordCountNode.textContent = `Scene words: ${formatSceneEditorWordCount(sceneWordCount)}`;
+  }
+
+  const chapterWordCountNode = sceneShell.querySelector("[data-scene-editor-chapter-word-count]");
+  if (chapterWordCountNode instanceof HTMLElement) {
+    chapterWordCountNode.textContent = `Chapter words: ${formatSceneEditorWordCount(chapterWordCount)}`;
+  }
+
+  const selectionWordCountNode = sceneShell.querySelector("[data-scene-editor-selection-word-count]");
+  if (selectionWordCountNode instanceof HTMLElement) {
+    selectionWordCountNode.textContent = formatSceneEditorSelectionWordCount(selectionWordCount);
+  }
+}
+
+function getProjectIndexSceneWordCount(projectIndex, sceneId) {
+  const scenes = Array.isArray(projectIndex?.scenes) ? projectIndex.scenes : [];
+  const scene = scenes.find((candidate) => candidate?.id === sceneId);
+  const wordCount = Number(scene?.wordCount);
+  if (Number.isFinite(wordCount) && wordCount >= 0) {
+    return Math.max(0, Math.round(wordCount));
+  }
+
+  return null;
+}
+
+function getProjectIndexChapterWordCount(projectIndex, chapterId) {
+  const chapters = Array.isArray(projectIndex?.chapters) ? projectIndex.chapters : [];
+  const chapter = chapters.find((candidate) => candidate?.id === chapterId);
+  const wordCount = Number(chapter?.wordCount);
+  if (Number.isFinite(wordCount) && wordCount >= 0) {
+    return Math.max(0, Math.round(wordCount));
+  }
+
+  const scenes = Array.isArray(projectIndex?.scenes) ? projectIndex.scenes : [];
+  if (!chapterId) {
+    return 0;
+  }
+
+  return scenes
+    .filter((candidate) => candidate?.chapterId === chapterId)
+    .reduce((total, candidate) => total + Math.max(0, Math.round(Number(candidate?.wordCount) || 0)), 0);
+}
+
+function adjustChapterWordCountForLiveScene({
+  activeProjectIndex,
+  chapterId,
+  persistedChapterWordCount,
+  persistedSceneWordCount,
+  liveSceneWordCount,
+}) {
+  if (typeof chapterId !== "string" || !chapterId.trim()) {
+    return Math.max(0, Math.round(Number(persistedChapterWordCount) || 0));
+  }
+
+  const baseCount = Number.isFinite(persistedChapterWordCount)
+    ? Math.max(0, Math.round(persistedChapterWordCount))
+    : getProjectIndexChapterWordCount(activeProjectIndex, chapterId);
+  const sceneDelta = Math.max(0, Math.round(Number(liveSceneWordCount) || 0)) - Math.max(0, Math.round(Number(persistedSceneWordCount) || 0));
+  return Math.max(0, baseCount + sceneDelta);
+}
+
+function getSceneEditorSelectionWordCount(textarea) {
+  if (!(textarea instanceof HTMLTextAreaElement)) {
+    return 0;
+  }
+
+  const startOffset = Number.isInteger(textarea.selectionStart) ? textarea.selectionStart : 0;
+  const endOffset = Number.isInteger(textarea.selectionEnd) ? textarea.selectionEnd : startOffset;
+  if (endOffset <= startOffset) {
+    return 0;
+  }
+
+  return countWords(String(textarea.value ?? "").slice(startOffset, endOffset));
+}
+
 function renderSidePanelTabs() {
-  const issueCount = state.workspace.project.issues.length;
+  const taskCount = getOpenManuscriptTasks().length;
   const inspirationCount = state.passageNotes.filter((note) => note.noteType === "inspiration").length;
   const researchCount = state.passageNotes.filter((note) => note.noteType === "research").length;
   return `
     <div class="side-panel-tabs" aria-label="Editor side panel modes">
-      ${renderSidePanelTab("issues", "Issues", issueCount)}
+      ${renderSidePanelTab("issues", "Tasks", taskCount)}
       ${renderSidePanelTab("inspiration", "Inspiration", inspirationCount)}
       ${renderSidePanelTab("research", "Research", researchCount)}
     </div>
@@ -6331,21 +4048,13 @@ function renderSidePanelTab(panelId, label, count) {
 
 function renderIssuePanelBody() {
   const workspace = state.workspace;
-  const selectedIssue = getIssue(state.selectedIssueId);
-  const openTasks = state.manuscriptTasks.filter((task) => task.status === "open");
-  const issueGroups = groupConsoleItemsByChapter(workspace.project.issues);
+  const openTasks = getOpenManuscriptTasks();
 
   return `
     <div class="panel-heading">
-      <p class="panel-kicker">Issue Console</p>
+      <p class="panel-kicker">Task Console</p>
     </div>
-    ${selectedIssue ? renderIssueFocus(selectedIssue) : ""}
     ${renderTaskChapterList(openTasks)}
-    ${issueGroups.length
-      ? `<div class="console-chapter-list console-list">
-          ${issueGroups.map((group) => renderIssueChapterGroup(group)).join("")}
-        </div>`
-      : ""}
     <div class="panel-heading split-heading">
       <p class="panel-kicker">Event Pinning</p>
       <h2>Major Story Beats</h2>
@@ -6354,6 +4063,11 @@ function renderIssuePanelBody() {
       ${workspace.project.eventTags.map((eventTag) => renderEvent(eventTag)).join("")}
     </div>
   `;
+}
+
+function getOpenManuscriptTasks() {
+  // Intent: use one task source for both the side-panel tab badge and the task console heading.
+  return state.manuscriptTasks.filter((task) => task.status === "open");
 }
 
 function renderPassageNotePanel(noteType) {
@@ -6505,19 +4219,6 @@ function renderTaskChapterGroup(chapter) {
   });
 }
 
-function renderIssueChapterGroup(group) {
-  return renderCollapsibleChapterGroup({
-    panelId: "issues",
-    chapterKey: group.chapterKey,
-    chapterTitle: group.chapterTitle,
-    itemCount: group.items.length,
-    groupClassName: "console-chapter-group issue-chapter-group",
-    headingClassName: "console-chapter-heading",
-    childrenClassName: "console-chapter-children",
-    bodyHtml: group.items.map((issue) => renderIssue(issue)).join(""),
-  });
-}
-
 function renderPassageNoteChapterGroup(noteType, group) {
   return renderCollapsibleChapterGroup({
     panelId: noteType,
@@ -6659,32 +4360,6 @@ function renderSceneTask(task) {
         ${isSelected ? `<em class="task-reference">Reference: ${escapeHtml(task.selectedText)}</em>` : ""}
       </div>
       <button class="tag-button task-complete-button" data-action="complete-task" data-task-id="${escapeHtml(task.id)}">Done</button>
-    </div>
-  `;
-}
-
-function renderIssue(issue) {
-  const isSelected = issue.id === state.selectedIssueId;
-  return `
-    <button class="console-item ${isSelected ? "is-selected" : ""}" data-action="select-issue" data-issue-id="${escapeHtml(issue.id)}">
-      <span class="console-meta">${escapeHtml(issue.severity)} · ${escapeHtml(issue.category)} · scene line ${issue.sceneLineNumber}</span>
-      <strong>${escapeHtml(issue.summary)}</strong>
-      <span>${escapeHtml(issue.sceneTitle)}</span>
-    </button>
-  `;
-}
-
-function renderIssueFocus(issue) {
-  return `
-    <div class="focus-card issue-focus">
-      <p class="selection-label">Selected Issue</p>
-      <h3>${escapeHtml(issue.summary)}</h3>
-      <p>${escapeHtml(issue.detail ?? issue.evidenceExcerpt)}</p>
-      <div class="focus-meta">
-        <span>${escapeHtml(formatChapterDisplayTitle(issue.chapterTitle))}</span>
-        <span>${escapeHtml(issue.sceneTitle)}</span>
-        <span>Confidence ${Math.round(issue.confidence * 100)}%</span>
-      </div>
     </div>
   `;
 }
@@ -7973,7 +5648,7 @@ function compareVoiceNarrationJobs(left, right) {
 }
 
 function loadVoiceNarrationState() {
-  const snapshot = readStoredJson(VOICE_NARRATION_STORAGE_KEY);
+  const snapshot = projectService.loadUserPreference(VOICE_NARRATION_STORAGE_KEY, null);
   const storedProfiles = normalizeVoiceNarrationProfiles(snapshot?.voiceProfiles);
   const narrationJobs = normalizeVoiceNarrationJobs(snapshot?.narrationJobs);
   const selectedVoiceProfileId = normalizeVoiceNarrationString(snapshot?.selectedVoiceProfileId);
@@ -7990,11 +5665,7 @@ function loadVoiceNarrationState() {
 }
 
 function saveVoiceNarrationState() {
-  if (!("localStorage" in window)) {
-    return;
-  }
-
-  writeStoredJsonRaw(VOICE_NARRATION_STORAGE_KEY, {
+  projectService.saveUserPreference(VOICE_NARRATION_STORAGE_KEY, {
     version: 1,
     voiceProfiles: cloneValue(state.voiceNarration?.voiceProfiles ?? []),
     narrationJobs: cloneValue(state.voiceNarration?.narrationJobs ?? []),
@@ -8406,6 +6077,7 @@ function scheduleSceneEditorTypingRefresh(sceneId, editorText, options = {}) {
     if (layout) {
       syncSceneDocumentLayout({ skipSpellcheck: true });
     }
+    syncSceneEditorWordCountReadouts(getEditorTextareaForScene(pendingSceneId));
     if (revisionPanel) {
       syncRevisionPanel(pendingSceneId);
     }
@@ -8483,10 +6155,11 @@ function refreshScenes() {
 
 // Intent: reconcile browser, desktop, bundled, and legacy project-library sources during startup.
 async function loadInitialProjectLibrary() {
-  const storedLibrary = normalizeProjectLibrarySnapshot(readStoredJson(EDITOR_PROJECT_LIBRARY_KEY));
+  const storedLibrary = normalizeProjectLibrarySnapshot(projectService.loadProjectLibrarySnapshot());
+  const storedActiveProjectId = projectRepository.loadActiveProjectId();
   const legacyProjectId =
     storedLibrary.activeProjectId ??
-    readStoredJson(EDITOR_ACTIVE_PROJECT_ID_KEY) ??
+    storedActiveProjectId ??
     null;
   const legacyState = loadLegacyProjectState(legacyProjectId);
   const remoteSeedLibrary = await Promise.race([
@@ -8500,7 +6173,7 @@ async function loadInitialProjectLibrary() {
   const seedLibrary = workspaceSeedLibrary;
   const mergedLibrary = mergeProjectLibrarySnapshots(storedLibrary, seedLibrary, legacyState);
   const activeProjectId = resolveActiveProjectId(
-    readStoredJson(EDITOR_ACTIVE_PROJECT_ID_KEY),
+    storedActiveProjectId,
     mergedLibrary,
   );
   const library = {
@@ -8508,9 +6181,7 @@ async function loadInitialProjectLibrary() {
     projects: mergedLibrary.projects,
   };
 
-  writeStoredJsonRaw(EDITOR_PROJECT_LIBRARY_KEY, library);
-  writeStoredJsonRaw(EDITOR_ACTIVE_PROJECT_ID_KEY, activeProjectId ?? "");
-  return library;
+  return projectService.saveProjectLibrarySnapshot(library);
 }
 
 function loadBundledProjectLibrarySeed() {
@@ -8570,6 +6241,11 @@ async function fetchJsonFromDesktopApi(pathname, requestOptions = {}) {
   const method = typeof requestOptions.method === "string" ? requestOptions.method.toUpperCase() : "GET";
   const bodyValue = requestOptions.body;
   let lastError = null;
+  fileAccessBridgeLog.debug("file-access", "desktop-api.request", "Dispatching desktop API request.", {
+    pathname,
+    method,
+    hasBody: bodyValue !== undefined,
+  });
 
   for (const baseUrl of baseUrls) {
     const url = new URL(pathname, baseUrl).toString();
@@ -8584,12 +6260,23 @@ async function fetchJsonFromDesktopApi(pathname, requestOptions = {}) {
       if (bodyValue !== undefined) {
         headers["Content-Type"] = "application/json";
         body = typeof bodyValue === "string" ? bodyValue : JSON.stringify(bodyValue);
+        fileAccessBridgeLog.debug("validation", "json.stringify.request-body", "Serialized desktop API request body.", {
+          pathname,
+          method,
+          bodyLength: typeof body === "string" ? body.length : 0,
+        });
       }
 
       const response = await fetch(url, {
         method,
         headers,
         body,
+      });
+      fileAccessBridgeLog.debug("file-access", "desktop-api.response", "Received desktop API response.", {
+        pathname,
+        method,
+        url,
+        status: response.status,
       });
       const responseText = await response.text();
       const parsedResponse = responseText ? parseJsonResponseBody(responseText) : null;
@@ -8608,6 +6295,12 @@ async function fetchJsonFromDesktopApi(pathname, requestOptions = {}) {
       };
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
+      fileAccessBridgeLog.warn("file-access", "desktop-api.retry", "Desktop API request failed at one host; trying next.", {
+        pathname,
+        method,
+        url,
+        error,
+      });
       reportBrowserLog("warn", "api", `Unable to load ${pathname} from ${url}.`, {
         error,
         url,
@@ -8624,8 +6317,16 @@ async function fetchJsonFromDesktopApi(pathname, requestOptions = {}) {
 
 function parseJsonResponseBody(responseText) {
   try {
-    return JSON.parse(responseText);
-  } catch {
+    const parsed = JSON.parse(responseText);
+    fileAccessBridgeLog.debug("validation", "json.parse.response", "Parsed JSON response body.", {
+      length: responseText.length,
+    });
+    return parsed;
+  } catch (error) {
+    fileAccessBridgeLog.warn("validation", "json.parse.failed", "Response body was not valid JSON; returning raw text.", {
+      length: responseText.length,
+      error,
+    });
     return responseText;
   }
 }
@@ -8671,6 +6372,9 @@ function normalizeProjectLibrarySnapshot(candidate) {
         ? candidate.activeProjectId
         : null,
     projects,
+    sceneStore: candidate?.sceneStore && typeof candidate.sceneStore === "object" && !Array.isArray(candidate.sceneStore)
+      ? cloneValue(candidate.sceneStore)
+      : {},
   };
 }
 
@@ -8744,12 +6448,6 @@ function mergeProjectRecords(storedRecord, seedRecord, legacyState = null) {
   const seedProjectSettings = seedRecord?.projectSettings && typeof seedRecord.projectSettings === "object" && !Array.isArray(seedRecord.projectSettings)
     ? seedRecord.projectSettings
     : {};
-  const resolvedProjectFilePath = [
-    seedProjectSettings.projectFilePath,
-    storedProjectSettings.projectFilePath,
-  ]
-    .map((pathValue) => normalizeProjectFilePath(pathValue))
-    .find((pathValue) => hasProjectFilePath(pathValue)) ?? "";
   const merged = {
     ...cloneValue(seedRecord),
     ...cloneValue(storedRecord),
@@ -8777,11 +6475,14 @@ function mergeProjectRecords(storedRecord, seedRecord, legacyState = null) {
       projectSettings: {
         ...cloneValue(seedProjectSettings),
         ...cloneValue(storedProjectSettings),
-        projectFilePath: resolvedProjectFilePath,
       },
     }),
     seedRecord.id,
-    getWorkspaceManuscriptWordCount(merged.workspace),
+    getProjectRecordWordCountForSettings({
+      workspace: merged.workspace,
+      sceneDrafts: merged.sceneDrafts,
+      projectIndex: storedRecord?.projectIndex ?? seedRecord?.projectIndex ?? null,
+    }),
     new Date(),
   );
   merged.editorPrefs = cloneValue(merged.projectSettings.editorPrefs);
@@ -8794,56 +6495,15 @@ function mergeProjectRecords(storedRecord, seedRecord, legacyState = null) {
       title: seedRecord.title,
     };
   }
+  merged.schemaVersion = Number(storedRecord?.schemaVersion ?? seedRecord?.schemaVersion) || PROJECT_SCHEMA_VERSION;
+  const persistedProjectIndex = storedRecord?.projectIndex ?? seedRecord?.projectIndex ?? null;
+  merged.projectIndex = buildProjectIndexForRecord(merged, persistedProjectIndex);
 
   return merged;
 }
 
-function buildProjectFilePathFromRoot(projectRoot = "", fileName = getSuggestedProjectFileName()) {
-  return buildProjectFilePathFromRootForProjectFile(projectRoot, fileName);
-}
-
 async function reconnectProjectFileDestinationOnBoot(desktopSettings = null) {
-  const candidatePath = [
-    state.projectFilePath,
-    desktopSettings?.lastProjectFilePathExplicit === true ? desktopSettings?.lastProjectFilePath : "",
-    buildProjectFilePathFromRoot(desktopSettings?.projectRoot ?? ""),
-    getProjectRecordFilePath(getActiveProjectRecord()),
-  ]
-    .map((pathValue) => resolveProjectFilePath(pathValue))
-    .find((pathValue) => hasProjectFilePath(pathValue));
-
-  if (!candidatePath) {
-    return;
-  }
-
-  if (candidatePath !== state.projectFilePath) {
-    setProjectFilePath(candidatePath, null, {
-      skipProjectFileAutosave: true,
-      persistDesktopProjectFilePath: true,
-    });
-  }
-
-  try {
-    const snapshot = await readProjectLibraryFromDesktopPath(candidatePath, {
-      fetchJsonFromDesktopApi,
-    });
-    await loadProjectLibrarySnapshotIntoState(snapshot, {
-      filePath: candidatePath,
-      fileHandle: null,
-      sourceLabel: "project file",
-      reason: "boot-reconnect",
-      mode: "desktop-path",
-    });
-    state.projectFileStatus = `Writing to JSON file: ${candidatePath}`;
-    await persistDesktopProjectFilePath(candidatePath);
-  } catch (error) {
-    state.projectFileStatus = `Project file check failed: ${error instanceof Error ? error.message : String(error)}`;
-    reportBrowserLog("warn", "project-file", "Unable to reconnect the project file on boot.", {
-      filePath: candidatePath,
-      error,
-      mode: "desktop-path",
-    });
-  }
+  await projectPersistenceService.restoreLastOpenedProject(desktopSettings);
 }
 
 function findStaleSeedProjectMatch(projects, seedProject) {
@@ -8958,6 +6618,38 @@ function getWorkspaceManuscriptWordCount(workspace) {
   return lines.reduce((total, line) => total + countWords(line?.text ?? ""), 0);
 }
 
+function getProjectRecordWordCountForSettings(recordLike) {
+  const workspaceWordCount = getWorkspaceManuscriptWordCount(recordLike?.workspace);
+  if (workspaceWordCount > 0) {
+    return workspaceWordCount;
+  }
+
+  const sceneDrafts = recordLike?.sceneDrafts && typeof recordLike.sceneDrafts === "object" && !Array.isArray(recordLike.sceneDrafts)
+    ? recordLike.sceneDrafts
+    : {};
+  let draftWordCount = 0;
+  for (const draft of Object.values(sceneDrafts)) {
+    if (!draft || typeof draft !== "object") {
+      continue;
+    }
+    draftWordCount += countWords(resolveSceneDraftEditorText(draft));
+  }
+  if (draftWordCount > 0) {
+    return draftWordCount;
+  }
+
+  const indexScenes = Array.isArray(recordLike?.projectIndex?.scenes)
+    ? recordLike.projectIndex.scenes
+    : [];
+  return indexScenes.reduce((total, scene) => {
+    const wordCount = Number(scene?.wordCount);
+    if (!Number.isFinite(wordCount) || wordCount < 0) {
+      return total;
+    }
+    return total + Math.max(0, Math.round(wordCount));
+  }, 0);
+}
+
 function createCollapsedConsoleChapterState(candidate = {}) {
   return {
     issueTasks: normalizeChapterIdList(candidate.issueTasks),
@@ -8974,6 +6666,8 @@ function createDefaultProjectSettingsSnapshot(currentWordCount = 0, now = new Da
     spellcheck: createDefaultSpellcheckProjectSettings(),
     binderPanelWidth: DEFAULT_BINDER_PANEL_WIDTH,
     consoleDockWidth: DEFAULT_CONSOLE_PANEL_WIDTH,
+    userSettingPanelResizerLeftPercent: null,
+    userSettingPanelResizerRightPercent: null,
     consoleDockCollapsed: false,
     collapsedChapterIds: [],
     collapsedConsoleChapterIds: createCollapsedConsoleChapterState(),
@@ -9022,6 +6716,12 @@ function normalizeProjectSettingsSnapshot(candidate, projectId = "", currentWord
       MIN_CONSOLE_PANEL_WIDTH,
       Number.POSITIVE_INFINITY,
     ),
+    userSettingPanelResizerLeftPercent: normalizePanelResizerPercent(
+      normalizedCandidate.userSettingPanelResizerLeftPercent ?? defaults.userSettingPanelResizerLeftPercent,
+    ),
+    userSettingPanelResizerRightPercent: normalizePanelResizerPercent(
+      normalizedCandidate.userSettingPanelResizerRightPercent ?? defaults.userSettingPanelResizerRightPercent,
+    ),
     consoleDockCollapsed: typeof normalizedCandidate.consoleDockCollapsed === "boolean"
       ? normalizedCandidate.consoleDockCollapsed
       : defaults.consoleDockCollapsed,
@@ -9031,7 +6731,10 @@ function normalizeProjectSettingsSnapshot(candidate, projectId = "", currentWord
     collapsedConsoleChapterIds: createCollapsedConsoleChapterState(
       normalizedCandidate.collapsedConsoleChapterIds ?? defaults.collapsedConsoleChapterIds,
     ),
-    projectFilePath: normalizeProjectFilePath(normalizedCandidate.projectFilePath ?? defaults.projectFilePath),
+    // Intent: preserve the canonical project-file destination so refreshes can recover the last saved path.
+    projectFilePath: normalizeProjectFilePath(
+      normalizedCandidate.projectFilePath ?? defaults.projectFilePath,
+    ),
     projectSourcePath: normalizeProjectFilePath(normalizedCandidate.projectSourcePath ?? defaults.projectSourcePath),
     writingTargetState,
     writingTargetViewMode,
@@ -9053,6 +6756,8 @@ function buildProjectSettingsCandidate(candidate) {
     localAiPrefs: projectSettings.localAiPrefs ?? candidate?.localAiPrefs,
     binderPanelWidth: projectSettings.binderPanelWidth ?? candidate?.binderPanelWidth,
     consoleDockWidth: projectSettings.consoleDockWidth ?? candidate?.consoleDockWidth,
+    userSettingPanelResizerLeftPercent: projectSettings.userSettingPanelResizerLeftPercent ?? candidate?.userSettingPanelResizerLeftPercent,
+    userSettingPanelResizerRightPercent: projectSettings.userSettingPanelResizerRightPercent ?? candidate?.userSettingPanelResizerRightPercent,
     consoleDockCollapsed: projectSettings.consoleDockCollapsed ?? candidate?.consoleDockCollapsed,
     collapsedChapterIds: projectSettings.collapsedChapterIds ?? candidate?.collapsedChapterIds,
     collapsedConsoleChapterIds: projectSettings.collapsedConsoleChapterIds ?? candidate?.collapsedConsoleChapterIds,
@@ -9071,10 +6776,18 @@ function createProjectSettingsSnapshotFromState({
   now = new Date(),
 } = {}) {
   const projectId = state.workspace?.project?.id ?? state.activeProjectId ?? "";
-  const writingTargetWorkingRecord = getWritingTargetWorkingRecord();
-  const writingTargetState = writingTargetWorkingRecord
-    ? cloneValue(writingTargetWorkingRecord)
+  // Persist canonical writing-target state only; draft edits stay in UI state until explicitly committed.
+  const writingTargetState = state.writingTargetState
+    ? cloneValue(state.writingTargetState)
     : createDefaultWritingTargetRecord(currentWordCount, now);
+  logWritingTargetMetricCheckpoint("metric.project-settings-snapshot", {
+    projectId,
+    currentWordCount,
+    writingTargetLoaded: state.writingTargetState != null,
+    writingTargetHistoryEntries: Array.isArray(writingTargetState?.history) ? writingTargetState.history.length : 0,
+    writingTargetDailyBaselineWordCount: writingTargetState?.dailyBaselineWordCount ?? 0,
+    writingTargetDailyBaselineDateKey: writingTargetState?.dailyBaselineDateKey ?? "",
+  });
 
   return normalizeProjectSettingsSnapshot(
     {
@@ -9082,10 +6795,12 @@ function createProjectSettingsSnapshotFromState({
       localAiPrefs: cloneValue(state.localAiPrefs),
       binderPanelWidth: state.binderPanelWidth,
       consoleDockWidth: state.consoleDockWidth,
+      userSettingPanelResizerLeftPercent: state.userSettingPanelResizerLeftPercent,
+      userSettingPanelResizerRightPercent: state.userSettingPanelResizerRightPercent,
       consoleDockCollapsed: state.consoleDockCollapsed,
       collapsedChapterIds: cloneValue(state.collapsedChapterIds),
       collapsedConsoleChapterIds: cloneValue(state.collapsedConsoleChapterIds),
-      projectFilePath: getProjectFileDisplayState().pathLabel || state.projectFilePath,
+      projectFilePath: state.projectFilePath,
       projectSourcePath: state.projectSourcePath,
       writingTargetState,
       writingTargetViewMode: state.writingTargetViewMode,
@@ -9139,17 +6854,25 @@ function normalizeProjectRecord(candidate, legacyState = null) {
   workspace.selectionDefaults = normalizeSelectionDefaults(workspace.selectionDefaults, workspace.project);
   const projectSettings = normalizeProjectSettingsSnapshot(
     buildProjectSettingsCandidate({
-    ...cloneValue(candidate),
-    editorPrefs: candidate.editorPrefs ?? legacyState?.editorPrefs,
-    localAiPrefs: candidate.localAiPrefs ?? legacyState?.localAiPrefs,
-    projectSourcePath: candidate.projectSourcePath ?? legacyState?.projectSourcePath,
-  }),
+      ...cloneValue(candidate),
+      editorPrefs: candidate.editorPrefs ?? legacyState?.editorPrefs,
+      localAiPrefs: candidate.localAiPrefs ?? legacyState?.localAiPrefs,
+      projectFilePath: candidate.projectSettings?.projectFilePath ?? candidate.projectFilePath ?? legacyState?.projectFilePath,
+      projectSourcePath: candidate.projectSourcePath ?? legacyState?.projectSourcePath,
+    }),
     id,
-    getWorkspaceManuscriptWordCount(workspace),
+    getProjectRecordWordCountForSettings({
+      workspace,
+      sceneDrafts:
+        candidate.sceneDrafts && typeof candidate.sceneDrafts === "object"
+          ? candidate.sceneDrafts
+          : legacyState?.sceneDrafts ?? {},
+      projectIndex: candidate.projectIndex ?? null,
+    }),
     new Date(now),
   );
 
-  return {
+  const normalizedRecord = {
     id,
     title,
     source: typeof candidate.source === "string" ? candidate.source : "user",
@@ -9183,6 +6906,13 @@ function normalizeProjectRecord(candidate, legacyState = null) {
     editorPrefs: cloneValue(projectSettings.editorPrefs),
     localAiPrefs: cloneValue(projectSettings.localAiPrefs),
   };
+  normalizedRecord.schemaVersion = Number(candidate.schemaVersion) || PROJECT_SCHEMA_VERSION;
+  normalizedRecord.projectIndex = buildProjectIndexForRecord(normalizedRecord, candidate.projectIndex);
+  normalizedRecord.workspace.project.stats = buildWorkspaceStatsFromProjectIndex(
+    normalizedRecord.projectIndex,
+    normalizedRecord.workspace.project.stats,
+  );
+  return normalizedRecord;
 }
 
 function normalizeSelectionDefaults(candidate, project) {
@@ -9243,19 +6973,24 @@ function createProjectLibraryRecordFromWorkspace(workspace, options = {}) {
     normalizedWorkspace.selectionDefaults,
     normalizedWorkspace.project,
   );
-  const currentWordCount = getWorkspaceManuscriptWordCount(normalizedWorkspace);
+  const currentWordCount = getProjectRecordWordCountForSettings({
+    workspace: normalizedWorkspace,
+    sceneDrafts: options.sceneDrafts ?? {},
+    projectIndex: options.persistedProjectIndex ?? null,
+  });
   const projectSettings = normalizeProjectSettingsSnapshot(
     buildProjectSettingsCandidate({
       ...cloneValue(options),
       editorPrefs: options.editorPrefs ?? createDefaultEditorPrefs(),
       localAiPrefs: options.localAiPrefs ?? createDefaultLocalAiPrefs(),
+      projectFilePath: options.projectFilePath ?? options.projectSettings?.projectFilePath ?? "",
     }),
     id,
     currentWordCount,
     new Date(now),
   );
 
-  return {
+  const record = {
     id,
     title,
     source: typeof options.source === "string" ? options.source : "user",
@@ -9275,6 +7010,13 @@ function createProjectLibraryRecordFromWorkspace(workspace, options = {}) {
     editorPrefs: cloneValue(projectSettings.editorPrefs),
     localAiPrefs: cloneValue(projectSettings.localAiPrefs),
   };
+  record.schemaVersion = Number(options.schemaVersion) || PROJECT_SCHEMA_VERSION;
+  record.projectIndex = buildProjectIndexForRecord(record, options.persistedProjectIndex ?? null);
+  record.workspace.project.stats = buildWorkspaceStatsFromProjectIndex(
+    record.projectIndex,
+    record.workspace.project.stats,
+  );
+  return record;
 }
 
 function createProjectLibraryRecordFromState(options = {}) {
@@ -9282,6 +7024,10 @@ function createProjectLibraryRecordFromState(options = {}) {
     return null;
   }
 
+  const activeProjectRecord =
+    state.projectLibrary.find((project) => project.id === state.workspace?.project?.id)
+    ?? state.projectLibrary.find((project) => project.id === state.activeProjectId)
+    ?? null;
   const projectSettings = createProjectSettingsSnapshotFromState({
     currentWordCount: getCurrentManuscriptWordCount(),
     now: options.updatedAt ? new Date(options.updatedAt) : new Date(),
@@ -9300,6 +7046,7 @@ function createProjectLibraryRecordFromState(options = {}) {
     sceneDrafts: state.sceneDrafts,
     structureDrafts: state.structureDrafts,
     templateDrafts: state.templateDrafts,
+    persistedProjectIndex: activeProjectRecord?.projectIndex ?? null,
     manuscriptTasks: state.manuscriptTasks,
     passageNotes: state.passageNotes,
     sourceArchive: state.projectLibrary.find((project) => project.id === state.workspace.project.id)?.sourceArchive ?? [],
@@ -9331,8 +7078,14 @@ function applyProjectRecord(record) {
   if (!record) {
     throw new Error("Unable to load a saved project.");
   }
+  projectLoadGateLog.info("lifecycle", "project.apply.begin", "Applying project record into runtime state.", {
+    projectId: record.id,
+    title: record.title,
+  });
 
-  saveWritingTargetState();
+  saveWritingTargetState({
+    skipProjectFileAutosave: true,
+  });
   clearWritingTargetDraft();
   clearWritingTargetSnapshotTimer();
   clearProjectFileAutosaveState();
@@ -9366,6 +7119,7 @@ function applyProjectRecord(record) {
   }
   state.activeProjectId = record.id;
   state.projectLibrarySelectionId = record.id;
+  projectPersistenceService.persistActiveProjectId(record.id);
   state.workspace = cloneValue(record.workspace);
   if (!state.workspace.voice || typeof state.workspace.voice !== "object") {
     state.workspace.voice = {
@@ -9390,8 +7144,7 @@ function applyProjectRecord(record) {
   state.templateDrafts = cloneValue(record.templateDrafts ?? createTemplateDrafts());
   state.manuscriptTasks = normalizeManuscriptTasks(record.manuscriptTasks);
   state.passageNotes = normalizePassageNotes(record.passageNotes);
-  state.projectFilePath = getProjectRecordFilePath(record);
-  state.projectFileHandle = null;
+  // Project file destination is owned by ProjectPersistenceService and must survive record application.
   state.selectedTaskId = null;
   state.selectedPassageNoteId = null;
   state.editingChapterTitleId = null;
@@ -9407,25 +7160,25 @@ function applyProjectRecord(record) {
   const projectSettings = normalizeProjectSettingsSnapshot(
     buildProjectSettingsCandidate(record),
     record.id,
-    getWorkspaceManuscriptWordCount(state.workspace),
+    getProjectRecordWordCountForSettings(record),
     new Date(),
   );
   state.editorPrefs = cloneValue(projectSettings.editorPrefs);
   state.localAiPrefs = cloneValue(projectSettings.localAiPrefs);
   state.binderPanelWidth = projectSettings.binderPanelWidth;
   state.consoleDockWidth = projectSettings.consoleDockWidth;
+  state.userSettingPanelResizerLeftPercent = projectSettings.userSettingPanelResizerLeftPercent;
+  state.userSettingPanelResizerRightPercent = projectSettings.userSettingPanelResizerRightPercent;
   state.consoleDockCollapsed = projectSettings.consoleDockCollapsed;
   state.collapsedChapterIds = projectSettings.collapsedChapterIds;
   state.collapsedConsoleChapterIds = projectSettings.collapsedConsoleChapterIds;
   state.projectSourcePath = projectSettings.projectSourcePath;
   state.spellcheckProjectSettings = normalizeSpellcheckProjectSettings(projectSettings.spellcheck);
-  state.projectFileHandle = null;
   state.writingTargetViewMode = projectSettings.writingTargetViewMode;
   state.writingTargetSelectedDateKey = projectSettings.writingTargetSelectedDateKey;
   state.writingTargetCalendarMonthKey = projectSettings.writingTargetCalendarMonthKey;
   state.writingTargetProjectId = record.id;
   state.writingTargetState = cloneValue(projectSettings.writingTargetState);
-  writeStoredJsonRaw(EDITOR_PROJECT_FILE_PATH_KEY, state.projectFilePath);
   writeStoredJsonRaw(EDITOR_PROJECT_SOURCE_PATH_KEY, state.projectSourcePath);
   writeStoredJsonRaw(EDITOR_BINDER_WIDTH_KEY, state.binderPanelWidth);
   writeStoredJsonRaw(EDITOR_CONSOLE_WIDTH_KEY, state.consoleDockWidth);
@@ -9436,6 +7189,21 @@ function applyProjectRecord(record) {
   writingTargetStore[record.id] = cloneValue(state.writingTargetState);
   writeStoredJsonRaw(EDITOR_WRITING_TARGETS_KEY, writingTargetStore);
   syncLegacyProjectStorageFromState();
+  logWritingTargetDebugEvent("info", "project.apply", "Applied project record into editor state.", {
+    projectId: record.id,
+    title: record.title,
+    sceneDraftCount: Object.keys(state.sceneDrafts ?? {}).length,
+    writingTargetHistoryEntries: Array.isArray(state.writingTargetState?.history) ? state.writingTargetState.history.length : 0,
+    writingTargetDailyBaselineWordCount: state.writingTargetState?.dailyBaselineWordCount ?? 0,
+    writingTargetDailyBaselineDateKey: state.writingTargetState?.dailyBaselineDateKey ?? "",
+  }, {
+    skipUpload: true,
+  });
+  manuscriptStateLog.info("state-change", "state.hydration.completed", "State hydration completed from active project record.", {
+    projectId: record.id,
+    sceneDraftCount: Object.keys(state.sceneDrafts ?? {}).length,
+    selectedSceneId: state.selectedSceneId ?? "",
+  });
 }
 
 // Intent: mirror canonical project-library state into older browser keys during migration only.
@@ -9445,7 +7213,6 @@ function syncLegacyProjectStorageFromState() {
   }
 
   writeStoredJsonRaw(EDITOR_PROJECT_TITLE_KEY, state.projectTitle);
-  writeStoredJsonRaw(EDITOR_PROJECT_FILE_PATH_KEY, state.projectFilePath);
   writeStoredJsonRaw(EDITOR_PROJECT_SOURCE_PATH_KEY, state.projectSourcePath);
   writeStoredJsonRaw(EDITOR_DRAFTS_KEY, state.sceneDrafts);
   writeStoredJsonRaw(EDITOR_STRUCTURE_KEY, state.structureDrafts);
@@ -9457,42 +7224,32 @@ function syncLegacyProjectStorageFromState() {
 }
 
 function clearProjectFileAutosaveTimer() {
-  projectFileAutosave.clearTimer();
+  projectPersistenceService.clearProjectAutosaveTimer();
 }
 
 function beginProjectFileAutosaveSuppression() {
-  projectFileAutosave.beginSuppression();
+  projectPersistenceService.beginProjectAutosaveSuppression();
 }
 
 function endProjectFileAutosaveSuppression() {
-  projectFileAutosave.endSuppression();
+  projectPersistenceService.endProjectAutosaveSuppression();
 }
 
 function queueProjectFileAutosave() {
-  projectFileAutosave.queue();
+  projectPersistenceService.queueProjectAutosave();
 }
 
 function markProjectFileAutosaveDirty() {
-  projectFileAutosave.markDirty();
+  projectPersistenceService.markProjectAutosaveDirty();
 }
 
 // Intent: sync the autosave destination after project switches without marking a clean project dirty.
 function primeProjectFileAutosave() {
-  projectFileAutosave.prime();
+  projectPersistenceService.primeProjectAutosaveTarget();
 }
 
 function clearProjectFileAutosaveState() {
-  projectFileAutosave.clearState();
-}
-
-function beginProjectCacheSuppression() {
-  state.projectCacheSuppressionDepth += 1;
-}
-
-function endProjectCacheSuppression() {
-  if (state.projectCacheSuppressionDepth > 0) {
-    state.projectCacheSuppressionDepth -= 1;
-  }
+  projectPersistenceService.clearProjectAutosaveState();
 }
 
 function shouldPersistProjectCache() {
@@ -9501,42 +7258,29 @@ function shouldPersistProjectCache() {
 
 // Intent: keep in-browser project records synchronized with the active app-native project snapshot.
 function persistCurrentProjectRecord(options = {}) {
-  const record = createProjectLibraryRecordFromState();
-  if (!record) {
-    return;
-  }
-
-  const nextProjects = state.projectLibrary.some((project) => project.id === record.id)
-    ? state.projectLibrary.map((project) => (project.id === record.id ? record : project))
-    : [...state.projectLibrary, record];
-
-  state.projectLibrary = nextProjects;
-  state.activeProjectId = record.id;
-  state.projectLibrarySelectionId = record.id;
-
-  const snapshot = {
-    activeProjectId: record.id,
-    projects: nextProjects,
-  };
-  if (shouldPersistProjectCache()) {
-    writeStoredJsonRaw(EDITOR_PROJECT_LIBRARY_KEY, snapshot);
-    writeStoredJsonRaw(EDITOR_ACTIVE_PROJECT_ID_KEY, record.id);
-  }
-
-  if (options.skipProjectFileAutosave !== true) {
-    markProjectFileAutosaveDirty();
-  }
+  projectPersistenceService.commitCanonicalProjectMutation(options);
 }
 
 function loadSelectedProject() {
   const projectId = state.projectLibrarySelectionId ?? state.activeProjectId;
   const record = state.projectLibrary.find((project) => project.id === projectId) ?? state.projectLibrary[0];
   if (!record) {
+    projectLoadGateLog.warn("validation", "project.load.skipped", "No project record available to load from selection.", {
+      requestedProjectId: projectId ?? "",
+    });
     return;
   }
 
+  projectLoadGateLog.info("user-action", "project.load.begin", "Loading selected project.", {
+    projectId: record.id,
+    title: record.title,
+  });
+
+  logWritingTargetDebugEvent("info", "project.load-selected", "Loading selected project.", {
+    projectId: record.id,
+    title: record.title,
+  });
   applyProjectRecord(record);
-  writeStoredJsonRaw(EDITOR_ACTIVE_PROJECT_ID_KEY, record.id);
   refreshScenes();
   state.selectedIssueId = state.workspace.selectionDefaults.issueId ?? null;
   state.selectedNodeId = state.workspace.selectionDefaults.nodeId ?? null;
@@ -9544,14 +7288,21 @@ function loadSelectedProject() {
   syncSelectionFromBlock(
     state.workspace.selectionDefaults.lineId ?? state.scenes[0]?.blocks[0]?.blockId ?? null,
   );
+  loadSceneDraftIntoState(state.selectedSceneId ?? state.scenes[0]?.sceneId ?? "");
   syncWritingTargetState({ forceReload: true });
   refreshWritingTargetSessionLifecycle({ reason: "load-project" });
+  logWritingTargetLoadCheckpoint("load-project");
+  projectPersistenceService.syncActiveProjectFileDestinationFromRecord({
+    persistDesktopProjectFilePath: true,
+    source: "loadSelectedProject",
+  });
   render();
   primeProjectFileAutosave();
-  if (hasProjectFilePath(state.projectFilePath)) {
-    void persistDesktopProjectFilePath(state.projectFilePath);
-  }
   recordWritingTargetSnapshot({ immediate: true, reason: "load-project", skipProjectFileAutosave: true });
+  projectLoadGateLog.info("lifecycle", "project.load.completed", "Selected project loaded into editor.", {
+    projectId: record.id,
+    selectedSceneId: state.selectedSceneId ?? "",
+  });
   if (state.workspace?.project?.stats) {
     reportBrowserLog("info", "project-library", "Loaded saved project from library.", {
       projectId: record.id,
@@ -9576,509 +7327,157 @@ function getSuggestedProjectFileName() {
 }
 
 function hasProjectFileDestination() {
-  return hasProjectFileDestinationTarget({
-    fileHandle: state.projectFileHandle,
-    filePath: state.projectFilePath,
-  });
+  return projectPersistenceService.hasProjectSaveDestination();
 }
 
 function getProjectFileDisplayState() {
-  return resolveProjectFileDisplayState({
-    projectFilePath: state.projectFilePath,
-    projectFileHandle: state.projectFileHandle,
-    projectLibrary: state.projectLibrary,
-    activeProjectId: state.activeProjectId,
-    projectLibrarySelectionId: state.projectLibrarySelectionId,
-  });
-}
-
-async function persistDesktopProjectFilePath(filePath, explicit = true) {
-  await persistDesktopProjectFilePathPreference(filePath, {
-    explicit,
-    fetchJsonFromDesktopApi,
-    onError: (error, resolvedPath) => {
-      reportBrowserLog("warn", "settings", "Unable to persist the desktop project file path.", {
-        error,
-        filePath: resolvedPath,
-      });
-    },
-  });
+  return projectPersistenceService.getProjectFileDisplayState();
 }
 
 function setProjectFilePath(pathValue, handle = null, options = {}) {
-  state.projectFilePath = resolveProjectFilePath(pathValue);
-  state.projectFileHandle = handle;
-  if (shouldPersistProjectCache()) {
-    writeStoredJsonRaw(EDITOR_PROJECT_FILE_PATH_KEY, state.projectFilePath);
-  }
-  persistCurrentProjectRecord({ skipProjectFileAutosave: options.skipProjectFileAutosave === true });
-  if (options.persistDesktopProjectFilePath === true) {
-    void persistDesktopProjectFilePath(state.projectFilePath, hasProjectFilePath(state.projectFilePath));
-  } else if (options.clearDesktopProjectFilePath === true) {
-    void persistDesktopProjectFilePath("", false);
-  }
+  projectPersistenceService.setActiveProjectFileDestination(pathValue, handle, options);
 }
 
 // Intent: build the canonical payload written to every `.abe-project.json` destination.
 function createProjectLibrarySnapshotForFile() {
-  persistCurrentProjectRecord();
+  return projectPersistenceService.buildProjectSnapshotForSaveFile();
+}
+
+function collectWorkspaceSceneWordCounts(projectRecord) {
+  const counts = new Map();
+  const lines = Array.isArray(projectRecord?.workspace?.project?.lines)
+    ? projectRecord.workspace.project.lines
+    : [];
+  for (const line of lines) {
+    const sceneId = typeof line?.sceneId === "string" ? line.sceneId.trim() : "";
+    if (!sceneId) {
+      continue;
+    }
+    const nextCount = (counts.get(sceneId) ?? 0) + countWords(line?.text);
+    counts.set(sceneId, nextCount);
+  }
+  return counts;
+}
+
+function buildProjectIndexForRecord(projectRecord, persistedProjectIndex = null) {
+  const computedIndex = projectService.getProjectIndex({
+    projectRecord,
+  });
+  const persistedScenes = Array.isArray(persistedProjectIndex?.scenes)
+    ? persistedProjectIndex.scenes
+    : [];
+  if (!persistedScenes.length) {
+    return computedIndex;
+  }
+
+  const persistedSceneWordCounts = new Map();
+  for (const scene of persistedScenes) {
+    const sceneId = typeof scene?.id === "string" ? scene.id.trim() : "";
+    const wordCount = Number(scene?.wordCount);
+    if (!sceneId || !Number.isFinite(wordCount) || wordCount < 0) {
+      continue;
+    }
+    persistedSceneWordCounts.set(sceneId, Math.max(0, Math.round(wordCount)));
+  }
+  if (!persistedSceneWordCounts.size) {
+    return computedIndex;
+  }
+
+  const workspaceSceneWordCounts = collectWorkspaceSceneWordCounts(projectRecord);
+  const sceneDrafts = projectRecord?.sceneDrafts && typeof projectRecord.sceneDrafts === "object" && !Array.isArray(projectRecord.sceneDrafts)
+    ? projectRecord.sceneDrafts
+    : {};
+  const mergedScenes = computedIndex.scenes.map((scene) => {
+    const sceneId = typeof scene?.id === "string" ? scene.id.trim() : "";
+    if (!sceneId) {
+      return scene;
+    }
+    const hasLoadedDraft = sceneDrafts[sceneId] && typeof sceneDrafts[sceneId] === "object";
+    const workspaceWordCount = workspaceSceneWordCounts.get(sceneId) ?? 0;
+    if (hasLoadedDraft || workspaceWordCount > 0) {
+      return scene;
+    }
+    if (!persistedSceneWordCounts.has(sceneId)) {
+      return scene;
+    }
+
+    return {
+      ...scene,
+      wordCount: persistedSceneWordCounts.get(sceneId),
+    };
+  });
+
   return {
-    activeProjectId: state.activeProjectId ?? state.projectLibrarySelectionId ?? state.projectLibrary[0]?.id ?? null,
-    projects: cloneValue(state.projectLibrary),
+    ...computedIndex,
+    scenes: mergedScenes,
+  };
+}
+
+function buildWorkspaceStatsFromProjectIndex(projectIndex, currentStats = {}) {
+  const chapters = Array.isArray(projectIndex?.chapters) ? projectIndex.chapters : [];
+  const scenes = Array.isArray(projectIndex?.scenes) ? projectIndex.scenes : [];
+  return {
+    ...(currentStats && typeof currentStats === "object" && !Array.isArray(currentStats) ? currentStats : {}),
+    chapterCount: chapters.length,
+    sceneCount: scenes.length,
+    lineCount: scenes.reduce((total, scene) => total + Math.max(0, Math.round(Number(scene?.lineCount) || 0)), 0),
   };
 }
 
 async function saveProjectLibraryToBrowserHandle(handle, snapshot = createProjectLibrarySnapshotForFile()) {
-  if (!handle) {
-    throw new Error("A browser file handle is required.");
-  }
-
-  const saveRevision = state.projectFileAutosaveRevision;
-  const browserHandleProjectFilePath = state.projectFilePath || handle.name || "";
-  state.projectFileBusy = true;
-  state.projectFileStatus = "Saving project file...";
-  renderHeader();
-
-  try {
-    const savedLabel = await writeProjectLibraryToBrowserHandle(handle, snapshot, {
-      fallbackFileName: getSuggestedProjectFileName(),
-    });
-    setProjectFilePath(browserHandleProjectFilePath || savedLabel, handle, {
-      skipProjectFileAutosave: true,
-      persistDesktopProjectFilePath: hasProjectFilePath(browserHandleProjectFilePath),
-      clearDesktopProjectFilePath: !hasProjectFilePath(browserHandleProjectFilePath),
-    });
-    state.projectFileStatus = `Saved to ${savedLabel}`;
-    reportBrowserLog("info", "project-file", "Saved the current project file.", {
-      filePath: savedLabel,
-      projectId: state.activeProjectId ?? state.workspace?.project?.id ?? null,
-      title: state.projectTitle,
-      mode: "browser-handle",
-    });
-    if (state.projectFileAutosaveRevision === saveRevision) {
-      clearProjectFileAutosaveState();
-    }
-    renderHeader();
-    return savedLabel;
-  } catch (error) {
-    state.projectFileStatus = `Save failed: ${error instanceof Error ? error.message : String(error)}`;
-    reportBrowserLog("error", "project-file", "Project file save failed.", {
-      filePath: handle?.name ?? null,
-      error,
-      mode: "browser-handle",
-    });
-    renderHeader();
-    throw error;
-  } finally {
-    state.projectFileBusy = false;
-    if (state.projectFileAutosaveDirty) {
-      queueProjectFileAutosave();
-    }
-    renderHeader();
-  }
+  return projectPersistenceService.saveProjectSnapshotToBrowserHandle(handle, snapshot);
 }
 
 // Intent: write project saves through the desktop path bridge when the host exposes a durable filesystem path.
 async function saveProjectLibraryToFile(filePath, snapshot = createProjectLibrarySnapshotForFile()) {
-  const resolvedPath = normalizeProjectFilePath(filePath);
-  if (!resolvedPath) {
-    throw new Error("A project file path is required.");
-  }
-
-  const saveRevision = state.projectFileAutosaveRevision;
-  state.projectFileBusy = true;
-  state.projectFileStatus = "Saving project file...";
-  renderHeader();
-
-  try {
-    const savedPath = await writeProjectLibraryToDesktopPath(resolvedPath, snapshot, {
-      fetchJsonFromDesktopApi,
-    });
-    setProjectFilePath(savedPath, null, {
-      skipProjectFileAutosave: true,
-      persistDesktopProjectFilePath: true,
-    });
-    state.projectFileStatus = `Saved to ${savedPath}`;
-    reportBrowserLog("info", "project-file", "Saved the current project file.", {
-      filePath: savedPath,
-      projectId: state.activeProjectId ?? state.workspace?.project?.id ?? null,
-      title: state.projectTitle,
-      mode: "desktop-path",
-    });
-    if (state.projectFileAutosaveRevision === saveRevision) {
-      clearProjectFileAutosaveState();
-    }
-    renderHeader();
-    return savedPath;
-  } catch (error) {
-    state.projectFileStatus = `Save failed: ${error instanceof Error ? error.message : String(error)}`;
-    reportBrowserLog("error", "project-file", "Project file save failed.", {
-      filePath: resolvedPath,
-      error,
-      mode: "desktop-path",
-    });
-    renderHeader();
-    throw error;
-  } finally {
-    state.projectFileBusy = false;
-    if (state.projectFileAutosaveDirty) {
-      queueProjectFileAutosave();
-    }
-    renderHeader();
-  }
+  return projectPersistenceService.saveProjectSnapshotToFilePath(filePath, snapshot);
 }
 
 // Intent: load project files into active state and immediately retarget autosave to the loaded destination.
 async function loadProjectLibrarySnapshotIntoState(loadedSnapshot, options = {}) {
-  const loadedLibrary = normalizeProjectLibrarySnapshot(loadedSnapshot);
-  const loadedProjects = loadedLibrary.projects
-    .map((project) => normalizeProjectRecord(project))
-    .filter(Boolean);
-  if (!loadedProjects.length) {
-    throw new Error("Project file did not contain any saved projects.");
-  }
-  const currentProjects = state.projectLibrary
-    .map((project) => normalizeProjectRecord(project))
-    .filter(Boolean);
-  const loadedProjectIds = new Set(loadedProjects.map((project) => project.id));
-  const preservedProjects = currentProjects.filter((project) => !loadedProjectIds.has(project.id));
-  const mergedProjects = [...preservedProjects, ...loadedProjects];
-  const activeProjectId = resolveActiveProjectId(
-    loadedLibrary.activeProjectId,
-    {
-      activeProjectId: loadedLibrary.activeProjectId,
-      projects: mergedProjects,
-    },
-  );
-
-  state.projectLibrary = mergedProjects;
-  state.activeProjectId = activeProjectId;
-  state.projectLibrarySelectionId = activeProjectId;
-  writeStoredJsonRaw(EDITOR_PROJECT_LIBRARY_KEY, {
-    activeProjectId,
-    projects: mergedProjects,
-  });
-  writeStoredJsonRaw(EDITOR_ACTIVE_PROJECT_ID_KEY, activeProjectId ?? "");
-
-  const record = getActiveProjectRecord();
-  if (!record) {
-    throw new Error("Unable to activate the loaded project file.");
-  }
-
-  applyProjectRecord(record);
-  const loadedDestination = resolveLoadedProjectFileDestination({
-    requestedFilePath: options.filePath,
-    recordFilePath: getProjectRecordFilePath(record),
-    fileHandle: options.fileHandle ?? null,
-    useRecordFilePath: options.useRecordFilePathAsDestination === true,
-  });
-  setProjectFilePath(loadedDestination.filePath, loadedDestination.fileHandle, {
-    skipProjectFileAutosave: true,
-    persistDesktopProjectFilePath: loadedDestination.isDurablePath,
-    clearDesktopProjectFilePath: !loadedDestination.isDurablePath,
-  });
-  refreshScenes();
-  state.selectedIssueId = state.workspace.selectionDefaults.issueId ?? null;
-  state.selectedNodeId = state.workspace.selectionDefaults.nodeId ?? null;
-  state.selectedEntityId = state.workspace.selectionDefaults.entityId ?? null;
-  syncSelectionFromBlock(
-    state.workspace.selectionDefaults.lineId ?? state.scenes[0]?.blocks[0]?.blockId ?? null,
-  );
-  syncWritingTargetState({ forceReload: true });
-  state.projectFileStatus = `Loaded ${mergedProjects.length} project${mergedProjects.length === 1 ? "" : "s"} from ${options.sourceLabel ?? "file"}`;
-  render();
-  primeProjectFileAutosave();
-  recordWritingTargetSnapshot({ immediate: true, reason: options.reason ?? "load-project-file", skipProjectFileAutosave: true });
-
-  if (state.workspace?.project?.stats) {
-    reportBrowserLog("info", "project-file", "Loaded a project library from disk.", {
-      filePath: options.filePath ?? null,
-      projectId: record.id,
-      title: record.title,
-      chapters: state.workspace.project.stats.chapterCount,
-      scenes: state.workspace.project.stats.sceneCount,
-      templates: state.workspace.world?.stats?.templateCount ?? 0,
-      mode: options.mode ?? "unknown",
-    });
-  }
+  await projectPersistenceService.hydrateProjectLibraryFromLoadedSnapshot(loadedSnapshot, options);
 }
 
 async function loadProjectLibraryFromBrowserHandle(handle) {
-  if (!handle) {
-    throw new Error("A browser file handle is required.");
-  }
-
-  state.projectFileBusy = true;
-  state.projectFileStatus = "Loading project file...";
-  renderHeader();
-
-  try {
-    const snapshot = await readProjectLibraryFromBrowserHandle(handle);
-    await loadProjectLibrarySnapshotIntoState(snapshot, {
-      // Intent: browser handles provide the writable destination even though they hide the absolute path.
-      filePath: "",
-      fileHandle: handle,
-      sourceLabel: "browser file",
-      reason: "load-project-file",
-      mode: "browser-handle",
-    });
-  } catch (error) {
-    state.projectFileStatus = `Load failed: ${error instanceof Error ? error.message : String(error)}`;
-    reportBrowserLog("error", "project-file", "Project file load failed.", {
-      filePath: handle.name ?? null,
-      error,
-      mode: "browser-handle",
-    });
-    renderHeader();
-  } finally {
-    state.projectFileBusy = false;
-    if (state.projectFileAutosaveDirty) {
-      queueProjectFileAutosave();
-    }
-    renderHeader();
-  }
+  await projectPersistenceService.loadProjectSnapshotFromBrowserHandle(handle);
 }
 
 async function loadProjectLibraryFromBrowserFile(file, options = {}) {
-  if (!file) {
-    throw new Error("A browser file is required.");
-  }
-
-  state.projectFileBusy = true;
-  state.projectFileStatus = "Loading project file...";
-  renderHeader();
-
-  try {
-    const snapshot = await readProjectLibraryFromBrowserFile(file);
-    await loadProjectLibrarySnapshotIntoState(snapshot, {
-      filePath: typeof options.filePath === "string" && options.filePath.trim()
-        ? options.filePath
-        : "",
-      fileHandle: options.fileHandle ?? null,
-      sourceLabel: options.sourceLabel ?? "browser file",
-      reason: options.reason ?? "load-project-file",
-      mode: options.mode ?? "browser-file",
-    });
-  } catch (error) {
-    state.projectFileStatus = `Load failed: ${error instanceof Error ? error.message : String(error)}`;
-    reportBrowserLog("error", "project-file", "Project file load failed.", {
-      filePath: file.name ?? null,
-      error,
-      mode: options.mode ?? "browser-file",
-    });
-    renderHeader();
-  } finally {
-    state.projectFileBusy = false;
-    if (state.projectFileAutosaveDirty) {
-      queueProjectFileAutosave();
-    }
-    renderHeader();
-  }
+  await projectPersistenceService.loadProjectSnapshotFromBrowserFile(file, options);
 }
 
 function downloadProjectLibrarySnapshot(snapshot, fileName = getSuggestedProjectFileName()) {
-  return downloadProjectLibrarySnapshotFromAdapter(snapshot, { fileName });
+  return projectPersistenceService.exportProjectLibrarySnapshot(snapshot, fileName);
 }
 
 async function loadProjectLibraryFromFile() {
-  if (canUseBrowserOpenPicker()) {
-    try {
-      const [handle] = await window.showOpenFilePicker({
-        multiple: false,
-        types: getProjectFilePickerTypes(),
-      });
-      if (!handle) {
-        state.projectFileStatus = "Load cancelled.";
-        renderHeader();
-        return;
-      }
-
-      await loadProjectLibraryFromBrowserHandle(handle);
-      return;
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") {
-        state.projectFileStatus = "Load cancelled.";
-        renderHeader();
-        return;
-      }
-
-      // Fall back to the path-based route below.
-      state.projectFileStatus = `Load picker unavailable: ${error instanceof Error ? error.message : String(error)}`;
-      renderHeader();
-    }
-  }
-
-  try {
-    const file = await promptForProjectFileFromInput();
-    if (file) {
-      await loadProjectLibraryFromBrowserFile(file, {
-        // Intent: the loaded project record should decide the durable path, not the previous selection.
-        filePath: "",
-        fileHandle: null,
-        sourceLabel: "browser file",
-        reason: "load-project-file",
-        mode: "browser-input",
-      });
-      return;
-    }
-
-    state.projectFileStatus = "Load cancelled.";
-    renderHeader();
-    return;
-  } catch (error) {
-    state.projectFileStatus = `Load picker unavailable: ${error instanceof Error ? error.message : String(error)}`;
-    renderHeader();
-  }
-
-  const filePath = normalizeProjectFilePath(state.projectFilePath);
-  if (!filePath) {
-    state.projectFileStatus = "Enter a project file path first.";
-    renderHeader();
-    return;
-  }
-
-  state.projectFileBusy = true;
-  state.projectFileStatus = "Loading project file...";
-  renderHeader();
-
-  try {
-    const snapshot = await readProjectLibraryFromDesktopPath(filePath, {
-      fetchJsonFromDesktopApi,
-    });
-    await loadProjectLibrarySnapshotIntoState(snapshot, {
-      filePath,
-      fileHandle: null,
-      sourceLabel: "desktop file",
-      reason: "load-project-file",
-      mode: "desktop-path",
-    });
-  } catch (error) {
-    state.projectFileStatus = `Load failed: ${error instanceof Error ? error.message : String(error)}`;
-    reportBrowserLog("error", "project-file", "Project file load failed.", {
-      filePath,
-      error,
-      mode: "desktop-path",
-    });
-    renderHeader();
-  } finally {
-    state.projectFileBusy = false;
-    renderHeader();
-  }
+  await projectPersistenceService.loadProjectSnapshotFromFile();
 }
 
 async function saveCurrentProject() {
-  beginProjectCacheSuppression();
-  beginProjectFileAutosaveSuppression();
-  try {
-    commitWritingTargetDraft();
-    recordWritingTargetSnapshot({ immediate: true, reason: "save-project", skipProjectFileAutosave: true });
-    if (state.projectFileHandle) {
-      try {
-        await saveProjectLibraryToBrowserHandle(state.projectFileHandle);
-      } catch {
-        // The browser-library save still succeeded; the file status now carries the error.
-      }
-      renderHeader();
-      if (state.workspace?.project?.stats) {
-        reportBrowserLog("info", "project-library", "Saved current project to library.", {
-          projectId: state.activeProjectId ?? state.workspace.project.id,
-          title: state.projectTitle,
-          chapters: state.workspace.project.stats.chapterCount,
-          scenes: state.workspace.project.stats.sceneCount,
-          templates: state.workspace.world?.stats?.templateCount ?? 0,
-          target: "browser-handle",
-        });
-      }
-      return;
-    }
-
-    const filePath = normalizeProjectFilePath(state.projectFilePath);
-    if (filePath) {
-      try {
-        await saveProjectLibraryToFile(filePath);
-      } catch {
-        // The browser-library save still succeeded; the file status now carries the error.
-      }
-    } else {
-      state.projectFileStatus = "Saved to the browser project library. Use Save as file to create a manuscript file.";
-      renderHeader();
-    }
-    renderHeader();
-    if (state.workspace?.project?.stats) {
-      reportBrowserLog("info", "project-library", "Saved current project to library.", {
-        projectId: state.activeProjectId ?? state.workspace.project.id,
-        title: state.projectTitle,
-        chapters: state.workspace.project.stats.chapterCount,
-        scenes: state.workspace.project.stats.sceneCount,
-        templates: state.workspace.world?.stats?.templateCount ?? 0,
-        target: state.projectFileHandle ? "browser-handle" : "desktop-path",
-      });
-    }
-  } finally {
-    endProjectFileAutosaveSuppression();
-    endProjectCacheSuppression();
-  }
+  await projectPersistenceService.saveProjectSnapshot({ reason: "save-project" });
 }
 
 async function saveCurrentProjectFileAs() {
-  beginProjectCacheSuppression();
-  beginProjectFileAutosaveSuppression();
-  try {
-    if (canUseBrowserSavePicker()) {
-      try {
-        const handle = await window.showSaveFilePicker({
-          suggestedName: getSuggestedProjectFileName(),
-          types: getProjectFilePickerTypes(),
-        });
-        commitWritingTargetDraft();
-        const browserHandleProjectFilePath = handle.name || getSuggestedProjectFileName();
-        setProjectFilePath(browserHandleProjectFilePath, handle, {
-          skipProjectFileAutosave: true,
-          persistDesktopProjectFilePath: hasProjectFilePath(browserHandleProjectFilePath),
-          clearDesktopProjectFilePath: !hasProjectFilePath(browserHandleProjectFilePath),
-        });
-        const snapshot = createProjectLibrarySnapshotForFile();
-        await saveProjectLibraryToBrowserHandle(handle, snapshot);
-        return;
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") {
-          state.projectFileStatus = "Save As cancelled.";
-          renderHeader();
-          return;
-        }
-
-        state.projectFileStatus = `Save picker unavailable: ${error instanceof Error ? error.message : String(error)}`;
-        renderHeader();
-      }
-    }
-
-    const typedPath = normalizeProjectFilePath(state.projectFilePath);
-    if (hasProjectFilePath(typedPath)) {
-      commitWritingTargetDraft();
-      setProjectFilePath(typedPath, null, {
-        skipProjectFileAutosave: true,
-        persistDesktopProjectFilePath: true,
-      });
-      const snapshot = createProjectLibrarySnapshotForFile();
-      await saveProjectLibraryToFile(typedPath, snapshot);
-      return;
-    }
-
-    commitWritingTargetDraft();
-    const snapshot = createProjectLibrarySnapshotForFile();
-    const downloadedName = downloadProjectLibrarySnapshot(snapshot, typedPath || getSuggestedProjectFileName());
-    state.projectFileStatus = `Downloaded ${downloadedName}. Use Load file to reopen it later.`;
-    renderHeader();
-  } finally {
-    endProjectFileAutosaveSuppression();
-    endProjectCacheSuppression();
-  }
+  await projectPersistenceService.saveProjectSnapshotAs();
 }
 
 function createProject() {
   const now = new Date().toISOString();
   const baseWorkspace = state.workspace ?? state.projectLibrary[0]?.workspace;
-  const title = "Untitled Project";
+  const defaultTitle = "Untitled Project";
+  const requestedTitle = promptForProjectTitle({
+    message: "Name your new project:",
+    defaultTitle,
+    windowRef: window,
+  });
+  if (requestedTitle === null) {
+    state.projectFileStatus = "Project creation cancelled.";
+    uiEventDispatcherLog.info("user-action", "project.create.cancelled", "Project creation cancelled by user.");
+    renderHeader();
+    return;
+  }
+  const title = requestedTitle.trim() || defaultTitle;
   const projectId = `project-${now.replace(/[^0-9A-Za-z]/g, "").slice(0, 14) || Date.now()}`;
   const workspace = createBlankWorkspaceSnapshot(baseWorkspace, projectId, title, now);
   const record = createProjectLibraryRecordFromWorkspace(workspace, {
@@ -10097,6 +7496,10 @@ function createProject() {
   });
 
   state.projectLibrary = [...state.projectLibrary.filter((project) => project.id !== record.id), record];
+  projectPersistenceLog.info("state-change", "project.create", "Created a new project record.", {
+    projectId: record.id,
+    title: record.title,
+  });
   applyProjectRecord(record);
   refreshScenes();
   state.selectedIssueId = state.workspace.selectionDefaults.issueId ?? null;
@@ -10125,12 +7528,16 @@ async function loadProjectSource() {
   const projectPath = state.projectSourcePath.trim();
   if (!projectPath) {
     state.projectSourceStatus = "Enter a local project source path.";
+    projectLoadGateLog.warn("validation", "project-source.load.missing-path", "Load project source skipped because no source path was entered.");
     renderHeader();
     return;
   }
 
   state.projectSourceBusy = true;
   state.projectSourceStatus = "Loading project source...";
+  projectLoadGateLog.info("user-action", "project-source.load.begin", "Loading project source from path.", {
+    projectPath,
+  });
   renderHeader();
 
   try {
@@ -10156,14 +7563,13 @@ async function loadProjectSource() {
       mergedLibrary,
     );
 
-    state.projectLibrary = mergedLibrary.projects;
-    state.activeProjectId = activeProjectId;
-    state.projectLibrarySelectionId = activeProjectId;
-    writeStoredJsonRaw(EDITOR_PROJECT_LIBRARY_KEY, {
+    const persistedLibrary = projectService.saveProjectLibrarySnapshot({
       activeProjectId,
       projects: mergedLibrary.projects,
     });
-    writeStoredJsonRaw(EDITOR_ACTIVE_PROJECT_ID_KEY, activeProjectId ?? "");
+    state.projectLibrary = persistedLibrary.projects;
+    state.activeProjectId = persistedLibrary.activeProjectId;
+    state.projectLibrarySelectionId = persistedLibrary.activeProjectId;
 
     const record = getActiveProjectRecord();
     if (!record) {
@@ -10178,12 +7584,18 @@ async function loadProjectSource() {
     syncSelectionFromBlock(
       state.workspace.selectionDefaults.lineId ?? state.scenes[0]?.blocks[0]?.blockId ?? null,
     );
+    loadSceneDraftIntoState(state.selectedSceneId ?? state.scenes[0]?.sceneId ?? "");
     syncWritingTargetState({ forceReload: true });
     if (state.workspace?.project?.stats) {
       state.projectSourceStatus = `Loaded ${record.title} · ${state.workspace.project.stats.chapterCount} chapters, ${state.workspace.project.stats.sceneCount} scenes`;
     }
     render();
     recordWritingTargetSnapshot({ immediate: true, reason: "load-project-source", skipProjectFileAutosave: true });
+    projectLoadGateLog.info("lifecycle", "project-source.load.completed", "Project source loaded and applied.", {
+      projectPath,
+      projectId: record.id,
+      title: record.title,
+    });
 
     if (state.workspace?.project?.stats) {
       reportBrowserLog("info", "project-source", "Loaded a project source into saved projects.", {
@@ -10197,6 +7609,10 @@ async function loadProjectSource() {
     }
   } catch (error) {
     state.projectSourceStatus = `Load failed: ${error instanceof Error ? error.message : String(error)}`;
+    projectLoadGateLog.error("persistence", "project-source.load.failed", "Project source load failed.", {
+      projectPath,
+      error,
+    });
     reportBrowserLog("error", "project-source", "Project source load failed.", {
       projectPath,
       error,
@@ -10204,6 +7620,10 @@ async function loadProjectSource() {
     renderHeader();
   } finally {
     state.projectSourceBusy = false;
+    projectLoadGateLog.debug("lifecycle", "project-source.load.end", "Project source load flow finished.", {
+      projectPath,
+      status: state.projectSourceStatus,
+    });
     renderHeader();
   }
 }
@@ -10214,6 +7634,31 @@ function createBlankWorkspaceSnapshot(baseWorkspace, projectId, title, now) {
     typeof templateWorkspace.workspaceTitle === "string" && templateWorkspace.workspaceTitle.trim()
       ? templateWorkspace.workspaceTitle
       : "ABetterNovelAuthoringEnvironment";
+  const chapterId = "chapter-0001";
+  const sceneId = "scene-0001";
+  const blockId = "block-0001";
+  const paragraphId = "paragraph-0001";
+  const chapterTitle = "Chapter 1";
+  const sceneTitle = "Scene 1";
+  const starterLine = {
+    id: blockId,
+    blockId,
+    paragraphId,
+    lineNumber: 1,
+    sceneLineNumber: 1,
+    kind: "narration",
+    speakerLabel: "",
+    text: "",
+    chapterId,
+    chapterTitle,
+    sceneId,
+    sceneTitle,
+    sceneSynopsis: "",
+    startsChapter: true,
+    startsScene: true,
+    issueIds: [],
+    eventTagIds: [],
+  };
   const project = {
     id: projectId,
     title,
@@ -10223,18 +7668,58 @@ function createBlankWorkspaceSnapshot(baseWorkspace, projectId, title, now) {
       refId: projectId,
       title,
       order: 1,
-      children: [],
+      children: [
+        {
+          id: `binder-${chapterId}`,
+          kind: "chapter",
+          refId: chapterId,
+          title: chapterTitle,
+          order: 1,
+          children: [
+            {
+              id: `binder-${sceneId}`,
+              kind: "scene",
+              refId: sceneId,
+              title: sceneTitle,
+              order: 1,
+              children: [],
+            },
+          ],
+        },
+      ],
     },
     stats: {
-      chapterCount: 0,
-      sceneCount: 0,
-      lineCount: 0,
+      chapterCount: 1,
+      sceneCount: 1,
+      lineCount: 1,
       issueCount: 0,
       eventCount: 0,
       characterCount: 0,
     },
-    navigationTargets: {},
-    lines: [],
+    navigationTargets: {
+      [projectId]: {
+        refId: projectId,
+        kind: "project",
+        title,
+        lineId: blockId,
+        lineNumber: 1,
+      },
+      [chapterId]: {
+        refId: chapterId,
+        kind: "chapter",
+        title: chapterTitle,
+        lineId: blockId,
+        lineNumber: 1,
+      },
+      [sceneId]: {
+        refId: sceneId,
+        kind: "scene",
+        title: sceneTitle,
+        lineId: blockId,
+        lineNumber: 1,
+      },
+    },
+    lines: [starterLine],
     issues: [],
     eventTags: [],
     characters: [],
@@ -10316,14 +7801,14 @@ function createBlankWorkspaceSnapshot(baseWorkspace, projectId, title, now) {
         status: "paused",
         currentAnchor: {
           projectId,
-          chapterId: "",
-          sceneId: "",
-          blockId: "",
-          paragraphId: "",
+          chapterId,
+          sceneId,
+          blockId,
+          paragraphId,
           startOffset: 0,
           endOffset: 0,
         },
-        currentLineNumber: 0,
+        currentLineNumber: 1,
         currentText: "",
         updatedAt: now,
       },
@@ -10337,7 +7822,7 @@ function createBlankWorkspaceSnapshot(baseWorkspace, projectId, title, now) {
       recordings: [],
     },
     selectionDefaults: {
-      lineId: "",
+      lineId: blockId,
     },
   };
 }
@@ -10957,6 +8442,7 @@ function selectSidePanel(panelId) {
   state.sidePanelMode = panelId;
   if (panelId === "issues") {
     state.selectedPassageNoteId = null;
+    state.selectedIssueId = null;
   } else {
     const selectedNote = state.passageNotes.find((note) =>
       note.noteType === panelId && note.id === state.selectedPassageNoteId,
@@ -12450,6 +9936,10 @@ function applySpellcheckSuggestionFromMenu(target) {
 function updateSceneDraft(sceneId, mutate, options = {}) {
   const scene = getScene(sceneId);
   if (!scene) {
+    sceneStorageLog.warn("validation", "scene.update.skipped", "Scene update skipped because scene was not found.", {
+      sceneId: sceneId ?? "",
+      reason: options.reason ?? "scene-draft",
+    });
     return;
   }
 
@@ -12458,6 +9948,11 @@ function updateSceneDraft(sceneId, mutate, options = {}) {
   const hadActiveSession = previousWritingTargetRecord?.sessionIsActive === true;
   const draft = cloneValue(state.sceneDrafts[sceneId] ?? createSceneDraft(scene));
   mutate(draft);
+  sceneStorageLog.debug("state-change", "scene.update.mutate", "Applying scene draft mutation.", {
+    sceneId,
+    reason: options.reason ?? "scene-draft",
+    immediate: options.immediate === true,
+  });
   state.sceneDrafts = {
     ...state.sceneDrafts,
     [sceneId]: draft,
@@ -12466,6 +9961,32 @@ function updateSceneDraft(sceneId, mutate, options = {}) {
   refreshScenes();
   const markSessionActivity = options.markSessionActivity !== false;
   const currentWordCount = getCurrentManuscriptWordCount();
+  const wordDelta = currentWordCount - previousWordCount;
+  manuscriptStateLog.info("state-change", "manuscript.word-count.changed", "Scene draft mutation changed manuscript word count.", {
+    sceneId,
+    previousWordCount,
+    currentWordCount,
+    wordDelta,
+    reason: options.reason ?? "scene-draft",
+  });
+  if (wordDelta !== 0) {
+    const nowMs = Date.now();
+    const shouldLogTypingMetric = options.immediate === true
+      || nowMs - writingTargetDebugLastTypingLogAt >= WRITING_TARGET_DEBUG_TYPING_LOG_MIN_INTERVAL_MS
+      || writingTargetDebugLastSceneTypingWordCount !== currentWordCount;
+    if (shouldLogTypingMetric) {
+      writingTargetDebugLastTypingLogAt = nowMs;
+      writingTargetDebugLastSceneTypingWordCount = currentWordCount;
+      logWritingTargetDebugEvent("info", "scene-draft.word-change", "Scene draft word count changed.", {
+        reason: options.reason ?? "scene-draft",
+        sceneId,
+        previousWordCount,
+        currentWordCount,
+        wordDelta,
+        selectedSceneId: state.selectedSceneId ?? "",
+      });
+    }
+  }
 
   if (markSessionActivity) {
     const currentWritingTargetRecord = getWritingTargetWorkingRecord();
@@ -12498,7 +10019,16 @@ function updateSceneDraft(sceneId, mutate, options = {}) {
     }
   }
 
-  persistCurrentProjectRecord();
+  persistCurrentProjectRecord({
+    changedSceneIds: [sceneId],
+    domain: "manuscript",
+    dirtyReason: "user-edit",
+    source: "updateSceneDraft",
+  });
+  sceneStorageLog.debug("persistence", "scene.update.persisted", "Persisted scene draft mutation into project record.", {
+    sceneId,
+    changedSceneIds: [sceneId],
+  });
   const shouldCaptureImmediately = options.immediate === true || !hadActiveSession;
 
   syncHeaderLiveState();
@@ -12774,15 +10304,107 @@ function addTemplateDraft() {
   renderEntityPanel();
 }
 
+function sceneDraftHasSubstantiveBody(draft) {
+  if (!draft || typeof draft !== "object") {
+    return false;
+  }
+
+  if (typeof draft.editorText === "string" && draft.editorText.trim()) {
+    return true;
+  }
+
+  const blocks = Array.isArray(draft.blocks) ? draft.blocks : [];
+  return blocks.some((block) => typeof block?.text === "string" && block.text.trim().length > 0);
+}
+
+function loadSceneDraftIntoState(sceneId) {
+  if (typeof sceneId !== "string" || !sceneId.trim()) {
+    sceneStorageLog.warn("validation", "scene.load.skipped", "Scene draft load skipped because scene ID was empty.", {
+      sceneId: sceneId ?? "",
+    });
+    return;
+  }
+
+  const resolvedSceneId = sceneId.trim();
+  const existingDraft = state.sceneDrafts?.[resolvedSceneId] ?? null;
+  const existingHasBody = sceneDraftHasSubstantiveBody(existingDraft);
+  if (existingDraft && existingHasBody) {
+    return;
+  }
+
+  const projectRecord = getActiveProjectRecord();
+  if (!projectRecord) {
+    sceneStorageLog.warn("validation", "scene.load.skipped", "Scene draft load skipped because no active project record exists.", {
+      sceneId: resolvedSceneId,
+    });
+    return;
+  }
+
+  const loadedDraft = projectService.loadScene({
+    projectRecord,
+    sceneId: resolvedSceneId,
+  });
+  if (!loadedDraft) {
+    sceneStorageLog.warn("validation", "scene.load.missing", "Project service did not return a draft for requested scene.", {
+      projectId: projectRecord.id,
+      sceneId: resolvedSceneId,
+    });
+    return;
+  }
+
+  const loadedHasBody = sceneDraftHasSubstantiveBody(loadedDraft);
+  if (existingDraft && !existingHasBody && !loadedHasBody) {
+    return;
+  }
+  if (existingDraft && existingHasBody) {
+    return;
+  }
+
+  state.sceneDrafts = {
+    ...(state.sceneDrafts && typeof state.sceneDrafts === "object" ? state.sceneDrafts : {}),
+    [resolvedSceneId]: cloneValue(loadedDraft),
+  };
+  const storedRecord = getProjectRecordById(projectRecord.id);
+  if (storedRecord) {
+    storedRecord.sceneDrafts = {
+      ...(storedRecord.sceneDrafts && typeof storedRecord.sceneDrafts === "object"
+        ? storedRecord.sceneDrafts
+        : {}),
+      [resolvedSceneId]: cloneValue(loadedDraft),
+    };
+  }
+  refreshScenes();
+  sceneStorageLog.info("state-change", "scene.load.completed", "Loaded scene draft into runtime cache.", {
+    projectId: projectRecord.id,
+    sceneId: resolvedSceneId,
+    hadExistingDraft: existingDraft != null,
+    loadedHasBody,
+  });
+}
+
 function selectSceneById(sceneId) {
   const scene = getScene(sceneId);
   if (!scene) {
+    editorInteractionLog.warn("validation", "scene.select.missing", "Scene selection requested for missing scene ID.", {
+      sceneId: sceneId ?? "",
+    });
+    return;
+  }
+
+  loadSceneDraftIntoState(scene.sceneId);
+  const refreshedScene = getScene(scene.sceneId);
+  if (!refreshedScene) {
     return;
   }
 
   state.selectedIssueId = null;
-  state.selectedSceneId = scene.sceneId;
-  state.selectedBlockId = scene.blocks[0]?.blockId ?? null;
+  state.selectedSceneId = refreshedScene.sceneId;
+  state.selectedBlockId = refreshedScene.blocks[0]?.blockId ?? null;
+  editorInteractionLog.info("user-action", "scene.select", "Selected scene in manuscript binder.", {
+    sceneId: refreshedScene.sceneId,
+    chapterId: refreshedScene.chapterId ?? "",
+    blockId: state.selectedBlockId ?? "",
+  });
   render();
 }
 
@@ -12853,11 +10475,13 @@ function syncSelectionFromBlock(blockId) {
     return;
   }
 
-  state.selectedSceneId = scene.sceneId;
+  loadSceneDraftIntoState(scene.sceneId);
+  const resolvedScene = getScene(scene.sceneId) ?? scene;
+  state.selectedSceneId = resolvedScene.sceneId;
   state.selectedBlockId =
-    blockId && scene.blocks.some((block) => block.blockId === blockId)
+    blockId && resolvedScene.blocks.some((block) => block.blockId === blockId)
       ? blockId
-      : scene.blocks[0]?.blockId ?? null;
+      : resolvedScene.blocks[0]?.blockId ?? null;
 }
 
 function getSelectedScene() {
@@ -13526,10 +11150,6 @@ function reorderSceneGroupsForDropTarget(sceneGroups, sourceSceneId, dropTarget)
     targetChapterTitle = nextGroups[targetIndex].chapterTitle;
   }
 
-  if (insertIndex > sourceIndex) {
-    insertIndex -= 1;
-  }
-
   movedGroup.chapterId = targetChapterId;
   movedGroup.chapterTitle = targetChapterTitle;
   nextGroups.splice(insertIndex, 0, movedGroup);
@@ -13845,6 +11465,7 @@ function moveBinderScene(sceneId, dropTarget) {
     state.workspace.voice.renderJobs,
     rebuilt.sceneMetaBySceneId,
   );
+  syncStructureDraftScenesFromSceneGroups(nextSceneGroups);
 
   resetBinderSceneDragState();
   const existingChapterIds = new Set(
@@ -13862,15 +11483,81 @@ function moveBinderScene(sceneId, dropTarget) {
     }
   }
 
-  renderHeader();
-  renderBinderPanel();
-  renderConsolePanel();
-  syncSceneDocumentLayout();
+  // Intent: repaint on the next frame so native drag/drop can settle before the binder rerenders.
+  window.requestAnimationFrame(() => {
+    render();
+  });
+  return true;
+}
+
+function syncStructureDraftScenesFromSceneGroups(sceneGroups) {
+  if (!Array.isArray(state.structureDrafts?.scenes)) {
+    return false;
+  }
+
+  const orderedDraftScenes = [];
+  const draftSceneById = new Map();
+  let changed = false;
+
+  for (const draftScene of state.structureDrafts.scenes) {
+    if (!draftScene || typeof draftScene !== "object") {
+      continue;
+    }
+
+    const draftSceneId = typeof draftScene.sceneId === "string" ? draftScene.sceneId.trim() : "";
+    if (draftSceneId) {
+      draftSceneById.set(draftSceneId, draftScene);
+    }
+  }
+
+  for (const sceneGroup of Array.isArray(sceneGroups) ? sceneGroups : []) {
+    const draftScene = draftSceneById.get(sceneGroup.sceneId);
+    if (!draftScene) {
+      continue;
+    }
+
+    const nextDraftScene = { ...draftScene };
+    if (nextDraftScene.chapterId !== sceneGroup.chapterId) {
+      nextDraftScene.chapterId = sceneGroup.chapterId;
+      changed = true;
+    }
+    if (nextDraftScene.chapterTitle !== sceneGroup.chapterTitle) {
+      nextDraftScene.chapterTitle = sceneGroup.chapterTitle;
+      changed = true;
+    }
+
+    orderedDraftScenes.push(nextDraftScene);
+    draftSceneById.delete(sceneGroup.sceneId);
+  }
+
+  for (const draftScene of state.structureDrafts.scenes) {
+    if (!draftScene || typeof draftScene !== "object") {
+      continue;
+    }
+
+    const draftSceneId = typeof draftScene.sceneId === "string" ? draftScene.sceneId.trim() : "";
+    if (!draftSceneId || !draftSceneById.has(draftSceneId)) {
+      continue;
+    }
+
+    orderedDraftScenes.push(draftScene);
+    draftSceneById.delete(draftSceneId);
+  }
+
+  if (!changed) {
+    return false;
+  }
+
+  state.structureDrafts = {
+    ...cloneValue(state.structureDrafts),
+    scenes: orderedDraftScenes,
+  };
+  writeStoredJson(EDITOR_STRUCTURE_KEY, state.structureDrafts);
   return true;
 }
 
 function deleteSceneFromBinder(sceneId) {
-  const scene = getPersistentSceneById(sceneId);
+  const scene = getScene(sceneId);
   if (!scene || !state.workspace?.project) {
     hideBinderContextMenu();
     return false;
@@ -13893,18 +11580,16 @@ function deleteChapterFromBinder(chapterId) {
     return false;
   }
 
-  const sceneGroups = buildSceneGroupsFromProjectLines(state.workspace.project.lines);
-  const chapterGroup = sceneGroups.find((group) => group.chapterId === chapterId) ?? null;
-  if (!chapterGroup) {
+  const chapterScenes = getScenesForChapter(chapterId);
+  if (!chapterScenes.length) {
     hideBinderContextMenu();
     return false;
   }
 
-  const removedSceneIds = sceneGroups
-    .filter((group) => group.chapterId === chapterId)
-    .map((group) => group.sceneId);
+  const removedSceneIds = chapterScenes.map((scene) => scene.sceneId);
+  const chapterTitle = chapterScenes[0]?.chapterTitle || "Untitled chapter";
   const confirmed = window.confirm(
-    `Delete "${chapterGroup.chapterTitle}" and all ${removedSceneIds.length} of its scene${removedSceneIds.length === 1 ? "" : "s"}?\n\nThis removes their tasks, notes, and linked diagnostics.`,
+    `Delete "${chapterTitle}" and all ${removedSceneIds.length} of its scene${removedSceneIds.length === 1 ? "" : "s"}?\n\nThis removes their tasks, notes, and linked diagnostics.`,
   );
   if (!confirmed) {
     hideBinderContextMenu();
@@ -13920,31 +11605,55 @@ function removeScenesFromProject(removedSceneIds) {
   }
 
   const sceneGroups = buildSceneGroupsFromProjectLines(state.workspace.project.lines);
+  const currentScenes = Array.isArray(state.scenes) ? state.scenes : [];
   const removedSet = new Set(
     Array.isArray(removedSceneIds)
       ? removedSceneIds.filter((sceneId) => typeof sceneId === "string" && sceneId.trim())
       : [],
   );
-  const removedGroups = sceneGroups.filter((group) => removedSet.has(group.sceneId));
-  if (!removedGroups.length) {
+  const removedScenes = currentScenes.filter((scene) => removedSet.has(scene.sceneId));
+  if (!removedScenes.length) {
     return false;
   }
 
-  const removedChapterIds = new Set(removedGroups.map((group) => group.chapterId));
+  const removedChapterIds = new Set(removedScenes.map((scene) => scene.chapterId));
+  const remainingSceneIds = new Set(
+    currentScenes
+      .filter((scene) => !removedSet.has(scene.sceneId))
+      .map((scene) => scene.sceneId),
+  );
+  const remainingChapterIds = new Set(
+    currentScenes
+      .filter((scene) => !removedSet.has(scene.sceneId))
+      .map((scene) => scene.chapterId),
+  );
+  const remainingBlockIds = new Set(
+    currentScenes
+      .filter((scene) => !removedSet.has(scene.sceneId))
+      .flatMap((scene) => scene.blocks.map((block) => block.blockId).filter(Boolean)),
+  );
   const fallbackSceneId = getFallbackSceneIdAfterRemoval(sceneGroups, removedSet);
   const nextSceneGroups = sceneGroups.filter((group) => !removedSet.has(group.sceneId));
   const rebuilt = rebuildProjectSceneStateFromGroups(state.workspace.project, nextSceneGroups);
-  const remainingSceneIds = new Set(rebuilt.sceneMetaBySceneId.keys());
-  const remainingBlockIds = new Set(rebuilt.lineByBlockId.keys());
+  const remainingIssues = rebuilt.issues.filter((issue) =>
+    isManuscriptAnchorStillPresent(issue, remainingSceneIds, remainingBlockIds),
+  );
+  const remainingEventTags = rebuilt.eventTags.filter((eventTag) =>
+    isManuscriptAnchorStillPresent(eventTag, remainingSceneIds, remainingBlockIds),
+  );
 
   state.workspace.project = {
     ...state.workspace.project,
     binder: rebuilt.binder,
-    stats: rebuilt.stats,
+    stats: {
+      ...rebuilt.stats,
+      issueCount: remainingIssues.length,
+      eventCount: remainingEventTags.length,
+    },
     navigationTargets: rebuilt.navigationTargets,
     lines: rebuilt.lines,
-    issues: rebuilt.issues,
-    eventTags: rebuilt.eventTags,
+    issues: remainingIssues,
+    eventTags: remainingEventTags,
   };
 
   state.sceneDrafts = Object.fromEntries(
@@ -14041,6 +11750,8 @@ function removeScenesFromProject(removedSceneIds) {
   state.editingSceneTitleId = removedSet.has(state.editingSceneTitleId)
     ? null
     : state.editingSceneTitleId;
+  state.collapsedChapterIds = state.collapsedChapterIds.filter((chapterId) => remainingChapterIds.has(chapterId));
+  persistCollapsedChapterState(state.activeProjectId, state.collapsedChapterIds);
   state.workspace.selectionDefaults = {
     ...(state.workspace.selectionDefaults ?? {}),
     lineId: state.selectedBlockId ?? "",
@@ -14052,6 +11763,17 @@ function removeScenesFromProject(removedSceneIds) {
   render();
   syncSceneDocumentLayout();
   return true;
+}
+
+function isManuscriptAnchorStillPresent(item, remainingSceneIds, remainingBlockIds) {
+  // Intent: drop diagnostics and event tags tied to deleted manuscript anchors while preserving project-level records.
+  const blockId = typeof item?.blockId === "string" ? item.blockId : "";
+  if (blockId) {
+    return remainingBlockIds.has(blockId);
+  }
+
+  const sceneId = typeof item?.sceneId === "string" ? item.sceneId : "";
+  return sceneId ? remainingSceneIds.has(sceneId) : true;
 }
 
 function getFallbackSceneIdAfterRemoval(sceneGroups, removedSet) {
@@ -14121,7 +11843,9 @@ function trimSceneWhitespace(sceneId) {
 
 function clearBinderSceneDropIndicators() {
   document
-    .querySelectorAll(".binder-scene.is-drop-before, .binder-scene.is-drop-after, .binder-chapter.is-drop-start")
+    .querySelectorAll(
+      ".binder-scene.is-drop-before, .binder-scene.is-drop-after, .binder-scene-drop-slot.is-drop-before, .binder-scene-drop-slot.is-drop-after, .binder-chapter.is-drop-start",
+    )
     .forEach((node) => {
       if (node instanceof HTMLElement) {
         node.classList.remove("is-drop-before", "is-drop-after", "is-drop-start");
@@ -14158,7 +11882,7 @@ function applyBinderSceneDropIndicator(dropTarget) {
   binderSceneDragState.dropTarget = dropTarget;
   const selector = dropTarget.type === "chapter-start"
     ? `[data-binder-chapter-drop-id="${CSS.escape(dropTarget.chapterId)}"]`
-    : `[data-binder-scene-drop-id="${CSS.escape(dropTarget.sceneId)}"]`;
+    : `[data-binder-scene-drop-slot-id="${CSS.escape(dropTarget.sceneId)}"][data-binder-scene-drop-position="${CSS.escape(dropTarget.type)}"], [data-binder-scene-drop-id="${CSS.escape(dropTarget.sceneId)}"]`;
   const dropElement = document.querySelector(selector);
   if (!(dropElement instanceof HTMLElement)) {
     return;
@@ -14207,6 +11931,27 @@ function resolveBinderSceneDropTarget(event) {
     };
   }
 
+  const sceneDropSlot = target.closest("[data-binder-scene-drop-slot-id]");
+  if (sceneDropSlot instanceof HTMLElement) {
+    const sceneId = sceneDropSlot.dataset.binderSceneDropSlotId;
+    const position = sceneDropSlot.dataset.binderSceneDropPosition === "after" ? "after" : "before";
+    if (!sceneId || sceneId === binderSceneDragState.sourceSceneId) {
+      return null;
+    }
+
+    const scene = getPersistentSceneById(sceneId);
+    if (!scene) {
+      return null;
+    }
+
+    return {
+      type: position,
+      sceneId,
+      chapterId: scene.chapterId,
+      chapterTitle: scene.chapterTitle,
+    };
+  }
+
   const chapterDropTarget = target.closest("[data-binder-chapter-drop-id]");
   if (chapterDropTarget instanceof HTMLElement) {
     const chapterId = chapterDropTarget.dataset.binderChapterDropId;
@@ -14214,15 +11959,54 @@ function resolveBinderSceneDropTarget(event) {
       return null;
     }
 
-    const firstSceneInChapter = getScenesForChapter(chapterId).find((candidate) => isPersistentScene(candidate));
-    if (!firstSceneInChapter) {
+    const chapterScenes = getScenesForChapter(chapterId).filter((candidate) => isPersistentScene(candidate));
+    if (!chapterScenes.length) {
       return null;
     }
 
+    // Intent: map chapter-body drops to the nearest persistent scene boundary so end-of-chapter drops land after the last scene instead of collapsing to the first placeholder.
+    const pointerY = Number(event.clientY);
+    const chapterSceneTargets = chapterScenes
+      .map((scene) => {
+        const sceneDropTarget = document.querySelector(`[data-binder-scene-drop-id="${CSS.escape(scene.sceneId)}"]`);
+        if (!(sceneDropTarget instanceof HTMLElement)) {
+          return null;
+        }
+
+        const rect = sceneDropTarget.getBoundingClientRect();
+        return {
+          scene,
+          midpoint: rect.top + (rect.height / 2),
+        };
+      })
+      .filter(Boolean)
+      .sort((left, right) => left.midpoint - right.midpoint);
+
+    if (!chapterSceneTargets.length) {
+      const firstSceneInChapter = chapterScenes[0];
+      return {
+        type: "before",
+        sceneId: firstSceneInChapter.sceneId,
+        chapterId: firstSceneInChapter.chapterId,
+        chapterTitle: firstSceneInChapter.chapterTitle,
+      };
+    }
+
+    let nearestTarget = chapterSceneTargets[0];
+    let nearestDistance = Math.abs(pointerY - nearestTarget.midpoint);
+    for (const candidate of chapterSceneTargets) {
+      const candidateDistance = Math.abs(pointerY - candidate.midpoint);
+      if (candidateDistance < nearestDistance) {
+        nearestTarget = candidate;
+        nearestDistance = candidateDistance;
+      }
+    }
+
     return {
-      type: "chapter-start",
-      chapterId: firstSceneInChapter.chapterId,
-      chapterTitle: firstSceneInChapter.chapterTitle,
+      type: pointerY < nearestTarget.midpoint ? "before" : "after",
+      sceneId: nearestTarget.scene.sceneId,
+      chapterId: nearestTarget.scene.chapterId,
+      chapterTitle: nearestTarget.scene.chapterTitle,
     };
   }
 
@@ -14328,9 +12112,15 @@ function updateFocusedLineCard() {
   renderConsolePanel();
 }
 
-// Intent: isolate browser localStorage reads so corrupt values fail safely instead of breaking boot.
+// Intent: keep panel widths clamped and optionally persisted through the preference boundary.
 function syncLayoutWidths(persist = false) {
   const workspace = document.querySelector(".workspace-grid");
+  const workspaceWidth = workspace instanceof HTMLElement ? workspace.getBoundingClientRect().width : 0;
+  const availableWidth = Math.max(0, workspaceWidth - (PANEL_RESIZER_WIDTH * 2));
+  if (!persist && !layoutResizeSession && availableWidth > 0) {
+    restorePanelWidthsFromUserSettings(availableWidth);
+  }
+
   const binderWidth = clampNumber(state.binderPanelWidth, MIN_BINDER_PANEL_WIDTH, Number.POSITIVE_INFINITY);
   const consoleWidth = clampNumber(state.consoleDockWidth, MIN_CONSOLE_PANEL_WIDTH, Number.POSITIVE_INFINITY);
   const currentConsoleWidth = state.consoleDockCollapsed
@@ -14340,9 +12130,7 @@ function syncLayoutWidths(persist = false) {
   let nextBinderWidth = binderWidth;
   let nextConsoleWidth = consoleWidth;
 
-  if (workspace instanceof HTMLElement && workspace.getBoundingClientRect().width > 0) {
-    const rect = workspace.getBoundingClientRect();
-    const availableWidth = Math.max(0, rect.width - (PANEL_RESIZER_WIDTH * 2));
+  if (availableWidth > 0) {
     const maxBinderWidth = Math.max(
       MIN_BINDER_PANEL_WIDTH,
       availableWidth - MIN_MANUSCRIPT_PANEL_WIDTH - currentConsoleWidth,
@@ -14382,10 +12170,53 @@ function syncLayoutWidths(persist = false) {
   );
 
   if (persist) {
+    persistPanelResizerUserSettings(availableWidth);
     writeStoredJsonRaw(EDITOR_BINDER_WIDTH_KEY, state.binderPanelWidth);
     writeStoredJsonRaw(EDITOR_CONSOLE_WIDTH_KEY, state.consoleDockWidth);
     persistCurrentProjectRecord();
   }
+}
+
+function restorePanelWidthsFromUserSettings(availableWidth) {
+  // Intent: restore project-file user settings as proportions of the current workspace width.
+  const leftWidth = panelWidthFromPercent(state.userSettingPanelResizerLeftPercent, availableWidth);
+  const rightWidth = panelWidthFromPercent(state.userSettingPanelResizerRightPercent, availableWidth);
+  if (leftWidth !== null) {
+    state.binderPanelWidth = leftWidth;
+  }
+  if (rightWidth !== null) {
+    state.consoleDockWidth = rightWidth;
+  }
+}
+
+function persistPanelResizerUserSettings(availableWidth) {
+  // Intent: save layout handles with userSetting-prefixed names so the values can later move to profiles.
+  if (availableWidth <= 0) {
+    return;
+  }
+
+  state.userSettingPanelResizerLeftPercent = panelWidthToPercent(state.binderPanelWidth, availableWidth);
+  state.userSettingPanelResizerRightPercent = panelWidthToPercent(state.consoleDockWidth, availableWidth);
+}
+
+function panelWidthFromPercent(percent, availableWidth) {
+  const normalizedPercent = normalizePanelResizerPercent(percent);
+  return normalizedPercent === null || availableWidth <= 0
+    ? null
+    : Math.round((availableWidth * normalizedPercent) / 100);
+}
+
+function panelWidthToPercent(width, availableWidth) {
+  return availableWidth > 0
+    ? normalizePanelResizerPercent((Number(width) / availableWidth) * 100)
+    : null;
+}
+
+function normalizePanelResizerPercent(value) {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue)
+    ? Math.round(clampNumber(numericValue, 0, 100) * 10) / 10
+    : null;
 }
 
 function clampNumber(value, min, max) {
@@ -14398,11 +12229,29 @@ function clampNumber(value, min, max) {
 }
 
 function writeStoredJson(storageKey, value) {
-  writeStoredJsonRaw(storageKey, value);
+  localStorageAdapterLog.debug("file-access", "local-storage.write", "Persisting user preference key.", {
+    storageKey,
+    valueType: Array.isArray(value) ? "array" : typeof value,
+  });
+  projectService.saveUserPreference(storageKey, value);
 
   if (PROJECT_STATE_STORAGE_KEYS.has(storageKey)) {
     persistCurrentProjectRecord();
   }
+}
+
+// Intent: expose one stable runtime bridge so the separate Developer Logs window can control and observe the live logger directly.
+function registerDeveloperLogRuntimeBridge() {
+  window[DEVELOPER_LOG_RUNTIME_BRIDGE_KEY] = {
+    getEntries: () => developerLogger.getEntries(),
+    getSettings: () => developerLogger.getSettings(),
+    setGlobalEnabled: (enabled) => developerLogger.setGlobalEnabled(enabled === true),
+    setSourceEnabled: (sourceName, enabled) => developerLogger.setSourceEnabled(sourceName, enabled === true),
+    setAllSourcesEnabled: (enabled) => developerLogger.setAllSourcesEnabled(enabled === true),
+    clear: () => developerLogger.clear(),
+    subscribe: (listener) => developerLogger.subscribe(listener),
+    subscribeSettings: (listener) => developerLogger.subscribeSettings(listener),
+  };
 }
 
 // Intent: bridge browser runtime failures back to the desktop host logger when available.
@@ -14415,29 +12264,162 @@ function registerRuntimeLogging() {
       colno: event.colno,
       error: event.error,
     });
+    logWritingTargetDebugEvent("error", "runtime.window", event.message || "Unhandled browser error.", {
+      source: event.filename,
+      lineno: event.lineno,
+      colno: event.colno,
+      error: event.error,
+    });
   });
 
   window.addEventListener("unhandledrejection", (event) => {
     reportBrowserLog("error", "promise", "Unhandled promise rejection.", {
       reason: event.reason,
     });
+    logWritingTargetDebugEvent("error", "runtime.promise", "Unhandled promise rejection.", {
+      reason: event.reason,
+    });
   });
 }
 
 function reportBrowserLog(level, scope, message, context = {}) {
+  const normalizedLevel = String(level ?? "info").toLowerCase();
+  const source = resolveDeveloperLogSource(scope);
+  const category = resolveDeveloperLogCategory(scope);
+  const eventName = `${String(scope ?? "runtime")}.${normalizedLevel}`;
+  const entry = developerLogger.log({
+    level: normalizedLevel,
+    source,
+    category,
+    event: eventName,
+    message,
+    context,
+  });
+
+  if (entry || !shouldMirrorBrowserLogWhenSourceDisabled(normalizedLevel, scope)) {
+    return;
+  }
+
   const payload = {
-    level,
+    level: normalizedLevel,
     scope,
     message,
     context: serializeBrowserLogContext(context),
   };
 
-  void postJsonToDesktopHost("/api/log", payload);
+  void postJsonToDesktopHost("/api/log", payload, {
+    logTransport: false,
+  });
 }
 
-async function postJsonToDesktopHost(pathname, payload) {
+// Intent: keep warn/error visibility when source gates are off, but do not mirror dropped debug/info chatter.
+function shouldMirrorBrowserLogWhenSourceDisabled(level, scope) {
+  const normalizedLevel = String(level ?? "").toLowerCase();
+  if (normalizedLevel === "warn" || normalizedLevel === "error") {
+    return true;
+  }
+
+  const normalizedScope = String(scope ?? "").toLowerCase();
+  return normalizedLevel === "info" && [
+    "project-file",
+    "project-library",
+    "project-source",
+    "workspace",
+  ].includes(normalizedScope);
+}
+
+// Intent: mirror structured in-app developer logger entries to the desktop log file sink without re-entering the app logger.
+async function postDeveloperLogEntryToDesktopHost(entry) {
+  if (!entry || typeof entry !== "object") {
+    return false;
+  }
+
+  const baseUrls = ["http://127.0.0.1:4310", "http://localhost:4310"];
+  const payload = {
+    level: entry.level,
+    scope: String(entry.source ?? "browser"),
+    message: String(entry.message ?? "Developer log entry"),
+    context: serializeBrowserLogContext({
+      category: entry.category ?? "",
+      event: entry.event ?? "",
+      timestamp: entry.timestamp ?? "",
+      callsite: entry.callsite ?? null,
+      projectId: entry.projectId ?? "",
+      sceneId: entry.sceneId ?? "",
+      chapterId: entry.chapterId ?? "",
+      blockId: entry.blockId ?? "",
+      ...(entry.context && typeof entry.context === "object" ? entry.context : {}),
+    }),
+  };
+  const body = JSON.stringify(payload);
+
+  for (const baseUrl of baseUrls) {
+    try {
+      const response = await fetch(new URL("/api/log", baseUrl).toString(), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body,
+        keepalive: true,
+      });
+      if (response.ok) {
+        return true;
+      }
+    } catch {
+      // Ignore and try the next desktop-host origin.
+    }
+  }
+
+  return false;
+}
+
+function resolveDeveloperLogSource(scope) {
+  const normalizedScope = String(scope ?? "").toLowerCase();
+  if (normalizedScope === "storage") {
+    return "LocalStorageAdapter";
+  }
+  if (normalizedScope === "project-file") {
+    return "DesktopFileSystemAdapter";
+  }
+  if (normalizedScope === "settings" || normalizedScope === "api") {
+    return "FileAccessBridge";
+  }
+  if (normalizedScope === "project-library") {
+    return "ProjectPersistenceService";
+  }
+  if (normalizedScope === "window" || normalizedScope === "promise") {
+    return "UIEventDispatcher";
+  }
+  return "AppRuntime";
+}
+
+function resolveDeveloperLogCategory(scope) {
+  const normalizedScope = String(scope ?? "").toLowerCase();
+  if (normalizedScope === "storage") {
+    return "file-access";
+  }
+  if (normalizedScope === "project-file" || normalizedScope === "settings" || normalizedScope === "api") {
+    return "persistence";
+  }
+  if (normalizedScope === "project-library") {
+    return "state-change";
+  }
+  return "lifecycle";
+}
+
+async function postJsonToDesktopHost(pathname, payload, options = {}) {
   const baseUrls = ["http://127.0.0.1:4310", "http://localhost:4310"];
   const body = JSON.stringify(payload);
+  const failedOrigins = [];
+  const shouldLogTransport = options.logTransport !== false && pathname !== "/api/log";
+  // Intent: do not log log-transport calls; that creates recursive FileAccessBridge noise.
+  if (shouldLogTransport) {
+    fileAccessBridgeLog.debug("file-access", "desktop-host.post", "Posting JSON payload to desktop host.", {
+      pathname,
+      bodyLength: body.length,
+    });
+  }
 
   for (const baseUrl of baseUrls) {
     try {
@@ -14451,13 +12433,33 @@ async function postJsonToDesktopHost(pathname, payload) {
       });
 
       if (response.ok) {
+        if (shouldLogTransport) {
+          fileAccessBridgeLog.debug("file-access", "desktop-host.post-success", "Desktop host accepted JSON payload.", {
+            pathname,
+            baseUrl,
+          });
+        }
         return true;
       }
     } catch {
       // Ignore and try the next desktop host origin.
+      failedOrigins.push(baseUrl);
     }
   }
 
+  const nowMs = Date.now();
+  const shouldWarn = pathname !== "/api/log"
+    || nowMs - lastDesktopLogBridgeWarningAt >= DESKTOP_LOG_BRIDGE_WARNING_THROTTLE_MS;
+  if (shouldWarn) {
+    if (pathname === "/api/log") {
+      lastDesktopLogBridgeWarningAt = nowMs;
+    }
+    fileAccessBridgeLog.warn("file-access", "desktop-host.post-unavailable", "No desktop host origin accepted JSON payload.", {
+      pathname,
+      failedOrigins,
+      failedOriginCount: failedOrigins.length,
+    });
+  }
   return false;
 }
 
@@ -14500,4 +12502,7 @@ function cloneValue(value) {
 
   return JSON.parse(JSON.stringify(value));
 }
+
+
+
 

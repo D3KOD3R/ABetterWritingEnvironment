@@ -1,23 +1,29 @@
 # Project Save Model
 
-## Canonical Save File
+## Canonical Save Package
 
-The application treats `*.abe-project.json` as the canonical saved-project format. A project save file stores the active project selection, the project library, and the per-project workspace snapshots that power manuscript editing, worldbuilding, narration, voice rendering, and goal tracking.
+The application now treats the chunked project package as canonical storage:
 
-## Top-Level Shape
+- `project.json` manifest
+- per-scene files under `manuscript/scenes/`
 
-The current project save format is organized around:
+Legacy single-file `*.abe-project.json` payloads are supported as migration input only.
 
+## Manifest Shape
+
+`project.json` is organized around:
+
+- `schemaVersion`
 - `activeProjectId`
-- `projects[]`
+- `projects[]` (manifest-only records)
 
-Each project record preserves:
+Each manifest project record preserves:
 
 - stable project identity
 - project title
 - source classification
 - created/updated timestamps
-- workspace snapshot data
+- workspace metadata/index data
 - browser/editor preferences
 - local AI preferences
 - manuscript tasks
@@ -26,11 +32,17 @@ Each project record preserves:
 - project settings
 - import/load report data
 
-## Workspace Snapshot
+## Scene Chunks
 
-Each project stores a workspace snapshot with:
+Scene bodies are stored separately as one file per scene. Manifest records keep scene order and scene-file references.
 
-- project structure and line-addressable manuscript data
+Manifest `projectIndex.scenes[]` also stores last-known per-scene metrics such as `wordCount` so writing-target dashboards can bootstrap from the master file before lazy-loading scene bodies.
+
+## Workspace Metadata
+
+Each manifest project keeps workspace metadata with:
+
+- project structure and line-addressable manuscript indexes
 - world templates, entities, spines, and edges
 - analysis suggestion state
 - narration session state
@@ -54,8 +66,21 @@ Source archive entries and project-media records point to app-owned asset locati
 
 ## Load and Save Flow
 
-The desktop host loads a project save file or a project folder containing one, then normalizes the result into the in-memory project library snapshot used by the editor shell. Saving writes the current canonical project state back to the project file, while media assets remain project-owned and addressable by project-relative paths.
+The desktop host loads a project package directory, reads `project.json` first, then resolves scene files separately. The editor loads manifest/index state first and reads scene content on demand. Saving a scene writes that scene chunk instead of rewriting one monolithic manuscript blob.
+
+## ProjectPersistenceService Boundary
+
+All project file persistence workflows now route through `ProjectPersistenceService` in `apps/editor/public/adapters/storage/project-persistence-service.js`.
+
+- manual save
+- save-as
+- load from picker/path
+- autosave scheduling and flush
+- last-opened project restoration
+- project snapshot export/download
+
+UI and feature modules should call service methods (for example `saveProjectSnapshot`, `loadProjectSnapshotFromFile`, `restoreLastOpenedProject`) and must not directly call file-picker APIs, file-handle APIs, or project JSON read/write adapters.
 
 ## Review Boundary
 
-Any future migration from older project shapes should be handled as an explicit normalization step before the save file reaches the editor shell. The application should continue to treat the `.abe-project.json` file as the durable source of truth for the manuscript workspace.
+Any future migration from older project shapes should be handled as an explicit normalization step before data reaches the editor shell. Single-file `.abe-project.json` is legacy import data, not the active write target.

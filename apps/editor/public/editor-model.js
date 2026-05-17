@@ -200,8 +200,49 @@ export function buildSceneRecords(workspace, sceneDrafts = {}, structureDrafts =
     scene.editorText = composeEditorText(scene.blocks);
   }
 
+  const structureSceneMetadata = new Map();
+  if (Array.isArray(structureDrafts?.scenes)) {
+    for (const candidate of structureDrafts.scenes) {
+      if (!candidate || typeof candidate !== "object") {
+        continue;
+      }
+      const sceneId = typeof candidate.sceneId === "string" ? candidate.sceneId : "";
+      if (!sceneId) {
+        continue;
+      }
+      structureSceneMetadata.set(sceneId, candidate);
+    }
+  }
+
+  for (const scene of baseScenes) {
+    const metadata = structureSceneMetadata.get(scene.sceneId);
+    if (!metadata) {
+      continue;
+    }
+
+    scene.chapterId = typeof metadata.chapterId === "string" ? metadata.chapterId : scene.chapterId;
+    scene.chapterTitle = typeof metadata.chapterTitle === "string" ? metadata.chapterTitle : scene.chapterTitle;
+    scene.sceneTitle = typeof metadata.sceneTitle === "string" ? metadata.sceneTitle : scene.sceneTitle;
+    scene.sceneSynopsis = typeof metadata.sceneSynopsis === "string" ? metadata.sceneSynopsis : scene.sceneSynopsis;
+  }
+
+  const draftSceneIds = new Set();
   const draftScenes = Array.isArray(structureDrafts?.scenes)
-    ? structureDrafts.scenes.map((scene, index) => ({
+    ? structureDrafts.scenes
+      .filter((scene) => {
+        const sceneId = typeof scene?.sceneId === "string" ? scene.sceneId : "";
+        if (baseSceneMap.has(sceneId)) {
+          return false;
+        }
+        if (sceneId && draftSceneIds.has(sceneId)) {
+          return false;
+        }
+        if (sceneId) {
+          draftSceneIds.add(sceneId);
+        }
+        return true;
+      })
+      .map((scene, index) => ({
         sceneId: scene.sceneId ?? `draft-scene-${index + 1}`,
         chapterId: scene.chapterId ?? "draft-chapter",
         chapterTitle: scene.chapterTitle ?? "New Chapter",

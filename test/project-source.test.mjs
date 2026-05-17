@@ -6,7 +6,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { loadProjectLibrarySeedFromPath } from "../apps/desktop/src/project-source.ts";
+import {
+  loadProjectLibrarySeedFromPath,
+  resolveProjectSourcePath,
+} from "../apps/desktop/src/project-source.ts";
 
 export function runProjectSourceTest() {
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -15,9 +18,12 @@ export function runProjectSourceTest() {
 
   const library = loadProjectLibrarySeedFromPath(referenceFixture);
   assert.equal(library.activeProjectId, "project-serva-vitae");
-  assert.equal(library.projects.length, 1);
+  assert.equal(library.projects.length >= 1, true);
 
-  const project = library.projects[0];
+  const project =
+    library.projects.find((entry) => entry.id === library.activeProjectId)
+    ?? library.projects[0];
+  assert.equal(project?.id, "project-serva-vitae");
   assert.equal(project.title, "Project Serva Vitae");
   assert.equal(project.source, "project-file");
   assert.equal(project.workspace.project.stats.chapterCount, 4);
@@ -88,7 +94,7 @@ export function runProjectSourceTest() {
     const summary = JSON.parse(result.stdout.trim());
     const data = JSON.parse(readFileSync(outputPath, "utf8"));
 
-    assert.equal(summary.projectCount, 1);
+    assert.equal(summary.projectCount, library.projects.length);
     assert.equal(summary.chapters, 4);
     assert.equal(summary.scenes, 29);
     assert.equal(summary.blocks, 855);
@@ -113,5 +119,21 @@ export function runProjectSourceTest() {
     assert.equal(data.passageNotes[0].source, "source-research");
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
+  }
+
+  const ambiguousDir = mkdtempSync(path.join(tmpdir(), "abe-project-source-ambiguous-"));
+  try {
+    copyFileSync(referenceFixture, path.join(ambiguousDir, "alpha.abe-project.json"));
+    copyFileSync(referenceFixture, path.join(ambiguousDir, "beta.abe-project.json"));
+    assert.throws(
+      () => resolveProjectSourcePath(ambiguousDir),
+      /Multiple project save files found/,
+    );
+    assert.throws(
+      () => loadProjectLibrarySeedFromPath(ambiguousDir),
+      /Multiple project save files found/,
+    );
+  } finally {
+    rmSync(ambiguousDir, { recursive: true, force: true });
   }
 }

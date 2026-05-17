@@ -5,11 +5,17 @@ import { createProjectFileAutosaveController } from "../apps/editor/public/adapt
 import { resolveProjectFileDisplayState } from "../apps/editor/public/adapters/storage/project-file-display.js";
 import {
   buildProjectFilePathFromRoot,
+  ensureProjectFileHandleWritePermission,
+  getProjectFileIdentity,
   getSuggestedProjectFileName,
   getSuggestedProjectFilePath,
   hasProjectFileDestination,
   hasProjectFilePath,
   normalizeProjectFilePath,
+  pickProjectFileHandleForOpen,
+  pickProjectFileHandleForSave,
+  queryProjectFileHandleWritePermission,
+  requestProjectFileHandleWritePermission,
   resolveLoadedProjectFileDestination,
 } from "../apps/editor/public/adapters/storage/project-file.js";
 
@@ -21,6 +27,10 @@ export async function runProjectFileStorageAdaptersTest() {
   assert.equal(hasProjectFileDestination({ filePath: "Novel.abe-project.json" }), false);
   assert.equal(hasProjectFileDestination({ fileHandle: { name: "Novel.abe-project.json" } }), true);
   assert.equal(getSuggestedProjectFileName("The Crown: Draft?"), "the-crown-draft.abe-project.json");
+  assert.equal(
+    getProjectFileIdentity("C:\\Projects\\OriginFileproject-serva-vitae.abe-project.json"),
+    "OriginFileproject-serva-vitae",
+  );
   assert.equal(
     getSuggestedProjectFilePath({
       projectTitle: "The Crown: Draft?",
@@ -80,6 +90,42 @@ export async function runProjectFileStorageAdaptersTest() {
       isDurablePath: false,
     },
   );
+  const openHandle = await pickProjectFileHandleForOpen({
+    windowRef: {
+      showOpenFilePicker: async () => [{ name: "open-project.abe-project.json" }],
+    },
+  });
+  assert.equal(openHandle?.name, "open-project.abe-project.json");
+  const saveHandle = await pickProjectFileHandleForSave({
+    suggestedName: "save-project.abe-project.json",
+    windowRef: {
+      showSaveFilePicker: async ({ suggestedName }) => ({ name: suggestedName }),
+    },
+  });
+  assert.equal(saveHandle?.name, "save-project.abe-project.json");
+  await assert.rejects(
+    () => pickProjectFileHandleForOpen({ windowRef: {} }),
+    /Open file picker API is unavailable/,
+  );
+  await assert.rejects(
+    () => pickProjectFileHandleForSave({ windowRef: {} }),
+    /Save file picker API is unavailable/,
+  );
+  const permissionedHandle = {
+    name: "permissioned-project.abe-project.json",
+    permissionStatus: "prompt",
+    async queryPermission() {
+      return this.permissionStatus;
+    },
+    async requestPermission() {
+      this.permissionStatus = "granted";
+      return this.permissionStatus;
+    },
+  };
+  assert.equal(await queryProjectFileHandleWritePermission(permissionedHandle), "prompt");
+  assert.equal(await ensureProjectFileHandleWritePermission(permissionedHandle), false);
+  assert.equal(await requestProjectFileHandleWritePermission(permissionedHandle), "granted");
+  assert.equal(await ensureProjectFileHandleWritePermission(permissionedHandle), true);
   assert.deepEqual(
     resolveProjectFileDisplayState({
       projectFilePath: "new-project.abe-project.json",

@@ -131,4 +131,8 @@ The project loader imports a user-owned project save file, translates it into th
 
 - Status: Foundation implemented.
 - Repository coverage: host-backed `/api/project-source` route, browser project-path input and load button, whitespace-preserving project text conversion, generic save-file path resolution, project-library merge/load flow for loaded projects, and file-backed load logging.
+- Process update (2026-05-14): introduced a browser storage adapter + repository + `projectService` boundary with schema-versioned snapshot migration and a lightweight project index so UI flows can keep evolving while persistence can move to folder/SQLite/native backends later.
+- Process update (2026-05-14): migrated persistence toward a chunked project package model where `project.json` holds manifest/index data and scene bodies are stored as per-scene records/files, with legacy monolithic `.abe-project.json` treated as migration input.
+- Process update (2026-05-15): project-file save/load now treats `.abe-project.json` as a single active file-backed project, derives the canonical project ID/title from the loaded filename, remaps the active scene store under that identity, and recalculates workspace chapter/scene stats from the project index.
+- Process update (2026-05-16): `ProjectPersistenceService` now owns browser file-handle recovery, filename display hydration before manuscript render, write-permission checks for Ctrl+S/autosave, and durable typed-path precedence so refreshes do not silently lose the active project identity.
 - Next work: add a folder/file picker, surface richer load diagnostics, and build a dedicated retained-template browser for loaded source template sheets.

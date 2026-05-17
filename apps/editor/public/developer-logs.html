@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Developer Logs</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: "Segoe UI", "Inter", sans-serif;
+      }
+      body {
+        margin: 0;
+        background: #f3f4f8;
+        color: #1f2430;
+      }
+      .shell {
+        display: grid;
+        grid-template-rows: auto 1fr;
+        min-height: 100vh;
+      }
+      .toolbar {
+        position: sticky;
+        top: 0;
+        z-index: 4;
+        display: grid;
+        gap: 8px;
+        padding: 12px;
+        border-bottom: 1px solid #d4d7e3;
+        background: #fcfcfd;
+      }
+      .toolbar-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+      }
+      .toolbar label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      .toolbar select,
+      .toolbar input,
+      .toolbar button {
+        font: inherit;
+        border-radius: 8px;
+        border: 1px solid #c7cad9;
+        background: #fff;
+        color: #1f2430;
+        padding: 6px 10px;
+      }
+      .toolbar input[type="search"] {
+        min-width: 260px;
+      }
+      .toolbar button.is-active {
+        border-color: #946047;
+        color: #946047;
+      }
+      .settings-row {
+        display: grid;
+        gap: 8px;
+      }
+      .source-gates {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .source-gate {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 8px;
+        border: 1px solid #d5d9e6;
+        border-radius: 999px;
+        background: #fff;
+        font-size: 12px;
+        white-space: nowrap;
+      }
+      .source-gate input {
+        margin: 0;
+      }
+      .meta {
+        font-size: 12px;
+        color: #5b6074;
+      }
+      .log-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      .log-entry {
+        border-bottom: 1px solid #e2e5ef;
+        background: #fff;
+      }
+      .log-entry summary {
+        cursor: pointer;
+        padding: 10px 12px;
+        display: grid;
+        grid-template-columns: auto auto auto auto 1fr;
+        gap: 10px;
+        align-items: start;
+      }
+      .chip {
+        border-radius: 999px;
+        padding: 2px 8px;
+        font-size: 11px;
+        line-height: 1.5;
+        border: 1px solid #d5d9e6;
+        white-space: nowrap;
+      }
+      .chip.level-error { border-color: #b42318; color: #b42318; }
+      .chip.level-warn { border-color: #b54708; color: #b54708; }
+      .chip.level-info { border-color: #175cd3; color: #175cd3; }
+      .chip.level-debug { border-color: #54606f; color: #54606f; }
+      .entry-message {
+        font-size: 13px;
+        line-height: 1.4;
+      }
+      .entry-event {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 12px;
+        color: #4f566f;
+      }
+      .entry-details {
+        padding: 0 12px 12px;
+      }
+      .entry-grid {
+        display: grid;
+        grid-template-columns: 140px 1fr;
+        gap: 4px 10px;
+        font-size: 12px;
+      }
+      pre {
+        margin: 8px 0 0;
+        padding: 10px;
+        border-radius: 8px;
+        background: #f5f6fa;
+        border: 1px solid #d7dcea;
+        overflow: auto;
+        max-height: 320px;
+        font-size: 12px;
+        line-height: 1.4;
+      }
+      .empty {
+        padding: 20px 12px;
+        color: #5b6074;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="toolbar">
+        <div class="toolbar-row">
+          <label>Service
+            <select id="source-filter">
+              <option value="">All services</option>
+            </select>
+          </label>
+          <label>Type / Category
+            <select id="category-filter">
+              <option value="">All categories</option>
+            </select>
+          </label>
+          <label>Level
+            <select id="level-filter">
+              <option value="">All levels</option>
+              <option value="debug">debug</option>
+              <option value="info">info</option>
+              <option value="warn">warning</option>
+              <option value="error">error</option>
+            </select>
+          </label>
+          <input id="search-filter" type="search" placeholder="Search message, event, IDs, context..." />
+        </div>
+        <div class="toolbar-row">
+          <button id="pause-button" type="button">Pause live</button>
+          <button id="clear-button" type="button">Clear logs</button>
+          <button id="copy-button" type="button">Copy filtered</button>
+          <button id="export-button" type="button">Export JSON</button>
+          <span id="meta" class="meta"></span>
+        </div>
+        <div class="settings-row">
+          <div class="toolbar-row">
+            <label><input id="global-logging-toggle" type="checkbox" /> Global logging enabled</label>
+            <button id="enable-all-sources-button" type="button">Enable all services</button>
+            <button id="disable-all-sources-button" type="button">Disable all services</button>
+            <span id="settings-meta" class="meta"></span>
+          </div>
+          <div class="toolbar-row">
+            <label><input id="auto-prune-toggle" type="checkbox" /> Auto-prune session log files (keep latest 20 sessions)</label>
+            <button id="prune-now-button" type="button">Prune now</button>
+            <span id="runtime-log-meta" class="meta"></span>
+          </div>
+          <div id="source-gates" class="source-gates"></div>
+        </div>
+      </header>
+      <main>
+        <ul id="log-list" class="log-list"></ul>
+      </main>
+    </div>
+    <script type="module" src="/developer-logs.js"></script>
+  </body>
+</html>

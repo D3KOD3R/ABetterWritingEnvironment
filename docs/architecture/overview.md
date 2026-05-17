@@ -2,6 +2,12 @@
 
 This repository is a local-first authoring environment organized around canonical domain models instead of UI state or provider-specific code.
 
+## Runtime Direction
+
+The current app runtime is browser-first for workflow prototyping, but the architecture direction is desktop-first/local-first.
+
+See [Browser Prototype, Desktop Future](./browser-prototype-desktop-future.md) for portability guardrails and API boundaries.
+
 ## Source of Truth
 
 - `packages/manuscript-schema` owns manuscript identity, chapter and scene hierarchy, block structure, binder derivation, and durable manuscript anchors.
@@ -50,6 +56,8 @@ This foundation keeps the product aligned with a writer's IDE and worldbuilding 
 - character voice routing and render jobs
 
 The center scene-editor surface now lives in `apps/editor/public/features/scene-editor.js`, which keeps the manuscript shell reusable while the surrounding app continues to orchestrate the rest of the workspace.
+
+Project file save/load/autosave behavior is now consolidated under `ProjectPersistenceService` so editor UI workflows do not directly call browser file APIs or desktop file endpoints.
 
 That separation is the key correction from the earlier bootstrap. The editor renders author workflows, while the desktop host owns composition and runtime lifecycle.
 

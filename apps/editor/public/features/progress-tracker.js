@@ -3,20 +3,89 @@ import { renderSessionTrackerPenSvg } from "../session-tracker-icons.js";
 import { escapeHtml, formatDisplayNumber } from "../shared/ui-utils.js";
 
 // Intent: render only the visible metrics selected by writing-goal state.
-export function renderWritingTargetStrip(summary) {
+export function renderWritingTargetStrip(summary, options = {}) {
   const visibleMetrics = summary?.visibleMetrics ?? [];
   const renderedCards = visibleMetrics.map((metric) => (
     metric?.key === "sessionTracker"
       ? renderSessionTrackerPanel(summary)
       : renderWritingTargetCard(metric, summary)
   ));
+  const autosaveIndicator = normalizeProjectAutosaveIndicator(options?.autosaveIndicator);
+  const debugTerminal = summary?.debugTerminal ?? {
+    open: false,
+    entryCount: 0,
+    recentErrorCount: 0,
+    lastEventLabel: "",
+  };
+  const debugMeta = [
+    `${formatDisplayNumber(Math.max(0, Math.round(Number(debugTerminal.entryCount) || 0)))} events`,
+    Math.max(0, Math.round(Number(debugTerminal.recentErrorCount) || 0)) > 0
+      ? `${formatDisplayNumber(Math.max(0, Math.round(Number(debugTerminal.recentErrorCount) || 0)))} errors`
+      : "",
+    debugTerminal.lastEventLabel ? `Last ${debugTerminal.lastEventLabel}` : "",
+  ].filter(Boolean).join(" · ");
   return `
     <div class="desktop-target-strip" aria-label="Writing target metrics" data-writing-target-strip>
       <div class="desktop-target-strip__metrics">
         ${renderedCards.join("")}
       </div>
+      <div class="desktop-target-strip__tools">
+        ${renderProjectAutosaveIndicator(autosaveIndicator)}
+        <button
+          class="tag-button panel-action-button writing-target-debug-toggle"
+          type="button"
+          data-action="open-developer-logs"
+          aria-pressed="false"
+          title="Open developer logs in a separate tab"
+        >
+          Developer logs
+        </button>
+        <span class="desktop-target-strip__tools-meta">${escapeHtml(debugMeta || "No logs yet")}</span>
+      </div>
     </div>
   `;
+}
+
+function renderProjectAutosaveIndicator(indicator) {
+  return `
+    <div
+      class="project-autosave-indicator ${escapeHtml(indicator.toneClass)}"
+      data-project-autosave-indicator
+      data-status-key="${escapeHtml(indicator.statusKey)}"
+      title="${escapeHtml(indicator.note)}"
+    >
+      <span class="project-autosave-indicator__label">${escapeHtml(indicator.label)}</span>
+      <strong class="project-autosave-indicator__status" data-project-autosave-status>${escapeHtml(indicator.statusLabel)}</strong>
+      <span class="project-autosave-indicator__note" data-project-autosave-note>${escapeHtml(indicator.note)}</span>
+    </div>
+  `;
+}
+
+function normalizeProjectAutosaveIndicator(indicator = {}) {
+  const label = typeof indicator?.label === "string" && indicator.label.trim()
+    ? indicator.label.trim()
+    : "Autosave";
+  const statusKey = typeof indicator?.statusKey === "string" && indicator.statusKey.trim()
+    ? indicator.statusKey.trim().toLowerCase()
+    : "unknown";
+  const statusLabel = typeof indicator?.statusLabel === "string" && indicator.statusLabel.trim()
+    ? indicator.statusLabel.trim()
+    : "Unknown";
+  const note = typeof indicator?.note === "string" && indicator.note.trim()
+    ? indicator.note.trim()
+    : "Autosave status unavailable.";
+  const allowedTones = new Set(["off", "waiting", "pending", "saving", "suppressed", "ready", "unknown"]);
+  const tone = typeof indicator?.tone === "string" && allowedTones.has(indicator.tone.trim().toLowerCase())
+    ? indicator.tone.trim().toLowerCase()
+    : "unknown";
+  return {
+    label,
+    statusKey,
+    statusLabel,
+    note,
+    tone,
+    toneClass: `is-${tone}`,
+  };
 }
 
 export function buildSessionTrackerMetric(summary) {

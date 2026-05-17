@@ -68,7 +68,9 @@ export function renderEditorChrome({
           ${renderWritingTargetToggle(state, writingTargetSummary)}
         </div>
       </div>
-      ${renderWritingTargetStrip(writingTargetSummary)}
+      ${renderWritingTargetStrip(writingTargetSummary, {
+        autosaveIndicator: buildProjectAutosaveIndicatorModel(state, projectFileAutosaveConnected),
+      })}
       <div class="desktop-toolbar">
         ${renderLocalAiSetting(state)}
       </div>
@@ -120,11 +122,6 @@ function renderFileMenu({
     ? `Project file: ${projectFilePathLabel}`
     : "No project file selected";
   const projectFileFeedback = state.projectFileStatus ? ` · ${state.projectFileStatus}` : "";
-  const projectFileAutosaveFeedback = state.editorPrefs.projectFileAutosaveEnabled === true
-    ? projectFileAutosaveConnected
-      ? " · Autosave writing to JSON file"
-      : " · Autosave waiting for JSON file"
-    : " · Autosave off";
   const integratorStatus = state.projectSourceStatus
     ? ` · Integrator: ${state.projectSourceStatus}`
     : "";
@@ -147,6 +144,7 @@ function renderFileMenu({
           <button class="tag-button panel-action-button" type="button" data-action="load-project">Load project</button>
           <button class="tag-button panel-action-button" type="button" data-action="save-project">Save project</button>
           <button class="tag-button panel-action-button" type="button" data-action="create-project">Create project</button>
+          <button class="tag-button panel-action-button" type="button" data-action="open-developer-logs">Developer logs</button>
           <button class="tag-button panel-action-button" type="button" data-action="toggle-writing-target-window">
             Writing target
           </button>
@@ -185,7 +183,7 @@ function renderFileMenu({
           </button>
         </div>
         <p class="project-file-status">
-          ${escapeHtml(projectFileStatus)}${escapeHtml(projectFileFeedback)}${escapeHtml(projectFileAutosaveFeedback)}
+          ${escapeHtml(projectFileStatus)}${escapeHtml(projectFileFeedback)}
         </p>
       </div>
       <div class="file-menu-section">
@@ -219,6 +217,7 @@ function renderFileMenu({
         <span>Ctrl+S save</span>
         <span>Ctrl+Shift+S save as</span>
         <span>Ctrl+Shift+O load file</span>
+        <span>Ctrl+Shift+L logs</span>
         <span>Ctrl+N new</span>
         <span>Ctrl+O file</span>
         <span>Ctrl+Alt+T goals</span>
@@ -245,6 +244,78 @@ function renderLocalAiSetting(state) {
   `;
 }
 
+// Intent: describe autosave runtime state for the top metric strip without exposing persistence internals to UI callers.
+function buildProjectAutosaveIndicatorModel(state, projectFileAutosaveConnected = false) {
+  const enabled = state?.editorPrefs?.projectFileAutosaveEnabled === true;
+  if (!enabled) {
+    return {
+      label: "Autosave",
+      statusKey: "off",
+      statusLabel: "Off",
+      note: "Project-file autosave is disabled.",
+      tone: "off",
+    };
+  }
+
+  if (!projectFileAutosaveConnected) {
+    if (state?.projectFileHandle && state?.projectFileHandlePermission !== "granted") {
+      return {
+        label: "Autosave",
+        statusKey: "waiting",
+        statusLabel: "Needs permission",
+        note: "Press Ctrl+S to re-authorize the project file.",
+        tone: "waiting",
+      };
+    }
+
+    return {
+      label: "Autosave",
+      statusKey: "waiting",
+      statusLabel: "Waiting",
+      note: "Select a project file destination.",
+      tone: "waiting",
+    };
+  }
+
+  if (state?.projectFileBusy) {
+    return {
+      label: "Autosave",
+      statusKey: "saving",
+      statusLabel: "Saving",
+      note: "Writing project snapshot.",
+      tone: "saving",
+    };
+  }
+
+  if ((Number(state?.projectFileAutosaveSuppressionDepth) || 0) > 0) {
+    return {
+      label: "Autosave",
+      statusKey: "suppressed",
+      statusLabel: "Suppressed",
+      note: "Paused while project changes are batched.",
+      tone: "suppressed",
+    };
+  }
+
+  if (state?.projectFileAutosaveDirty === true) {
+    return {
+      label: "Autosave",
+      statusKey: "pending",
+      statusLabel: "Pending",
+      note: "Queued for idle save.",
+      tone: "pending",
+    };
+  }
+
+  return {
+    label: "Autosave",
+    statusKey: "ready",
+    statusLabel: "Ready",
+    note: "Project file is in sync.",
+    tone: "ready",
+  };
+}
+
 // Intent: keep autosave status visible where file actions live.
 function renderProjectFileAutosaveSetting(state, projectFileAutosaveConnected = false) {
   const enabled = state.editorPrefs.projectFileAutosaveEnabled === true;
@@ -258,7 +329,7 @@ function renderProjectFileAutosaveSetting(state, projectFileAutosaveConnected = 
       />
       <span>Autosave project file</span>
       <strong>${projectFileAutosaveConnected ? "Writing to JSON file" : "Waiting for file"}</strong>
-      <small>${enabled ? "Saves after 2 seconds of idle editing." : "Turn on autosave to keep the project file in sync."}</small>
+      <small>${enabled ? "Saves after 5 seconds of idle editing." : "Turn on autosave to keep the project file in sync."}</small>
     </label>
   `;
 }

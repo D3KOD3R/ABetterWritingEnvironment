@@ -134,8 +134,9 @@ Exit criteria:
 - autosave can be tested without rendering the full editor
 
 Status:
-- Started: low-level project-file I/O now lives in `apps/editor/public/adapters/storage/project-file.js`.
-- Started: project-file autosave timing and dirty-state transitions now live in `apps/editor/public/adapters/storage/autosave.js`.
+- Completed: low-level project-file I/O lives in `apps/editor/public/adapters/storage/project-file.js`.
+- Completed: project-file autosave timing and dirty-state transitions live in `apps/editor/public/adapters/storage/autosave.js`.
+- Completed: `apps/editor/public/adapters/storage/project-persistence-service.js` now owns save/load/autosave/import/export orchestration and is the persistence boundary for `app.js`.
 - Remaining: move project-library snapshot normalization, local preference storage, and project-cache persistence out of `apps/editor/public/app.js`.
 
 ### Phase 3: Extract Grammar and Spellcheck
