@@ -2,6 +2,8 @@
 
 First rule: if the user asks or types `fix issues` in Codex, read `voiceissues/VoiceIssuesAgent.md` before working from `voiceissues/voice-issues.md`.
 
+Second rule: if the user asks or types `finalise work` in Codex, read `finalisework/FinaliseWorkAgent.md` before closing out the session.
+
 ## Purpose
 
 This repository is for a local-first, open-source, AI-augmented authoring and audiobook-generation environment.
@@ -763,3 +765,16 @@ When the user asks to fix issues:
 - Work pending `[ ]` entries in order, use `[working on]` while active, and tick resolved items `[x]` with a short note.
 - Do not delete checklist items unless the user explicitly asks.
 <!-- voice-issues-pointer:end -->
+
+<!-- finalise-work-pointer:start -->
+## Finalise Work Pointer
+
+This repo uses a final session closeout workflow at `finalisework/FinaliseWorkAgent.md`.
+
+When the user asks to finalise work:
+- Read `finalisework/FinaliseWorkAgent.md` for the workflow.
+- Inspect the real git diff and classify intentional changes separately from generated runtime artifacts.
+- Reconcile `features.md`, relevant docs, and `voiceissues/voice-issues.md` only where repository evidence supports an update.
+- Run available checks from `package.json` and changed-file syntax checks.
+- Commit and push intentional changes only when the finalise workflow allows it.
+<!-- finalise-work-pointer:end -->

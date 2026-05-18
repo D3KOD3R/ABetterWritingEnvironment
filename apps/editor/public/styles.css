@@ -4235,6 +4235,128 @@ button.grammar-check-status[aria-pressed="true"] {
   border-color: rgba(0, 159, 205, 0.28);
 }
 
+.passage-note-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.passage-note-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 999px;
+}
+
+.passage-note-icon {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.passage-note-edit-button {
+  border: 1px solid rgba(31, 110, 120, 0.18);
+  background: rgba(31, 110, 120, 0.08);
+  color: var(--ink-soft);
+}
+
+.passage-note-edit-button:hover {
+  background: rgba(31, 110, 120, 0.14);
+}
+
+.passage-note-delete-button {
+  border: 1px solid rgba(154, 48, 56, 0.16);
+  background: rgba(154, 48, 56, 0.1);
+}
+
+.passage-note-delete-button:hover {
+  background: rgba(154, 48, 56, 0.16);
+}
+
+.delete-confirmation-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1198;
+  background: rgba(26, 29, 35, 0.24);
+  backdrop-filter: blur(1px);
+}
+
+.delete-confirmation-modal {
+  position: fixed;
+  z-index: 1199;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  gap: 14px;
+  width: min(420px, calc(100vw - 28px));
+  padding: 18px 18px 16px;
+  border: 1px solid rgba(31, 36, 48, 0.14);
+  border-radius: var(--radius-md);
+  background: rgba(255, 252, 247, 0.98);
+  box-shadow: 0 24px 52px rgba(28, 35, 44, 0.24);
+  transform: translate(-50%, -50%);
+}
+
+.delete-confirmation-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.delete-confirmation-close {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid rgba(31, 36, 48, 0.12);
+  border-radius: 999px;
+  background: rgba(31, 36, 48, 0.04);
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.delete-confirmation-copy {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.5;
+}
+
+.delete-confirmation-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink-soft);
+}
+
+.delete-confirmation-checkbox input {
+  flex: 0 0 auto;
+}
+
+.delete-confirmation-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.delete-confirmation-confirm {
+  border-color: rgba(154, 48, 56, 0.18);
+  background: rgba(154, 48, 56, 0.12);
+  color: var(--ink);
+}
+
+.delete-confirmation-confirm:hover {
+  background: rgba(154, 48, 56, 0.18);
+}
+
 .passage-note-item:hover,
 .passage-note-item:focus-within,
 .passage-note-item.is-previewing,

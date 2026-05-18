@@ -145,6 +145,32 @@ export async function runProjectRefreshPersistenceTest() {
       blocks: [],
     },
   };
+  state.projectLibrary[0].workspace.selectionDefaults = {
+    lineId: "block-1",
+    sceneId: "scene-1",
+    sceneSelectionBlockId: "block-1",
+    sceneSelectionLineNumber: 1579,
+    sceneSelectionStart: 12,
+    sceneSelectionEnd: 18,
+    sceneSelectionScrollTop: 320,
+    sceneSelectionScrollLeft: 14,
+    inlinePassageDraft: {
+      sceneId: "scene-1",
+      noteType: "inspiration",
+      selectedText: "Edited browser text",
+      startOffset: 0,
+      endOffset: 19,
+      anchorStartOffset: 0,
+      seededSelection: true,
+      typedStartOffset: 0,
+      typedEndOffset: 19,
+      body: "What should the reader feel here?",
+      typedText: "Edited browser text",
+      editingNoteId: "inspiration-1",
+      x: 110,
+      y: 40,
+    },
+  };
 
   persistence.markProjectAutosaveDirty({
     domain: "project",
@@ -179,6 +205,38 @@ export async function runProjectRefreshPersistenceTest() {
   assert.equal(
     refreshedLibrary.projects[0]?.projectSettings?.projectFilePath,
     filePath,
+  );
+  assert.equal(
+    refreshedLibrary.projects[0]?.workspace?.selectionDefaults?.sceneId,
+    "scene-1",
+  );
+  assert.equal(
+    refreshedLibrary.projects[0]?.workspace?.selectionDefaults?.sceneSelectionLineNumber,
+    1579,
+  );
+  assert.equal(
+    refreshedLibrary.projects[0]?.workspace?.selectionDefaults?.sceneSelectionStart,
+    12,
+  );
+  assert.equal(
+    refreshedLibrary.projects[0]?.workspace?.selectionDefaults?.sceneSelectionEnd,
+    18,
+  );
+  assert.equal(
+    refreshedLibrary.projects[0]?.workspace?.selectionDefaults?.sceneSelectionScrollTop,
+    320,
+  );
+  assert.equal(
+    refreshedLibrary.projects[0]?.workspace?.selectionDefaults?.sceneSelectionScrollLeft,
+    14,
+  );
+  assert.equal(
+    refreshedLibrary.projects[0]?.workspace?.selectionDefaults?.inlinePassageDraft?.sceneId,
+    "scene-1",
+  );
+  assert.equal(
+    refreshedLibrary.projects[0]?.workspace?.selectionDefaults?.inlinePassageDraft?.body,
+    "What should the reader feel here?",
   );
   assert.equal(
     refreshedLibrary.projects[0]?.projectIndex?.scenes?.find((scene) => scene.id === "scene-1")?.wordCount > 0,
@@ -230,6 +288,29 @@ function createProjectRecord(text) {
       },
       selectionDefaults: {
         lineId: "block-1",
+        sceneId: "scene-1",
+        sceneSelectionBlockId: "block-1",
+        sceneSelectionLineNumber: 1579,
+        sceneSelectionStart: 12,
+        sceneSelectionEnd: 18,
+        sceneSelectionScrollTop: 320,
+        sceneSelectionScrollLeft: 14,
+        inlinePassageDraft: {
+          sceneId: "scene-1",
+          noteType: "inspiration",
+          selectedText: "Edited browser text",
+          startOffset: 0,
+          endOffset: 19,
+          anchorStartOffset: 0,
+          seededSelection: true,
+          typedStartOffset: 0,
+          typedEndOffset: 19,
+          body: "What should the reader feel here?",
+          typedText: "Edited browser text",
+          editingNoteId: "inspiration-1",
+          x: 110,
+          y: 40,
+        },
       },
     },
     sceneDrafts: {},

@@ -109,6 +109,7 @@ const WRITING_TARGET_SESSION_PACE_LOOKBACK_MINUTES = 5;
 const WRITING_TARGET_SESSION_PACE_STALE_MINUTES = 0.5;
 const WRITING_TARGET_DEBUG_TYPING_LOG_MIN_INTERVAL_MS = 1000;
 const WRITING_TARGET_GOAL_SYNC_SOURCES = ["releaseDate", "sessionTargetWords"];
+const EDITOR_DELETE_CONFIRMATIONS_KEY = "abe-delete-confirmations-v1";
 const DESKTOP_PROJECT_LIBRARY_BOOT_TIMEOUT_MS = 50;
 const DEVELOPER_LOG_WINDOW_PATH = "/developer-logs.html";
 const DEVELOPER_LOG_RUNTIME_BRIDGE_KEY = "__ABE_DEVELOPER_LOG_RUNTIME__";
@@ -244,6 +245,13 @@ const state = {
   editorPrefs: createDefaultEditorPrefs(),
   localAiPrefs: createDefaultLocalAiPrefs(),
   localAiTitleStatus: {},
+  sceneEditorSelectionSnapshot: null,
+  deleteConfirmationPreferences: loadDeleteConfirmationPreferences(),
+  deleteConfirmationDialog: null,
+  binderSceneMoveHistory: {
+    undoStack: [],
+    redoStack: [],
+  },
   developerLogsWindowOpen: false,
   voiceNarration: loadVoiceNarrationState(),
   scenes: [],
@@ -467,13 +475,7 @@ const projectPersistenceService = createProjectPersistenceService({
   }) => {
     applyProjectRecord(projectRecord);
     refreshScenes();
-    state.selectedIssueId = state.workspace.selectionDefaults.issueId ?? null;
-    state.selectedNodeId = state.workspace.selectionDefaults.nodeId ?? null;
-    state.selectedEntityId = state.workspace.selectionDefaults.entityId ?? null;
-    syncSelectionFromBlock(
-      state.workspace.selectionDefaults.lineId ?? state.scenes[0]?.blocks[0]?.blockId ?? null,
-    );
-    loadSceneDraftIntoState(state.selectedSceneId ?? state.scenes[0]?.sceneId ?? "");
+    restoreSelectionFromWorkspaceDefaults();
     syncWritingTargetState({ forceReload: true });
     logWritingTargetLoadCheckpoint(reason ?? "load-project-file");
     render();
@@ -677,15 +679,7 @@ async function boot() {
   spellcheckBaseLexicon = await ensureSpellcheckBaseLexicon();
   spellcheckReferenceLexicon = await ensureSpellcheckReferenceLexicon();
 
-  state.selectedIssueId = state.workspace.selectionDefaults.issueId ?? null;
-  state.selectedNodeId = state.workspace.selectionDefaults.nodeId ?? null;
-  state.selectedEntityId = state.workspace.selectionDefaults.entityId ?? null;
-
-  const initialBlockId =
-    state.workspace.selectionDefaults.lineId ??
-    state.scenes[0]?.blocks[0]?.blockId ??
-    null;
-  syncSelectionFromBlock(initialBlockId);
+  restoreSelectionFromWorkspaceDefaults();
   syncWritingTargetState({ forceReload: true });
   refreshWritingTargetSessionLifecycle({ reason: "boot" });
 
@@ -754,6 +748,7 @@ function wireEvents() {
   document.addEventListener("selectionchange", () => {
     const activeElement = document.activeElement;
     if (activeElement instanceof HTMLTextAreaElement && activeElement.classList.contains("editor-document-input")) {
+      updateSceneEditorSelectionSnapshotFromTextarea(activeElement);
       syncSceneEditorWordCountReadouts(activeElement);
     }
 
@@ -1183,6 +1178,34 @@ function wireEvents() {
     if (action === "select-passage-note") {
       hideFileMenu();
       togglePassageNoteSelection(target.dataset.noteId);
+      return;
+    }
+
+    if (action === "edit-passage-note") {
+      hideFileMenu();
+      openPassageNoteEditorFromPanel(target.dataset.noteId);
+      return;
+    }
+
+    if (action === "delete-passage-note") {
+      hideFileMenu();
+      requestDeletePassageNoteFromPanel(target.dataset.noteId);
+      return;
+    }
+
+    if (action === "toggle-delete-confirmation-preference") {
+      toggleDeleteConfirmationPreference(target.dataset.confirmationKey, target instanceof HTMLInputElement ? target.checked : false);
+      renderDeleteConfirmationDialog();
+      return;
+    }
+
+    if (action === "confirm-delete-confirmation") {
+      confirmDeleteConfirmationDialog();
+      return;
+    }
+
+    if (action === "cancel-delete-confirmation") {
+      cancelDeleteConfirmationDialog();
       return;
     }
 
@@ -1780,6 +1803,7 @@ function wireEvents() {
     }
 
     if (editField === "editor-text") {
+      updateSceneEditorSelectionSnapshotFromTextarea(target);
       clearTaskAnchorPreview({ restoreSelection: false });
       const previousText = getScene(sceneId)?.editorText ?? "";
       trackInlinePassageDraftTyping(sceneId, previousText, target);
@@ -2007,6 +2031,7 @@ function render() {
   renderEntityPanel();
   renderDreamScapingPanel();
   renderTaskContextMenu();
+  renderDeleteConfirmationDialog();
   renderWritingTargetWindow();
   renderPaneVisibility();
   if (state.activePane === "manuscript" || state.activePane === "narration") {
@@ -2048,6 +2073,7 @@ function renderShell() {
     </section>
 
     <div id="task-menu-slot"></div>
+    <div id="confirmation-slot"></div>
     <div id="find-slot"></div>
     <div id="grammar-check-slot"></div>
     <div id="writing-target-slot"></div>
@@ -2401,6 +2427,17 @@ function handleGlobalKeyboardShortcut(event) {
   const commandKey = event.ctrlKey || event.metaKey;
   if (!commandKey) {
     return;
+  }
+
+  if (!event.altKey && !isTextEditingTarget(event.target) && (key === "z" || key === "y")) {
+    const handled = key === "z"
+      ? (event.shiftKey ? redoBinderSceneMove() : undoBinderSceneMove())
+      : redoBinderSceneMove();
+    if (handled) {
+      event.preventDefault();
+      hideFileMenu();
+      return;
+    }
   }
 
   if (!event.altKey && isTextEditingTarget(event.target)) {
@@ -4100,6 +4137,8 @@ function renderPassageNoteItem(note) {
   const isSelected = state.selectedPassageNoteId === note.id;
   const isPreviewing = state.taskPreview?.taskId === note.id;
   const sourceLabel = formatImportSourceLabel(note.source);
+  const deleteLabel = `Delete ${note.noteType === "research" ? "research" : "inspiration"} note`;
+  const editLabel = `Edit ${note.noteType === "research" ? "research" : "inspiration"} note`;
   return `
     <div
       class="console-item passage-note-item ${isSelected ? "is-selected" : ""} ${isPreviewing ? "is-previewing" : ""}"
@@ -4126,8 +4165,270 @@ function renderPassageNoteItem(note) {
         aria-label="${escapeHtml(note.noteType === "research" ? "Research note body" : "Inspiration note body")}"
         rows="3"
       >${escapeHtml(note.body || "")}</textarea>
+      <div class="passage-note-actions">
+        <button
+          class="tag-button passage-note-icon-button passage-note-edit-button"
+          type="button"
+          data-action="edit-passage-note"
+          data-note-id="${escapeHtml(note.id)}"
+          aria-label="${escapeHtml(editLabel)}"
+          title="Edit this note"
+        >
+          ${renderPassageNoteEditIcon()}
+        </button>
+        <button
+          class="tag-button passage-note-icon-button passage-note-delete-button"
+          type="button"
+          data-action="delete-passage-note"
+          data-note-id="${escapeHtml(note.id)}"
+          aria-label="${escapeHtml(deleteLabel)}"
+          title="Delete this note"
+        >
+          ${renderPassageNoteDeleteIcon()}
+        </button>
+      </div>
     </div>
   `;
+}
+
+function renderDeleteConfirmationDialog() {
+  const slot = document.querySelector("#confirmation-slot");
+  if (!(slot instanceof HTMLElement)) {
+    return;
+  }
+
+  const dialog = state.deleteConfirmationDialog;
+  if (!dialog) {
+    slot.innerHTML = "";
+    return;
+  }
+
+  const preferenceKey = dialog.preferenceKey === "comments" ? "comments" : "passageNotes";
+  const skipConfirmation = Boolean(state.deleteConfirmationPreferences?.[preferenceKey]);
+  slot.innerHTML = `
+    <div class="delete-confirmation-backdrop" data-action="cancel-delete-confirmation" aria-hidden="true"></div>
+    <section class="delete-confirmation-modal" role="dialog" aria-modal="true" aria-label="${escapeHtml(dialog.title)}">
+      <header class="delete-confirmation-header">
+        <strong>${escapeHtml(dialog.title)}</strong>
+        <button
+          class="delete-confirmation-close"
+          type="button"
+          data-action="cancel-delete-confirmation"
+          aria-label="Close delete confirmation"
+          title="Close"
+        >×</button>
+      </header>
+      <p class="delete-confirmation-copy">${escapeHtml(dialog.message)}</p>
+      <label class="delete-confirmation-checkbox">
+        <input
+          type="checkbox"
+          data-action="toggle-delete-confirmation-preference"
+          data-confirmation-key="${escapeHtml(preferenceKey)}"
+          ${skipConfirmation ? "checked" : ""}
+        />
+        <span>Do not ask me again</span>
+      </label>
+      <div class="delete-confirmation-actions">
+        <button
+          class="tag-button delete-confirmation-cancel"
+          type="button"
+          data-action="cancel-delete-confirmation"
+        >Cancel</button>
+        <button
+          class="tag-button delete-confirmation-confirm"
+          type="button"
+          data-action="confirm-delete-confirmation"
+        >Delete</button>
+      </div>
+    </section>
+  `;
+}
+
+function createDeleteConfirmationPreferences(candidate = {}) {
+  return {
+    passageNotes: Boolean(candidate?.passageNotes),
+    comments: Boolean(candidate?.comments),
+  };
+}
+
+function loadDeleteConfirmationPreferences() {
+  return createDeleteConfirmationPreferences(readStoredJson(EDITOR_DELETE_CONFIRMATIONS_KEY));
+}
+
+function persistDeleteConfirmationPreferences() {
+  writeStoredJsonRaw(
+    EDITOR_DELETE_CONFIRMATIONS_KEY,
+    createDeleteConfirmationPreferences(state.deleteConfirmationPreferences),
+  );
+}
+
+function renderPassageNoteEditIcon() {
+  return `
+    <svg class="passage-note-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <path d="M10.8 2.4 13.6 5.2 5.7 13.1 2.2 13.8 2.9 10.3 10.8 2.4Z"></path>
+      <path d="M9.4 3.8 12.2 6.6"></path>
+    </svg>
+  `;
+}
+
+function renderPassageNoteDeleteIcon() {
+  return `
+    <svg class="passage-note-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <path d="M3.5 4.5H12.5"></path>
+      <path d="M6 4.5 6.3 3.4H9.7L10 4.5"></path>
+      <path d="M5.5 4.5 6 12.2C6.1 12.9 6.6 13.5 7.3 13.5H8.7C9.4 13.5 9.9 12.9 10 12.2L10.5 4.5"></path>
+      <path d="M7 7V11"></path>
+      <path d="M9 7V11"></path>
+    </svg>
+  `;
+}
+
+function requestDeletePassageNoteFromPanel(noteId) {
+  const note = state.passageNotes.find((candidate) => candidate.id === noteId);
+  if (!note) {
+    return false;
+  }
+
+  const preferenceKey = "passageNotes";
+  if (Boolean(state.deleteConfirmationPreferences?.[preferenceKey])) {
+    return performPassageNoteDeletion(noteId);
+  }
+
+  state.deleteConfirmationDialog = {
+    kind: "passage-note",
+    noteId: note.id,
+    preferenceKey,
+    title: `Delete ${note.noteType === "research" ? "research" : "inspiration"} note?`,
+    message: `Delete "${note.title || (note.noteType === "research" ? "Research note" : "Inspiration note")}"?\n\nThis removes the note from the side panel and clears any active preview.`,
+  };
+  renderDeleteConfirmationDialog();
+  return true;
+}
+
+function confirmDeleteConfirmationDialog() {
+  const dialog = state.deleteConfirmationDialog;
+  if (!dialog) {
+    return false;
+  }
+
+  if (Boolean(state.deleteConfirmationPreferences?.[dialog.preferenceKey])) {
+    persistDeleteConfirmationPreferences();
+  }
+
+  state.deleteConfirmationDialog = null;
+  renderDeleteConfirmationDialog();
+
+  if (dialog.kind === "passage-note") {
+    return performPassageNoteDeletion(dialog.noteId);
+  }
+
+  return false;
+}
+
+function cancelDeleteConfirmationDialog() {
+  if (!state.deleteConfirmationDialog) {
+    return false;
+  }
+
+  state.deleteConfirmationDialog = null;
+  renderDeleteConfirmationDialog();
+  return true;
+}
+
+function toggleDeleteConfirmationPreference(preferenceKey, checked) {
+  const normalizedKey = preferenceKey === "comments" ? "comments" : "passageNotes";
+  state.deleteConfirmationPreferences = {
+    ...(state.deleteConfirmationPreferences ?? createDeleteConfirmationPreferences()),
+    [normalizedKey]: Boolean(checked),
+  };
+  persistDeleteConfirmationPreferences();
+}
+
+function performPassageNoteDeletion(noteId) {
+  const note = state.passageNotes.find((candidate) => candidate.id === noteId);
+  if (!note) {
+    return false;
+  }
+
+  const wasSelected = state.selectedPassageNoteId === note.id;
+  const wasPreviewing = state.taskPreview?.taskId === note.id;
+  const viewport = captureSceneEditorViewport(note.sceneId);
+  const sameSceneReplacementNote = state.passageNotes.find(
+    (candidate) =>
+      candidate.id !== note.id &&
+      candidate.noteType === note.noteType &&
+      candidate.sceneId === note.sceneId,
+  ) ?? null;
+
+  state.passageNotes = state.passageNotes.filter((candidate) => candidate.id !== note.id);
+  writeStoredJson(EDITOR_PASSAGE_NOTES_KEY, state.passageNotes);
+
+  if (wasPreviewing) {
+    clearTaskAnchorPreview({ restoreSelection: false });
+  }
+
+  if (sameSceneReplacementNote && wasSelected) {
+    selectPassageNote(sameSceneReplacementNote.id);
+    return true;
+  }
+
+  if (wasSelected) {
+    state.selectedPassageNoteId = null;
+  }
+
+  renderConsolePanel();
+  if (wasPreviewing || wasSelected) {
+    window.requestAnimationFrame(() => {
+      restoreSceneEditorViewport(note.sceneId, viewport);
+    });
+  }
+  return true;
+}
+
+// Intent: reopen the inline passage-note bubble with an existing note already seeded.
+function openPassageNoteEditorFromPanel(noteId) {
+  const note = state.passageNotes.find((candidate) => candidate.id === noteId);
+  if (!note) {
+    return false;
+  }
+
+  state.inlinePassageDraft = {
+    sceneId: note.sceneId,
+    noteType: note.noteType,
+    selectedText: String(note.selectedText ?? ""),
+    startOffset: Number.isInteger(note.startOffset) ? note.startOffset : 0,
+    endOffset: Number.isInteger(note.endOffset) ? note.endOffset : 0,
+    anchorStartOffset: Number.isInteger(note.startOffset) ? note.startOffset : 0,
+    seededSelection: true,
+    typedStartOffset: Number.isInteger(note.startOffset) ? note.startOffset : 0,
+    typedEndOffset: Number.isInteger(note.endOffset) ? note.endOffset : 0,
+    body: String(note.body ?? ""),
+    typedText: String(note.selectedText ?? ""),
+    editingNoteId: note.id,
+    x: 110,
+    y: 40,
+  };
+  state.sidePanelMode = note.noteType;
+  state.selectedPassageNoteId = note.id;
+  state.taskContextMenu = null;
+  state.spellcheckContextMenu = null;
+  state.taskComposer = null;
+  renderTaskContextMenu();
+  if (state.selectedSceneId !== note.sceneId) {
+    selectSceneById(note.sceneId);
+  }
+  renderConsolePanel();
+  renderManuscriptPanel();
+  syncSceneDocumentLayout();
+  window.requestAnimationFrame(() => {
+    syncInlinePassageDraftLayout();
+    const field = document.querySelector("[data-edit-field='inline-passage-note']");
+    if (field instanceof HTMLTextAreaElement) {
+      field.focus();
+      field.setSelectionRange(field.value.length, field.value.length);
+    }
+  });
+  return true;
 }
 
 function formatImportSourceLabel(source) {
@@ -6448,6 +6749,30 @@ function mergeProjectRecords(storedRecord, seedRecord, legacyState = null) {
   const seedProjectSettings = seedRecord?.projectSettings && typeof seedRecord.projectSettings === "object" && !Array.isArray(seedRecord.projectSettings)
     ? seedRecord.projectSettings
     : {};
+  const seedWorkspace = seedRecord?.workspace && typeof seedRecord.workspace === "object" && !Array.isArray(seedRecord.workspace)
+    ? cloneValue(seedRecord.workspace)
+    : {};
+  const storedWorkspace = storedRecord?.workspace && typeof storedRecord.workspace === "object" && !Array.isArray(storedRecord.workspace)
+    ? cloneValue(storedRecord.workspace)
+    : {};
+  const mergedWorkspace = {
+    ...seedWorkspace,
+    ...storedWorkspace,
+  };
+  if (seedWorkspace.project || storedWorkspace.project) {
+    mergedWorkspace.project = {
+      ...(seedWorkspace.project && typeof seedWorkspace.project === "object" ? seedWorkspace.project : {}),
+      ...(storedWorkspace.project && typeof storedWorkspace.project === "object" ? storedWorkspace.project : {}),
+      id: seedRecord.id,
+      title: seedRecord.title,
+    };
+  }
+  if (seedWorkspace.selectionDefaults || storedWorkspace.selectionDefaults) {
+    mergedWorkspace.selectionDefaults = {
+      ...(seedWorkspace.selectionDefaults && typeof seedWorkspace.selectionDefaults === "object" ? seedWorkspace.selectionDefaults : {}),
+      ...(storedWorkspace.selectionDefaults && typeof storedWorkspace.selectionDefaults === "object" ? storedWorkspace.selectionDefaults : {}),
+    };
+  }
   const merged = {
     ...cloneValue(seedRecord),
     ...cloneValue(storedRecord),
@@ -6456,7 +6781,7 @@ function mergeProjectRecords(storedRecord, seedRecord, legacyState = null) {
     source: seedRecord.source ?? storedRecord.source,
     createdAt: seedRecord.createdAt ?? storedRecord.createdAt,
     updatedAt: storedRecord.updatedAt ?? seedRecord.updatedAt,
-    workspace: cloneValue(seedRecord.workspace ?? storedRecord.workspace),
+    workspace: mergedWorkspace,
     sceneDrafts: storedRecord.sceneDrafts ?? seedRecord.sceneDrafts ?? legacyState?.sceneDrafts ?? {},
     structureDrafts: storedRecord.structureDrafts ?? seedRecord.structureDrafts ?? legacyState?.structureDrafts ?? createStructureDrafts(),
     templateDrafts: storedRecord.templateDrafts ?? seedRecord.templateDrafts ?? legacyState?.templateDrafts ?? createTemplateDrafts(),
@@ -6916,11 +7241,25 @@ function normalizeProjectRecord(candidate, legacyState = null) {
 }
 
 function normalizeSelectionDefaults(candidate, project) {
+  const sceneIdFromLine =
+    typeof candidate?.lineId === "string" && candidate.lineId.trim()
+      ? project?.lines?.find((line) => line?.blockId === candidate.lineId)?.sceneId ?? ""
+      : "";
+  const normalizedSceneSelectionStart = Number.isInteger(candidate?.sceneSelectionStart)
+    ? candidate.sceneSelectionStart
+    : null;
+  const normalizedSceneSelectionEnd = Number.isInteger(candidate?.sceneSelectionEnd)
+    ? candidate.sceneSelectionEnd
+    : null;
   return {
     lineId:
       typeof candidate?.lineId === "string" && candidate.lineId.trim()
         ? candidate.lineId
         : project?.lines?.[0]?.blockId ?? "",
+    sceneId:
+      typeof candidate?.sceneId === "string" && candidate.sceneId.trim()
+        ? candidate.sceneId
+        : (sceneIdFromLine || project?.lines?.[0]?.sceneId) ?? "",
     issueId:
       typeof candidate?.issueId === "string" && candidate.issueId.trim()
         ? candidate.issueId
@@ -6933,6 +7272,53 @@ function normalizeSelectionDefaults(candidate, project) {
       typeof candidate?.entityId === "string" && candidate.entityId.trim()
         ? candidate.entityId
         : undefined,
+    sceneSelectionBlockId:
+      typeof candidate?.sceneSelectionBlockId === "string" && candidate.sceneSelectionBlockId.trim()
+        ? candidate.sceneSelectionBlockId
+        : "",
+    sceneSelectionLineNumber: Number.isInteger(candidate?.sceneSelectionLineNumber)
+      ? candidate.sceneSelectionLineNumber
+      : null,
+    sceneSelectionStart: normalizedSceneSelectionStart,
+    sceneSelectionEnd: normalizedSceneSelectionEnd,
+    sceneSelectionScrollTop: Number.isFinite(candidate?.sceneSelectionScrollTop)
+      ? candidate.sceneSelectionScrollTop
+      : null,
+    sceneSelectionScrollLeft: Number.isFinite(candidate?.sceneSelectionScrollLeft)
+      ? candidate.sceneSelectionScrollLeft
+      : null,
+    inlinePassageDraft: normalizeInlinePassageDraftSelectionDefaults(candidate?.inlinePassageDraft),
+  };
+}
+
+function normalizeInlinePassageDraftSelectionDefaults(candidate) {
+  if (!candidate || typeof candidate !== "object") {
+    return null;
+  }
+
+  const noteType = candidate.noteType === "research" ? "research" : candidate.noteType === "inspiration" ? "inspiration" : "";
+  const sceneId = typeof candidate.sceneId === "string" && candidate.sceneId.trim()
+    ? candidate.sceneId.trim()
+    : "";
+  if (!noteType || !sceneId) {
+    return null;
+  }
+
+  return {
+    sceneId,
+    noteType,
+    selectedText: String(candidate.selectedText ?? ""),
+    startOffset: Number.isInteger(candidate.startOffset) ? candidate.startOffset : null,
+    endOffset: Number.isInteger(candidate.endOffset) ? candidate.endOffset : null,
+    anchorStartOffset: Number.isInteger(candidate.anchorStartOffset) ? candidate.anchorStartOffset : null,
+    seededSelection: Boolean(candidate.seededSelection),
+    typedStartOffset: Number.isInteger(candidate.typedStartOffset) ? candidate.typedStartOffset : null,
+    typedEndOffset: Number.isInteger(candidate.typedEndOffset) ? candidate.typedEndOffset : null,
+    body: String(candidate.body ?? ""),
+    typedText: String(candidate.typedText ?? ""),
+    editingNoteId: typeof candidate.editingNoteId === "string" ? candidate.editingNoteId : "",
+    x: Number.isFinite(candidate.x) ? candidate.x : 110,
+    y: Number.isFinite(candidate.y) ? candidate.y : 40,
   };
 }
 
@@ -7032,8 +7418,23 @@ function createProjectLibraryRecordFromState(options = {}) {
     currentWordCount: getCurrentManuscriptWordCount(),
     now: options.updatedAt ? new Date(options.updatedAt) : new Date(),
   });
+  const sceneSelection = captureSceneSelectionDefaultsForSave();
+  const workspaceSnapshot = cloneValue(state.workspace);
+  workspaceSnapshot.selectionDefaults = {
+    ...(workspaceSnapshot.selectionDefaults && typeof workspaceSnapshot.selectionDefaults === "object"
+      ? workspaceSnapshot.selectionDefaults
+      : {}),
+    sceneId: state.selectedSceneId ?? "",
+    sceneSelectionBlockId: sceneSelection.blockId ?? "",
+    sceneSelectionLineNumber: sceneSelection.lineNumber ?? null,
+    sceneSelectionStart: sceneSelection.startOffset ?? null,
+    sceneSelectionEnd: sceneSelection.endOffset ?? null,
+    sceneSelectionScrollTop: sceneSelection.scrollTop ?? null,
+    sceneSelectionScrollLeft: sceneSelection.scrollLeft ?? null,
+    inlinePassageDraft: captureInlinePassageDraftDefaultsForSave(),
+  };
 
-  return createProjectLibraryRecordFromWorkspace(state.workspace, {
+  return createProjectLibraryRecordFromWorkspace(workspaceSnapshot, {
     ...options,
     id: state.workspace.project.id,
     title: state.projectTitle || state.workspace.project.title,
@@ -7144,6 +7545,11 @@ function applyProjectRecord(record) {
   state.templateDrafts = cloneValue(record.templateDrafts ?? createTemplateDrafts());
   state.manuscriptTasks = normalizeManuscriptTasks(record.manuscriptTasks);
   state.passageNotes = normalizePassageNotes(record.passageNotes);
+  state.binderSceneMoveHistory = {
+    undoStack: [],
+    redoStack: [],
+  };
+  state.sceneEditorSelectionSnapshot = null;
   // Project file destination is owned by ProjectPersistenceService and must survive record application.
   state.selectedTaskId = null;
   state.selectedPassageNoteId = null;
@@ -7154,6 +7560,7 @@ function applyProjectRecord(record) {
   state.taskContextMenu = null;
   state.binderContextMenu = null;
   state.spellcheckContextMenu = null;
+  state.deleteConfirmationDialog = null;
   state.taskComposer = null;
   state.taskPreview = null;
   state.localAiTitleStatus = {};
@@ -7203,6 +7610,428 @@ function applyProjectRecord(record) {
     projectId: record.id,
     sceneDraftCount: Object.keys(state.sceneDrafts ?? {}).length,
     selectedSceneId: state.selectedSceneId ?? "",
+  });
+}
+
+function createBinderSceneMoveHistoryState() {
+  return {
+    undoStack: [],
+    redoStack: [],
+  };
+}
+
+function cloneBinderSceneGroups(sceneGroups) {
+  return Array.isArray(sceneGroups)
+    ? sceneGroups.map((group) => ({
+        ...group,
+        lines: Array.isArray(group?.lines) ? [...group.lines] : [],
+      }))
+    : [];
+}
+
+function captureSceneSelectionDefaultsForSave() {
+  const selectedSceneId = typeof state.selectedSceneId === "string" ? state.selectedSceneId.trim() : "";
+  const textarea = selectedSceneId ? getEditorTextareaForScene(selectedSceneId) : null;
+  const scene = selectedSceneId ? getScene(selectedSceneId) : null;
+  const liveSelection = textarea instanceof HTMLTextAreaElement
+    ? captureSceneEditorSelectionSnapshotFromTextarea(textarea)
+    : null;
+  const snapshot =
+    state.sceneEditorSelectionSnapshot &&
+    state.sceneEditorSelectionSnapshot.sceneId === selectedSceneId
+      ? state.sceneEditorSelectionSnapshot
+      : null;
+
+  if (!scene) {
+    return {
+      blockId: state.selectedBlockId ?? "",
+      startOffset: null,
+      endOffset: null,
+      scrollTop: null,
+      scrollLeft: null,
+    };
+  }
+
+  const resolvedSelection = liveSelection ?? snapshot;
+  const startOffset = Number.isInteger(resolvedSelection?.startOffset)
+    ? resolvedSelection.startOffset
+    : Number.isInteger(textarea?.selectionStart)
+      ? textarea.selectionStart
+      : 0;
+  const endOffset = Number.isInteger(resolvedSelection?.endOffset)
+    ? resolvedSelection.endOffset
+    : Number.isInteger(textarea?.selectionEnd)
+      ? textarea.selectionEnd
+      : startOffset;
+  const block = findSceneBlockAtOffset(scene, startOffset) ?? scene.blocks.find((candidate) => candidate.blockId === state.selectedBlockId) ?? scene.blocks[0] ?? null;
+
+  return {
+    blockId: block?.blockId ?? state.selectedBlockId ?? "",
+    lineNumber: Number.isInteger(resolvedSelection?.lineNumber)
+      ? resolvedSelection.lineNumber
+      : block?.lineNumber ?? null,
+    startOffset,
+    endOffset,
+    scrollTop: Number.isFinite(resolvedSelection?.scrollTop) ? resolvedSelection.scrollTop : null,
+    scrollLeft: Number.isFinite(resolvedSelection?.scrollLeft) ? resolvedSelection.scrollLeft : null,
+  };
+}
+
+// Intent: persist the current inline passage composer so a reload can reopen the same note draft.
+function captureInlinePassageDraftDefaultsForSave() {
+  const draft = state.inlinePassageDraft;
+  if (!draft) {
+    return null;
+  }
+
+  return {
+    sceneId: typeof draft.sceneId === "string" ? draft.sceneId : "",
+    noteType: draft.noteType === "research" ? "research" : "inspiration",
+    selectedText: String(draft.selectedText ?? ""),
+    startOffset: Number.isInteger(draft.startOffset) ? draft.startOffset : null,
+    endOffset: Number.isInteger(draft.endOffset) ? draft.endOffset : null,
+    anchorStartOffset: Number.isInteger(draft.anchorStartOffset) ? draft.anchorStartOffset : null,
+    seededSelection: Boolean(draft.seededSelection),
+    typedStartOffset: Number.isInteger(draft.typedStartOffset) ? draft.typedStartOffset : null,
+    typedEndOffset: Number.isInteger(draft.typedEndOffset) ? draft.typedEndOffset : null,
+    body: String(draft.body ?? ""),
+    typedText: String(draft.typedText ?? ""),
+    editingNoteId: typeof draft.editingNoteId === "string" ? draft.editingNoteId : "",
+    x: Number.isFinite(draft.x) ? draft.x : 110,
+    y: Number.isFinite(draft.y) ? draft.y : 40,
+  };
+}
+
+function normalizeSceneSelectionDefaults(candidate, scene) {
+  const normalizedSelectionStart = Number.isInteger(candidate?.sceneSelectionStart)
+    ? clampEditorOffset(candidate.sceneSelectionStart, scene?.editorText?.length ?? 0)
+    : null;
+  const normalizedSelectionEnd = Number.isInteger(candidate?.sceneSelectionEnd)
+    ? clampEditorOffset(candidate.sceneSelectionEnd, scene?.editorText?.length ?? 0)
+    : normalizedSelectionStart;
+  const normalizedScrollTop = Number.isFinite(candidate?.sceneSelectionScrollTop)
+    ? Math.max(0, candidate.sceneSelectionScrollTop)
+    : null;
+  const normalizedScrollLeft = Number.isFinite(candidate?.sceneSelectionScrollLeft)
+    ? Math.max(0, candidate.sceneSelectionScrollLeft)
+    : null;
+  const normalizedLineNumber = Number.isInteger(candidate?.sceneSelectionLineNumber)
+    ? Math.max(1, candidate.sceneSelectionLineNumber)
+    : null;
+  const fallbackBlockId =
+    typeof candidate?.sceneSelectionBlockId === "string" && candidate.sceneSelectionBlockId.trim()
+      ? candidate.sceneSelectionBlockId
+      : scene?.blocks?.[0]?.blockId ?? "";
+
+  return {
+    blockId: fallbackBlockId,
+    lineNumber: normalizedLineNumber,
+    startOffset: normalizedSelectionStart,
+    endOffset: normalizedSelectionEnd,
+    scrollTop: normalizedScrollTop,
+    scrollLeft: normalizedScrollLeft,
+  };
+}
+
+// Intent: restore the inline passage composer only when the project explicitly saved one.
+function normalizeInlinePassageDraftDefaults(candidate, scene) {
+  if (!candidate || typeof candidate !== "object") {
+    return null;
+  }
+
+  const noteType = candidate.noteType === "research" ? "research" : candidate.noteType === "inspiration" ? "inspiration" : "";
+  const sceneId = typeof candidate.sceneId === "string" && candidate.sceneId.trim()
+    ? candidate.sceneId.trim()
+    : scene?.sceneId ?? "";
+  if (!noteType || !sceneId) {
+    return null;
+  }
+
+  const sceneLength = scene?.editorText?.length ?? 0;
+  const startOffset = Number.isInteger(candidate.startOffset)
+    ? clampEditorOffset(candidate.startOffset, sceneLength)
+    : 0;
+  const endOffset = Number.isInteger(candidate.endOffset)
+    ? clampEditorOffset(candidate.endOffset, sceneLength)
+    : startOffset;
+  const anchorStartOffset = Number.isInteger(candidate.anchorStartOffset)
+    ? clampEditorOffset(candidate.anchorStartOffset, sceneLength)
+    : startOffset;
+
+  return {
+    sceneId,
+    noteType,
+    selectedText: String(candidate.selectedText ?? ""),
+    startOffset,
+    endOffset,
+    anchorStartOffset,
+    seededSelection: Boolean(candidate.seededSelection),
+    typedStartOffset: Number.isInteger(candidate.typedStartOffset)
+      ? clampEditorOffset(candidate.typedStartOffset, sceneLength)
+      : null,
+    typedEndOffset: Number.isInteger(candidate.typedEndOffset)
+      ? clampEditorOffset(candidate.typedEndOffset, sceneLength)
+      : null,
+    body: String(candidate.body ?? ""),
+    typedText: String(candidate.typedText ?? ""),
+    editingNoteId: typeof candidate.editingNoteId === "string" ? candidate.editingNoteId : "",
+    x: Number.isFinite(candidate.x) ? candidate.x : 110,
+    y: Number.isFinite(candidate.y) ? candidate.y : 40,
+  };
+}
+
+function restoreSceneSelectionRange(selection) {
+  const sceneId = typeof state.selectedSceneId === "string" ? state.selectedSceneId.trim() : "";
+  if (!sceneId) {
+    return;
+  }
+
+  const scene = getScene(sceneId);
+  if (!scene) {
+    return;
+  }
+
+  const textarea = getEditorTextareaForScene(sceneId);
+  if (!(textarea instanceof HTMLTextAreaElement)) {
+    return;
+  }
+
+  const lineNumber = Number.isInteger(selection?.lineNumber)
+    ? Math.max(1, selection.lineNumber)
+    : null;
+  const startOffset = Number.isInteger(selection?.startOffset)
+    ? clampEditorOffset(selection.startOffset, textarea.value.length)
+    : null;
+  const endOffset = Number.isInteger(selection?.endOffset)
+    ? clampEditorOffset(selection.endOffset, textarea.value.length)
+    : startOffset;
+  const blockId = typeof selection?.blockId === "string" && selection.blockId.trim()
+    ? selection.blockId
+    : "";
+
+  if (lineNumber) {
+    const style = window.getComputedStyle(textarea);
+    const fontSize = parseFloat(style.fontSize || "0") || 16;
+    const approximateCharacterWidth = Math.max(6, fontSize * 0.56);
+    const charactersPerLine = Math.max(
+      8,
+      Math.floor(textarea.clientWidth / approximateCharacterWidth),
+    );
+    const sceneMetrics = buildSceneLineMetrics(
+      state.scenes,
+      charactersPerLine,
+      { [scene.sceneId]: textarea.value },
+    ).find((candidate) => candidate.sceneId === scene.sceneId);
+    const relativeLineNumber = Math.max(0, lineNumber - (sceneMetrics?.startLineNumber ?? lineNumber));
+    const lineEndOffset = findEditorOffsetForVisualLineEnd(
+      textarea.value,
+      relativeLineNumber,
+      charactersPerLine,
+    );
+    const lineBlock = scene.blocks.find((candidate) => candidate.lineNumber === lineNumber) ?? null;
+    const resolvedBlock =
+      lineBlock
+      ?? findSceneBlockAtOffset(scene, lineEndOffset)
+      ?? scene.blocks.find((candidate) => candidate.blockId === blockId)
+      ?? scene.blocks[0]
+      ?? null;
+    if (resolvedBlock) {
+      state.selectedBlockId = resolvedBlock.blockId;
+    }
+
+    textarea.focus({ preventScroll: true });
+    textarea.setSelectionRange(lineEndOffset, lineEndOffset, "forward");
+    takeToEditorOffset(textarea, lineEndOffset, { behavior: "auto" });
+    return;
+  }
+
+  if (startOffset === null || endOffset === null) {
+    const targetBlock =
+      blockId
+        ? scene.blocks.find((candidate) => candidate.blockId === blockId) ?? null
+        : Number.isInteger(selection?.lineNumber)
+          ? scene.blocks.find((candidate) => candidate.lineNumber === selection.lineNumber) ?? null
+          : null;
+    if (targetBlock) {
+      const blockRange = getSceneBlockRanges(scene).find((candidate) => candidate.blockId === targetBlock.blockId) ?? null;
+      const targetOffset = blockRange?.endOffset ?? targetBlock.text.length;
+      state.selectedBlockId = targetBlock.blockId;
+      textarea.focus({ preventScroll: true });
+      textarea.setSelectionRange(targetOffset, targetOffset, "forward");
+      takeToEditorOffset(textarea, targetOffset, { behavior: "auto" });
+      return;
+    }
+
+    const block = blockId
+      ? scene.blocks.find((candidate) => candidate.blockId === blockId) ?? null
+      : scene.blocks[0] ?? null;
+    if (block) {
+      state.selectedBlockId = block.blockId;
+      return;
+    }
+    return;
+  }
+
+  const block = findSceneBlockAtOffset(scene, startOffset) ?? scene.blocks.find((candidate) => candidate.blockId === blockId) ?? scene.blocks[0] ?? null;
+  if (block) {
+    state.selectedBlockId = block.blockId;
+  }
+
+  textarea.focus({ preventScroll: true });
+  textarea.setSelectionRange(startOffset, endOffset, "forward");
+  takeToEditorOffset(textarea, startOffset, { behavior: "auto" });
+}
+
+// Intent: cache the current scene editor caret and viewport so autosave can persist it reliably.
+function captureSceneEditorSelectionSnapshotFromTextarea(textarea) {
+  if (!(textarea instanceof HTMLTextAreaElement)) {
+    return null;
+  }
+
+  const sceneId = typeof textarea.dataset.sceneId === "string" ? textarea.dataset.sceneId.trim() : "";
+  if (!sceneId) {
+    return null;
+  }
+
+  const scene = getScene(sceneId);
+  if (!scene) {
+    return null;
+  }
+
+  const codeframe = textarea.closest(".scene-editor-codeframe");
+  const startOffset = Number.isInteger(textarea.selectionStart) ? textarea.selectionStart : 0;
+  const endOffset = Number.isInteger(textarea.selectionEnd) ? textarea.selectionEnd : startOffset;
+  const block = findSceneBlockAtOffset(scene, startOffset) ?? scene.blocks[0] ?? null;
+  const lineNumber = getSceneEditorSelectionLineNumber(textarea, scene, startOffset);
+
+  return {
+    sceneId,
+    blockId: block?.blockId ?? "",
+    lineNumber,
+    startOffset,
+    endOffset,
+    scrollTop: codeframe instanceof HTMLElement ? codeframe.scrollTop : null,
+    scrollLeft: codeframe instanceof HTMLElement ? codeframe.scrollLeft : null,
+  };
+}
+
+function updateSceneEditorSelectionSnapshotFromTextarea(textarea) {
+  const snapshot = captureSceneEditorSelectionSnapshotFromTextarea(textarea);
+  if (!snapshot) {
+    return;
+  }
+
+  state.sceneEditorSelectionSnapshot = snapshot;
+}
+
+// Intent: convert the current caret position into a stable manuscript line number for save/restore.
+function getSceneEditorSelectionLineNumber(textarea, scene, offset = null) {
+  if (!(textarea instanceof HTMLTextAreaElement) || !scene) {
+    return null;
+  }
+
+  const style = window.getComputedStyle(textarea);
+  const fontSize = parseFloat(style.fontSize || "0") || 16;
+  const approximateCharacterWidth = Math.max(6, fontSize * 0.56);
+  const charactersPerLine = Math.max(
+    8,
+    Math.floor(textarea.clientWidth / approximateCharacterWidth),
+  );
+  const selectedSceneMetrics = buildSceneLineMetrics(
+    state.scenes,
+    charactersPerLine,
+    { [scene.sceneId]: textarea.value },
+  ).find((candidate) => candidate.sceneId === scene.sceneId);
+  const caretOffset = Number.isInteger(offset) ? offset : Number.isInteger(textarea.selectionStart) ? textarea.selectionStart : 0;
+  const visualLineOffset = estimateVisualLineBeforeOffset(textarea.value, caretOffset, charactersPerLine);
+  return (selectedSceneMetrics?.startLineNumber ?? 1) + visualLineOffset;
+}
+
+// Intent: resolve a persisted visual line number back to the end of that wrapped line in the editor.
+function findEditorOffsetForVisualLineEnd(text, targetVisualLineIndex, charactersPerLine) {
+  const safeTargetIndex = Math.max(0, Math.floor(Number(targetVisualLineIndex) || 0));
+  const logicalLines = String(text ?? "").split("\n");
+  let visualLineIndex = 0;
+  let logicalStartOffset = 0;
+
+  for (const logicalLine of logicalLines) {
+    const lineLength = logicalLine.length;
+    const wrappedLineCount = Math.max(1, Math.ceil(lineLength / charactersPerLine));
+    if (safeTargetIndex < visualLineIndex + wrappedLineCount) {
+      const relativeLineIndex = safeTargetIndex - visualLineIndex;
+      const endOffsetWithinLine = Math.min(lineLength, (relativeLineIndex + 1) * charactersPerLine);
+      return logicalStartOffset + endOffsetWithinLine;
+    }
+
+    visualLineIndex += wrappedLineCount;
+    logicalStartOffset += lineLength + 1;
+  }
+
+  return String(text ?? "").length;
+}
+
+function restoreSelectionFromWorkspaceDefaults() {
+  const selectionDefaults = state.workspace?.selectionDefaults ?? {};
+  state.selectedIssueId = selectionDefaults.issueId ?? null;
+  state.selectedNodeId = selectionDefaults.nodeId ?? null;
+  state.selectedEntityId = selectionDefaults.entityId ?? null;
+
+  const preferredDraft = normalizeInlinePassageDraftDefaults(
+    selectionDefaults.inlinePassageDraft,
+    null,
+  );
+  const preferredSceneId = typeof selectionDefaults.sceneId === "string" ? selectionDefaults.sceneId.trim() : "";
+  const sceneIdForRestore = preferredDraft?.sceneId || preferredSceneId;
+  if (sceneIdForRestore) {
+    const preferredScene = getScene(sceneIdForRestore);
+    if (preferredScene) {
+      const sceneSelection = normalizeSceneSelectionDefaults(selectionDefaults, preferredScene);
+      const inlinePassageDraft = normalizeInlinePassageDraftDefaults(selectionDefaults.inlinePassageDraft, preferredScene);
+      selectSceneById(preferredScene.sceneId);
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          if (inlinePassageDraft) {
+            restoreInlinePassageDraftFromWorkspaceDefaults(inlinePassageDraft);
+          }
+          window.requestAnimationFrame(() => {
+            restoreSceneSelectionRange(sceneSelection);
+            state.sceneEditorSelectionSnapshot = {
+              sceneId: preferredScene.sceneId,
+              blockId: sceneSelection.blockId ?? "",
+              lineNumber: sceneSelection.lineNumber ?? null,
+              startOffset: sceneSelection.startOffset ?? null,
+              endOffset: sceneSelection.endOffset ?? null,
+              scrollTop: sceneSelection.scrollTop ?? null,
+              scrollLeft: sceneSelection.scrollLeft ?? null,
+            };
+          });
+        });
+      });
+      return;
+    }
+  }
+
+  syncSelectionFromBlock(selectionDefaults.lineId ?? state.scenes[0]?.blocks[0]?.blockId ?? null);
+}
+
+// Intent: reopen a saved inline passage composer after scene selection has been restored.
+function restoreInlinePassageDraftFromWorkspaceDefaults(draft) {
+  if (!draft || draft.sceneId !== state.selectedSceneId) {
+    return;
+  }
+
+  state.sidePanelMode = draft.noteType;
+  state.inlinePassageDraft = draft;
+  renderConsolePanel();
+  renderManuscriptPanel();
+  syncSceneDocumentLayout();
+  window.requestAnimationFrame(() => {
+    syncInlinePassageDraftLayout();
+    const noteField = document.querySelector("[data-edit-field='inline-passage-note']");
+    if (noteField instanceof HTMLTextAreaElement) {
+      noteField.focus({ preventScroll: true });
+      noteField.setSelectionRange(noteField.value.length, noteField.value.length);
+    }
   });
 }
 
@@ -7282,13 +8111,7 @@ function loadSelectedProject() {
   });
   applyProjectRecord(record);
   refreshScenes();
-  state.selectedIssueId = state.workspace.selectionDefaults.issueId ?? null;
-  state.selectedNodeId = state.workspace.selectionDefaults.nodeId ?? null;
-  state.selectedEntityId = state.workspace.selectionDefaults.entityId ?? null;
-  syncSelectionFromBlock(
-    state.workspace.selectionDefaults.lineId ?? state.scenes[0]?.blocks[0]?.blockId ?? null,
-  );
-  loadSceneDraftIntoState(state.selectedSceneId ?? state.scenes[0]?.sceneId ?? "");
+  restoreSelectionFromWorkspaceDefaults();
   syncWritingTargetState({ forceReload: true });
   refreshWritingTargetSessionLifecycle({ reason: "load-project" });
   logWritingTargetLoadCheckpoint("load-project");
@@ -7502,12 +8325,7 @@ function createProject() {
   });
   applyProjectRecord(record);
   refreshScenes();
-  state.selectedIssueId = state.workspace.selectionDefaults.issueId ?? null;
-  state.selectedNodeId = state.workspace.selectionDefaults.nodeId ?? null;
-  state.selectedEntityId = state.workspace.selectionDefaults.entityId ?? null;
-  syncSelectionFromBlock(
-    state.workspace.selectionDefaults.lineId ?? state.scenes[0]?.blocks[0]?.blockId ?? null,
-  );
+  restoreSelectionFromWorkspaceDefaults();
   syncWritingTargetState({ forceReload: true });
   setProjectFilePath(getSuggestedProjectFilePath(), null, { skipProjectFileAutosave: true });
   persistCurrentProjectRecord({ skipProjectFileAutosave: true });
@@ -7578,13 +8396,7 @@ async function loadProjectSource() {
 
     applyProjectRecord(record);
     refreshScenes();
-    state.selectedIssueId = state.workspace.selectionDefaults.issueId ?? null;
-    state.selectedNodeId = state.workspace.selectionDefaults.nodeId ?? null;
-    state.selectedEntityId = state.workspace.selectionDefaults.entityId ?? null;
-    syncSelectionFromBlock(
-      state.workspace.selectionDefaults.lineId ?? state.scenes[0]?.blocks[0]?.blockId ?? null,
-    );
-    loadSceneDraftIntoState(state.selectedSceneId ?? state.scenes[0]?.sceneId ?? "");
+    restoreSelectionFromWorkspaceDefaults();
     syncWritingTargetState({ forceReload: true });
     if (state.workspace?.project?.stats) {
       state.projectSourceStatus = `Loaded ${record.title} · ${state.workspace.project.stats.chapterCount} chapters, ${state.workspace.project.stats.sceneCount} scenes`;
@@ -8826,6 +9638,52 @@ function clearTaskAnchorPreview(options = {}) {
   state.taskPreview = null;
 }
 
+// Intent: preserve the editor viewport when anchored notes are removed or rehydrated.
+function captureSceneEditorViewport(sceneId) {
+  const textarea = getEditorTextareaForScene(sceneId);
+  const codeframe = textarea?.closest?.(".scene-editor-codeframe");
+  if (!(textarea instanceof HTMLTextAreaElement) || !(codeframe instanceof HTMLElement)) {
+    return null;
+  }
+
+  return {
+    wasFocused: document.activeElement === textarea,
+    selectionStart: textarea.selectionStart,
+    selectionEnd: textarea.selectionEnd,
+    selectionDirection: textarea.selectionDirection,
+    scrollTop: codeframe.scrollTop,
+    scrollLeft: codeframe.scrollLeft,
+  };
+}
+
+// Intent: restore the manuscript editor to the same visual position after note deletion.
+function restoreSceneEditorViewport(sceneId, viewport) {
+  if (!viewport) {
+    return;
+  }
+
+  const textarea = getEditorTextareaForScene(sceneId);
+  const codeframe = textarea?.closest?.(".scene-editor-codeframe");
+  if (!(textarea instanceof HTMLTextAreaElement) || !(codeframe instanceof HTMLElement)) {
+    return;
+  }
+
+  if (viewport.wasFocused) {
+    textarea.focus({ preventScroll: true });
+  }
+
+  const safeStart = clampEditorOffset(viewport.selectionStart ?? textarea.selectionStart, textarea.value.length);
+  const safeEnd = clampEditorOffset(viewport.selectionEnd ?? textarea.selectionEnd, textarea.value.length);
+  try {
+    textarea.setSelectionRange(safeStart, safeEnd, viewport.selectionDirection ?? "forward");
+  } catch (error) {
+    textarea.setSelectionRange(Math.min(safeStart, safeEnd), Math.max(safeStart, safeEnd));
+  }
+
+  codeframe.scrollTop = Math.max(0, viewport.scrollTop ?? 0);
+  codeframe.scrollLeft = Math.max(0, viewport.scrollLeft ?? 0);
+}
+
 // Intent: start anchored inspiration/research notes from the active manuscript selection.
 function openPassageNoteComposerFromContextMenu(noteType) {
   const menu = state.taskContextMenu;
@@ -8944,6 +9802,31 @@ function commitInlinePassageNote() {
     if (noteField instanceof HTMLTextAreaElement) {
       noteField.focus();
     }
+    return;
+  }
+
+  if (draft.editingNoteId) {
+    const updatedNotes = updatePassageNoteBody(state.passageNotes, draft.editingNoteId, body);
+    const updatedNote = updatedNotes.find((candidate) => candidate.id === draft.editingNoteId);
+    if (!updatedNote) {
+      cancelInlinePassageNote();
+      return;
+    }
+
+    state.passageNotes = updatedNotes;
+    state.sidePanelMode = updatedNote.noteType;
+    state.selectedPassageNoteId = updatedNote.id;
+    state.inlinePassageDraft = null;
+    writeStoredJson(EDITOR_PASSAGE_NOTES_KEY, state.passageNotes);
+    renderManuscriptPanel();
+    syncSceneDocumentLayout();
+    renderConsolePanel();
+    if (state.selectedSceneId === updatedNote.sceneId) {
+      scrollSelectedPassageNoteIntoView(updatedNote.id);
+      return;
+    }
+
+    focusPassageNoteRange(updatedNote, { behavior: "smooth" });
     return;
   }
 
@@ -11433,51 +12316,21 @@ function moveBinderScene(sceneId, dropTarget) {
     return false;
   }
 
-  const rebuilt = rebuildProjectSceneStateFromGroups(state.workspace.project, nextSceneGroups);
-  state.workspace.project = {
-    ...state.workspace.project,
-    binder: rebuilt.binder,
-    stats: rebuilt.stats,
-    navigationTargets: rebuilt.navigationTargets,
-    lines: rebuilt.lines,
-    issues: rebuilt.issues,
-    eventTags: rebuilt.eventTags,
-  };
-  state.manuscriptTasks = syncSceneLinkedMetadata(state.manuscriptTasks, rebuilt.sceneMetaBySceneId);
-  state.passageNotes = syncSceneLinkedMetadata(state.passageNotes, rebuilt.sceneMetaBySceneId);
-  state.workspace.analysis.suggestionQueue = syncSuggestionQueueMetadata(
-    state.workspace.analysis.suggestionQueue,
-    rebuilt.lineByBlockId,
-  );
-  state.workspace.narration.session = syncNarrationSessionMetadata(
-    state.workspace.narration.session,
-    rebuilt.lineByBlockId,
-  );
-  state.workspace.narration.alignmentJobs = syncNarrationAlignmentJobs(
-    state.workspace.narration.alignmentJobs,
-    rebuilt.lineByBlockId,
-  );
-  state.workspace.voice.recordings = syncVoiceRecordingsMetadata(
-    state.workspace.voice.recordings,
-    rebuilt.lineByBlockId,
-  );
-  state.workspace.voice.renderJobs = syncVoiceRenderJobsMetadata(
-    state.workspace.voice.renderJobs,
-    rebuilt.sceneMetaBySceneId,
-  );
-  syncStructureDraftScenesFromSceneGroups(nextSceneGroups);
-
+  const beforeSceneGroups = cloneBinderSceneGroups(sceneGroups);
   resetBinderSceneDragState();
-  const existingChapterIds = new Set(
-    [...rebuilt.sceneMetaBySceneId.values()].map((sceneMeta) => sceneMeta.chapterId),
-  );
-  state.collapsedChapterIds = state.collapsedChapterIds.filter((chapterId) => existingChapterIds.has(chapterId));
-  persistCollapsedChapterState(state.activeProjectId, state.collapsedChapterIds);
-  refreshScenes();
+  const applied = applyBinderSceneGroups(nextSceneGroups, {
+    persist: false,
+    render: false,
+  });
+  if (!applied) {
+    return false;
+  }
+
+  pushBinderSceneMoveHistory(beforeSceneGroups, nextSceneGroups, sceneId);
   persistCurrentProjectRecord();
 
   if (state.selectedSceneId === sceneId) {
-    const movedScene = state.scenes.find((scene) => scene.sceneId === sceneId);
+    const movedScene = getScene(sceneId);
     if (movedScene) {
       updateSceneEditorChapterForScene(sceneId, movedScene.chapterId, movedScene.chapterTitle);
     }
@@ -11755,7 +12608,9 @@ function removeScenesFromProject(removedSceneIds) {
   state.workspace.selectionDefaults = {
     ...(state.workspace.selectionDefaults ?? {}),
     lineId: state.selectedBlockId ?? "",
+    sceneId: state.selectedSceneId ?? "",
     issueId: state.selectedIssueId ?? undefined,
+    inlinePassageDraft: captureInlinePassageDraftDefaultsForSave(),
   };
   binderTitleClickState = null;
 
@@ -11838,6 +12693,133 @@ function trimSceneWhitespace(sceneId) {
 
   renderHeader();
   syncSceneDocumentLayout();
+  return true;
+}
+
+function pushBinderSceneMoveHistory(beforeSceneGroups, afterSceneGroups, sceneId) {
+  const currentHistory = state.binderSceneMoveHistory ?? createBinderSceneMoveHistoryState();
+  const undoStack = Array.isArray(currentHistory.undoStack) ? [...currentHistory.undoStack] : [];
+  undoStack.push({
+    sceneId,
+    beforeSceneGroups: cloneBinderSceneGroups(beforeSceneGroups),
+    afterSceneGroups: cloneBinderSceneGroups(afterSceneGroups),
+  });
+
+  state.binderSceneMoveHistory = {
+    undoStack: undoStack.slice(-20),
+    redoStack: [],
+  };
+}
+
+function applyBinderSceneGroups(sceneGroups, options = {}) {
+  if (!state.workspace?.project) {
+    return false;
+  }
+
+  const rebuilt = rebuildProjectSceneStateFromGroups(state.workspace.project, sceneGroups);
+  state.workspace.project = {
+    ...state.workspace.project,
+    binder: rebuilt.binder,
+    stats: rebuilt.stats,
+    navigationTargets: rebuilt.navigationTargets,
+    lines: rebuilt.lines,
+    issues: rebuilt.issues,
+    eventTags: rebuilt.eventTags,
+  };
+  state.manuscriptTasks = syncSceneLinkedMetadata(state.manuscriptTasks, rebuilt.sceneMetaBySceneId);
+  state.passageNotes = syncSceneLinkedMetadata(state.passageNotes, rebuilt.sceneMetaBySceneId);
+  state.workspace.analysis.suggestionQueue = syncSuggestionQueueMetadata(
+    state.workspace.analysis.suggestionQueue,
+    rebuilt.lineByBlockId,
+  );
+  state.workspace.narration.session = syncNarrationSessionMetadata(
+    state.workspace.narration.session,
+    rebuilt.lineByBlockId,
+  );
+  state.workspace.narration.alignmentJobs = syncNarrationAlignmentJobs(
+    state.workspace.narration.alignmentJobs,
+    rebuilt.lineByBlockId,
+  );
+  state.workspace.voice.recordings = syncVoiceRecordingsMetadata(
+    state.workspace.voice.recordings,
+    rebuilt.lineByBlockId,
+  );
+  state.workspace.voice.renderJobs = syncVoiceRenderJobsMetadata(
+    state.workspace.voice.renderJobs,
+    rebuilt.sceneMetaBySceneId,
+  );
+  syncStructureDraftScenesFromSceneGroups(sceneGroups);
+
+  const existingChapterIds = new Set(
+    [...rebuilt.sceneMetaBySceneId.values()].map((sceneMeta) => sceneMeta.chapterId),
+  );
+  state.collapsedChapterIds = state.collapsedChapterIds.filter((chapterId) => existingChapterIds.has(chapterId));
+  persistCollapsedChapterState(state.activeProjectId, state.collapsedChapterIds);
+  refreshScenes();
+
+  if (state.selectedSceneId) {
+    const selectedScene = getSelectedScene();
+    if (selectedScene) {
+      updateSceneEditorChapterForScene(selectedScene.sceneId, selectedScene.chapterId, selectedScene.chapterTitle);
+    }
+  }
+
+  if (options.persist !== false) {
+    persistCurrentProjectRecord();
+  }
+
+  if (options.render !== false) {
+    window.requestAnimationFrame(() => {
+      render();
+    });
+  }
+
+  return true;
+}
+
+function undoBinderSceneMove() {
+  const currentHistory = state.binderSceneMoveHistory ?? createBinderSceneMoveHistoryState();
+  const undoStack = Array.isArray(currentHistory.undoStack) ? [...currentHistory.undoStack] : [];
+  const entry = undoStack.pop();
+  if (!entry) {
+    return false;
+  }
+
+  const redoStack = Array.isArray(currentHistory.redoStack) ? [...currentHistory.redoStack] : [];
+  redoStack.push(entry);
+  state.binderSceneMoveHistory = {
+    undoStack,
+    redoStack: redoStack.slice(-20),
+  };
+
+  if (!applyBinderSceneGroups(entry.beforeSceneGroups)) {
+    state.binderSceneMoveHistory = currentHistory;
+    return false;
+  }
+
+  return true;
+}
+
+function redoBinderSceneMove() {
+  const currentHistory = state.binderSceneMoveHistory ?? createBinderSceneMoveHistoryState();
+  const redoStack = Array.isArray(currentHistory.redoStack) ? [...currentHistory.redoStack] : [];
+  const entry = redoStack.pop();
+  if (!entry) {
+    return false;
+  }
+
+  const undoStack = Array.isArray(currentHistory.undoStack) ? [...currentHistory.undoStack] : [];
+  undoStack.push(entry);
+  state.binderSceneMoveHistory = {
+    undoStack: undoStack.slice(-20),
+    redoStack,
+  };
+
+  if (!applyBinderSceneGroups(entry.afterSceneGroups)) {
+    state.binderSceneMoveHistory = currentHistory;
+    return false;
+  }
+
   return true;
 }
 

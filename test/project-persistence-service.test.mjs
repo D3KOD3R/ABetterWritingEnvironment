@@ -48,7 +48,16 @@ export async function runProjectPersistenceServiceTest() {
           templateCount: 0,
         },
       },
-      selectionDefaults: {},
+      selectionDefaults: {
+        sceneId: "scene-1",
+        sceneSelectionBlockId: "block-1",
+        sceneSelectionLineNumber: 7,
+        sceneSelectionStart: 7,
+        sceneSelectionEnd: 14,
+        sceneSelectionScrollTop: 240,
+        sceneSelectionScrollLeft: 8,
+      },
+      sceneId: "scene-1",
     },
   };
 
@@ -185,6 +194,22 @@ export async function runProjectPersistenceServiceTest() {
     ),
     false,
   );
+  assert.equal(
+    browserCacheWrites.at(-1)?.projects?.[0]?.workspace?.selectionDefaults?.sceneId,
+    "scene-1",
+  );
+  assert.equal(
+    browserCacheWrites.at(-1)?.projects?.[0]?.workspace?.selectionDefaults?.sceneSelectionLineNumber,
+    7,
+  );
+  assert.equal(
+    browserCacheWrites.at(-1)?.projects?.[0]?.workspace?.selectionDefaults?.sceneSelectionScrollTop,
+    240,
+  );
+  assert.equal(
+    browserCacheWrites.at(-1)?.projects?.[0]?.workspace?.selectionDefaults?.sceneSelectionScrollLeft,
+    8,
+  );
   state.projectFileHandle = createFakeWritableHandle("project-1.abe-project.json", operationLog);
   state.projectFileHandlePermission = "granted";
   state.projectFilePath = "project-1.abe-project.json";
@@ -319,7 +344,15 @@ function createProjectRecord() {
           templateCount: 0,
         },
       },
-      selectionDefaults: {},
+      selectionDefaults: {
+        sceneId: "scene-1",
+        sceneSelectionLineNumber: 7,
+        sceneSelectionBlockId: "block-1",
+        sceneSelectionStart: 7,
+        sceneSelectionEnd: 14,
+        sceneSelectionScrollTop: 240,
+        sceneSelectionScrollLeft: 8,
+      },
     },
     projectSettings: {
       projectFilePath: "project-1.abe-project.json",
@@ -346,7 +379,9 @@ function createLoadedProjectRecord() {
           templateCount: 1,
         },
       },
-      selectionDefaults: {},
+      selectionDefaults: {
+        sceneId: "scene-loaded",
+      },
     },
     projectSettings: {
       projectFilePath: "C:\\Projects\\loaded.abe-project.json",

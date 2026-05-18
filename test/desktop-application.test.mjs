@@ -249,9 +249,18 @@ export async function runDesktopApplicationTest() {
   assert.match(appScript.body, /Task body/);
   assert.match(appScript.body, /passage-note-body/);
   assert.match(appScript.body, /openPassageNoteComposerFromContextMenu/);
+  assert.match(appScript.body, /openPassageNoteEditorFromPanel/);
   assert.match(appScript.body, /inline-passage-note/);
   assert.match(appScript.body, /inline-passage-verse/);
+  assert.match(appScript.body, /captureInlinePassageDraftDefaultsForSave/);
   assert.match(appScript.body, /commitInlinePassageNote/);
+  assert.match(appScript.body, /edit-passage-note/);
+  assert.match(appScript.body, /passage-note-edit-button/);
+  assert.match(appScript.body, /editingNoteId/);
+  assert.match(appScript.body, /requestDeletePassageNoteFromPanel/);
+  assert.match(appScript.body, /delete-confirmation-modal/);
+  assert.match(appScript.body, /Do not ask me again/);
+  assert.match(appScript.body, /confirmDeleteConfirmationDialog/);
   assert.match(appScript.body, /insertInlinePassageVerse/);
   assert.match(appScript.body, /seededSelection/);
   assert.match(appScript.body, /getInlinePassageDraftExistingSelectionRange/);
@@ -278,6 +287,7 @@ export async function runDesktopApplicationTest() {
   assert.match(appScript.body, /centerEditorOnCaret/);
   assert.match(appScript.body, /centerEditorOnOffset/);
   assert.match(appScript.body, /focusEditorWhitespace/);
+  assert.match(appScript.body, /restoreInlinePassageDraftFromWorkspaceDefaults/);
   assert.doesNotMatch(appScript.body, /clickedBelowText/);
   assert.match(appScript.body, /setSelectionRange/);
   assert.match(appScript.body, /scrollTo/);
@@ -291,6 +301,21 @@ export async function runDesktopApplicationTest() {
   assert.match(appScript.body, /handleGlobalKeyboardShortcut/);
   assert.match(appScript.body, /isTextEditingTarget/);
   assert.match(appScript.body, /runNativeTextEditCommand/);
+  assert.match(appScript.body, /restoreSelectionFromWorkspaceDefaults/);
+  assert.match(appScript.body, /binderSceneMoveHistory/);
+  assert.match(appScript.body, /undoBinderSceneMove\(\)/);
+  assert.match(appScript.body, /redoBinderSceneMove\(\)/);
+  assert.match(appScript.body, /captureSceneSelectionDefaultsForSave/);
+  assert.match(appScript.body, /restoreSceneSelectionRange/);
+  assert.match(appScript.body, /sceneSelectionStart/);
+  assert.match(appScript.body, /sceneSelectionEnd/);
+  assert.match(appScript.body, /sceneSelectionScrollTop/);
+  assert.match(appScript.body, /sceneSelectionScrollLeft/);
+  assert.match(appScript.body, /sceneSelectionLineNumber/);
+  assert.match(appScript.body, /mergedWorkspace\.selectionDefaults/);
+  assert.match(appScript.body, /storedWorkspace\.selectionDefaults/);
+  assert.match(appScript.body, /captureSceneEditorSelectionSnapshotFromTextarea/);
+  assert.match(appScript.body, /updateSceneEditorSelectionSnapshotFromTextarea/);
   assert.match(appScript.body, /event\.shiftKey \? "redo" : "undo"/);
   assert.match(appScript.body, /focusProjectLibrarySelect/);
   assert.match(projectPersistenceServiceScript, /canUseBrowserSavePicker/);
@@ -438,6 +463,7 @@ export async function runDesktopApplicationTest() {
   assert.match(sceneEditorScript.body, /data-scene-editor-scene-word-count/);
   assert.match(sceneEditorScript.body, /data-scene-title-id/);
   assert.match(sceneEditorScript.body, /Save to typed verse/);
+  assert.match(sceneEditorScript.body, /Update .* note/);
   assert.match(appScript.body, /function applySceneTitle\(sceneId, title\) \{[\s\S]*?updateSceneEditorTitle\(sceneId, title\);[\s\S]*?updateFocusedLineCard\(\);/);
   assert.match(appScript.body, /const writingTargetState = state\.writingTargetState/);
   assert.match(

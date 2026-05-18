@@ -136,3 +136,21 @@ The project loader imports a user-owned project save file, translates it into th
 - Process update (2026-05-15): project-file save/load now treats `.abe-project.json` as a single active file-backed project, derives the canonical project ID/title from the loaded filename, remaps the active scene store under that identity, and recalculates workspace chapter/scene stats from the project index.
 - Process update (2026-05-16): `ProjectPersistenceService` now owns browser file-handle recovery, filename display hydration before manuscript render, write-permission checks for Ctrl+S/autosave, and durable typed-path precedence so refreshes do not silently lose the active project identity.
 - Next work: add a folder/file picker, surface richer load diagnostics, and build a dedicated retained-template browser for loaded source template sheets.
+
+## Feature Implementation Index
+
+This index is the code-map anchor for debugging, extraction work, and the future desktop port. Update it during `finalise work` when a feature or workflow is implemented, completed, meaningfully changed, or moved.
+
+### Entry Template
+
+- Feature: `Feature NN - Name`
+- Workflow: concise workflow name, for example `Scene drag/drop reorder`
+- Status: `Planned`, `In Progress`, `Implemented`, `Partially Implemented`, `Needs Review`, or `Deprecated`
+- Code locations: `path:start-end` with the main function or block name
+- Execution flow: functions/blocks in chronological order from user action to state update
+- Flow-on effects: render updates, persistence, autosave, dirty-state, logging, tests, and related service calls
+- Extraction/port notes: ownership target such as feature slice, adapter, service, shared helper, or desktop bridge
+
+### Indexed Workflows
+
+- No workflow entries have been indexed yet. Add entries here as part of the next `finalise work` run that touches feature code.

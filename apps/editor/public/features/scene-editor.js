@@ -367,7 +367,7 @@ function renderInlinePassageDraftHTML(scene, state, getInlinePassageDraftAnchor)
       </label>
       <div class="inline-passage-actions">
         <span aria-hidden="true"></span>
-        <button class="tag-button" type="button" data-inline-passage-save data-action="commit-inline-passage-note">Save to typed verse</button>
+        <button class="tag-button" type="button" data-inline-passage-save data-action="commit-inline-passage-note">${escapeHtml(draft.editingNoteId ? `Update ${label.toLowerCase()} note` : "Save to typed verse")}</button>
       </div>
     </section>
   `;
