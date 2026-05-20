@@ -1,5 +1,9 @@
 // Intent: define a migration boundary so project snapshots can evolve without breaking older save data.
-import { buildProjectIndexFromProjectRecord, collectChapterRecords } from "./project-index.js";
+import {
+  applyPassageNoteCountsToProjectIndex,
+  buildProjectIndexFromProjectRecord,
+  collectChapterRecords,
+} from "./project-index.js";
 
 export const PROJECT_SCHEMA_VERSION = 2;
 
@@ -124,7 +128,7 @@ function migrateProjectRecord(record, targetSchemaVersion) {
       : existingProjectIndex.scenes
         .map((scene) => (typeof scene?.id === "string" ? scene.id.trim() : ""))
         .filter(Boolean);
-    migratedRecord.projectIndex = {
+    migratedRecord.projectIndex = applyPassageNoteCountsToProjectIndex({
       ...existingProjectIndex,
       schemaVersion: targetSchemaVersion,
       projectId: typeof migratedRecord.id === "string"
@@ -137,8 +141,10 @@ function migrateProjectRecord(record, targetSchemaVersion) {
         ? migratedRecord.updatedAt
         : (typeof existingProjectIndex.updatedAt === "string" ? existingProjectIndex.updatedAt : ""),
       sceneOrder: normalizedSceneOrder,
-      chapters: collectChapterRecords(existingProjectIndex.scenes),
-    };
+      chapters: Array.isArray(existingProjectIndex.chapters)
+        ? existingProjectIndex.chapters
+        : collectChapterRecords(existingProjectIndex.scenes),
+    }, migratedRecord.passageNotes);
   } else {
     migratedRecord.projectIndex = buildProjectIndexFromProjectRecord(migratedRecord, {
       schemaVersion: targetSchemaVersion,

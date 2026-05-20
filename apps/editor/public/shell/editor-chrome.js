@@ -45,6 +45,7 @@ export function renderEditorChrome({
           </div>
         <div class="desktop-title-cluster">
           <span class="desktop-app-name">A Better Novel Authoring Environment</span>
+          <span class="desktop-environment-badge" aria-label="Environment marker">Version: Test</span>
           <span class="project-file-tooltip desktop-project-title-shell" data-file-path-tooltip="${escapeHtml(safeProjectFileDisplay.tooltip)}">
               <input
                 class="project-title-input desktop-project-title"

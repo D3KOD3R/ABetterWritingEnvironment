@@ -6,7 +6,10 @@
 // - `scene records`: portable manuscript chunks.
 // - `manifest`: project index and metadata, not full manuscript body.
 // - `projectService`: stable application boundary UI calls for persistence.
-import { buildProjectIndexFromProjectRecord } from "./project-index.js";
+import {
+  applyPassageNoteCountsToProjectIndex,
+  buildProjectIndexFromProjectRecord,
+} from "./project-index.js";
 import { migrateProjectData, PROJECT_SCHEMA_VERSION } from "./project-migrations.js";
 
 function cloneValue(value) {
@@ -405,8 +408,32 @@ function loadSceneOrderFromManifest(projectRecord = null) {
   return [];
 }
 
+function collectProjectCacheKeysFromManifest(librarySnapshot, {
+  libraryStorageKey,
+  activeProjectIdStorageKey,
+} = {}) {
+  const storageKeys = new Set([
+    libraryStorageKey,
+    activeProjectIdStorageKey,
+  ]);
+
+  for (const project of Array.isArray(librarySnapshot?.projects) ? librarySnapshot.projects : []) {
+    const projectId = normalizeProjectId(project?.id);
+    if (!projectId) {
+      continue;
+    }
+
+    for (const sceneId of loadSceneOrderFromManifest(project)) {
+      storageKeys.add(getSceneStorageKey(libraryStorageKey, projectId, sceneId));
+    }
+  }
+
+  return storageKeys;
+}
+
 function hydrateProjectRecord(manifestRecord, {
   loadScene,
+  sceneMap = null,
 } = {}) {
   const record = cloneValue(manifestRecord);
   const sceneOrder = loadSceneOrderFromManifest(record);
@@ -419,9 +446,12 @@ function hydrateProjectRecord(manifestRecord, {
   const activeSceneId = sceneOrder.includes(activeSceneIdCandidate)
     ? activeSceneIdCandidate
     : sceneOrder[0] ?? "";
-  const activeSceneDraft = activeSceneId && typeof loadScene === "function"
-    ? loadScene(record.id, activeSceneId)
-    : null;
+  const activeSceneDraft =
+    activeSceneId && sceneMap instanceof Map
+      ? normalizeSceneDraft(sceneMap.get(activeSceneId), { sceneId: activeSceneId })
+      : activeSceneId && typeof loadScene === "function"
+        ? loadScene(record.id, activeSceneId)
+        : null;
   const fallbackDraftCandidate = activeSceneId
     ? normalizeSceneDraft(record?.sceneDrafts?.[activeSceneId], { sceneId: activeSceneId })
     : null;
@@ -442,13 +472,13 @@ function hydrateProjectRecord(manifestRecord, {
     ? cloneValue(record.projectIndex)
     : null;
   if (existingProjectIndex && Array.isArray(existingProjectIndex.scenes)) {
-    record.projectIndex = {
+    record.projectIndex = applyPassageNoteCountsToProjectIndex({
       ...existingProjectIndex,
       schemaVersion: PROJECT_SCHEMA_VERSION,
       projectId: typeof record.id === "string" ? record.id : (existingProjectIndex.projectId ?? ""),
       projectTitle: typeof record.title === "string" ? record.title : (existingProjectIndex.projectTitle ?? "Untitled Project"),
       updatedAt: typeof record.updatedAt === "string" ? record.updatedAt : (existingProjectIndex.updatedAt ?? ""),
-    };
+    }, record.passageNotes);
   } else {
     record.projectIndex = buildProjectIndexFromProjectRecord(record, {
       schemaVersion: PROJECT_SCHEMA_VERSION,
@@ -499,6 +529,33 @@ export function createProjectRepository({
     { targetSchemaVersion: schemaVersion },
   );
 
+  // Intent: make project-file loads authoritative by removing old browser project chunks before caching the loaded JSON.
+  const clearProjectLibraryCache = () => {
+    const storageKeys = collectProjectCacheKeysFromManifest(loadStoredManifestSnapshot(), {
+      libraryStorageKey,
+      activeProjectIdStorageKey,
+    });
+    if (typeof storageAdapter.listKeys === "function") {
+      for (const storageKey of storageAdapter.listKeys()) {
+        if (
+          storageKey === libraryStorageKey ||
+          storageKey === activeProjectIdStorageKey ||
+          storageKey.startsWith(`${libraryStorageKey}:`)
+        ) {
+          storageKeys.add(storageKey);
+        }
+      }
+    }
+
+    let cleared = true;
+    for (const storageKey of storageKeys) {
+      if (storageAdapter.remove(storageKey) !== true) {
+        cleared = false;
+      }
+    }
+    return cleared;
+  };
+
   const loadScene = (projectId, sceneId) => {
     const normalizedProjectId = normalizeProjectId(projectId);
     const normalizedSceneId = normalizeSceneId(sceneId);
@@ -511,7 +568,8 @@ export function createProjectRepository({
     return normalizeSceneDraft(candidate, { sceneId: normalizedSceneId });
   };
 
-  const saveScene = (projectId, sceneId, sceneRecord) => {
+  // Intent: share scene write normalization so batch saves can stop cleanly after storage quota failures.
+  const writeSceneRecord = (projectId, sceneId, sceneRecord) => {
     const normalizedProjectId = normalizeProjectId(projectId);
     const normalizedSceneId = normalizeSceneId(sceneId);
     if (!normalizedProjectId || !normalizedSceneId) {
@@ -524,8 +582,15 @@ export function createProjectRepository({
     }
 
     const key = getSceneStorageKey(libraryStorageKey, normalizedProjectId, normalizedSceneId);
-    storageAdapter.writeJson(key, normalizedDraft);
-    return normalizedDraft;
+    const persisted = storageAdapter.writeJson(key, normalizedDraft);
+    return {
+      persisted,
+      scene: normalizedDraft,
+    };
+  };
+
+  const saveScene = (projectId, sceneId, sceneRecord) => {
+    return writeSceneRecord(projectId, sceneId, sceneRecord).scene;
   };
 
   const loadAllScenes = (projectId) => {
@@ -570,6 +635,9 @@ export function createProjectRepository({
   };
 
   const saveProjectLibrarySnapshot = (snapshot, options = {}) => {
+    const cacheWasCleared = options.replaceExistingCache === true
+      ? clearProjectLibraryCache()
+      : true;
     const migrated = migrateProjectData(snapshot, {
       targetSchemaVersion: schemaVersion,
     });
@@ -581,6 +649,30 @@ export function createProjectRepository({
       ? options.changedSceneIdsByProject
       : {};
     const nextProjects = [];
+    const sceneMapsByProjectId = new Map();
+    let storageWritesAvailable = cacheWasCleared === true;
+    const migratedProjectIds = new Set(
+      migrated.projects
+        .map((project) => normalizeProjectId(project?.id))
+        .filter(Boolean),
+    );
+
+    // Intent: clear removed project scene chunks before writing the active cache so old manuscripts cannot crowd out the current one.
+    for (const staleProject of existingProjectsById.values()) {
+      const staleProjectId = normalizeProjectId(staleProject.id);
+      if (!staleProjectId || migratedProjectIds.has(staleProjectId)) {
+        continue;
+      }
+
+      const staleSceneIds = loadSceneOrderFromManifest(staleProject);
+      for (const sceneId of staleSceneIds) {
+        const removed = storageAdapter.remove(getSceneStorageKey(libraryStorageKey, staleProjectId, sceneId));
+        if (removed !== true) {
+          storageWritesAvailable = false;
+          break;
+        }
+      }
+    }
 
     for (const project of migrated.projects) {
       const projectId = normalizeProjectId(project.id);
@@ -596,6 +688,7 @@ export function createProjectRepository({
         : {};
       const sceneMap = collectSceneDraftsFromProjectRecord(project);
       mergeSceneStore(migrated.sceneStore, projectId, sceneMap);
+      sceneMapsByProjectId.set(projectId, sceneMap);
       const previousSceneIds = loadSceneOrderFromManifest(existingManifestRecord);
 
       const sceneOrder = getSceneOrder(project, sceneMap);
@@ -631,16 +724,22 @@ export function createProjectRepository({
 
       for (const sceneId of sceneIdsToWrite) {
         const sceneDraft = sceneMap.get(sceneId);
-        if (!sceneDraft) {
+        if (!sceneDraft || storageWritesAvailable === false) {
           continue;
         }
-        saveScene(projectId, sceneId, sceneDraft);
+        const writeResult = writeSceneRecord(projectId, sceneId, sceneDraft);
+        if (writeResult.persisted !== true) {
+          storageWritesAvailable = false;
+        }
       }
 
       const nextSceneIdSet = new Set(sceneOrder);
       for (const previousSceneId of previousSceneIds) {
-        if (!nextSceneIdSet.has(previousSceneId)) {
-          storageAdapter.remove(getSceneStorageKey(libraryStorageKey, projectId, previousSceneId));
+        if (storageWritesAvailable === true && !nextSceneIdSet.has(previousSceneId)) {
+          const removed = storageAdapter.remove(getSceneStorageKey(libraryStorageKey, projectId, previousSceneId));
+          if (removed !== true) {
+            storageWritesAvailable = false;
+          }
         }
       }
 
@@ -656,9 +755,18 @@ export function createProjectRepository({
 
     for (const staleProject of existingProjectsById.values()) {
       const staleProjectId = normalizeProjectId(staleProject.id);
+      if (!staleProjectId || migratedProjectIds.has(staleProjectId)) {
+        continue;
+      }
       const staleSceneIds = loadSceneOrderFromManifest(staleProject);
       for (const sceneId of staleSceneIds) {
-        storageAdapter.remove(getSceneStorageKey(libraryStorageKey, staleProjectId, sceneId));
+        if (storageWritesAvailable !== true) {
+          continue;
+        }
+        const removed = storageAdapter.remove(getSceneStorageKey(libraryStorageKey, staleProjectId, sceneId));
+        if (removed !== true) {
+          storageWritesAvailable = false;
+        }
       }
     }
 
@@ -674,18 +782,27 @@ export function createProjectRepository({
       projects: nextProjects,
       sceneStore: {},
     };
-    storageAdapter.writeJson(libraryStorageKey, manifestSnapshot);
-    saveActiveProjectId(manifestSnapshot.activeProjectId);
+    if (storageWritesAvailable === true) {
+      storageWritesAvailable = storageAdapter.writeJson(libraryStorageKey, manifestSnapshot) === true;
+    }
+    if (storageWritesAvailable === true) {
+      saveActiveProjectId(manifestSnapshot.activeProjectId);
+    }
 
     return {
       schemaVersion,
       activeProjectId: manifestSnapshot.activeProjectId,
-      projects: manifestSnapshot.projects.map((project) => hydrateProjectRecord(project, { loadScene })),
+      projects: manifestSnapshot.projects.map((project) => hydrateProjectRecord(project, {
+        loadScene,
+        sceneMap: sceneMapsByProjectId.get(project.id) ?? null,
+      })),
       sceneStore: {},
+      storagePersisted: storageWritesAvailable === true,
     };
   };
 
   return {
+    clearProjectLibraryCache,
     loadActiveProjectId,
     loadAllScenes,
     loadProjectLibrarySnapshot,

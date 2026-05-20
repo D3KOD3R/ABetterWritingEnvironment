@@ -252,6 +252,15 @@ export function createProjectService({
   const saveProjectLibrarySnapshot = (snapshot, options = {}) =>
     projectRepository.saveProjectLibrarySnapshot(snapshot, options);
 
+  // Intent: expose an explicit desktop-style project switch boundary without leaking repository storage details.
+  const clearProjectLibraryCache = () => {
+    if (typeof projectRepository.clearProjectLibraryCache !== "function") {
+      return false;
+    }
+
+    return projectRepository.clearProjectLibraryCache();
+  };
+
   const exportProjectLibrarySnapshot = ({
     librarySnapshot = null,
   } = {}) => {
@@ -573,6 +582,7 @@ export function createProjectService({
   const loadUserPreference = (key, fallback = null) => preferencesRepository.load(key, fallback);
 
   return {
+    clearProjectLibraryCache,
     createProject,
     exportProjectLibrarySnapshot,
     getProjectIndex,

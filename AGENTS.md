@@ -34,6 +34,10 @@ and less like:
 ## Working through feature sets. 
 Each feature of the program is underpinned and numbered in the word doc named "An AI augmented author writing environment." 
 - As you work through each feature, you should create a process header which explains the feature and updates the features.md list. 
+- When the user says `Feature working`, treat that as explicit confirmation that the current feature or workflow is accepted. Before moving on, update `features.md` without waiting to be asked again.
+- A `Feature working` update must add or revise the feature in the appropriate numbered feature section, and must add or update a matching entry in the `Feature Implementation Index` with the implementing code locations and line numbers.
+- The feature index entry must describe the workflow in product language, list the main functions/modules that implement it, summarize the execution flow from user interaction to persistence/rendering, and note tests or manual verification evidence.
+- If the feature does not clearly belong to an existing numbered feature, place it under the closest product pillar and add a short note explaining the classification instead of leaving it undocumented.
 
 ## Project work rules. 
 - Whenever you are working on the project you should think in terms of service levels by observing the current project architecture. 
@@ -238,6 +242,10 @@ When changing `apps/editor`, follow the refactor roadmap in `docs/architecture/e
 - All project save/load/autosave/import/export behavior must route through `ProjectPersistenceService`.
 - UI code and feature modules must not directly write project data to `localStorage`, filesystem APIs, file handles, or ad hoc JSON blobs.
 - Autosave workflows must call `ProjectPersistenceService` APIs and must not bypass the service with direct file writes.
+- In desktop-style project-file workflows, the `.abe-project.json` file is the source of truth for manuscript content, project metrics, writing targets, revisions, and all other critical project data.
+- Browser cache is a disposable compatibility layer only. When a project JSON file is loaded, stale browser project cache from the previous project must be cleared or replaced before activation.
+- Project-file loading must not merge manuscript bodies, metrics, writing-target history, revisions, or project records from an older browser cache into the loaded JSON payload.
+- Browser cache fallback may preserve only the current active project snapshot, and code must detect/report failed cache writes instead of treating in-memory state as a successful persisted cache.
 - Persistence modules must use contextual names (for example `saveProjectSnapshot`, `loadProjectSnapshotFromFile`, `restoreLastOpenedProject`) instead of vague names like `save`, `load`, or `sync`.
 - Any persistence behavior change requires automated tests or a documented manual verification checklist in the PR/commit notes.
 

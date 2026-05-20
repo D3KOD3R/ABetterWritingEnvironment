@@ -171,6 +171,23 @@ export async function runProjectRefreshPersistenceTest() {
       y: 40,
     },
   };
+  state.projectLibrary[0].passageNotes = [
+    {
+      id: "inspiration-1",
+      noteType: "inspiration",
+      chapterId: "chapter-1",
+      chapterTitle: "Chapter One",
+      sceneId: "scene-1",
+      sceneTitle: "Scene One",
+      selectedText: "Edited browser text",
+      startOffset: 0,
+      endOffset: 19,
+      body: "Keep this inspiration attached to the manuscript after reload.",
+      title: "Refresh inspiration",
+      createdAt: "2026-05-20T00:00:00.000Z",
+      source: "test",
+    },
+  ];
 
   persistence.markProjectAutosaveDirty({
     domain: "project",
@@ -202,6 +219,8 @@ export async function runProjectRefreshPersistenceTest() {
   const desktopSnapshot = desktopFiles.get(filePath);
 
   assert.equal(refreshedScene?.editorText, "Edited browser text survives refresh.");
+  assert.equal(refreshedProject?.passageNotes?.length, 1);
+  assert.equal(refreshedProject?.passageNotes?.[0]?.id, "inspiration-1");
   assert.equal(
     refreshedLibrary.projects[0]?.projectSettings?.projectFilePath,
     filePath,
@@ -243,9 +262,18 @@ export async function runProjectRefreshPersistenceTest() {
     true,
   );
   assert.equal(
+    refreshedLibrary.projects[0]?.projectIndex?.scenes?.find((scene) => scene.id === "scene-1")?.inspirationCount,
+    1,
+  );
+  assert.equal(
     refreshedManifest.projects[0]?.projectIndex?.scenes?.find((scene) => scene.id === "scene-1")?.wordCount > 0,
     true,
   );
+  assert.equal(
+    refreshedManifest.projects[0]?.projectIndex?.scenes?.find((scene) => scene.id === "scene-1")?.inspirationCount,
+    1,
+  );
+  assert.equal(desktopSnapshot?.projects?.[0]?.passageNotes?.[0]?.id, "inspiration-1");
   assert.equal(
     desktopSnapshot?.sceneStore?.["project-test"]?.["scene-1"]?.editorText,
     "Edited browser text survives refresh.",

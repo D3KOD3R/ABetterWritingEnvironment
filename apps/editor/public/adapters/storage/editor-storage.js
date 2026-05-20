@@ -4,6 +4,7 @@ import {
   EDITOR_DRAFTS_KEY,
   EDITOR_LOCAL_AI_PREFS_KEY,
   EDITOR_PASSAGE_NOTES_KEY,
+  EDITOR_PROJECT_SOURCE_PATH_KEY,
   EDITOR_PREFS_KEY,
   EDITOR_PROJECT_TITLE_KEY,
   EDITOR_STRUCTURE_KEY,
@@ -20,9 +21,11 @@ import {
 const LEGACY_EDITOR_DRAFTS_KEY = "abe-drafts-v1";
 const LEGACY_EDITOR_STRUCTURE_KEY = "abe-structure-v1";
 const LEGACY_EDITOR_TASKS_KEY = "abe-task-list-v1";
+const EDITOR_COLLAPSED_CHAPTERS_KEY = "abe-collapsed-chapters-v1";
+const EDITOR_CONSOLE_COLLAPSED_CHAPTERS_KEY = "abe-console-collapsed-chapters-v1";
 
-// Intent: keep the storage key list centralized so shell persistence rules can reuse one guard set.
-export const PROJECT_STATE_STORAGE_KEYS = new Set([
+// Intent: keep project-content cache keys distinct from durable user preferences and panel layout settings.
+export const PROJECT_CONTENT_STORAGE_KEYS = new Set([
   EDITOR_DRAFTS_KEY,
   LEGACY_EDITOR_DRAFTS_KEY,
   EDITOR_STRUCTURE_KEY,
@@ -32,6 +35,14 @@ export const PROJECT_STATE_STORAGE_KEYS = new Set([
   LEGACY_EDITOR_TASKS_KEY,
   EDITOR_PASSAGE_NOTES_KEY,
   EDITOR_PROJECT_TITLE_KEY,
+  EDITOR_PROJECT_SOURCE_PATH_KEY,
+  EDITOR_COLLAPSED_CHAPTERS_KEY,
+  EDITOR_CONSOLE_COLLAPSED_CHAPTERS_KEY,
+]);
+
+// Intent: keep the storage key list centralized so shell persistence rules can reuse one guard set.
+export const PROJECT_STATE_STORAGE_KEYS = new Set([
+  ...PROJECT_CONTENT_STORAGE_KEYS,
   EDITOR_PREFS_KEY,
   EDITOR_LOCAL_AI_PREFS_KEY,
 ]);
@@ -69,7 +80,7 @@ export function createEditorStorage({
   // Intent: isolate browser localStorage writes so persistence errors stay non-fatal.
   const writeStoredJsonRaw = (storageKey, value) => {
     if (!("localStorage" in windowRef)) {
-      return;
+      return false;
     }
 
     try {
@@ -81,10 +92,44 @@ export function createEditorStorage({
           valueType: Array.isArray(value) ? "array" : typeof value,
         });
       }
+      return true;
     } catch (error) {
       reportBrowserLog("warn", "storage", `Unable to write ${storageKey}.`, { error, storageKey });
       console.warn(`Unable to write ${storageKey}`, error);
+      return false;
     }
+  };
+
+  // Intent: remove project-specific browser cache when a JSON project file becomes the source of truth.
+  const removeStoredJson = (storageKey) => {
+    if (!("localStorage" in windowRef)) {
+      return false;
+    }
+
+    try {
+      windowRef.localStorage.removeItem(storageKey);
+      return true;
+    } catch (error) {
+      reportBrowserLog("warn", "storage", `Unable to remove ${storageKey}.`, { error, storageKey });
+      console.warn(`Unable to remove ${storageKey}`, error);
+      return false;
+    }
+  };
+
+  const clearProjectContentStorage = ({
+    additionalStorageKeys = [],
+  } = {}) => {
+    const storageKeys = new Set([
+      ...PROJECT_CONTENT_STORAGE_KEYS,
+      ...additionalStorageKeys.filter((storageKey) => typeof storageKey === "string" && storageKey.trim()),
+    ]);
+    let cleared = true;
+    for (const storageKey of storageKeys) {
+      if (removeStoredJson(storageKey) !== true) {
+        cleared = false;
+      }
+    }
+    return cleared;
   };
 
   // Intent: keep small read helpers close to the storage boundary so app.js can stay focused on shell flow.
@@ -159,7 +204,7 @@ export function createEditorStorage({
       return [];
     }
 
-    const candidate = readStoredJson("abe-collapsed-chapters-v1");
+    const candidate = readStoredJson(EDITOR_COLLAPSED_CHAPTERS_KEY);
     if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
       return [];
     }
@@ -185,12 +230,12 @@ export function createEditorStorage({
     }
 
     if (Object.keys(snapshot).length) {
-      writeStoredJsonRaw("abe-collapsed-chapters-v1", snapshot);
+      writeStoredJsonRaw(EDITOR_COLLAPSED_CHAPTERS_KEY, snapshot);
       return;
     }
 
     if ("localStorage" in windowRef) {
-      windowRef.localStorage.removeItem("abe-collapsed-chapters-v1");
+      windowRef.localStorage.removeItem(EDITOR_COLLAPSED_CHAPTERS_KEY);
     }
   };
 
@@ -204,7 +249,7 @@ export function createEditorStorage({
       };
     }
 
-    const candidate = readStoredJson("abe-console-collapsed-chapters-v1");
+    const candidate = readStoredJson(EDITOR_CONSOLE_COLLAPSED_CHAPTERS_KEY);
     if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
       return {
         issueTasks: [],
@@ -237,7 +282,7 @@ export function createEditorStorage({
       return;
     }
 
-    const candidate = readStoredJson("abe-console-collapsed-chapters-v1");
+    const candidate = readStoredJson(EDITOR_CONSOLE_COLLAPSED_CHAPTERS_KEY);
     const snapshot = candidate && typeof candidate === "object" && !Array.isArray(candidate)
       ? { ...candidate }
       : {};
@@ -260,12 +305,12 @@ export function createEditorStorage({
     }
 
     if (Object.keys(snapshot).length) {
-      writeStoredJsonRaw("abe-console-collapsed-chapters-v1", snapshot);
+      writeStoredJsonRaw(EDITOR_CONSOLE_COLLAPSED_CHAPTERS_KEY, snapshot);
       return;
     }
 
     if ("localStorage" in windowRef) {
-      windowRef.localStorage.removeItem("abe-console-collapsed-chapters-v1");
+      windowRef.localStorage.removeItem(EDITOR_CONSOLE_COLLAPSED_CHAPTERS_KEY);
     }
   };
 
@@ -291,6 +336,7 @@ export function createEditorStorage({
   };
 
   return {
+    clearProjectContentStorage,
     loadCollapsedChapterIds,
     loadCollapsedConsoleChapterIds,
     loadEditorPrefs,
@@ -308,6 +354,7 @@ export function createEditorStorage({
     persistCollapsedConsoleChapterState,
     persistConsoleDockCollapsedState,
     readStoredJson,
+    removeStoredJson,
     writeStoredJsonRaw,
   };
 }

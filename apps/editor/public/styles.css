@@ -160,6 +160,20 @@ select {
   white-space: nowrap;
 }
 
+.desktop-environment-badge {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border: 1px solid rgba(184, 92, 56, 0.26);
+  border-radius: 999px;
+  background: rgba(255, 241, 224, 0.86);
+  color: #8a3f23;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
 .desktop-project-title {
   width: min(100%, 560px);
   min-height: 32px;

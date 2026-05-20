@@ -26,6 +26,7 @@ import {
   createTemplateDrafts,
   findSceneByBlockId,
   groupScenesByChapter,
+  insertStructureSceneDraftAfterAnchor,
   normalizeManuscriptTasks,
   normalizeEditorPrefs,
   normalizeLocalAiPrefs,
@@ -130,6 +131,7 @@ const MIN_MANUSCRIPT_PANEL_WIDTH = 560;
 const PANEL_RESIZER_WIDTH = 8;
 
 const {
+  clearProjectContentStorage,
   loadCollapsedChapterIds,
   loadCollapsedConsoleChapterIds,
   loadEditorPrefs,
@@ -264,6 +266,7 @@ const state = {
   localAiPrefs: createDefaultLocalAiPrefs(),
   localAiTitleStatus: {},
   sceneEditorSelectionSnapshot: null,
+  activeEditorSceneId: null,
   deleteConfirmationPreferences: loadDeleteConfirmationPreferences(),
   deleteConfirmationDialog: null,
   binderSceneMoveHistory: {
@@ -480,6 +483,11 @@ const projectPersistenceService = createProjectPersistenceService({
   projectSchemaVersion: PROJECT_SCHEMA_VERSION,
   autosaveDelayMs: PROJECT_FILE_AUTOSAVE_DELAY_MS,
   shouldPersistProjectCache: () => shouldPersistProjectCache(),
+  clearBrowserProjectCache: () => clearProjectContentStorage({
+    additionalStorageKeys: [
+      EDITOR_WRITING_TARGETS_KEY,
+    ],
+  }),
   writeProjectFilePathCache: (filePath) => {
     writeStoredJsonRaw(EDITOR_PROJECT_FILE_PATH_KEY, filePath);
   },
@@ -667,10 +675,8 @@ boot().catch((error) => {
 
 // Intent: boot the editor from desktop APIs, bundled seed data, and local browser state in that priority order.
 async function boot() {
-  const [seedLibrary, desktopSettings] = await Promise.all([
-    loadInitialProjectLibrary(),
-    loadDesktopSettingsSnapshot(),
-  ]);
+  const desktopSettings = await loadDesktopSettingsSnapshot();
+  const seedLibrary = await loadInitialProjectLibrary(desktopSettings);
   state.projectLibrary = seedLibrary.projects;
   state.activeProjectId = seedLibrary.activeProjectId ?? seedLibrary.projects[0]?.id ?? null;
   state.projectLibrarySelectionId = state.activeProjectId;
@@ -741,6 +747,9 @@ function wireEvents() {
 
   document.addEventListener("pointerdown", (event) => {
     const clickTarget = event.target instanceof Element ? event.target : null;
+    if (clickTarget instanceof HTMLTextAreaElement && clickTarget.classList.contains("editor-document-input")) {
+      markSceneEditorAsCurrent(clickTarget);
+    }
     writingTargetPointerDownStartedInsideWindow = Boolean(clickTarget?.closest(".writing-target-window"));
     const resizeHandle = clickTarget?.closest("[data-resize-handle]");
     if (!(resizeHandle instanceof HTMLElement)) {
@@ -1607,6 +1616,10 @@ function wireEvents() {
   });
 
   document.addEventListener("focusin", (event) => {
+    if (event.target instanceof HTMLTextAreaElement && event.target.classList.contains("editor-document-input")) {
+      markSceneEditorAsCurrent(event.target);
+    }
+
     const target = event.target instanceof Element
       ? event.target.closest("[data-task-preview-id]")
       : null;
@@ -1869,6 +1882,7 @@ function wireEvents() {
     }
 
     if (editField === "editor-text") {
+      markSceneEditorAsCurrent(target);
       updateSceneEditorSelectionSnapshotFromTextarea(target);
       clearTaskAnchorPreview({ restoreSelection: false });
       const previousText = getScene(sceneId)?.editorText ?? "";
@@ -6547,15 +6561,22 @@ function refreshScenes() {
   );
 }
 
-// Intent: reconcile browser, desktop, bundled, and legacy project-library sources during startup.
-async function loadInitialProjectLibrary() {
-  const storedLibrary = normalizeProjectLibrarySnapshot(projectService.loadProjectLibrarySnapshot());
-  const storedActiveProjectId = projectRepository.loadActiveProjectId();
+// Intent: prefer the desktop project file on boot; browser cache is only a temporary compatibility fallback.
+async function loadInitialProjectLibrary(desktopSettings = null) {
+  const shouldDeferToDesktopProjectFile =
+    desktopSettings?.lastProjectFilePathExplicit === true &&
+    hasProjectFilePath(resolveProjectFilePath(desktopSettings.lastProjectFilePath));
+  const storedLibrary = shouldDeferToDesktopProjectFile
+    ? { activeProjectId: null, projects: [], sceneStore: {} }
+    : normalizeProjectLibrarySnapshot(projectService.loadProjectLibrarySnapshot());
+  const storedActiveProjectId = shouldDeferToDesktopProjectFile
+    ? null
+    : projectRepository.loadActiveProjectId();
   const legacyProjectId =
     storedLibrary.activeProjectId ??
     storedActiveProjectId ??
     null;
-  const legacyState = loadLegacyProjectState(legacyProjectId);
+  const legacyState = shouldDeferToDesktopProjectFile ? null : loadLegacyProjectState(legacyProjectId);
   const remoteSeedLibrary = await Promise.race([
     loadDesktopProjectLibrarySeed(),
     new Promise((resolve) => {
@@ -6575,7 +6596,7 @@ async function loadInitialProjectLibrary() {
     projects: mergedLibrary.projects,
   };
 
-  return projectService.saveProjectLibrarySnapshot(library);
+  return shouldDeferToDesktopProjectFile ? library : projectService.saveProjectLibrarySnapshot(library);
 }
 
 function loadBundledProjectLibrarySeed() {
@@ -7672,6 +7693,7 @@ function applyProjectRecord(record) {
     redoStack: [],
   };
   state.sceneEditorSelectionSnapshot = null;
+  state.activeEditorSceneId = null;
   // Project file destination is owned by ProjectPersistenceService and must survive record application.
   state.selectedTaskId = null;
   state.selectedPassageNoteId = null;
@@ -8046,6 +8068,27 @@ function updateSceneEditorSelectionSnapshotFromTextarea(textarea) {
   state.sceneEditorSelectionSnapshot = snapshot;
 }
 
+// Intent: keep author editing context current without rerendering the manuscript editor on focus or typing.
+function markSceneEditorAsCurrent(textarea) {
+  if (!(textarea instanceof HTMLTextAreaElement) || !textarea.classList.contains("editor-document-input")) {
+    return false;
+  }
+
+  const sceneId = typeof textarea.dataset.sceneId === "string" ? textarea.dataset.sceneId.trim() : "";
+  const scene = sceneId ? getScene(sceneId) : null;
+  if (!scene) {
+    return false;
+  }
+
+  const selectionStart = Number.isInteger(textarea.selectionStart) ? textarea.selectionStart : 0;
+  const block = findSceneBlockAtOffset(scene, selectionStart) ?? scene.blocks[0] ?? null;
+  state.activeEditorSceneId = scene.sceneId;
+  state.selectedSceneId = scene.sceneId;
+  state.selectedBlockId = block?.blockId ?? state.selectedBlockId;
+  updateSceneEditorSelectionSnapshotFromTextarea(textarea);
+  return true;
+}
+
 // Intent: convert the current caret position into a stable manuscript line number for save/restore.
 function getSceneEditorSelectionLineNumber(textarea, scene, offset = null) {
   if (!(textarea instanceof HTMLTextAreaElement) || !scene) {
@@ -8163,15 +8206,24 @@ function syncLegacyProjectStorageFromState() {
     return;
   }
 
-  writeStoredJsonRaw(EDITOR_PROJECT_TITLE_KEY, state.projectTitle);
-  writeStoredJsonRaw(EDITOR_PROJECT_SOURCE_PATH_KEY, state.projectSourcePath);
-  writeStoredJsonRaw(EDITOR_DRAFTS_KEY, state.sceneDrafts);
-  writeStoredJsonRaw(EDITOR_STRUCTURE_KEY, state.structureDrafts);
-  writeStoredJsonRaw(EDITOR_TEMPLATE_DRAFTS_KEY, state.templateDrafts);
-  writeStoredJsonRaw(EDITOR_TASKS_KEY, state.manuscriptTasks);
-  writeStoredJsonRaw(EDITOR_PASSAGE_NOTES_KEY, state.passageNotes);
-  writeStoredJsonRaw(EDITOR_PREFS_KEY, state.editorPrefs);
-  writeStoredJsonRaw(EDITOR_LOCAL_AI_PREFS_KEY, state.localAiPrefs);
+  // Intent: stop legacy mirror batches after quota fails so one load cannot generate a storage log storm.
+  const legacySnapshots = [
+    [EDITOR_PROJECT_TITLE_KEY, state.projectTitle],
+    [EDITOR_PROJECT_SOURCE_PATH_KEY, state.projectSourcePath],
+    [EDITOR_DRAFTS_KEY, state.sceneDrafts],
+    [EDITOR_STRUCTURE_KEY, state.structureDrafts],
+    [EDITOR_TEMPLATE_DRAFTS_KEY, state.templateDrafts],
+    [EDITOR_TASKS_KEY, state.manuscriptTasks],
+    [EDITOR_PASSAGE_NOTES_KEY, state.passageNotes],
+    [EDITOR_PREFS_KEY, state.editorPrefs],
+    [EDITOR_LOCAL_AI_PREFS_KEY, state.localAiPrefs],
+  ];
+
+  for (const [storageKey, snapshot] of legacySnapshots) {
+    if (writeStoredJsonRaw(storageKey, snapshot) !== true) {
+      break;
+    }
+  }
 }
 
 function setRevisionState(revisionState, context = {}) {
@@ -8229,6 +8281,13 @@ function persistCurrentProjectRecord(options = {}) {
 }
 
 function loadSelectedProject() {
+  persistCurrentProjectRecord({
+    domain: "project",
+    dirtyReason: "before-project-switch",
+    source: "loadSelectedProject",
+    markWorkingState: false,
+  });
+
   const projectId = state.projectLibrarySelectionId ?? state.activeProjectId;
   const record = state.projectLibrary.find((project) => project.id === projectId) ?? state.projectLibrary[0];
   if (!record) {
@@ -8839,36 +8898,37 @@ function getSpellcheckContextFromEvent(editorContext, event) {
       projectLexicon,
       referenceLexicon: spellcheckReferenceLexicon,
     });
-    if (!selectionMisspellings.length) {
-      return null;
+    if (selectionMisspellings.length) {
+      const words = getSpellcheckProjectWordsFromSelection(selectionMisspellings);
+      const mode = words.length > 1 ? "selection" : "word";
+      const firstWord = selectionMisspellings[0];
+      return {
+        sceneId,
+        mode,
+        words,
+        word: firstWord?.word ?? selectionText,
+        normalizedWord: firstWord?.normalizedWord ?? normalizeSpellcheckWord(selectionText),
+        startOffset: contextRange.startOffset,
+        endOffset: contextRange.endOffset,
+        selectionText,
+        suggestions: mode === "word"
+          ? suggestSpellcheckAlternatives(firstWord?.word ?? selectionText, {
+            baseLexicon: spellcheckBaseLexicon,
+            projectLexicon,
+            referenceLexicon: spellcheckReferenceLexicon,
+          })
+          : [],
+        x: event.clientX,
+        y: event.clientY,
+        count: words.length,
+      };
     }
-
-    const words = getSpellcheckProjectWordsFromSelection(selectionMisspellings);
-    const mode = words.length > 1 ? "selection" : "word";
-    const firstWord = selectionMisspellings[0];
-    return {
-      sceneId,
-      mode,
-      words,
-      word: firstWord?.word ?? selectionText,
-      normalizedWord: firstWord?.normalizedWord ?? normalizeSpellcheckWord(selectionText),
-      startOffset: contextRange.startOffset,
-      endOffset: contextRange.endOffset,
-      selectionText,
-      suggestions: mode === "word"
-        ? suggestSpellcheckAlternatives(firstWord?.word ?? selectionText, {
-          baseLexicon: spellcheckBaseLexicon,
-          projectLexicon,
-          referenceLexicon: spellcheckReferenceLexicon,
-        })
-        : [],
-      x: event.clientX,
-      y: event.clientY,
-      count: words.length,
-    };
   }
 
-  let wordRange = getSpellcheckWordRangeFromPointer(textarea, event);
+  let wordRange = getSpellcheckWordRangeFromLayerPoint(textarea, event);
+  if (!wordRange) {
+    wordRange = getSpellcheckWordRangeFromPointer(textarea, event);
+  }
   if (!wordRange) {
     const caretOffset = Number.isInteger(textarea.selectionStart) ? textarea.selectionStart : contextRange?.startOffset ?? 0;
     wordRange = getSpellcheckWordRange(textarea.value, caretOffset);
@@ -8958,6 +9018,84 @@ function getSpellcheckWordRangeFromPointer(textarea, event) {
   }
 
   return getSpellcheckWordRange(textarea.value, offset);
+}
+
+// Intent: use the rendered underline spans as the source of truth when browser textarea caret hit-testing misses.
+function getSpellcheckWordRangeFromLayerPoint(textarea, event) {
+  if (!(textarea instanceof HTMLTextAreaElement) || !(event instanceof MouseEvent)) {
+    return null;
+  }
+
+  const codeframe = textarea.closest("[data-scene-editor]");
+  const layer = codeframe?.querySelector("[data-spellcheck-layer]");
+  if (!(layer instanceof HTMLElement)) {
+    return null;
+  }
+
+  const flaggedWords = layer.querySelectorAll(".editor-spellcheck-word.is-misspelled");
+  for (const flaggedWord of flaggedWords) {
+    if (!(flaggedWord instanceof HTMLElement)) {
+      continue;
+    }
+
+    if (!isPointInsideElementRects(flaggedWord, event.clientX, event.clientY, 2)) {
+      continue;
+    }
+
+    const startOffset = Number(flaggedWord.dataset.spellcheckStart);
+    const endOffset = Number(flaggedWord.dataset.spellcheckEnd);
+    const wordRange = getSpellcheckWordRangeFromKnownOffsets(textarea.value, startOffset, endOffset);
+    if (wordRange) {
+      return wordRange;
+    }
+  }
+
+  return null;
+}
+
+function isPointInsideElementRects(element, clientX, clientY, tolerance = 0) {
+  if (!(element instanceof HTMLElement)) {
+    return false;
+  }
+
+  const safeTolerance = Number.isFinite(Number(tolerance)) ? Math.max(0, Number(tolerance)) : 0;
+  for (const rect of Array.from(element.getClientRects())) {
+    if (
+      clientX >= rect.left - safeTolerance &&
+      clientX <= rect.right + safeTolerance &&
+      clientY >= rect.top - safeTolerance &&
+      clientY <= rect.bottom + safeTolerance
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function getSpellcheckWordRangeFromKnownOffsets(sourceText, startOffset, endOffset) {
+  const source = String(sourceText ?? "");
+  if (
+    !Number.isInteger(startOffset) ||
+    !Number.isInteger(endOffset) ||
+    startOffset < 0 ||
+    endOffset <= startOffset ||
+    endOffset > source.length
+  ) {
+    return null;
+  }
+
+  const word = source.slice(startOffset, endOffset);
+  if (!/^[A-Za-z][A-Za-z'’-]*$/u.test(word)) {
+    return null;
+  }
+
+  return {
+    word,
+    normalizedWord: normalizeSpellcheckWord(word),
+    startOffset,
+    endOffset,
+  };
 }
 
 function getTextareaOffsetFromPoint(textarea, clientX, clientY) {
@@ -11531,29 +11669,56 @@ function addChapterDraft() {
 }
 
 function addSceneDraft() {
-  const selectedScene = getSelectedScene() ?? state.scenes[0];
+  const selectedScene = getScene(getSceneIdForNewSceneDraftAnchor()) ?? getSelectedScene() ?? state.scenes[0];
   if (!selectedScene) {
     return;
   }
 
   const sceneCount = getScenesForChapter(selectedScene.chapterId).length + 1;
   const sceneId = `draft-scene-${Date.now()}`;
-  state.structureDrafts = {
-    ...cloneValue(state.structureDrafts),
-    scenes: [
-      ...cloneValue(state.structureDrafts.scenes ?? []),
-      {
-        sceneId,
-        chapterId: selectedScene.chapterId,
-        chapterTitle: selectedScene.chapterTitle,
-        sceneTitle: `New Scene ${sceneCount}`,
-        initialText: "",
-      },
-    ],
+  const newSceneDraft = {
+    sceneId,
+    chapterId: selectedScene.chapterId,
+    chapterTitle: selectedScene.chapterTitle,
+    sceneTitle: `New Scene ${sceneCount}`,
+    initialText: "",
   };
+  state.structureDrafts = insertStructureSceneDraftAfterAnchor(
+    state.structureDrafts,
+    state.scenes,
+    newSceneDraft,
+    selectedScene.sceneId,
+  );
   writeStoredJson(EDITOR_STRUCTURE_KEY, state.structureDrafts);
   refreshScenes();
   selectSceneById(sceneId);
+}
+
+// Intent: treat the focused scene editor as the user's current insertion point, with persisted selection as fallback.
+function getSceneIdForNewSceneDraftAnchor() {
+  const activeElement = document.activeElement;
+  if (activeElement instanceof HTMLTextAreaElement && activeElement.classList.contains("editor-document-input")) {
+    markSceneEditorAsCurrent(activeElement);
+    const focusedSceneId = typeof activeElement.dataset.sceneId === "string" ? activeElement.dataset.sceneId.trim() : "";
+    if (focusedSceneId && getScene(focusedSceneId)) {
+      return focusedSceneId;
+    }
+  }
+
+  const activeEditorSceneId = typeof state.activeEditorSceneId === "string" ? state.activeEditorSceneId.trim() : "";
+  if (activeEditorSceneId && getScene(activeEditorSceneId)) {
+    return activeEditorSceneId;
+  }
+
+  const snapshotSceneId =
+    state.sceneEditorSelectionSnapshot && typeof state.sceneEditorSelectionSnapshot.sceneId === "string"
+      ? state.sceneEditorSelectionSnapshot.sceneId.trim()
+      : "";
+  if (snapshotSceneId && getScene(snapshotSceneId)) {
+    return snapshotSceneId;
+  }
+
+  return typeof state.selectedSceneId === "string" ? state.selectedSceneId : "";
 }
 
 function addTemplateDraft() {
@@ -11668,6 +11833,7 @@ function selectSceneById(sceneId) {
 
   state.selectedIssueId = null;
   state.selectedSceneId = refreshedScene.sceneId;
+  state.activeEditorSceneId = refreshedScene.sceneId;
   state.selectedBlockId = refreshedScene.blocks[0]?.blockId ?? null;
   editorInteractionLog.info("user-action", "scene.select", "Selected scene in manuscript binder.", {
     sceneId: refreshedScene.sceneId,

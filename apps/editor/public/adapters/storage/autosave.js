@@ -248,8 +248,10 @@ export function createProjectFileAutosaveController({
       filePath: currentTarget?.filePath ?? "",
       hasHandle: Boolean(currentTarget?.fileHandle),
     });
+    let saveSucceeded = false;
     try {
       await save();
+      saveSucceeded = true;
       logInfo("autosave.succeeded", "Autosave write succeeded.", {
         revision: saveRevision,
       });
@@ -260,11 +262,11 @@ export function createProjectFileAutosaveController({
       });
     }
 
-    if (state.projectFileAutosaveRevision === saveRevision) {
+    if (saveSucceeded && state.projectFileAutosaveRevision === saveRevision) {
       clearState();
     }
 
-    if (state.projectFileAutosaveDirty) {
+    if (saveSucceeded && state.projectFileAutosaveDirty) {
       logInfo("autosave.rescheduled", "Autosave detected new edits during write; scheduling another run.", {
         revision: state.projectFileAutosaveRevision,
       });

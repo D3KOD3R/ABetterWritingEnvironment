@@ -168,6 +168,7 @@ export async function runDesktopApplicationTest() {
     assert.equal("userSettingPanelResizerLeftPercent" in savedProjectFile.projects[0].projectSettings, true);
     assert.equal("userSettingPanelResizerRightPercent" in savedProjectFile.projects[0].projectSettings, true);
     assert.equal(typeof savedProjectFile.projects[0].projectSettings.projectSourcePath, "string");
+    assert.equal(savedProjectFile.projects[0].passageNotes.length, projectLibrary.projects[0].passageNotes.length);
     assert.equal(Object.keys(savedProjectFile.projects[0].sceneDrafts ?? {}).length, 0);
     assert.equal(savedProjectFile.projects[0].workspace.project.lines.every((line) => line.text === ""), true);
 
@@ -186,6 +187,7 @@ export async function runDesktopApplicationTest() {
     assert.equal("userSettingPanelResizerLeftPercent" in loadedProjectFile.projects[0].projectSettings, true);
     assert.equal("userSettingPanelResizerRightPercent" in loadedProjectFile.projects[0].projectSettings, true);
     assert.equal(typeof loadedProjectFile.projects[0].projectSettings.projectSourcePath, "string");
+    assert.equal(loadedProjectFile.projects[0].passageNotes.length, projectLibrary.projects[0].passageNotes.length);
     assert.equal(
       loadedProjectFile.sceneStore?.["project-serva-vitae"]?.[firstSceneId]?.sceneId,
       firstSceneId,
@@ -243,6 +245,9 @@ export async function runDesktopApplicationTest() {
   assert.doesNotMatch(appScript.body, /Scene Synopsis/);
   assert.match(appScript.body, /editor-document-input/);
   assert.match(appScript.body, /contextmenu/);
+  assert.match(appScript.body, /getSpellcheckWordRangeFromLayerPoint\(textarea, event\)/);
+  assert.match(appScript.body, /\.editor-spellcheck-word\.is-misspelled/);
+  assert.match(appScript.body, /data-action="apply-spellcheck-suggestion"/);
   assert.match(appScript.body, /Add task/);
   assert.match(appScript.body, /Inspiration/);
   assert.match(appScript.body, /Research/);
@@ -336,6 +341,7 @@ export async function runDesktopApplicationTest() {
   assert.match(appScript.body, /source-archive/);
   assert.match(appScript.body, /task-source/);
   assert.match(shellScript, /Saved projects/);
+  assert.match(shellScript, /Version: Test/);
   assert.match(shellScript, /Project file/);
   assert.match(shellScript, /Autosave project file/);
   assert.match(shellScript, /Writing to JSON file/);
@@ -686,6 +692,7 @@ export async function runDesktopApplicationTest() {
   assert.match(styles.body, /\.task-copy \.task-source/);
   assert.match(styles.body, /\.desktop-chrome/);
   assert.match(styles.body, /\.desktop-menubar/);
+  assert.match(styles.body, /\.desktop-environment-badge/);
   assert.match(styles.body, /\.workspace-tabs/);
   assert.match(styles.body, /\.workspace-tab/);
   assert.match(styles.body, /\.file-menu-panel/);

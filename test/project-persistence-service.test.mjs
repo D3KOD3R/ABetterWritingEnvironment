@@ -10,8 +10,10 @@ export async function runProjectPersistenceServiceTest() {
   const activationLog = [];
   const activeProjectWrites = [];
   const browserCacheWrites = [];
+  const browserCacheClears = [];
   const browserLogs = [];
   let runtimeWritingTargetState = null;
+  let runtimePassageNotes = [];
 
   const projectRecord = createProjectRecord();
   const loadedRecord = createLoadedProjectRecord();
@@ -114,9 +116,14 @@ export async function runProjectPersistenceServiceTest() {
     projectSchemaVersion: 2,
     autosaveDelayMs: 5000,
     shouldPersistProjectCache: () => state.projectCacheSuppressionDepth === 0,
+    clearBrowserProjectCache: (context) => {
+      browserCacheClears.push(context);
+      return true;
+    },
     writeProjectFilePathCache: () => {},
     createProjectRecordFromRuntimeState: () => ({
       ...projectRecord,
+      passageNotes: runtimePassageNotes,
       projectSettings: {
         ...(projectRecord.projectSettings ?? {}),
         projectFilePath: state.projectFilePath,
@@ -173,6 +180,7 @@ export async function runProjectPersistenceServiceTest() {
   const failingHandle = createFakeWritableHandle("project-1.abe-project.json", operationLog, {
     failWrite: true,
   });
+  state.projectLibrary = [projectRecord, loadedRecord];
   state.projectFileHandle = failingHandle;
   state.projectFileHandlePermission = "granted";
   state.projectFilePath = "project-1.abe-project.json";
@@ -200,6 +208,10 @@ export async function runProjectPersistenceServiceTest() {
     browserCacheWrites.at(-1)?.projects?.[0]?.workspace?.selectionDefaults?.sceneId,
     "scene-1",
   );
+  assert.deepEqual(
+    browserCacheWrites.at(-1)?.projects?.map((project) => project.id),
+    ["project-1"],
+  );
   assert.equal(
     browserCacheWrites.at(-1)?.projects?.[0]?.workspace?.selectionDefaults?.sceneSelectionLineNumber,
     7,
@@ -212,6 +224,7 @@ export async function runProjectPersistenceServiceTest() {
     browserCacheWrites.at(-1)?.projects?.[0]?.workspace?.selectionDefaults?.sceneSelectionScrollLeft,
     8,
   );
+  state.projectLibrary = [projectRecord];
   state.projectFileHandle = createFakeWritableHandle("project-1.abe-project.json", operationLog);
   state.projectFileHandlePermission = "granted";
   state.projectFilePath = "project-1.abe-project.json";
@@ -230,7 +243,79 @@ export async function runProjectPersistenceServiceTest() {
   assert.equal(state.projectFileAutosaveDirty, false);
   assert.equal(state.projectFileAutosaveRevision, 0);
 
+  // Autosave should not repeatedly attempt browser-handle writes that require a user permission prompt.
+  operationLog.length = 0;
+  browserCacheWrites.length = 0;
+  browserLogs.length = 0;
+  state.projectFileHandle = createFakeWritableHandle("project-1.abe-project.json", operationLog, {
+    permissionStatus: "prompt",
+  });
+  state.projectFileHandlePermission = "prompt";
+  state.projectFilePath = "project-1.abe-project.json";
+  projectPersistenceService.markProjectAutosaveDirty({
+    domain: "project",
+    reason: "test-browser-permission-prompt",
+    source: "test",
+  });
+  await projectPersistenceService.flushProjectAutosave();
+  assert.equal(operationLog.some((entry) => String(entry).startsWith("write:")), false);
+  assert.equal(browserCacheWrites.length >= 1, true);
+  assert.equal(state.projectFileAutosaveDirty, false);
+  assert.match(state.projectFileStatus, /re-authorize the project file/);
+  assert.equal(
+    browserLogs.some((entry) => entry.level === "error" && entry.message === "Project file save failed."),
+    false,
+  );
+  state.projectFileHandle = createFakeWritableHandle("project-1.abe-project.json", operationLog);
+  state.projectFileHandlePermission = "granted";
+  state.projectFilePath = "project-1.abe-project.json";
+
+  // Project-file loads must flush pending passage-note mutations before reading a possibly stale file.
+  operationLog.length = 0;
+  fetchCalls.length = 0;
+  runtimePassageNotes = [
+    {
+      id: "inspiration-1",
+      noteType: "inspiration",
+      chapterId: "chapter-1",
+      chapterTitle: "Chapter One",
+      sceneId: "scene-1",
+      sceneTitle: "Scene One",
+      selectedText: "Scene one",
+      startOffset: 0,
+      endOffset: 9,
+      body: "Keep the opening sense of wonder.",
+      title: "Opening wonder",
+      createdAt: "2026-05-20T00:00:00.000Z",
+      source: "manual",
+    },
+  ];
+  state.activeProjectId = "project-1";
+  state.projectLibrarySelectionId = "project-1";
+  state.projectLibrary = [projectRecord];
+  state.projectFileHandle = null;
+  state.projectFileHandlePermission = "";
+  state.projectFilePath = "C:\\Projects\\project-1.abe-project.json";
+  state.projectFileAutosaveDirty = false;
+  state.projectFileAutosaveRevision = 0;
+  await projectPersistenceService.loadProjectSnapshotFromFile();
+  const preLoadSaveIndex = fetchCalls.findIndex((call) => call.pathname === "/api/project-file/save");
+  const loadIndex = fetchCalls.findIndex((call) => call.pathname === "/api/project-file/load");
+  assert.equal(preLoadSaveIndex >= 0, true);
+  assert.equal(loadIndex >= 0, true);
+  assert.equal(preLoadSaveIndex < loadIndex, true);
+  assert.equal(fetchCalls[preLoadSaveIndex].requestOptions.body.snapshot.projects[0].passageNotes.length, 1);
+  assert.equal(fetchCalls[preLoadSaveIndex].requestOptions.body.snapshot.projects[0].passageNotes[0].id, "inspiration-1");
+  runtimePassageNotes = [];
+  state.activeProjectId = "project-1";
+  state.projectLibrarySelectionId = "project-1";
+  state.projectLibrary = [projectRecord];
+  state.projectFilePath = "project-1.abe-project.json";
+  state.projectFileHandle = createFakeWritableHandle("project-1.abe-project.json", operationLog);
+  state.projectFileHandlePermission = "granted";
+
   // Loading a snapshot should hydrate state and activate the loaded record through the callback.
+  browserCacheClears.length = 0;
   await projectPersistenceService.hydrateProjectLibraryFromLoadedSnapshot({
     activeProjectId: "project-loaded",
     projects: [loadedRecord],
@@ -243,6 +328,7 @@ export async function runProjectPersistenceServiceTest() {
   assert.equal(state.activeProjectId, "project-loaded");
   assert.equal(state.projectFilePath, "C:\\Projects\\loaded.abe-project.json");
   assert.equal(activationLog.at(-1)?.projectId, "project-loaded");
+  assert.equal(browserCacheClears.at(-1)?.projectId, "project-loaded");
   assert.equal(state.projectLibrary.find((project) => project.id === "project-loaded")?.title, "Loaded Project");
   assert.equal(activeProjectWrites.includes("project-loaded"), true);
 
@@ -326,14 +412,14 @@ export async function runProjectPersistenceServiceTest() {
   });
   const remappedProjectId = getProjectFileIdentity("C:\\Projects\\project-1-copy.abe-project.json");
   assert.equal(state.activeProjectId, remappedProjectId);
-  assert.equal(state.projectLibrary.some((project) => project.id === "project-1"), true);
+  assert.equal(state.projectLibrary.some((project) => project.id === "project-1"), false);
   assert.equal(state.projectLibrary.some((project) => project.id === remappedProjectId), true);
   assert.equal(
     state.projectLibrary.find((project) => project.id === remappedProjectId)?.sceneDrafts?.["scene-loaded"]?.editorText,
     "Loaded project scene text.",
   );
 
-  // Renamed split-storage project files without their sceneStore should recover bodies from the existing matching cache.
+  // Renamed split-storage project files without their sceneStore must not recover bodies from an older browser cache.
   const cachedOriginalRecord = {
     ...createLoadedProjectRecord(),
     id: "project-1",
@@ -387,7 +473,7 @@ export async function runProjectPersistenceServiceTest() {
   assert.equal(state.activeProjectId, renamedProjectId);
   assert.equal(
     state.projectLibrary.find((project) => project.id === renamedProjectId)?.sceneDrafts?.["scene-loaded"]?.editorText,
-    "Loaded project scene text.",
+    undefined,
   );
   assert.equal(
     Object.prototype.hasOwnProperty.call(
@@ -430,10 +516,16 @@ function createFakeProjectService(projectRecord, loadedRecord, browserCacheWrite
   return {
     saveProject({ projectRecord: incomingRecord, librarySnapshot }) {
       const nextRecord = incomingRecord ?? projectRecord;
+      const currentProjects = Array.isArray(librarySnapshot?.projects) && librarySnapshot.projects.length
+        ? librarySnapshot.projects
+        : [projectRecord];
+      const nextProjects = currentProjects.some((project) => project.id === nextRecord.id)
+        ? currentProjects.map((project) => (project.id === nextRecord.id ? nextRecord : project))
+        : [...currentProjects, nextRecord];
       return {
         librarySnapshot: {
           activeProjectId: nextRecord.id,
-          projects: [nextRecord],
+          projects: nextProjects,
         },
       };
     },
@@ -444,7 +536,7 @@ function createFakeProjectService(projectRecord, loadedRecord, browserCacheWrite
         ...snapshot,
         projects: snapshot.projects.map((project) => ({
           ...project,
-          sceneDrafts: {},
+          sceneDrafts: snapshot.sceneStore?.[project.id] ?? project.sceneDrafts ?? {},
         })),
       };
     },
@@ -596,7 +688,7 @@ function createLoadedProjectRecord() {
 function createFakeWritableHandle(name, operationLog, options = {}) {
   return {
     name,
-    permissionStatus: "granted",
+    permissionStatus: options.permissionStatus ?? "granted",
     async queryPermission() {
       return this.permissionStatus;
     },

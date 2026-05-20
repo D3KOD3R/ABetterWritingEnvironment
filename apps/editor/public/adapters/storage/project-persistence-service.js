@@ -44,6 +44,15 @@ function toErrorMessage(error) {
   return error instanceof Error ? error.message : String(error);
 }
 
+// Intent: classify recoverable browser-handle permission failures so autosave can pause without error loops.
+function isBrowserHandlePermissionError(error) {
+  const errorName = typeof error?.name === "string" ? error.name : "";
+  const message = toErrorMessage(error).toLowerCase();
+  return message.includes("write permission")
+    || message.includes("re-authorize")
+    || (errorName === "AbortError" && message.includes("security policy"));
+}
+
 function createNoopLogger() {
   return {
     debug() {},
@@ -277,83 +286,6 @@ function sceneDraftHasSubstantiveBody(draft) {
   );
 }
 
-function getProjectSceneOrder(projectRecord) {
-  if (!projectRecord || typeof projectRecord !== "object") {
-    return [];
-  }
-
-  const projectStorageOrder = Array.isArray(projectRecord.projectStorage?.sceneOrder)
-    ? projectRecord.projectStorage.sceneOrder
-    : [];
-  const projectIndexOrder = Array.isArray(projectRecord.projectIndex?.sceneOrder)
-    ? projectRecord.projectIndex.sceneOrder
-    : [];
-  const projectIndexScenes = Array.isArray(projectRecord.projectIndex?.scenes)
-    ? projectRecord.projectIndex.scenes.map((scene) => scene?.id)
-    : [];
-  const structureScenes = Array.isArray(projectRecord.structureDrafts?.scenes)
-    ? projectRecord.structureDrafts.scenes.map((scene) => scene?.sceneId)
-    : [];
-  const lineSceneIds = [];
-  const seenLineSceneIds = new Set();
-  for (const line of Array.isArray(projectRecord.workspace?.project?.lines) ? projectRecord.workspace.project.lines : []) {
-    const sceneId = typeof line?.sceneId === "string" ? line.sceneId.trim() : "";
-    if (sceneId && !seenLineSceneIds.has(sceneId)) {
-      seenLineSceneIds.add(sceneId);
-      lineSceneIds.push(sceneId);
-    }
-  }
-
-  const sourceOrder = projectStorageOrder.length
-    ? projectStorageOrder
-    : projectIndexOrder.length
-      ? projectIndexOrder
-      : projectIndexScenes.length
-        ? projectIndexScenes
-        : structureScenes.length
-          ? structureScenes
-          : lineSceneIds;
-  const seen = new Set();
-  return sourceOrder
-    .map((sceneId) => (typeof sceneId === "string" ? sceneId.trim() : ""))
-    .filter((sceneId) => {
-      if (!sceneId || seen.has(sceneId)) {
-        return false;
-      }
-      seen.add(sceneId);
-      return true;
-    });
-}
-
-function projectRecordsHaveMatchingSceneOrder(leftRecord, rightRecord) {
-  const leftOrder = getProjectSceneOrder(leftRecord);
-  const rightOrder = getProjectSceneOrder(rightRecord);
-  return Boolean(
-    leftOrder.length &&
-    rightOrder.length &&
-    leftOrder.length === rightOrder.length &&
-    leftOrder.every((sceneId, index) => sceneId === rightOrder[index]),
-  );
-}
-
-function getCachedProjectSceneStore(projectService, projectRecord) {
-  if (!projectRecord?.id || typeof projectService?.exportProjectLibrarySnapshot !== "function") {
-    return null;
-  }
-
-  try {
-    const exportedSnapshot = projectService.exportProjectLibrarySnapshot({
-      librarySnapshot: {
-        activeProjectId: projectRecord.id,
-        projects: [projectRecord],
-      },
-    });
-    return getProjectSceneStore(exportedSnapshot?.sceneStore, projectRecord.id);
-  } catch {
-    return null;
-  }
-}
-
 function mergeProjectSceneStores(primaryStore, fallbackStore) {
   if (!fallbackStore || typeof fallbackStore !== "object" || Array.isArray(fallbackStore)) {
     return primaryStore ? cloneValue(primaryStore) : null;
@@ -412,6 +344,7 @@ export function createProjectPersistenceService({
   projectSchemaVersion,
   autosaveDelayMs,
   shouldPersistProjectCache = () => true,
+  clearBrowserProjectCache = () => true,
   writeProjectFilePathCache = () => {},
   createProjectRecordFromRuntimeState,
   getActiveProjectRecord,
@@ -465,12 +398,9 @@ export function createProjectPersistenceService({
   const desktopFileSystemLog = loggerSources.desktopFileSystem ?? createNoopLogger();
 
   function hasProjectSaveDestination() {
-    if (state.projectFileHandle && state.projectFileHandlePermission === "granted") {
-      return true;
-    }
-
+    // Intent: a remembered browser handle is still a save target; autosave can fall back to browser cache until reauthorized.
     return hasProjectFileDestination({
-      fileHandle: null,
+      fileHandle: state.projectFileHandle,
       filePath: state.projectFilePath,
     });
   }
@@ -813,17 +743,31 @@ export function createProjectPersistenceService({
   function persistProjectSnapshotToBrowserCache(snapshot, context = {}) {
     try {
       const snapshotProjects = Array.isArray(snapshot?.projects) ? snapshot.projects.filter(Boolean) : [];
-      const snapshotProjectIds = new Set(snapshotProjects.map((project) => project?.id).filter(Boolean));
-      const preservedProjects = state.projectLibrary.filter((project) => project?.id && !snapshotProjectIds.has(project.id));
       const persistedLibrary = projectService.saveProjectLibrarySnapshot({
         schemaVersion: snapshot?.schemaVersion ?? projectSchemaVersion,
         activeProjectId: snapshot?.activeProjectId ?? snapshotProjects[0]?.id ?? state.activeProjectId ?? null,
-        projects: [...preservedProjects, ...snapshotProjects],
+        projects: snapshotProjects,
         sceneStore: snapshot?.sceneStore ?? {},
       });
       state.projectLibrary = persistedLibrary.projects;
       state.activeProjectId = persistedLibrary.activeProjectId;
       state.projectLibrarySelectionId = persistedLibrary.activeProjectId;
+      if (persistedLibrary.storagePersisted === false) {
+        state.projectFileStatus = "Browser cache is full: latest project is still open, but refresh may restore the previous cached version. Press Ctrl+S or Save as file.";
+        desktopFileSystemLog.warn("persistence", "project.save.browser-cache-unpersisted", "Browser cache snapshot could not be fully written.", {
+          projectId: state.activeProjectId ?? state.workspace?.project?.id ?? "",
+          target: context.target ?? "browser-cache",
+          reason: context.reason ?? "save-project",
+          filePath: context.filePath ?? state.projectFilePath ?? "",
+        });
+        reportBrowserLog("warn", "project-library", "Browser cache is full; latest project was not fully persisted for refresh.", {
+          projectId: state.activeProjectId ?? state.workspace?.project?.id ?? "",
+          target: context.target ?? "browser-cache",
+          reason: context.reason ?? "save-project",
+          filePath: context.filePath ?? state.projectFilePath ?? "",
+        });
+        return false;
+      }
       desktopFileSystemLog.info("persistence", "project.save.browser-cache", "Saved project snapshot to browser storage.", {
         projectId: state.activeProjectId ?? state.workspace?.project?.id ?? "",
         target: context.target ?? "browser-cache",
@@ -865,6 +809,8 @@ export function createProjectPersistenceService({
     });
     if (persisted) {
       state.projectFileStatus = `Save failed: ${toErrorMessage(context.error)} Latest project preserved in browser cache.`;
+    } else {
+      state.projectFileStatus = `Save failed: ${toErrorMessage(context.error)} Browser cache is also unavailable; press Ctrl+S or Save as file before refreshing.`;
     }
     return persisted;
   }
@@ -952,13 +898,24 @@ export function createProjectPersistenceService({
       if (activeProjectId === saveProjectId) {
         state.projectFileStatus = `Save failed: ${toErrorMessage(error)}`;
       }
-      reportBrowserLog("error", "project-file", "Project file save failed.", {
-        filePath: handle?.name ?? null,
-        error,
-        mode: "browser-handle",
-        saveProjectId,
-        activeProjectId,
-      });
+      const isPermissionError = isBrowserHandlePermissionError(error);
+      if (isPermissionError) {
+        state.projectFileHandlePermission = "prompt";
+      }
+      reportBrowserLog(
+        isPermissionError && options.requestPermission !== true ? "warn" : "error",
+        "project-file",
+        isPermissionError && options.requestPermission !== true
+          ? "Project file save needs browser write permission."
+          : "Project file save failed.",
+        {
+          filePath: handle?.name ?? null,
+          error,
+          mode: "browser-handle",
+          saveProjectId,
+          activeProjectId,
+        },
+      );
       renderHeader();
       throw error;
     } finally {
@@ -1044,6 +1001,20 @@ export function createProjectPersistenceService({
     }
   }
 
+  // Intent: close the autosave gap before replacing runtime state with a loaded project snapshot.
+  async function preserveActiveProjectBeforeLoad(source = "project-load") {
+    commitCanonicalProjectMutation({
+      domain: "project",
+      dirtyReason: "before-project-load",
+      source,
+      markWorkingState: false,
+    });
+
+    if (state.projectFileAutosaveDirty === true) {
+      await flushProjectAutosave();
+    }
+  }
+
   // Intent: load project files into active state and immediately retarget autosave to the loaded destination.
   async function hydrateProjectLibraryFromLoadedSnapshot(loadedSnapshot, options = {}) {
     const loadedLibrary = normalizeProjectLibrarySnapshot(loadedSnapshot);
@@ -1065,6 +1036,21 @@ export function createProjectPersistenceService({
     const durableLoadedFilePath = hasProjectFilePath(options.filePath) ? normalizeProjectFilePath(options.filePath) : "";
     const loadedHandleFileName = normalizeProjectFilePath(options.fileName || options.fileHandle?.name || "");
     const loadedFileDisplayPath = durableLoadedFilePath || loadedHandleFileName;
+    const loadedFileIdentity = getProjectFileIdentity(loadedFileDisplayPath);
+    if (
+      loadedFileIdentity &&
+      loadedActiveProject?.id &&
+      loadedFileIdentity !== loadedActiveProject.id
+    ) {
+      reportBrowserLog("warn", "project-file", "Loaded project file name differs from the project payload identity.", {
+        filePath: loadedFileDisplayPath,
+        fileProjectId: loadedFileIdentity,
+        payloadProjectId: loadedActiveProject.id,
+        payloadTitle: loadedActiveProject.title ?? "",
+        sourceLabel: options.sourceLabel ?? "file",
+        mode: options.mode ?? "unknown",
+      });
+    }
     const existingProjectWithSameId = loadedActiveProject
       ? state.projectLibrary.find((project) => project?.id === loadedActiveProject.id) ?? null
       : null;
@@ -1102,46 +1088,46 @@ export function createProjectPersistenceService({
     const loadedSceneStore = loadedActiveProject
       ? getProjectSceneStore(loadedLibrary.sceneStore, loadedActiveProject.id) ?? getSingleProjectSceneStore(loadedLibrary.sceneStore)
       : null;
-    const cachedSceneStoreFallback =
-      shouldRemapLoadedProjectId &&
-      existingProjectWithSameId &&
-      projectRecordsHaveMatchingSceneOrder(existingProjectWithSameId, loadedActiveProject)
-        ? getCachedProjectSceneStore(projectService, existingProjectWithSameId)
-        : null;
-    const importedSceneStore = mergeProjectSceneStores(loadedSceneStore, cachedSceneStoreFallback);
+    const importedSceneStore = mergeProjectSceneStores(loadedSceneStore, null);
     const importedProjects = importedProject ? [importedProject] : loadedProjects;
     const importedSceneStoreByProject = importedSceneStore
       ? { [importedProject.id]: importedSceneStore }
       : loadedLibrary.sceneStore ?? {};
 
-    const currentProjects = state.projectLibrary
-      .map((project) => normalizeProjectRecord(project))
-      .filter(Boolean);
-    const loadedProjectIds = new Set(importedProjects.map((project) => project.id));
-    const preservedProjects = currentProjects.filter((project) => !loadedProjectIds.has(project.id));
-    const mergedProjects = [...preservedProjects, ...importedProjects];
     const activeProjectId = resolveActiveProjectId(
       importedProject?.id ?? loadedLibrary.activeProjectId,
       {
         activeProjectId: importedProject?.id ?? loadedLibrary.activeProjectId,
-        projects: mergedProjects,
+        projects: importedProjects,
       },
     );
 
+    const projectContentCacheCleared = clearBrowserProjectCache({
+      projectId: activeProjectId,
+      source: "hydrateProjectLibraryFromLoadedSnapshot",
+      reason: options.reason ?? "load-project-file",
+    }) !== false;
+    if (!projectContentCacheCleared) {
+      desktopFileSystemLog.warn("persistence", "project.load.cache-clear-incomplete", "Project-specific browser cache could not be completely cleared before loading JSON project data.", {
+        projectId: activeProjectId,
+        reason: options.reason ?? "load-project-file",
+        mode: options.mode ?? "unknown",
+      });
+    }
     const persistedLibrary = projectService.saveProjectLibrarySnapshot({
       activeProjectId,
-      projects: mergedProjects,
+      projects: importedProjects,
       sceneStore: importedSceneStoreByProject,
+    }, {
+      replaceExistingCache: true,
     });
-    const openedProject = projectService.openProject({
-      projectId: persistedLibrary.activeProjectId,
-    });
-    state.projectLibrary = openedProject.librarySnapshot.projects;
-    state.activeProjectId = openedProject.activeProjectId ?? persistedLibrary.activeProjectId;
+    // Intent: activate from the in-memory load result so localStorage quota failures cannot resurrect stale project chunks.
+    state.projectLibrary = Array.isArray(persistedLibrary.projects) ? persistedLibrary.projects : importedProjects;
+    state.activeProjectId = persistedLibrary.activeProjectId ?? activeProjectId;
     state.projectLibrarySelectionId = state.activeProjectId;
     persistActiveProjectId(state.activeProjectId);
 
-    const projectRecord = openedProject.projectRecord ?? getActiveProjectRecord();
+    const projectRecord = state.projectLibrary.find((project) => project?.id === state.activeProjectId) ?? state.projectLibrary[0] ?? null;
     if (!projectRecord) {
       throw new Error("Unable to activate the loaded project file.");
     }
@@ -1172,11 +1158,11 @@ export function createProjectPersistenceService({
       reason: options.reason ?? "load-project-file",
       mode: options.mode ?? "unknown",
       sourceLabel: options.sourceLabel ?? "file",
-      mergedProjectCount: mergedProjects.length,
+      loadedProjectCount: importedProjects.length,
       filePath: options.filePath ?? "",
     });
     primeProjectAutosaveTarget();
-    state.projectFileStatus = `Loaded ${mergedProjects.length} project${mergedProjects.length === 1 ? "" : "s"} from ${options.sourceLabel ?? "file"}`;
+    state.projectFileStatus = `Loaded ${importedProjects.length} project${importedProjects.length === 1 ? "" : "s"} from ${options.sourceLabel ?? "file"}`;
 
     if (state.workspace?.project?.stats) {
       reportBrowserLog("info", "project-file", "Loaded a project library from disk.", {
@@ -1196,6 +1182,7 @@ export function createProjectPersistenceService({
       throw new Error("A browser file handle is required.");
     }
 
+    await preserveActiveProjectBeforeLoad("loadProjectSnapshotFromBrowserHandle");
     state.projectFileBusy = true;
     state.projectFileStatus = "Loading project file...";
     renderHeader();
@@ -1230,6 +1217,7 @@ export function createProjectPersistenceService({
       throw new Error("A browser file is required.");
     }
 
+    await preserveActiveProjectBeforeLoad("loadProjectSnapshotFromBrowserFile");
     state.projectFileBusy = true;
     state.projectFileStatus = "Loading project file...";
     renderHeader();
@@ -1270,6 +1258,7 @@ export function createProjectPersistenceService({
   async function loadProjectSnapshotFromFile() {
     const filePath = normalizeProjectFilePath(state.projectFilePath);
     if (hasProjectFilePath(filePath)) {
+      await preserveActiveProjectBeforeLoad("loadProjectSnapshotFromFile");
       state.projectFileBusy = true;
       state.projectFileStatus = "Loading project file...";
       renderHeader();
@@ -1375,8 +1364,39 @@ export function createProjectPersistenceService({
       const shouldUseDesktopPath = hasProjectFilePath(filePath) && state.projectFileHandlePermission !== "granted";
       const shouldUseBrowserHandle = Boolean(state.projectFileHandle && !shouldUseDesktopPath);
       if (shouldUseBrowserHandle) {
+        // Intent: autosave cannot request browser write permission, so preserve to cache and wait for Ctrl+S.
+        if (reason === "autosave" && state.projectFileHandlePermission !== "granted") {
+          const fallbackPersisted = persistProjectSnapshotToBrowserCache(snapshot, {
+            target: "browser-handle-permission-fallback",
+            reason,
+            filePath: state.projectFilePath ?? state.projectFileHandle?.name ?? "",
+          });
+          if (fallbackPersisted) {
+            state.projectFileStatus = "Autosave paused: press Ctrl+S to re-authorize the project file. Latest project preserved in browser cache.";
+            clearProjectAutosaveState();
+            renderHeader();
+            reportProjectLibrarySaveResult(
+              "browser-handle-permission-fallback",
+              "Preserved current project in browser cache while waiting for project file permission.",
+            );
+          } else {
+            state.projectFileStatus = "Autosave paused: browser cache is full. Press Ctrl+S to re-authorize the project file before refreshing.";
+            renderHeader();
+          }
+          desktopFileSystemLog.warn("persistence", "project.save.browser-handle-permission-required", "Autosave paused until browser project file write permission is restored.", {
+            projectId: state.activeProjectId ?? state.workspace?.project?.id ?? "",
+            filePath: state.projectFilePath ?? state.projectFileHandle?.name ?? "",
+            fallbackPersisted,
+          });
+          if (!fallbackPersisted) {
+            throw new Error("Autosave could not preserve the current project in browser cache.");
+          }
+          return;
+        }
+
         let browserHandleSaved = false;
         let browserHandleFallbackPersisted = false;
+        let browserHandleFailure = null;
         try {
           await saveProjectSnapshotToBrowserHandle(state.projectFileHandle, snapshot, {
             requestPermission: reason !== "autosave",
@@ -1386,6 +1406,7 @@ export function createProjectPersistenceService({
             projectId: state.activeProjectId ?? state.workspace?.project?.id ?? "",
           });
         } catch (error) {
+          browserHandleFailure = error;
           browserHandleFallbackPersisted = persistProjectSnapshotFallbackAfterFileSaveFailure(snapshot, {
             target: "browser-handle-fallback",
             reason,
@@ -1397,6 +1418,9 @@ export function createProjectPersistenceService({
             fallbackPersisted: browserHandleFallbackPersisted,
             error,
           });
+          if (browserHandleFallbackPersisted && reason === "autosave") {
+            clearProjectAutosaveState();
+          }
         }
         renderHeader();
         if (browserHandleSaved || browserHandleFallbackPersisted) {
@@ -1404,6 +1428,9 @@ export function createProjectPersistenceService({
             browserHandleSaved ? "browser-handle" : "browser-handle-fallback",
             browserHandleSaved ? undefined : "Preserved current project in browser cache after file save failure.",
           );
+        }
+        if (!browserHandleSaved && !browserHandleFallbackPersisted && reason === "autosave") {
+          throw browserHandleFailure ?? new Error("Autosave failed and browser cache fallback was unavailable.");
         }
         return;
       }
@@ -1435,6 +1462,9 @@ export function createProjectPersistenceService({
             fallbackPersisted,
             error,
           });
+          if (!fallbackPersisted && reason === "autosave") {
+            throw error;
+          }
         }
       } else {
         const persistedToBrowserCache = persistProjectSnapshotToBrowserCache(snapshot, {
@@ -1448,6 +1478,9 @@ export function createProjectPersistenceService({
           clearEditorWorkingDirtyState("project-save-succeeded");
         } else {
           state.projectFileStatus = "Save failed: unable to persist the browser project library.";
+          if (reason === "autosave") {
+            throw new Error("Autosave could not persist the browser project library.");
+          }
         }
         renderHeader();
       }
@@ -1612,6 +1645,34 @@ export function createProjectPersistenceService({
       cachedHandleRecord.fileHandle.name ||
       projectRecord?.projectSettings?.projectFilePath ||
       "";
+    if (handlePermission === "granted") {
+      try {
+        const snapshot = await readProjectLibraryFromBrowserHandle(cachedHandleRecord.fileHandle);
+        await hydrateProjectLibraryFromLoadedSnapshot(snapshot, {
+          filePath: "",
+          fileName: displayPath,
+          fileHandle: cachedHandleRecord.fileHandle,
+          sourceLabel: "remembered browser project file",
+          reason: "boot-reconnect",
+          mode: "browser-handle",
+        });
+        state.projectFileStatus = `Writing to browser project file: ${displayPath}`;
+        desktopFileSystemLog.info("persistence", "project.file-handle.loaded", "Loaded remembered browser project file from its JSON handle.", {
+          projectId: state.activeProjectId ?? state.workspace?.project?.id ?? "",
+          filePath: displayPath,
+          source,
+        });
+        return true;
+      } catch (error) {
+        desktopFileSystemLog.warn("persistence", "project.file-handle-load-failed", "Unable to load remembered browser project file; write permission must be re-authorized manually.", {
+          projectId,
+          filePath: displayPath,
+          source,
+          error,
+        });
+      }
+    }
+
     setActiveProjectFileDestination(displayPath, cachedHandleRecord.fileHandle, {
       skipProjectFileAutosave: true,
       skipProjectRecordPersistence: true,

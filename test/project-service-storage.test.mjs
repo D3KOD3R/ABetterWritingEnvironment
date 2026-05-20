@@ -13,7 +13,7 @@ export async function runProjectServiceStorageTest() {
     windowRef: memoryWindow,
   });
 
-  storageAdapter.writeJson("contract-key", { ok: true });
+  assert.equal(storageAdapter.writeJson("contract-key", { ok: true }), true);
   assert.deepEqual(storageAdapter.readJson("contract-key"), { ok: true });
   memoryWindow.localStorage.setItem("broken-json", "{");
   assert.equal(storageAdapter.readJson("broken-json"), null);
@@ -34,6 +34,38 @@ export async function runProjectServiceStorageTest() {
     now: () => "2026-05-14T00:00:00.000Z",
   });
 
+  // Intent: a full browser cache must not force project-file loads to rehydrate stale scene chunks.
+  const quotaWarnings = [];
+  const quotaStorageAdapter = createBrowserStorageAdapter({
+    windowRef: createQuotaFailingWindow(),
+    reportBrowserLog: (level, source, message, context) => {
+      quotaWarnings.push({ level, source, message, context });
+    },
+  });
+  const quotaProjectService = createProjectService({
+    projectRepository: createProjectRepository({
+      storageAdapter: quotaStorageAdapter,
+      libraryStorageKey: "quota-test-project-library-v1",
+      activeProjectIdStorageKey: "quota-test-active-v1",
+    }),
+    preferencesRepository: createPreferencesRepository({
+      storageAdapter: quotaStorageAdapter,
+    }),
+    now: () => "2026-05-14T00:00:00.000Z",
+  });
+  const quotaPersistedSnapshot = quotaProjectService.saveProjectLibrarySnapshot({
+    activeProjectId: "project-test",
+    projects: [createProjectRecord()],
+  });
+  assert.equal(quotaPersistedSnapshot.activeProjectId, "project-test");
+  assert.equal(quotaPersistedSnapshot.storagePersisted, false);
+  assert.equal(
+    quotaPersistedSnapshot.projects[0]?.sceneDrafts?.["scene-1"]?.editorText.includes("Scene one opening line."),
+    true,
+  );
+  assert.equal(quotaWarnings.length, 1);
+  assert.equal(quotaWarnings[0]?.context?.error?.name, "QuotaExceededError");
+
   const migrated = migrateProjectData({
     activeProjectId: "project-test",
     projects: [createProjectRecord()],
@@ -41,6 +73,55 @@ export async function runProjectServiceStorageTest() {
   assert.equal(migrated.schemaVersion, PROJECT_SCHEMA_VERSION);
   assert.equal(migrated.projects[0].schemaVersion, PROJECT_SCHEMA_VERSION);
   assert.equal(migrated.projects[0].projectIndex.projectId, "project-test");
+  assert.equal(
+    migrated.projects[0].projectIndex.scenes.find((scene) => scene.id === "scene-1")?.inspirationCount,
+    1,
+  );
+
+  // Intent: existing indexes from older project files must be repaired from passage notes during migration.
+  const migratedWithExistingIndex = migrateProjectData({
+    activeProjectId: "project-test",
+    projects: [{
+      ...createProjectRecord(),
+      projectIndex: {
+        schemaVersion: 1,
+        projectId: "project-test",
+        projectTitle: "Project Test",
+        scenes: [
+          {
+            id: "scene-1",
+            title: "Scene One",
+            chapterId: "chapter-1",
+            chapterTitle: "Chapter One",
+            order: 1,
+            lineCount: 1,
+            wordCount: 4,
+            synopsis: "",
+            assetIds: [],
+          },
+        ],
+        chapters: [
+          {
+            id: "chapter-1",
+            title: "Chapter One",
+            order: 1,
+            sceneIds: ["scene-1"],
+            lineCount: 1,
+            wordCount: 4,
+          },
+        ],
+        sceneOrder: ["scene-1"],
+      },
+    }],
+  });
+  assert.equal(
+    migratedWithExistingIndex.projects[0].projectIndex.scenes.find((scene) => scene.id === "scene-1")?.inspirationCount,
+    1,
+  );
+  assert.equal(
+    migratedWithExistingIndex.projects[0].projectIndex.chapters.find((chapter) => chapter.id === "chapter-1")?.inspirationCount,
+    1,
+  );
 
   const created = projectService.createProject({
     projectRecord: createProjectRecord(),
@@ -57,6 +138,16 @@ export async function runProjectServiceStorageTest() {
   assert.equal(rawStoredManifest.projects[0].projectStorage.format, "chunked-project-package-v1");
   assert.deepEqual(rawStoredManifest.projects[0].projectStorage.sceneOrder, ["scene-1", "scene-2"]);
   assert.equal(rawStoredManifest.projects[0].projectSettings.projectFilePath, "C:\\Projects\\project-test.abe-project");
+  assert.equal(rawStoredManifest.projects[0].passageNotes.length, 1);
+  assert.equal(rawStoredManifest.projects[0].passageNotes[0].id, "inspiration-1");
+  assert.equal(
+    rawStoredManifest.projects[0].projectIndex?.scenes?.find((scene) => scene.id === "scene-1")?.inspirationCount,
+    1,
+  );
+  assert.equal(
+    rawStoredManifest.projects[0].projectIndex?.chapters?.find((chapter) => chapter.id === "chapter-1")?.inspirationCount,
+    1,
+  );
   assert.equal(
     Number(rawStoredManifest.projects[0].projectIndex?.scenes?.find((scene) => scene.id === "scene-1")?.wordCount) > 0,
     true,
@@ -79,6 +170,16 @@ export async function runProjectServiceStorageTest() {
   const opened = projectService.openProject();
   assert.equal(opened.projectRecord?.id, "project-test");
   assert.equal(opened.projectRecord?.projectSettings?.projectFilePath, "C:\\Projects\\project-test.abe-project");
+  assert.equal(opened.projectRecord?.passageNotes?.length, 1);
+  assert.equal(opened.projectRecord?.passageNotes?.[0]?.id, "inspiration-1");
+  assert.equal(
+    opened.projectRecord?.projectIndex?.scenes?.find((scene) => scene.id === "scene-1")?.inspirationCount,
+    1,
+  );
+  assert.equal(
+    opened.projectRecord?.projectIndex?.chapters?.find((chapter) => chapter.id === "chapter-1")?.inspirationCount,
+    1,
+  );
   assert.equal(
     Number(opened.projectRecord?.projectIndex?.scenes?.find((scene) => scene.id === "scene-1")?.wordCount) > 0,
     true,
@@ -143,6 +244,12 @@ export async function runProjectServiceStorageTest() {
   const exportedSnapshot = projectService.exportProjectLibrarySnapshot({
     librarySnapshot: opened.librarySnapshot,
   });
+  assert.equal(exportedSnapshot.projects[0].passageNotes.length, 1);
+  assert.equal(exportedSnapshot.projects[0].passageNotes[0].id, "inspiration-1");
+  assert.equal(
+    exportedSnapshot.projects[0].projectIndex?.scenes?.find((scene) => scene.id === "scene-1")?.inspirationCount,
+    1,
+  );
   assert.equal(Object.keys(exportedSnapshot.sceneStore["project-test"] ?? {}).length, 2);
   assert.equal(
     exportedSnapshot.sceneStore["project-test"]["scene-1"].editorText.includes("Scene one opening line."),
@@ -221,6 +328,28 @@ export async function runProjectServiceStorageTest() {
 
   projectService.saveUserPreference("pref-editor-width", 760);
   assert.equal(projectService.loadUserPreference("pref-editor-width", 0), 760);
+
+  // Intent: loading a project JSON file must replace the browser project cache instead of merging with stale chunks.
+  storageAdapter.writeJson("test-project-library-v1:scene:stale-project:scene-old", {
+    sceneId: "scene-old",
+    editorText: "Stale browser manuscript body.",
+    blocks: [],
+  });
+  storageAdapter.writeJson("test-project-library-v1:stale-extra", { stale: true });
+  const replacementRecord = {
+    ...createProjectRecord(),
+    title: "Replacement Project",
+  };
+  const replacementSnapshot = projectService.saveProjectLibrarySnapshot({
+    activeProjectId: "project-test",
+    projects: [replacementRecord],
+  }, {
+    replaceExistingCache: true,
+  });
+  assert.equal(replacementSnapshot.storagePersisted, true);
+  assert.equal(storageAdapter.readJson("test-project-library-v1:scene:stale-project:scene-old"), null);
+  assert.equal(storageAdapter.readJson("test-project-library-v1:stale-extra"), null);
+  assert.equal(storageAdapter.readJson("test-project-library-v1").projects.length, 1);
 }
 
 function createProjectRecord() {
@@ -296,7 +425,23 @@ function createProjectRecord() {
     },
     templateDrafts: [],
     manuscriptTasks: [],
-    passageNotes: [],
+    passageNotes: [
+      {
+        id: "inspiration-1",
+        noteType: "inspiration",
+        chapterId: "chapter-1",
+        chapterTitle: "Chapter One",
+        sceneId: "scene-1",
+        sceneTitle: "Scene One",
+        selectedText: "Scene one opening",
+        startOffset: 0,
+        endOffset: 17,
+        body: "Keep the first image vivid.",
+        title: "Opening image",
+        createdAt: "2026-05-20T00:00:00.000Z",
+        source: "manual",
+      },
+    ],
     projectSettings: {
       projectFilePath: "C:\\Projects\\project-test.abe-project",
       projectSourcePath: "C:\\Projects\\project-test.scriv",
@@ -330,9 +475,15 @@ function createMemoryWindow() {
       return writeCounts.get(key) ?? 0;
     },
     localStorage: {
+      get length() {
+        return values.size;
+      },
       getItem(key) {
         increment(readCounts, key);
         return values.has(key) ? values.get(key) : null;
+      },
+      key(index) {
+        return [...values.keys()][index] ?? null;
       },
       setItem(key, value) {
         increment(writeCounts, key);
@@ -342,6 +493,22 @@ function createMemoryWindow() {
         increment(writeCounts, key);
         values.delete(key);
       },
+    },
+  };
+}
+
+function createQuotaFailingWindow() {
+  return {
+    localStorage: {
+      getItem() {
+        return null;
+      },
+      setItem() {
+        const error = new Error("Synthetic quota exceeded.");
+        error.name = "QuotaExceededError";
+        throw error;
+      },
+      removeItem() {},
     },
   };
 }

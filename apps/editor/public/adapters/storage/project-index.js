@@ -42,6 +42,45 @@ function resolveSceneDraftWordCount(sceneDraft) {
   return countWords(blockText);
 }
 
+// Intent: derive manuscript note counts from canonical passage-note records instead of trusting stale index counters.
+function collectPassageNoteCountsByScene(passageNotes) {
+  const counts = new Map();
+  const safeNotes = Array.isArray(passageNotes) ? passageNotes : [];
+
+  for (const note of safeNotes) {
+    const noteType = note?.noteType === "research"
+      ? "research"
+      : note?.noteType === "inspiration"
+        ? "inspiration"
+        : "";
+    const sceneId = typeof note?.sceneId === "string" && note.sceneId.trim() ? note.sceneId.trim() : "";
+    if (!noteType || !sceneId) {
+      continue;
+    }
+
+    const existing = counts.get(sceneId) ?? {
+      inspirationCount: 0,
+      researchCount: 0,
+    };
+    if (noteType === "research") {
+      existing.researchCount += 1;
+    } else {
+      existing.inspirationCount += 1;
+    }
+    counts.set(sceneId, existing);
+  }
+
+  return counts;
+}
+
+function getScenePassageNoteCounts(noteCountsBySceneId, sceneId) {
+  const counts = noteCountsBySceneId.get(sceneId) ?? {};
+  return {
+    inspirationCount: Math.max(0, Math.round(Number(counts.inspirationCount) || 0)),
+    researchCount: Math.max(0, Math.round(Number(counts.researchCount) || 0)),
+  };
+}
+
 // Intent: keep chapter totals derived from persisted scene totals so the project index can survive lazy scene loading.
 export function collectChapterRecords(sceneRecords) {
   const chapters = new Map();
@@ -58,12 +97,16 @@ export function collectChapterRecords(sceneRecords) {
       sceneIds: [],
       lineCount: 0,
       wordCount: 0,
+      inspirationCount: 0,
+      researchCount: 0,
     };
 
     existing.title = chapterTitle;
     existing.sceneIds.push(scene?.id ?? "");
     existing.lineCount += Number.isFinite(Number(scene?.lineCount)) ? Math.max(0, Math.round(Number(scene.lineCount))) : 0;
     existing.wordCount += Math.max(0, Math.round(Number(scene?.wordCount) || 0));
+    existing.inspirationCount += Math.max(0, Math.round(Number(scene?.inspirationCount) || 0));
+    existing.researchCount += Math.max(0, Math.round(Number(scene?.researchCount) || 0));
     chapters.set(chapterId, existing);
   }
 
@@ -74,6 +117,60 @@ export function collectChapterRecords(sceneRecords) {
 
     return left.id.localeCompare(right.id);
   });
+}
+
+// Intent: refresh note counters on a pre-existing index without rebuilding its scene list from lazy scene chunks.
+export function applyPassageNoteCountsToProjectIndex(projectIndex, passageNotes) {
+  if (!projectIndex || typeof projectIndex !== "object" || Array.isArray(projectIndex)) {
+    return projectIndex;
+  }
+
+  const existingScenes = Array.isArray(projectIndex.scenes) ? projectIndex.scenes : [];
+  const noteCountsBySceneId = collectPassageNoteCountsByScene(passageNotes);
+  const scenes = existingScenes.map((scene) => {
+    const sceneId = typeof scene?.id === "string" && scene.id.trim() ? scene.id.trim() : "";
+    const counts = getScenePassageNoteCounts(noteCountsBySceneId, sceneId);
+    return {
+      ...scene,
+      ...counts,
+    };
+  });
+
+  const countsByChapterId = new Map();
+  for (const scene of scenes) {
+    const chapterId = typeof scene?.chapterId === "string" && scene.chapterId.trim()
+      ? scene.chapterId.trim()
+      : "unassigned-chapter";
+    const existing = countsByChapterId.get(chapterId) ?? {
+      inspirationCount: 0,
+      researchCount: 0,
+    };
+    existing.inspirationCount += Math.max(0, Math.round(Number(scene?.inspirationCount) || 0));
+    existing.researchCount += Math.max(0, Math.round(Number(scene?.researchCount) || 0));
+    countsByChapterId.set(chapterId, existing);
+  }
+
+  const existingChapters = Array.isArray(projectIndex.chapters) ? projectIndex.chapters : [];
+  const chapters = existingChapters.length
+    ? existingChapters.map((chapter) => {
+        const chapterId = typeof chapter?.id === "string" && chapter.id.trim() ? chapter.id.trim() : "";
+        const counts = countsByChapterId.get(chapterId) ?? {
+          inspirationCount: 0,
+          researchCount: 0,
+        };
+        return {
+          ...chapter,
+          inspirationCount: Math.max(0, Math.round(Number(counts.inspirationCount) || 0)),
+          researchCount: Math.max(0, Math.round(Number(counts.researchCount) || 0)),
+        };
+      })
+    : collectChapterRecords(scenes);
+
+  return {
+    ...projectIndex,
+    scenes,
+    chapters,
+  };
 }
 
 function normalizeAssetRecord(candidate) {
@@ -225,21 +322,25 @@ export function buildProjectIndexFromProjectRecord(projectRecord, {
     }
   }
 
+  const noteCountsBySceneId = collectPassageNoteCountsByScene(projectRecord?.passageNotes);
   const scenes = sceneRecords.map((scene, index) => {
     const overrideWordCount = Number(sceneWordCountsById?.[scene.id]);
     const resolvedWordCount = Number.isFinite(overrideWordCount) && overrideWordCount >= 0
       ? Math.round(overrideWordCount)
       : Math.max(0, Math.round(Number(scene.wordCount) || 0));
+    const noteCounts = getScenePassageNoteCounts(noteCountsBySceneId, scene.id);
 
     return {
       id: scene.id,
       title: scene.title,
       chapterId: scene.chapterId || "unassigned-chapter",
+      chapterTitle: scene.chapterTitle || "Untitled Chapter",
       order: index + 1,
       lineCount: scene.lineCount,
       wordCount: resolvedWordCount,
       synopsis: scene.synopsis || "",
       assetIds: sceneAssets.get(scene.id) ?? [],
+      ...noteCounts,
     };
   });
   const chapters = collectChapterRecords(scenes);

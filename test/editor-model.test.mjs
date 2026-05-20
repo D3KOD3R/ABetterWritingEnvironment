@@ -17,6 +17,7 @@ import {
   findSceneByBlockId,
   getOpenTasksForScene,
   groupScenesByChapter,
+  insertStructureSceneDraftAfterAnchor,
   normalizeManuscriptTasks,
   normalizeEditorPrefs,
   normalizeLocalAiPrefs,
@@ -185,6 +186,39 @@ export function runEditorModelTest() {
   assert.deepEqual(
     orderedDraftScenes.map((scene) => scene.sceneId),
     ["order-scene-1", "order-draft-scene", "order-scene-2"],
+  );
+
+  const orderedStructureDrafts = {
+    sceneOrder: ["order-scene-1", "order-draft-scene", "order-scene-2"],
+    scenes: [
+      {
+        sceneId: "order-draft-scene",
+        chapterId: "chapter-1",
+        chapterTitle: "Arrival Vector",
+        sceneTitle: "Inserted Draft",
+        initialText: "",
+      },
+    ],
+  };
+  const insertedSceneDrafts = insertStructureSceneDraftAfterAnchor(
+    orderedStructureDrafts,
+    orderedDraftScenes,
+    {
+      sceneId: "order-draft-scene-2",
+      chapterId: "chapter-1",
+      chapterTitle: "Arrival Vector",
+      sceneTitle: "Inserted After Active Scene",
+      initialText: "",
+    },
+    "order-scene-1",
+  );
+  assert.deepEqual(
+    insertedSceneDrafts.sceneOrder,
+    ["order-scene-1", "order-draft-scene-2", "order-draft-scene", "order-scene-2"],
+  );
+  assert.deepEqual(
+    buildSceneRecords(orderedWorkspace, {}, insertedSceneDrafts).map((scene) => scene.sceneId),
+    ["order-scene-1", "order-draft-scene-2", "order-draft-scene", "order-scene-2"],
   );
 
   assert.equal(estimateWrappedLineCount("alpha beta gamma delta", 10), 3);

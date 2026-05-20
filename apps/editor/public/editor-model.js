@@ -396,6 +396,63 @@ export function createStructureDrafts() {
   };
 }
 
+// Intent: place newly created scene drafts beside the scene the author is actively editing.
+export function insertStructureSceneDraftAfterAnchor(
+  structureDrafts = {},
+  sceneRecords = [],
+  newSceneDraft = {},
+  anchorSceneId = "",
+) {
+  const newSceneId = typeof newSceneDraft?.sceneId === "string" ? newSceneDraft.sceneId.trim() : "";
+  if (!newSceneId) {
+    return cloneValue(structureDrafts ?? createStructureDrafts());
+  }
+
+  const normalizedAnchorSceneId = typeof anchorSceneId === "string" ? anchorSceneId.trim() : "";
+  const currentSceneOrder = Array.isArray(sceneRecords)
+    ? sceneRecords
+      .map((scene) => (typeof scene?.sceneId === "string" ? scene.sceneId.trim() : ""))
+      .filter(Boolean)
+    : [];
+  const structureSceneOrder = getOrderedStructureSceneIds(structureDrafts);
+  const baseSceneOrder = structureSceneOrder.length ? structureSceneOrder : currentSceneOrder;
+  const nextSceneOrder = [];
+  const emittedSceneIds = new Set();
+
+  for (const sceneId of [...baseSceneOrder, ...currentSceneOrder]) {
+    if (!sceneId || sceneId === newSceneId || emittedSceneIds.has(sceneId)) {
+      continue;
+    }
+
+    emittedSceneIds.add(sceneId);
+    nextSceneOrder.push(sceneId);
+  }
+
+  const anchorIndex = normalizedAnchorSceneId
+    ? nextSceneOrder.indexOf(normalizedAnchorSceneId)
+    : -1;
+  const sceneOrderInsertIndex = anchorIndex >= 0 ? anchorIndex + 1 : nextSceneOrder.length;
+  nextSceneOrder.splice(sceneOrderInsertIndex, 0, newSceneId);
+
+  const existingDraftScenes = Array.isArray(structureDrafts?.scenes)
+    ? structureDrafts.scenes
+      .filter((scene) => scene && typeof scene === "object")
+      .filter((scene) => scene.sceneId !== newSceneId)
+      .map((scene) => cloneValue(scene))
+    : [];
+  const draftAnchorIndex = normalizedAnchorSceneId
+    ? existingDraftScenes.findIndex((scene) => scene.sceneId === normalizedAnchorSceneId)
+    : -1;
+  const draftSceneInsertIndex = draftAnchorIndex >= 0 ? draftAnchorIndex + 1 : existingDraftScenes.length;
+  existingDraftScenes.splice(draftSceneInsertIndex, 0, cloneValue(newSceneDraft));
+
+  return {
+    ...cloneValue(structureDrafts ?? createStructureDrafts()),
+    scenes: existingDraftScenes,
+    sceneOrder: nextSceneOrder,
+  };
+}
+
 export function createTemplateDrafts() {
   return [];
 }
