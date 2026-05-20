@@ -1,4 +1,4 @@
-// Intent: prevent regressions where a stale zero daily baseline makes the Daily Target card show total manuscript words.
+// Intent: prevent regressions where stale baselines hide deletion deltas from the writing-goals displays.
 import assert from "node:assert/strict";
 
 import { createWritingGoalsStateService } from "../apps/editor/public/features/writing-targets/writing-goals-state-service.js";
@@ -108,6 +108,76 @@ export function runWritingGoalsStateServiceTest() {
   assert.equal(summary.dailyWords, 0);
   assert.equal(Math.round(summary.targetWordsPerDay), 2184);
 
+  const runtimeTodayKey = service.getLocalDateKey(new Date());
+  activeProjectRecord.projectIndex.scenes[0].wordCount = 69920;
+  try {
+    const signedDeltaRecord = {
+      ...seededRecord,
+      dailyBaselineDateKey: runtimeTodayKey,
+      dailyBaselineWordCount: 70097,
+    };
+  const deletedTextSummary = service.buildWritingTargetSummaryForRecord(signedDeltaRecord);
+  assert.equal(deletedTextSummary.currentWordCount, 69920);
+  assert.equal(deletedTextSummary.dailyWords, -177);
+  assert.equal(deletedTextSummary.currentSessionWords, -177);
+  const deletedDailyMetric = service.buildWritingTargetMetric("sessionTarget", {
+    record: signedDeltaRecord,
+    currentWordCount: 69920,
+    sessionWords: 0,
+    dailyWords: -177,
+    sessionsPerDay: 5,
+    sessionTargetWordsPerSession: 437,
+    currentSessionIndex: 1,
+    currentSessionWords: -177,
+    sessionProgress: 0,
+    sessionStatusText: "Idle",
+    pace: null,
+    targetCadence: "daily",
+    cadenceMeta: { label: "Daily target", unitLabel: "day" },
+    targetWordsPerDay: 2184,
+    effectiveWordsPerDay: 0,
+    remainingWords: 80080,
+    projectedDaysToTarget: null,
+    projectedCompletionDate: null,
+    releaseDate: null,
+    daysUntilRelease: null,
+    requiredDailyWords: 2184,
+    projectedReleaseGap: null,
+    releaseTrackStatus: "unknown",
+    now,
+  });
+  assert.equal(deletedDailyMetric.leftLabel, "-177");
+  const deletedTextMetric = service.buildWritingTargetMetric("sessionTracker", {
+    record: signedDeltaRecord,
+    currentWordCount: 69920,
+      sessionWords: 0,
+      dailyWords: -177,
+      sessionsPerDay: 5,
+      sessionTargetWordsPerSession: 437,
+      currentSessionIndex: 1,
+      currentSessionWords: -177,
+      sessionProgress: 0,
+      sessionStatusText: "Idle",
+      pace: null,
+      targetCadence: "daily",
+      cadenceMeta: { label: "Daily target", unitLabel: "day" },
+      targetWordsPerDay: 2184,
+      effectiveWordsPerDay: 0,
+      remainingWords: 80080,
+      projectedDaysToTarget: null,
+      projectedCompletionDate: null,
+      releaseDate: null,
+      daysUntilRelease: null,
+      requiredDailyWords: 2184,
+      projectedReleaseGap: null,
+    releaseTrackStatus: "unknown",
+    now,
+  });
+  assert.equal(deletedTextMetric.leftLabel, "-177");
+  } finally {
+    activeProjectRecord.projectIndex.scenes[0].wordCount = 70097;
+  }
+
   const outlierHistoryRecord = {
     ...seededRecord,
     dailyBaselineDateKey: service.getLocalDateKey(new Date(now.getTime() - 86400000)),
@@ -124,7 +194,7 @@ export function runWritingGoalsStateServiceTest() {
   });
   assert.equal(resolvedFromOutlier, 71434);
   const outlierSummary = service.buildWritingTargetSummaryForRecord(outlierHistoryRecord);
-  assert.equal(outlierSummary.dailyWords, 0);
+  assert.equal(outlierSummary.dailyWords, -1337);
 
   const onlyImplausibleHistoryRecord = {
     ...seededRecord,

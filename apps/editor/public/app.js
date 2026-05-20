@@ -78,6 +78,15 @@ import { createPreferencesRepository } from "./adapters/storage/preferences-repo
 import { createProjectService } from "./adapters/storage/project-service.js";
 import { PROJECT_SCHEMA_VERSION } from "./adapters/storage/project-migrations.js";
 import { createProjectPersistenceService } from "./adapters/storage/project-persistence-service.js";
+import {
+  createEmptyRevisionProjectState,
+  createRevisionStorageService,
+  getPersistableRevisionProjectState,
+  normalizeRevisionProjectState,
+} from "./adapters/storage/revision-storage-service.js";
+import { createRevisionService } from "./features/revisions/revision-service.js";
+import { createRevisionPanelController } from "./features/revisions/revision-panel-controller.js";
+import { renderRevisionPanelHTML } from "./features/revisions/revision-panel-view.js";
 
 // Intent: keep shell-wide constants and state visible until each concern moves into its roadmap owner.
 const appRoot = document.querySelector("#app");
@@ -240,6 +249,15 @@ const state = {
     activeIndex: 0,
     position: null,
   },
+  revisionState: createEmptyRevisionProjectState(),
+  revisionPanelState: {
+    query: "",
+    categoryFilter: "all",
+    originFilter: "all",
+    selectedSessionId: "",
+    showFullDiff: false,
+    statusMessage: "",
+  },
   narrationTakeSelection: null,
   narrationTakeSession: null,
   editorPrefs: createDefaultEditorPrefs(),
@@ -309,6 +327,7 @@ const localStorageAdapterLog = developerLogger.createSource("LocalStorageAdapter
 const desktopFileSystemLog = developerLogger.createSource("DesktopFileSystemAdapter");
 const uiEventDispatcherLog = developerLogger.createSource("UIEventDispatcher");
 const writingGoalsServiceLog = developerLogger.createSource("WritingGoalsService");
+const revisionServiceLog = developerLogger.createSource("RevisionService");
 registerDeveloperLogRuntimeBridge();
 
 const writingGoalsStateLogHooks = {
@@ -523,6 +542,18 @@ const projectPersistenceService = createProjectPersistenceService({
     projectSaveGate: projectSaveGateLog,
     desktopFileSystem: desktopFileSystemLog,
   },
+});
+
+const revisionStorageService = createRevisionStorageService({
+  logger: revisionServiceLog,
+});
+const revisionPanelController = createRevisionPanelController();
+const revisionService = createRevisionService({
+  getProjectRecord: () => getActiveProjectRecord(),
+  getProjectSnapshot: () => createProjectLibraryRecordFromState(),
+  getRevisionState: () => state.revisionState,
+  setRevisionState,
+  logger: revisionServiceLog,
 });
 
 const writingGoalsService = createWritingGoalsService({
@@ -903,6 +934,36 @@ function wireEvents() {
 
     if (action === "toggle-revision-overlay") {
       toggleRevisionOverlay(target.dataset.sceneId);
+      return;
+    }
+
+    if (action === "bank-revision") {
+      bankCurrentRevisionFromPanel();
+      return;
+    }
+
+    if (action === "select-revision-session") {
+      selectRevisionSession(target.dataset.revisionSessionId);
+      return;
+    }
+
+    if (action === "revision-open-first-scene") {
+      openFirstRevisionScene(target.dataset.revisionSessionId);
+      return;
+    }
+
+    if (action === "revision-open-entity") {
+      navigateRevisionEntity(target.dataset.revisionEntityType, target.dataset.revisionEntityId);
+      return;
+    }
+
+    if (action === "revision-toggle-diff-detail") {
+      toggleRevisionDiffDetail();
+      return;
+    }
+
+    if (action === "revision-export-summary") {
+      exportRevisionSummary(target.dataset.revisionSessionId);
       return;
     }
 
@@ -1693,6 +1754,11 @@ function wireEvents() {
       return;
     }
 
+    if (target instanceof HTMLInputElement && target.dataset.revisionSearch !== undefined) {
+      updateRevisionPanelSearch(target.value);
+      return;
+    }
+
     const { editField, sceneId } = target.dataset;
     if (!editField) {
       return;
@@ -1806,6 +1872,7 @@ function wireEvents() {
       updateSceneEditorSelectionSnapshotFromTextarea(target);
       clearTaskAnchorPreview({ restoreSelection: false });
       const previousText = getScene(sceneId)?.editorText ?? "";
+      recordRevisionSceneTextEdit(sceneId, previousText, target.value);
       trackInlinePassageDraftTyping(sceneId, previousText, target);
       const activeTypingWordRange = getEditorTypingSpellcheckRange(target);
       updateSceneDraft(sceneId, (draft) => {
@@ -1875,6 +1942,16 @@ function wireEvents() {
     if (target instanceof HTMLSelectElement && target.dataset.projectLibrarySelect !== undefined) {
       state.projectLibrarySelectionId = target.value;
       renderHeader();
+      return;
+    }
+
+    if (target instanceof HTMLSelectElement && target.dataset.revisionCategoryFilter !== undefined) {
+      updateRevisionPanelFilter("categoryFilter", target.value);
+      return;
+    }
+
+    if (target instanceof HTMLSelectElement && target.dataset.revisionOriginFilter !== undefined) {
+      updateRevisionPanelFilter("originFilter", target.value);
       return;
     }
 
@@ -2772,7 +2849,7 @@ function renderTaskBadge(taskCount, chapterTitle) {
 function renderSceneNode(scene) {
   const isCurrentScene = scene.sceneId === state.selectedSceneId;
   const isEditingSceneTitle = state.editingSceneTitleId === scene.sceneId;
-  const canDragScene = scene.blocks.some((block) => Number.isInteger(block.lineNumber));
+  const canDragScene = isMovableScene(scene);
   const isDraggingScene = binderSceneDragState?.sourceSceneId === scene.sceneId;
   const isDropBefore =
     binderSceneDragState?.dropTarget?.type === "before" &&
@@ -2873,7 +2950,9 @@ function renderConsolePanel() {
         ${renderSidePanelTabs()}
         ${state.sidePanelMode === "issues"
           ? renderIssuePanelBody()
-          : renderPassageNotePanel(state.sidePanelMode)}
+          : state.sidePanelMode === "revisions"
+            ? renderRevisionPanelBody()
+            : renderPassageNotePanel(state.sidePanelMode)}
       </div>
     </div>
   `;
@@ -4058,9 +4137,11 @@ function renderSidePanelTabs() {
   const taskCount = getOpenManuscriptTasks().length;
   const inspirationCount = state.passageNotes.filter((note) => note.noteType === "inspiration").length;
   const researchCount = state.passageNotes.filter((note) => note.noteType === "research").length;
+  const revisionCount = getRevisionSessionCount();
   return `
     <div class="side-panel-tabs" aria-label="Editor side panel modes">
       ${renderSidePanelTab("issues", "Tasks", taskCount)}
+      ${renderSidePanelTab("revisions", "Revisions", revisionCount)}
       ${renderSidePanelTab("inspiration", "Inspiration", inspirationCount)}
       ${renderSidePanelTab("research", "Research", researchCount)}
     </div>
@@ -4122,6 +4203,18 @@ function renderPassageNotePanel(noteType) {
       </div>
     ` : renderEmptyPassageNoteState(label)}
   `;
+}
+
+function renderRevisionPanelBody() {
+  return renderRevisionPanelHTML(buildRevisionPanelModel());
+}
+
+function buildRevisionPanelModel() {
+  return revisionPanelController.buildPanelModel(state.revisionState, state.revisionPanelState);
+}
+
+function getRevisionSessionCount() {
+  return Array.isArray(state.revisionState?.sessions) ? state.revisionState.sessions.length : 0;
 }
 
 function renderEmptyPassageNoteState(label) {
@@ -6792,6 +6885,12 @@ function mergeProjectRecords(storedRecord, seedRecord, legacyState = null) {
     editorPrefs: normalizeEditorPrefs(storedRecord.editorPrefs ?? seedRecord.editorPrefs ?? legacyState?.editorPrefs),
     localAiPrefs: normalizeLocalAiPrefs(storedRecord.localAiPrefs ?? seedRecord.localAiPrefs ?? legacyState?.localAiPrefs),
   };
+  const mergedRevisionState =
+    getPersistableRevisionProjectState(storedRecord.revisions) ??
+    getPersistableRevisionProjectState(seedRecord.revisions);
+  if (mergedRevisionState) {
+    merged.revisions = mergedRevisionState;
+  }
 
   merged.projectSettings = normalizeProjectSettingsSnapshot(
     buildProjectSettingsCandidate({
@@ -7231,6 +7330,10 @@ function normalizeProjectRecord(candidate, legacyState = null) {
     editorPrefs: cloneValue(projectSettings.editorPrefs),
     localAiPrefs: cloneValue(projectSettings.localAiPrefs),
   };
+  const revisionState = getPersistableRevisionProjectState(candidate.revisions);
+  if (revisionState) {
+    normalizedRecord.revisions = revisionState;
+  }
   normalizedRecord.schemaVersion = Number(candidate.schemaVersion) || PROJECT_SCHEMA_VERSION;
   normalizedRecord.projectIndex = buildProjectIndexForRecord(normalizedRecord, candidate.projectIndex);
   normalizedRecord.workspace.project.stats = buildWorkspaceStatsFromProjectIndex(
@@ -7396,6 +7499,10 @@ function createProjectLibraryRecordFromWorkspace(workspace, options = {}) {
     editorPrefs: cloneValue(projectSettings.editorPrefs),
     localAiPrefs: cloneValue(projectSettings.localAiPrefs),
   };
+  const revisionState = getPersistableRevisionProjectState(options.revisions);
+  if (revisionState) {
+    record.revisions = revisionState;
+  }
   record.schemaVersion = Number(options.schemaVersion) || PROJECT_SCHEMA_VERSION;
   record.projectIndex = buildProjectIndexForRecord(record, options.persistedProjectIndex ?? null);
   record.workspace.project.stats = buildWorkspaceStatsFromProjectIndex(
@@ -7450,6 +7557,7 @@ function createProjectLibraryRecordFromState(options = {}) {
     persistedProjectIndex: activeProjectRecord?.projectIndex ?? null,
     manuscriptTasks: state.manuscriptTasks,
     passageNotes: state.passageNotes,
+    revisions: state.revisionState,
     sourceArchive: state.projectLibrary.find((project) => project.id === state.workspace.project.id)?.sourceArchive ?? [],
     importReport: state.projectLibrary.find((project) => project.id === state.workspace.project.id)?.importReport ?? {},
     projectSettings,
@@ -7473,6 +7581,18 @@ function getProjectRecordById(projectId) {
   }
 
   return state.projectLibrary.find((project) => project.id === projectId) ?? null;
+}
+
+function createRevisionPanelStateForProject(revisionState) {
+  const normalized = normalizeRevisionProjectState(revisionState);
+  return {
+    query: "",
+    categoryFilter: "all",
+    originFilter: "all",
+    selectedSessionId: normalized.activeSessionId || normalized.sessions[0]?.metadata?.id || "",
+    showFullDiff: false,
+    statusMessage: "",
+  };
 }
 
 function applyProjectRecord(record) {
@@ -7545,6 +7665,8 @@ function applyProjectRecord(record) {
   state.templateDrafts = cloneValue(record.templateDrafts ?? createTemplateDrafts());
   state.manuscriptTasks = normalizeManuscriptTasks(record.manuscriptTasks);
   state.passageNotes = normalizePassageNotes(record.passageNotes);
+  state.revisionState = revisionStorageService.readRevisionState(record);
+  state.revisionPanelState = createRevisionPanelStateForProject(state.revisionState);
   state.binderSceneMoveHistory = {
     undoStack: [],
     redoStack: [],
@@ -8050,6 +8172,22 @@ function syncLegacyProjectStorageFromState() {
   writeStoredJsonRaw(EDITOR_PASSAGE_NOTES_KEY, state.passageNotes);
   writeStoredJsonRaw(EDITOR_PREFS_KEY, state.editorPrefs);
   writeStoredJsonRaw(EDITOR_LOCAL_AI_PREFS_KEY, state.localAiPrefs);
+}
+
+function setRevisionState(revisionState, context = {}) {
+  state.revisionState = normalizeRevisionProjectState(revisionState);
+  if (context.persist !== true) {
+    return state.revisionState;
+  }
+
+  persistCurrentProjectRecord({
+    domain: "revisions",
+    dirtyReason: context.dirtyReason ?? "revision-history-updated",
+    source: context.source ?? "RevisionService.setRevisionState",
+    skipProjectFileAutosave: context.skipProjectFileAutosave === true,
+    markWorkingState: context.markWorkingState,
+  });
+  return state.revisionState;
 }
 
 function clearProjectFileAutosaveTimer() {
@@ -9247,7 +9385,7 @@ function renderPaneVisibility() {
 }
 
 function selectSidePanel(panelId) {
-  if (!["issues", "inspiration", "research"].includes(panelId)) {
+  if (!["issues", "revisions", "inspiration", "research"].includes(panelId)) {
     return;
   }
 
@@ -9255,6 +9393,10 @@ function selectSidePanel(panelId) {
   if (panelId === "issues") {
     state.selectedPassageNoteId = null;
     state.selectedIssueId = null;
+  } else if (panelId === "revisions") {
+    state.selectedPassageNoteId = null;
+    state.selectedIssueId = null;
+    ensureSelectedRevisionSession();
   } else {
     const selectedNote = state.passageNotes.find((note) =>
       note.noteType === panelId && note.id === state.selectedPassageNoteId,
@@ -9265,6 +9407,212 @@ function selectSidePanel(panelId) {
       null;
   }
   renderConsolePanel();
+}
+
+function ensureSelectedRevisionSession() {
+  const model = buildRevisionPanelModel();
+  state.revisionPanelState = {
+    ...state.revisionPanelState,
+    selectedSessionId: model.selectedSessionId,
+  };
+}
+
+function updateRevisionPanelSearch(value) {
+  state.revisionPanelState = {
+    ...state.revisionPanelState,
+    query: String(value ?? ""),
+    selectedSessionId: "",
+  };
+  renderConsolePanel();
+  focusRevisionPanelControl("[data-revision-search]");
+}
+
+function updateRevisionPanelFilter(fieldName, value) {
+  if (fieldName !== "categoryFilter" && fieldName !== "originFilter") {
+    return;
+  }
+
+  state.revisionPanelState = {
+    ...state.revisionPanelState,
+    [fieldName]: String(value ?? "all"),
+    selectedSessionId: "",
+  };
+  renderConsolePanel();
+}
+
+function focusRevisionPanelControl(selector) {
+  window.requestAnimationFrame(() => {
+    const field = document.querySelector(selector);
+    if (field instanceof HTMLInputElement) {
+      field.focus({ preventScroll: true });
+      field.setSelectionRange(field.value.length, field.value.length);
+    }
+  });
+}
+
+function selectRevisionSession(sessionId) {
+  const selectedSessionId = typeof sessionId === "string" ? sessionId.trim() : "";
+  if (!selectedSessionId || !revisionService.getSessionById(selectedSessionId)) {
+    return;
+  }
+
+  state.revisionPanelState = {
+    ...state.revisionPanelState,
+    selectedSessionId,
+    statusMessage: "",
+  };
+  renderConsolePanel();
+}
+
+function setRevisionPanelStatus(statusMessage) {
+  state.revisionPanelState = {
+    ...state.revisionPanelState,
+    statusMessage: String(statusMessage ?? ""),
+  };
+  if (state.sidePanelMode === "revisions") {
+    renderConsolePanel();
+  }
+}
+
+function bankCurrentRevisionFromPanel() {
+  const result = revisionService.bankCurrentRevision({
+    reason: "revision-banked",
+    markWorkingState: true,
+  });
+  const session = result?.session ?? null;
+  if (result?.banked && session) {
+    state.revisionPanelState = {
+      ...state.revisionPanelState,
+      selectedSessionId: session.metadata.id,
+      statusMessage: "Revision banked into this project.",
+      showFullDiff: false,
+    };
+    renderConsolePanel();
+    return;
+  }
+
+  const reason = result?.reason === "no-open-session"
+    ? "No manuscript changes have started a revision session yet."
+    : result?.reason === "no-meaningful-changes"
+      ? "No meaningful project changes were found to bank."
+      : "Revision could not be banked.";
+  setRevisionPanelStatus(reason);
+}
+
+function toggleRevisionDiffDetail() {
+  state.revisionPanelState = {
+    ...state.revisionPanelState,
+    showFullDiff: !state.revisionPanelState.showFullDiff,
+  };
+  renderConsolePanel();
+}
+
+function exportRevisionSummary(sessionId = "") {
+  const session = revisionService.getSessionById(sessionId || state.revisionPanelState.selectedSessionId);
+  if (!session) {
+    setRevisionPanelStatus("Choose a revision session before exporting.");
+    return;
+  }
+
+  const summary = buildRevisionExportMarkdown(session);
+  const blob = new Blob([summary], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `${sanitizeDownloadFileName(session.metadata.title || "revision-summary")}.md`;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  setRevisionPanelStatus("Revision summary exported.");
+}
+
+function buildRevisionExportMarkdown(session) {
+  const lines = [
+    `# ${session.metadata.title || "Revision Summary"}`,
+    "",
+    `- Status: ${session.metadata.status || "unknown"}`,
+    `- Started: ${session.metadata.startedAt || "Not recorded"}`,
+    `- Banked: ${session.metadata.finalisedAt || session.metadata.stagedAt || "Not recorded"}`,
+    `- Changed entities: ${Array.isArray(session.changedEntities) ? session.changedEntities.length : 0}`,
+    `- Events: ${Array.isArray(session.events) ? session.events.length : 0}`,
+    "",
+    session.summaryMarkdown || "No generated summary is available.",
+  ];
+  return `${lines.join("\n")}\n`;
+}
+
+function sanitizeDownloadFileName(value) {
+  const normalized = String(value ?? "")
+    .trim()
+    .replace(/[^A-Za-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return normalized || "revision-summary";
+}
+
+function openFirstRevisionScene(sessionId = "") {
+  const session = revisionService.getSessionById(sessionId || state.revisionPanelState.selectedSessionId);
+  const target = findFirstRevisionNavigableEntity(session);
+  if (!target) {
+    setRevisionPanelStatus("No changed scene is available for this revision.");
+    return;
+  }
+
+  navigateRevisionEntity(target.entityType, target.entityId);
+}
+
+function findFirstRevisionNavigableEntity(session) {
+  const entities = Array.isArray(session?.changedEntities) ? session.changedEntities : [];
+  return entities.find((entity) =>
+    entity?.entityType === "scene" &&
+    typeof entity.entityId === "string" &&
+    getScene(entity.entityId),
+  ) ?? null;
+}
+
+function navigateRevisionEntity(entityType, entityId) {
+  const normalizedType = String(entityType ?? "").trim();
+  const normalizedId = String(entityId ?? "").trim();
+  if (!normalizedType || !normalizedId) {
+    return;
+  }
+
+  if (normalizedType === "scene") {
+    selectWorkspacePane("manuscript");
+    selectSceneById(normalizedId);
+    setRevisionPanelStatus("Opened changed scene.");
+    return;
+  }
+
+  if (normalizedType === "manuscript_task") {
+    selectWorkspacePane("manuscript");
+    state.sidePanelMode = "issues";
+    navigateTaskAnchor(normalizedId);
+    return;
+  }
+
+  if (normalizedType === "passage_note") {
+    const note = state.passageNotes.find((candidate) => candidate.id === normalizedId);
+    if (note) {
+      selectWorkspacePane("manuscript");
+      state.sidePanelMode = note.noteType;
+      togglePassageNoteSelection(note.id);
+    }
+    return;
+  }
+
+  if (normalizedType === "world_entity") {
+    selectWorkspacePane("world");
+    state.selectedEntityId = normalizedId;
+    render();
+    return;
+  }
+
+  if (normalizedType === "timeline_node") {
+    selectWorkspacePane("world");
+    state.selectedNodeId = normalizedId;
+    render();
+  }
 }
 
 function focusEditorWhitespace(clickTarget, event) {
@@ -10961,6 +11309,44 @@ function updateSceneRevisionStats(existingStats, previousText, nextText, now = n
   };
 }
 
+function recordRevisionSceneTextEdit(sceneId, previousText, nextText) {
+  const previous = String(previousText ?? "");
+  const next = String(nextText ?? "");
+  if (previous === next) {
+    return;
+  }
+
+  const scene = getScene(sceneId);
+  const summary = summarizeSceneTextChange(previous, next);
+  revisionService.recordEvent({
+    eventType: "manuscript_edit",
+    origin: "manual_editor",
+    sourceService: "scene-editor",
+    entityType: "scene",
+    entityId: sceneId,
+    description: summary,
+    changeCategory: "manuscript",
+    mode: "typing",
+    beforeSummary: {
+      title: scene?.sceneTitle ?? "Untitled Scene",
+      chapterId: scene?.chapterId ?? "",
+      chapterTitle: scene?.chapterTitle ?? "",
+      wordCount: countWords(previous),
+      charCount: previous.length,
+    },
+    afterSummary: {
+      title: scene?.sceneTitle ?? "Untitled Scene",
+      chapterId: scene?.chapterId ?? "",
+      chapterTitle: scene?.chapterTitle ?? "",
+      wordCount: countWords(next),
+      charCount: next.length,
+    },
+  }, {
+    persist: false,
+    skipProjectFileAutosave: true,
+  });
+}
+
 function summarizeSceneTextChange(previousText, nextText) {
   const previous = String(previousText ?? "");
   const next = String(nextText ?? "");
@@ -11850,6 +12236,21 @@ function getPersistentSceneById(sceneId) {
   return isPersistentScene(scene) ? scene : null;
 }
 
+function isMovableScene(scene) {
+  return Boolean(
+    scene &&
+    typeof scene.sceneId === "string" &&
+    scene.sceneId.trim() &&
+    typeof scene.chapterId === "string" &&
+    scene.chapterId.trim(),
+  );
+}
+
+function getMovableSceneById(sceneId) {
+  const scene = getScene(sceneId);
+  return isMovableScene(scene) ? scene : null;
+}
+
 function buildSceneGroupsFromProjectLines(lines) {
   const groups = [];
   const groupsBySceneId = new Map();
@@ -12038,6 +12439,47 @@ function reorderSceneGroupsForDropTarget(sceneGroups, sourceSceneId, dropTarget)
   nextGroups.splice(insertIndex, 0, movedGroup);
 
   return nextGroups;
+}
+
+// Intent: reorder UI scene records, including draft-only scenes that do not yet have persisted manuscript lines.
+function reorderSceneRecordsForDropTarget(scenes, sourceSceneId, dropTarget) {
+  const sourceIndex = scenes.findIndex((scene) => scene.sceneId === sourceSceneId);
+  if (sourceIndex === -1) {
+    return null;
+  }
+
+  const nextScenes = scenes.map((scene) => ({ ...scene }));
+  const [movedScene] = nextScenes.splice(sourceIndex, 1);
+
+  let insertIndex = -1;
+  let targetChapterId = "";
+  let targetChapterTitle = "";
+
+  if (dropTarget.type === "chapter-start") {
+    const targetIndex = nextScenes.findIndex((scene) => scene.chapterId === dropTarget.chapterId);
+    if (targetIndex === -1) {
+      return null;
+    }
+
+    insertIndex = targetIndex;
+    targetChapterId = nextScenes[targetIndex].chapterId;
+    targetChapterTitle = nextScenes[targetIndex].chapterTitle;
+  } else {
+    const targetIndex = nextScenes.findIndex((scene) => scene.sceneId === dropTarget.sceneId);
+    if (targetIndex === -1 || dropTarget.sceneId === sourceSceneId) {
+      return null;
+    }
+
+    insertIndex = dropTarget.type === "before" ? targetIndex : targetIndex + 1;
+    targetChapterId = nextScenes[targetIndex].chapterId;
+    targetChapterTitle = nextScenes[targetIndex].chapterTitle;
+  }
+
+  movedScene.chapterId = targetChapterId;
+  movedScene.chapterTitle = targetChapterTitle;
+  nextScenes.splice(insertIndex, 0, movedScene);
+
+  return nextScenes;
 }
 
 function rebuildProjectSceneStateFromGroups(project, sceneGroups) {
@@ -12302,7 +12744,21 @@ function moveBinderScene(sceneId, dropTarget) {
     return false;
   }
 
-  if (!getPersistentSceneById(sceneId)) {
+  const sourceScene = getMovableSceneById(sceneId);
+  if (!sourceScene) {
+    return false;
+  }
+
+  if (!isPersistentScene(sourceScene)) {
+    return moveDraftBinderScene(sceneId, dropTarget);
+  }
+
+  const orderedScenes = reorderSceneRecordsForDropTarget(
+    (Array.isArray(state.scenes) ? state.scenes : []).filter((scene) => isMovableScene(scene)),
+    sceneId,
+    dropTarget,
+  );
+  if (!orderedScenes) {
     return false;
   }
 
@@ -12319,6 +12775,7 @@ function moveBinderScene(sceneId, dropTarget) {
   const beforeSceneGroups = cloneBinderSceneGroups(sceneGroups);
   resetBinderSceneDragState();
   const applied = applyBinderSceneGroups(nextSceneGroups, {
+    orderedScenes,
     persist: false,
     render: false,
   });
@@ -12327,6 +12784,83 @@ function moveBinderScene(sceneId, dropTarget) {
   }
 
   pushBinderSceneMoveHistory(beforeSceneGroups, nextSceneGroups, sceneId);
+  persistCurrentProjectRecord();
+
+  if (state.selectedSceneId === sceneId) {
+    const movedScene = getScene(sceneId);
+    if (movedScene) {
+      updateSceneEditorChapterForScene(sceneId, movedScene.chapterId, movedScene.chapterTitle);
+    }
+  }
+
+  // Intent: repaint on the next frame so native drag/drop can settle before the binder rerenders.
+  window.requestAnimationFrame(() => {
+    render();
+  });
+  return true;
+}
+
+// Intent: persist an explicit binder order overlay so empty draft scenes can sit between canonical scenes.
+function buildStructureDraftScenesFromOrderedScenes(orderedScenes) {
+  const existingDraftsBySceneId = new Map(
+    (Array.isArray(state.structureDrafts?.scenes) ? state.structureDrafts.scenes : [])
+      .filter((scene) => scene && typeof scene === "object")
+      .map((scene) => [String(scene.sceneId ?? ""), scene]),
+  );
+
+  return orderedScenes.map((scene, index) => {
+    const existingDraft = existingDraftsBySceneId.get(scene.sceneId) ?? {};
+    return {
+      ...cloneValue(existingDraft),
+      sceneId: scene.sceneId,
+      chapterId: scene.chapterId,
+      chapterTitle: scene.chapterTitle,
+      sceneTitle: scene.sceneTitle,
+      sceneSynopsis: typeof scene.sceneSynopsis === "string" ? scene.sceneSynopsis : "",
+      order: index + 1,
+      initialText: typeof existingDraft.initialText === "string"
+        ? existingDraft.initialText
+        : isPersistentScene(scene)
+          ? ""
+          : String(scene.editorText ?? ""),
+    };
+  });
+}
+
+function syncStructureDraftsFromOrderedScenes(orderedScenes) {
+  const movableScenes = Array.isArray(orderedScenes)
+    ? orderedScenes.filter((scene) => isMovableScene(scene))
+    : [];
+  if (!movableScenes.length) {
+    return false;
+  }
+
+  state.structureDrafts = {
+    ...cloneValue(state.structureDrafts),
+    sceneOrder: movableScenes.map((scene) => scene.sceneId),
+    scenes: buildStructureDraftScenesFromOrderedScenes(movableScenes),
+  };
+  writeStoredJson(EDITOR_STRUCTURE_KEY, state.structureDrafts);
+  return true;
+}
+
+function moveDraftBinderScene(sceneId, dropTarget) {
+  const orderedScenes = reorderSceneRecordsForDropTarget(
+    (Array.isArray(state.scenes) ? state.scenes : []).filter((scene) => isMovableScene(scene)),
+    sceneId,
+    dropTarget,
+  );
+  if (!orderedScenes) {
+    return false;
+  }
+
+  if (describeSceneGroups(state.scenes) === describeSceneGroups(orderedScenes)) {
+    return false;
+  }
+
+  resetBinderSceneDragState();
+  syncStructureDraftsFromOrderedScenes(orderedScenes);
+  refreshScenes();
   persistCurrentProjectRecord();
 
   if (state.selectedSceneId === sceneId) {
@@ -12748,7 +13282,11 @@ function applyBinderSceneGroups(sceneGroups, options = {}) {
     state.workspace.voice.renderJobs,
     rebuilt.sceneMetaBySceneId,
   );
-  syncStructureDraftScenesFromSceneGroups(sceneGroups);
+  if (Array.isArray(options.orderedScenes)) {
+    syncStructureDraftsFromOrderedScenes(options.orderedScenes);
+  } else {
+    syncStructureDraftScenesFromSceneGroups(sceneGroups);
+  }
 
   const existingChapterIds = new Set(
     [...rebuilt.sceneMetaBySceneId.values()].map((sceneMeta) => sceneMeta.chapterId),
@@ -13004,7 +13542,7 @@ function handleBinderSceneDragStart(event) {
   }
 
   const sceneId = target.dataset.binderSceneId;
-  const scene = getPersistentSceneById(sceneId);
+  const scene = getMovableSceneById(sceneId);
   if (!scene) {
     event.preventDefault();
     return;

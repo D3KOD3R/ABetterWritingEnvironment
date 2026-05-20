@@ -1,0 +1,1299 @@
+{
+  "metadata": {
+    "id": "revision-session-fixture-01",
+    "sessionId": "revision-session-fixture-01",
+    "status": "archived",
+    "projectId": "project-serva-vitae",
+    "title": "Fixture Revision Session A",
+    "description": "Seeded session for manuscript, task, and world entity coverage.",
+    "startedAt": "2026-05-18T09:00:00.000Z",
+    "stagedAt": "2026-05-18T10:00:00.000Z",
+    "finalisedAt": "2026-05-18T10:00:00.000Z",
+    "archivedAt": "2026-05-18T10:00:00.000Z",
+    "origin": "manual_editor",
+    "sourceService": "RevisionFixtureSeeder",
+    "changeCategories": [
+      "manuscript",
+      "task",
+      "worldbuilding"
+    ],
+    "origins": [
+      "manual_editor"
+    ],
+    "baselineProjectHash": "hc59c0981",
+    "finalProjectHash": "h529841f4",
+    "writingSessionBoundaryKey": "fixture-session-a"
+  },
+  "baselineDigest": {
+    "schemaVersion": 1,
+    "project": {
+      "id": "project-serva-vitae",
+      "title": "Project Serva Vitae",
+      "source": "project-file"
+    },
+    "manuscript": {
+      "scenesById": {},
+      "tasksById": {
+        "source-comment-25f39d38-61ca-4214-b185-11f84d4f7e6e-7aad9f36-a218-4260-a211-26300120233e": {
+          "id": "source-comment-25f39d38-61ca-4214-b185-11f84d4f7e6e-7aad9f36-a218-4260-a211-26300120233e",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "CONTINUITY SPELLING: Suggested canonical ship name =...",
+          "sceneId": "scene-0002",
+          "status": "open",
+          "hash": "h81b823e4",
+          "preview": "CONTINUITY SPELLING: Suggested canonical ship name = Balaenoptera. Standardize Baelenoptera / Bealenoptera to this unless the variants are deliberate in-world corruption."
+        },
+        "source-comment-25f39d38-61ca-4214-b185-11f84d4f7e6e-6f381aa7-f335-4d2f-b541-86dc3352d347": {
+          "id": "source-comment-25f39d38-61ca-4214-b185-11f84d4f7e6e-6f381aa7-f335-4d2f-b541-86dc3352d347",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "CONTINUITY INSTITUTION: Suggested canonical reading = CLEAR...",
+          "sceneId": "scene-0002",
+          "status": "open",
+          "hash": "hc649a7dc",
+          "preview": "CONTINUITY INSTITUTION: Suggested canonical reading = CLEAR is the public adaptive governance / economic model. If CLEAR is also a protocol stack, define that relationship explicit..."
+        },
+        "source-comment-25f39d38-61ca-4214-b185-11f84d4f7e6e-c95d4017-f421-4f5d-a22f-616bbb89a9d8": {
+          "id": "source-comment-25f39d38-61ca-4214-b185-11f84d4f7e6e-c95d4017-f421-4f5d-a22f-616bbb89a9d8",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "CONTINUITY DATE-2056: Suggested canonical spine keeps the...",
+          "sceneId": "scene-0002",
+          "status": "open",
+          "hash": "h2365656e",
+          "preview": "CONTINUITY DATE-2056: Suggested canonical spine keeps the main pre-gate mission in 2056. If you want this scene to align with a Dec 21 mission day, change \"Earth rotation 287\" to \"..."
+        },
+        "source-comment-25f39d38-61ca-4214-b185-11f84d4f7e6e-3dd04504-9254-4b17-bbe1-0045a76b1558": {
+          "id": "source-comment-25f39d38-61ca-4214-b185-11f84d4f7e6e-3dd04504-9254-4b17-bbe1-0045a76b1558",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "CONTINUITY SPELLING: Suggested canonical ship name =...",
+          "sceneId": "scene-0002",
+          "status": "open",
+          "hash": "he112564e",
+          "preview": "CONTINUITY SPELLING: Suggested canonical ship name = Balaenoptera. Standardize Baelenoptera / Bealenoptera to this unless the variants are deliberate in-world corruption."
+        },
+        "source-comment-df6e69b7-5d64-4f81-a28e-e30d477f89ea-7e58087b-c136-4b4c-81c9-828edae1c4e0": {
+          "id": "source-comment-df6e69b7-5d64-4f81-a28e-e30d477f89ea-7e58087b-c136-4b4c-81c9-828edae1c4e0",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "1, 15/06/2024 6:22 PM What is the...",
+          "sceneId": "scene-0003",
+          "status": "open",
+          "hash": "h7b2aa300",
+          "preview": "1, 15/06/2024 6:22 PM What is the Iris? The algorithm?"
+        },
+        "source-comment-df6e69b7-5d64-4f81-a28e-e30d477f89ea-7b04a41f-4d51-4bc2-b6e8-68d30f28835d": {
+          "id": "source-comment-df6e69b7-5d64-4f81-a28e-e30d477f89ea-7b04a41f-4d51-4bc2-b6e8-68d30f28835d",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "CONTINUITY NAME: Suggested canonical standard = Tao....",
+          "sceneId": "scene-0003",
+          "status": "open",
+          "hash": "h0a650477",
+          "preview": "CONTINUITY NAME: Suggested canonical standard = Tao. Update Tau / Tam variants unless the difference is deliberate."
+        },
+        "source-comment-1c95b670-73db-43f4-acab-6b47fe7740e9-3a8cedd3-0d21-4d96-955b-ec81c5f62de8": {
+          "id": "source-comment-1c95b670-73db-43f4-acab-6b47fe7740e9-3a8cedd3-0d21-4d96-955b-ec81c5f62de8",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "The teacher should have a character profile",
+          "sceneId": "scene-0005",
+          "status": "open",
+          "hash": "h6a8ce2b2",
+          "preview": "The teacher should have a character profile"
+        },
+        "source-comment-7607398b-bec7-418a-8d68-745c8ac767f7-e2285c5c-e4c6-4709-a88b-8614834d8e4d": {
+          "id": "source-comment-7607398b-bec7-418a-8d68-745c8ac767f7-e2285c5c-e4c6-4709-a88b-8614834d8e4d",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "CONFUSING: If Chapter 1 is still the...",
+          "sceneId": "scene-0010",
+          "status": "open",
+          "hash": "he7452238",
+          "preview": "CONFUSING: If Chapter 1 is still the 2056 pre-gate present, this puts John's family photo in his future. Either the present-day spine is later here, or this photo date needs to mov..."
+        },
+        "source-comment-fbcc331d-3644-43ea-a19b-45b1652e708b-d30a57df-565d-4025-96bf-d7b973f570ce": {
+          "id": "source-comment-fbcc331d-3644-43ea-a19b-45b1652e708b-d30a57df-565d-4025-96bf-d7b973f570ce",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "1, 16/04/2026 2:52 PM Design Note: Atmospheric...",
+          "sceneId": "scene-0011",
+          "status": "open",
+          "hash": "he7ce89b0",
+          "preview": "1, 16/04/2026 2:52 PM Design Note: Atmospheric Trail Ejection System (ATES) System Overview A suit-mounted pyrotechnic/chemical deployment system designed for high-altitude, low-vi..."
+        },
+        "source-comment-622d5022-8f5d-4f30-ac3f-ca62ac5831df-d6d8bb0b-fcba-465e-a0da-3b7223e17736": {
+          "id": "source-comment-622d5022-8f5d-4f30-ac3f-ca62ac5831df-d6d8bb0b-fcba-465e-a0da-3b7223e17736",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "CONTINUITY NAME: Suggested canonical fix = either...",
+          "sceneId": "scene-0013",
+          "status": "open",
+          "hash": "h1351d30c",
+          "preview": "CONTINUITY NAME: Suggested canonical fix = either rename Cerena to Julie Henderson for consistency, or establish Cerena as her private / familial / alias name and Julie Henderson a..."
+        },
+        "source-comment-622d5022-8f5d-4f30-ac3f-ca62ac5831df-bec43002-6c7c-4b9c-8d8d-9afff0ca7b41": {
+          "id": "source-comment-622d5022-8f5d-4f30-ac3f-ca62ac5831df-bec43002-6c7c-4b9c-8d8d-9afff0ca7b41",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "CONFUSING: If this cache was left around...",
+          "sceneId": "scene-0013",
+          "status": "open",
+          "hash": "hd420aca5",
+          "preview": "CONFUSING: If this cache was left around the 2023 / 2024 facility shutdown and John is still in the 2056 mission present, this file is roughly three decades old, not over half a ce..."
+        },
+        "source-comment-bf253840-4071-45d8-bd2a-35b72d27dfa3-e7ae0734-3a2d-42c8-ab83-f3ed3e7cc641": {
+          "id": "source-comment-bf253840-4071-45d8-bd2a-35b72d27dfa3-e7ae0734-3a2d-42c8-ab83-f3ed3e7cc641",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "CONFUSING: This pod / gate hardware reads...",
+          "sceneId": "scene-0014",
+          "status": "open",
+          "hash": "h19330f2f",
+          "preview": "CONFUSING: This pod / gate hardware reads as abandoned since the 2023 / 2024 shutdown thread, so half a century does not fit a 2056 present. If Chapter 2 is later than that, the la..."
+        },
+        "source-comment-c120ad37-5946-40ed-9cc5-302953e0b738-fa2269db-5bee-43b7-9925-d6f75330d007": {
+          "id": "source-comment-c120ad37-5946-40ed-9cc5-302953e0b738-fa2269db-5bee-43b7-9925-d6f75330d007",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "CONTINUITY TITLE/SPELLING: this scene is titled \"Into...",
+          "sceneId": "scene-0017",
+          "status": "open",
+          "hash": "h9d701949",
+          "preview": "CONTINUITY TITLE/SPELLING: this scene is titled \"Into the Vail\"; compare with \"veil\" usage elsewhere."
+        },
+        "source-comment-f6521096-1219-43a7-91e5-953344fa26bc-fe2549a4-a631-4ecb-b3c7-d477813c683f": {
+          "id": "source-comment-f6521096-1219-43a7-91e5-953344fa26bc-fe2549a4-a631-4ecb-b3c7-d477813c683f",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "CONTINUITY DATE-2048: Suggested canonical spine keeps circa...",
+          "sceneId": "scene-0018",
+          "status": "open",
+          "hash": "hf4eef197",
+          "preview": "CONTINUITY DATE-2048: Suggested canonical spine keeps circa 2048 as the archive-era continuation of Serva Vitae and the worker-bot line."
+        },
+        "source-comment-73e82dd1-5a03-4910-8e01-215a2c2fcd73-fe56e586-6d04-4411-8586-2b1644962649": {
+          "id": "source-comment-73e82dd1-5a03-4910-8e01-215a2c2fcd73-fe56e586-6d04-4411-8586-2b1644962649",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "CONTINUITY SPELLING: Suggested canonical ship name =...",
+          "sceneId": "scene-0021",
+          "status": "open",
+          "hash": "h13450c16",
+          "preview": "CONTINUITY SPELLING: Suggested canonical ship name = Beverly. If you prefer Beverley, standardize every ship reference and the worldbuilding entry to that spelling."
+        },
+        "source-comment-73e82dd1-5a03-4910-8e01-215a2c2fcd73-34874685-c858-4982-9c71-a0435d62f21a": {
+          "id": "source-comment-73e82dd1-5a03-4910-8e01-215a2c2fcd73-34874685-c858-4982-9c71-a0435d62f21a",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "CONTINUITY SPELLING: Suggested canonical ship name =...",
+          "sceneId": "scene-0021",
+          "status": "open",
+          "hash": "h6a67b0ae",
+          "preview": "CONTINUITY SPELLING: Suggested canonical ship name = Beverly. If you prefer Beverley, standardize every ship reference and the worldbuilding entry to that spelling."
+        },
+        "source-comment-915d6d88-2f76-4e99-adb0-cfa7e9f0659c-010363c8-ab75-4b78-b337-90ea5ffa7e96": {
+          "id": "source-comment-915d6d88-2f76-4e99-adb0-cfa7e9f0659c-010363c8-ab75-4b78-b337-90ea5ffa7e96",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "ASUS, 31/03/2026 8:22 PM They go cold,...",
+          "sceneId": "scene-0022",
+          "status": "open",
+          "hash": "h4fb37523",
+          "preview": "ASUS, 31/03/2026 8:22 PM They go cold, then they worry about being hailed. He starts talking about cloaking signatures. Then the beverly goes cold. Why would they do this. It doesn..."
+        },
+        "source-comment-915d6d88-2f76-4e99-adb0-cfa7e9f0659c-cb92f2d8-5149-4489-8f16-a88517a12748": {
+          "id": "source-comment-915d6d88-2f76-4e99-adb0-cfa7e9f0659c-cb92f2d8-5149-4489-8f16-a88517a12748",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "CONTINUITY TIMESPAN: If the main pre-gate present...",
+          "sceneId": "scene-0022",
+          "status": "open",
+          "hash": "hfd89a462",
+          "preview": "CONTINUITY TIMESPAN: If the main pre-gate present stays 2056, this likely overstates Beverly's disappearance unless you place the ship much earlier. Consider compressing it to a de..."
+        },
+        "source-comment-915d6d88-2f76-4e99-adb0-cfa7e9f0659c-eb295190-2ea1-4956-962c-360b1157d7e8": {
+          "id": "source-comment-915d6d88-2f76-4e99-adb0-cfa7e9f0659c-eb295190-2ea1-4956-962c-360b1157d7e8",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "ASUS, 31/03/2026 7:50 PM The first mention...",
+          "sceneId": "scene-0022",
+          "status": "open",
+          "hash": "h02c8ac98",
+          "preview": "ASUS, 31/03/2026 7:50 PM The first mention point of the grey class ship."
+        },
+        "source-comment-915d6d88-2f76-4e99-adb0-cfa7e9f0659c-50082236-582d-47b6-ab94-a1f34a2624c4": {
+          "id": "source-comment-915d6d88-2f76-4e99-adb0-cfa7e9f0659c-50082236-582d-47b6-ab94-a1f34a2624c4",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "ASUS, 31/03/2026 8:09 PM Come into visual...",
+          "sceneId": "scene-0022",
+          "status": "open",
+          "hash": "h9c9e2e4b",
+          "preview": "ASUS, 31/03/2026 8:09 PM Come into visual range of the blockade. Need to confirm that this is the lay of events. We look into cloaking, what’s feasible, where the lens would be sho..."
+        },
+        "source-comment-915d6d88-2f76-4e99-adb0-cfa7e9f0659c-de10f4e3-1f20-40e6-aec1-615d09a097a3": {
+          "id": "source-comment-915d6d88-2f76-4e99-adb0-cfa7e9f0659c-de10f4e3-1f20-40e6-aec1-615d09a097a3",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "——————————————————————————————— NOTES: How does AC EF Field...",
+          "sceneId": "scene-0022",
+          "status": "open",
+          "hash": "h90ecf526",
+          "preview": "——————————————————————————————— NOTES: How does AC EF Field detect a ship and what gives it away in terms on vulnerabillity? A: In real world EF tracking in not really feasible as..."
+        },
+        "source-comment-915d6d88-2f76-4e99-adb0-cfa7e9f0659c-d283aa84-be16-4647-8599-d9ebaa563148": {
+          "id": "source-comment-915d6d88-2f76-4e99-adb0-cfa7e9f0659c-d283aa84-be16-4647-8599-d9ebaa563148",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "CONTINUITY SPELLING: Suggested canonical ship name =...",
+          "sceneId": "scene-0022",
+          "status": "open",
+          "hash": "hb4689525",
+          "preview": "CONTINUITY SPELLING: Suggested canonical ship name = Balaenoptera. Standardize Baelenoptera / Bealenoptera to this unless the variants are deliberate in-world corruption."
+        },
+        "source-comment-915d6d88-2f76-4e99-adb0-cfa7e9f0659c-4a92e16e-f7d8-4440-9cf0-710dd12b030c": {
+          "id": "source-comment-915d6d88-2f76-4e99-adb0-cfa7e9f0659c-4a92e16e-f7d8-4440-9cf0-710dd12b030c",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "ASUS, 31/03/2026 7:53 PM ______________________ BACKGROUND NOTES...",
+          "sceneId": "scene-0022",
+          "status": "open",
+          "hash": "h0e0b065b",
+          "preview": "ASUS, 31/03/2026 7:53 PM ______________________ BACKGROUND NOTES ______________________ NOTE: The courier, is well disguised beyond human comprehension. Shielded from EF, and magne..."
+        },
+        "source-comment-a1dbdfbd-9460-41b7-88ec-68dd8d4ff368-bfbc3db1-89bd-4285-9180-10a4b52686ae": {
+          "id": "source-comment-a1dbdfbd-9460-41b7-88ec-68dd8d4ff368-bfbc3db1-89bd-4285-9180-10a4b52686ae",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "CONTINUITY NAME: Suggested canonical standard = Tao....",
+          "sceneId": "scene-0024",
+          "status": "open",
+          "hash": "h331b701e",
+          "preview": "CONTINUITY NAME: Suggested canonical standard = Tao. Update Tau / Tam variants unless the difference is deliberate."
+        },
+        "source-comment-a1dbdfbd-9460-41b7-88ec-68dd8d4ff368-23a09e59-6983-4539-ba3b-2caba0a06d54": {
+          "id": "source-comment-a1dbdfbd-9460-41b7-88ec-68dd8d4ff368-23a09e59-6983-4539-ba3b-2caba0a06d54",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "GATE LORE: This reference points to the...",
+          "sceneId": "scene-0024",
+          "status": "open",
+          "hash": "h7497ed40",
+          "preview": "GATE LORE: This reference points to the sentient transit gate network. Keep terminology, mechanics, and chronology aligned with \"01 - Master Lore Timeline\", \"00 - Read Me\", and \"03..."
+        },
+        "source-comment-a1dbdfbd-9460-41b7-88ec-68dd8d4ff368-26aed9bd-30d1-4a86-9885-bcfd6cb1a0b2": {
+          "id": "source-comment-a1dbdfbd-9460-41b7-88ec-68dd8d4ff368-26aed9bd-30d1-4a86-9885-bcfd6cb1a0b2",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "GATE LORE: This reference points to the...",
+          "sceneId": "scene-0024",
+          "status": "open",
+          "hash": "hd4714281",
+          "preview": "GATE LORE: This reference points to the sentient transit gate network. Keep terminology, mechanics, and chronology aligned with \"01 - Master Lore Timeline\", \"00 - Read Me\", and \"03..."
+        },
+        "source-comment-a1dbdfbd-9460-41b7-88ec-68dd8d4ff368-9a84199b-dcbb-40d0-bd69-cb170bc18992": {
+          "id": "source-comment-a1dbdfbd-9460-41b7-88ec-68dd8d4ff368-9a84199b-dcbb-40d0-bd69-cb170bc18992",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "GATE LORE: This reference points to the...",
+          "sceneId": "scene-0024",
+          "status": "open",
+          "hash": "he249ef06",
+          "preview": "GATE LORE: This reference points to the sentient transit gate network. Keep terminology, mechanics, and chronology aligned with \"01 - Master Lore Timeline\", \"00 - Read Me\", and \"03..."
+        },
+        "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-ec520d4a-a9b9-434e-8d87-1c41183dad53": {
+          "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-ec520d4a-a9b9-434e-8d87-1c41183dad53",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "CONTINUITY NAME: Suggested canonical standard = Tao....",
+          "sceneId": "scene-0029",
+          "status": "open",
+          "hash": "h944ed867",
+          "preview": "CONTINUITY NAME: Suggested canonical standard = Tao. Update Tau / Tam variants unless the difference is deliberate."
+        },
+        "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-fbb26e97-a2fa-444d-bb56-66d0858da9ba": {
+          "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-fbb26e97-a2fa-444d-bb56-66d0858da9ba",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "CONTINUITY DATE-2155: Suggested canonical spine keeps 2155...",
+          "sceneId": "scene-0029",
+          "status": "open",
+          "hash": "ha9cfb81d",
+          "preview": "CONTINUITY DATE-2155: Suggested canonical spine keeps 2155 as the post-gate later-era arrival date, explicitly flagged as Oeacion-adjusted rather than Earth-present."
+        },
+        "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-d3c0e907-58d9-4ff8-967d-5c59439020cd": {
+          "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-d3c0e907-58d9-4ff8-967d-5c59439020cd",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "CONTINUITY TIMESPAN: If the pre-gate present stays...",
+          "sceneId": "scene-0029",
+          "status": "open",
+          "hash": "hdb1e6626",
+          "preview": "CONTINUITY TIMESPAN: If the pre-gate present stays 2056 and this line points back to the 2023 / 2024 hidden-history thread, reduce this to roughly three decades or rephrase without..."
+        },
+        "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-e262e317-58ab-44a5-9372-32755043defa": {
+          "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-e262e317-58ab-44a5-9372-32755043defa",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "CONTINUITY SPELLING: Suggested canonical ship name =...",
+          "sceneId": "scene-0029",
+          "status": "open",
+          "hash": "h225fe6a6",
+          "preview": "CONTINUITY SPELLING: Suggested canonical ship name = Beverly. If you prefer Beverley, standardize every ship reference and the worldbuilding entry to that spelling."
+        },
+        "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-30be0be6-52cc-4b29-872b-117371fcc506": {
+          "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-30be0be6-52cc-4b29-872b-117371fcc506",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "CONTINUITY TITLE / SPELLING: Suggested canonical phrase...",
+          "sceneId": "scene-0029",
+          "status": "open",
+          "hash": "h67f62fef",
+          "preview": "CONTINUITY TITLE / SPELLING: Suggested canonical phrase = veil. Rename the scene title to \"Into the Veil\" unless \"Vail\" is deliberate wordplay."
+        },
+        "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-f9a30417-dd05-4a91-9131-b0e85db793b6": {
+          "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-f9a30417-dd05-4a91-9131-b0e85db793b6",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "CONFUSING: This is the manuscript's biggest visible...",
+          "sceneId": "scene-0029",
+          "status": "open",
+          "hash": "h844756c5",
+          "preview": "CONFUSING: This is the manuscript's biggest visible date jump. The scene moves from the earlier mission chronology to an Oeacion-adjusted 2155 without a strong on-page elapsed-time..."
+        },
+        "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-5040544f-1e7a-4811-96d4-745809fead9b": {
+          "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-5040544f-1e7a-4811-96d4-745809fead9b",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "CONFUSING: If this points back to Marcellus...",
+          "sceneId": "scene-0029",
+          "status": "open",
+          "hash": "h1c052c2e",
+          "preview": "CONFUSING: If this points back to Marcellus suppressing the hidden sentient line since the 2023 / 2024 break, half a century undershoots the elapsed time in a 2155 frame and oversh..."
+        },
+        "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-ab4f38af-363d-4f3a-9ff6-0f192f274c6e": {
+          "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-ab4f38af-363d-4f3a-9ff6-0f192f274c6e",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "GATE LORE: This reference points to the...",
+          "sceneId": "scene-0029",
+          "status": "open",
+          "hash": "hda0737fc",
+          "preview": "GATE LORE: This reference points to the sentient transit gate network. Keep terminology, mechanics, and chronology aligned with \"01 - Master Lore Timeline\", \"00 - Read Me\", and \"03..."
+        },
+        "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-99b36236-1ccd-466e-84f0-7325b364dc23": {
+          "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-99b36236-1ccd-466e-84f0-7325b364dc23",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "GATE LORE: This reference points to the...",
+          "sceneId": "scene-0029",
+          "status": "open",
+          "hash": "ha27369dd",
+          "preview": "GATE LORE: This reference points to the sentient transit gate network. Keep terminology, mechanics, and chronology aligned with \"01 - Master Lore Timeline\", \"00 - Read Me\", and \"03..."
+        },
+        "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-118adea3-8cfb-49d0-a652-693de1e5043b": {
+          "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-118adea3-8cfb-49d0-a652-693de1e5043b",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "GATE LORE: This reference points to the...",
+          "sceneId": "scene-0029",
+          "status": "open",
+          "hash": "h3b6fe405",
+          "preview": "GATE LORE: This reference points to the sentient transit gate network. Keep terminology, mechanics, and chronology aligned with \"01 - Master Lore Timeline\", \"00 - Read Me\", and \"03..."
+        },
+        "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-8b3a3b84-faba-40ac-a14b-0e73cafef9d3": {
+          "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-8b3a3b84-faba-40ac-a14b-0e73cafef9d3",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "GATE LORE: This reference points to the...",
+          "sceneId": "scene-0029",
+          "status": "open",
+          "hash": "h70503864",
+          "preview": "GATE LORE: This reference points to the sentient transit gate network. Keep terminology, mechanics, and chronology aligned with \"01 - Master Lore Timeline\", \"00 - Read Me\", and \"03..."
+        },
+        "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-c41e1b57-1e84-4e69-aa91-a940e477e242": {
+          "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-c41e1b57-1e84-4e69-aa91-a940e477e242",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "GATE LORE: This reference points to the...",
+          "sceneId": "scene-0029",
+          "status": "open",
+          "hash": "h4e9e3667",
+          "preview": "GATE LORE: This reference points to the sentient transit gate network. Keep terminology, mechanics, and chronology aligned with \"01 - Master Lore Timeline\", \"00 - Read Me\", and \"03..."
+        },
+        "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-de8d3d3e-9922-464c-aace-21a1738094a1": {
+          "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-de8d3d3e-9922-464c-aace-21a1738094a1",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "GATE LORE: This reference points to the...",
+          "sceneId": "scene-0029",
+          "status": "open",
+          "hash": "h99291a66",
+          "preview": "GATE LORE: This reference points to the sentient transit gate network. Keep terminology, mechanics, and chronology aligned with \"01 - Master Lore Timeline\", \"00 - Read Me\", and \"03..."
+        },
+        "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-00cf8d63-c003-498b-8c5e-dfaca7239e65": {
+          "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-00cf8d63-c003-498b-8c5e-dfaca7239e65",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "GATE LORE: This reference points to the...",
+          "sceneId": "scene-0029",
+          "status": "open",
+          "hash": "h4e2878c1",
+          "preview": "GATE LORE: This reference points to the sentient transit gate network. Keep terminology, mechanics, and chronology aligned with \"01 - Master Lore Timeline\", \"00 - Read Me\", and \"03..."
+        },
+        "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-26854308-a011-4a04-927a-3cb8fb1e996e": {
+          "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-26854308-a011-4a04-927a-3cb8fb1e996e",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "GATE LORE: This reference points to the...",
+          "sceneId": "scene-0029",
+          "status": "open",
+          "hash": "hf6ce4d80",
+          "preview": "GATE LORE: This reference points to the sentient transit gate network. Keep terminology, mechanics, and chronology aligned with \"01 - Master Lore Timeline\", \"00 - Read Me\", and \"03..."
+        },
+        "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-c0650231-cd1c-42ad-bfcb-b842c53b4641": {
+          "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-c0650231-cd1c-42ad-bfcb-b842c53b4641",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "GATE LORE: This reference points to the...",
+          "sceneId": "scene-0029",
+          "status": "open",
+          "hash": "hef554083",
+          "preview": "GATE LORE: This reference points to the sentient transit gate network. Keep terminology, mechanics, and chronology aligned with \"01 - Master Lore Timeline\", \"00 - Read Me\", and \"03..."
+        },
+        "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-a7e7e0ed-f818-423f-9ac2-a7f6b1bd213a": {
+          "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-a7e7e0ed-f818-423f-9ac2-a7f6b1bd213a",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "GATE LORE: This reference points to the...",
+          "sceneId": "scene-0029",
+          "status": "open",
+          "hash": "h17d60982",
+          "preview": "GATE LORE: This reference points to the sentient transit gate network. Keep terminology, mechanics, and chronology aligned with \"01 - Master Lore Timeline\", \"00 - Read Me\", and \"03..."
+        },
+        "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-0029ad5c-0548-48ce-8cbe-a90d895b8134": {
+          "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-0029ad5c-0548-48ce-8cbe-a90d895b8134",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "GATE LORE: This reference points to the...",
+          "sceneId": "scene-0029",
+          "status": "open",
+          "hash": "hc5aa5acd",
+          "preview": "GATE LORE: This reference points to the sentient transit gate network. Keep terminology, mechanics, and chronology aligned with \"01 - Master Lore Timeline\", \"00 - Read Me\", and \"03..."
+        },
+        "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-f1d4285d-17c4-4ad3-819d-25cc623f210c": {
+          "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-f1d4285d-17c4-4ad3-819d-25cc623f210c",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "GATE LORE: This reference points to the...",
+          "sceneId": "scene-0029",
+          "status": "open",
+          "hash": "h958a528c",
+          "preview": "GATE LORE: This reference points to the sentient transit gate network. Keep terminology, mechanics, and chronology aligned with \"01 - Master Lore Timeline\", \"00 - Read Me\", and \"03..."
+        },
+        "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-66e83ff3-b22f-4b61-86f6-e8b9ee57ad5c": {
+          "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-66e83ff3-b22f-4b61-86f6-e8b9ee57ad5c",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "GATE LORE: This reference points to the...",
+          "sceneId": "scene-0029",
+          "status": "open",
+          "hash": "he5383946",
+          "preview": "GATE LORE: This reference points to the sentient transit gate network. Keep terminology, mechanics, and chronology aligned with \"01 - Master Lore Timeline\", \"00 - Read Me\", and \"03..."
+        },
+        "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-55c0b010-aa9b-40fd-9908-5b3975bff2eb": {
+          "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-55c0b010-aa9b-40fd-9908-5b3975bff2eb",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "GATE LORE: This reference points to the...",
+          "sceneId": "scene-0029",
+          "status": "open",
+          "hash": "h2c591ae7",
+          "preview": "GATE LORE: This reference points to the sentient transit gate network. Keep terminology, mechanics, and chronology aligned with \"01 - Master Lore Timeline\", \"00 - Read Me\", and \"03..."
+        },
+        "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-1489dbd3-8c5f-4380-9b5f-4c8de448c837": {
+          "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-1489dbd3-8c5f-4380-9b5f-4c8de448c837",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "GATE LORE: This reference points to the...",
+          "sceneId": "scene-0029",
+          "status": "open",
+          "hash": "h05822424",
+          "preview": "GATE LORE: This reference points to the sentient transit gate network. Keep terminology, mechanics, and chronology aligned with \"01 - Master Lore Timeline\", \"00 - Read Me\", and \"03..."
+        },
+        "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-99ec40a4-55a7-4c35-a3ca-cdda88d63f72": {
+          "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-99ec40a4-55a7-4c35-a3ca-cdda88d63f72",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "GATE LORE: This reference points to the...",
+          "sceneId": "scene-0029",
+          "status": "open",
+          "hash": "h6bfe35c5",
+          "preview": "GATE LORE: This reference points to the sentient transit gate network. Keep terminology, mechanics, and chronology aligned with \"01 - Master Lore Timeline\", \"00 - Read Me\", and \"03..."
+        },
+        "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-7bcc31bd-ce62-4058-bea2-fc45660d4c37": {
+          "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-7bcc31bd-ce62-4058-bea2-fc45660d4c37",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "GATE LORE: This reference points to the...",
+          "sceneId": "scene-0029",
+          "status": "open",
+          "hash": "hd5585a42",
+          "preview": "GATE LORE: This reference points to the sentient transit gate network. Keep terminology, mechanics, and chronology aligned with \"01 - Master Lore Timeline\", \"00 - Read Me\", and \"03..."
+        },
+        "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-d1661521-9027-4c8d-98d9-3699bd7726f6": {
+          "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-d1661521-9027-4c8d-98d9-3699bd7726f6",
+          "entityType": "manuscript_task",
+          "projectId": "project-serva-vitae",
+          "title": "GATE LORE: This reference points to the...",
+          "sceneId": "scene-0029",
+          "status": "open",
+          "hash": "h38158be3",
+          "preview": "GATE LORE: This reference points to the sentient transit gate network. Keep terminology, mechanics, and chronology aligned with \"01 - Master Lore Timeline\", \"00 - Read Me\", and \"03..."
+        }
+      },
+      "notesById": {
+        "source-research-da2089cd-0a1a-4460-b942-230be690c415": {
+          "id": "source-research-da2089cd-0a1a-4460-b942-230be690c415",
+          "entityType": "passage_note",
+          "projectId": "project-serva-vitae",
+          "title": "Writing Notes",
+          "sceneId": "source-writing-notes-da2089cd-0a1a-4460-b942-230be690c415",
+          "status": "",
+          "hash": "h53fa2895",
+          "preview": "-Tidy up section related to the grey class ship."
+        },
+        "source-research-f964b605-2136-4643-a2c9-54c125da88c0": {
+          "id": "source-research-f964b605-2136-4643-a2c9-54c125da88c0",
+          "entityType": "passage_note",
+          "projectId": "project-serva-vitae",
+          "title": "Songs - Trailer",
+          "sceneId": "source-songs-trailer-f964b605-2136-4643-a2c9-54c125da88c0",
+          "status": "",
+          "hash": "hc91b2cec",
+          "preview": "The movie starts in the Himalayas, I am trying to think of a song for the intro movie, that should be mystical, it should compare colds grip on man, metaphorically like snow. Memor..."
+        },
+        "source-world-note-65ad0572-e97c-4d90-ad51-a2eb8d9adea6": {
+          "id": "source-world-note-65ad0572-e97c-4d90-ad51-a2eb8d9adea6",
+          "entityType": "passage_note",
+          "projectId": "project-serva-vitae",
+          "title": "Medical administrations in the treatment of combat...",
+          "sceneId": "source-medical-administrations-in-the-treatment-of-combat-65ad0572-e97c-4d90-ad51-a2eb8d9adea6",
+          "status": "",
+          "hash": "h61577d96",
+          "preview": "Medical administrations in the treatment of combat situations https://tccc.org.ua/en/guide/module-10-shock-recognition-and-management-cmc Injections to reduce Hemorrhage. Tranexami..."
+        },
+        "source-world-note-5c6d4181-07fa-4b91-8b8e-e27ab56355f7": {
+          "id": "source-world-note-5c6d4181-07fa-4b91-8b8e-e27ab56355f7",
+          "entityType": "passage_note",
+          "projectId": "project-serva-vitae",
+          "title": "Space walks",
+          "sceneId": "source-space-walks-5c6d4181-07fa-4b91-8b8e-e27ab56355f7",
+          "status": "",
+          "hash": "h057e6f5f",
+          "preview": "The ISS is pressurised at 14.7 +- 2 psia. The pressure when performing space walks is much lower than the internal pressure of the space station. So essentially like in diving they..."
+        },
+        "source-world-note-c6d93b17-4677-4902-a01b-e8d4eb98af99": {
+          "id": "source-world-note-c6d93b17-4677-4902-a01b-e8d4eb98af99",
+          "entityType": "passage_note",
+          "projectId": "project-serva-vitae",
+          "title": "Neural swaps Sentient Vs Human",
+          "sceneId": "source-neural-swaps-sentient-vs-human-c6d93b17-4677-4902-a01b-e8d4eb98af99",
+          "status": "",
+          "hash": "h9b1b1de5",
+          "preview": "Neural swaps, with respect to humans are quite difficult. As with the brain our memories which inadvertently form our personality traits are often made up of grey matter. In short..."
+        },
+        "source-world-note-db25af80-a2b5-4dbd-80a2-4ab64936dff5": {
+          "id": "source-world-note-db25af80-a2b5-4dbd-80a2-4ab64936dff5",
+          "entityType": "passage_note",
+          "projectId": "project-serva-vitae",
+          "title": "Suits and their interactions with space. Fluid chemistry.",
+          "sceneId": "source-suits-and-their-interactions-with-space-fluid-chemistry-db25af80-a2b5-4dbd-80a2-4ab64936dff5",
+          "status": "",
+          "hash": "hff8feee6",
+          "preview": "A Suit of the future thinking ahead for Serva Vitae. Currently research is underpinned into Aerogels which have the added benefits of. - Radiation absorption. - Impact blocking of..."
+        },
+        "source-world-note-0a627e72-f587-4c68-9cdb-a52db7107cb2": {
+          "id": "source-world-note-0a627e72-f587-4c68-9cdb-a52db7107cb2",
+          "entityType": "passage_note",
+          "projectId": "project-serva-vitae",
+          "title": "Pentablet troubleshooting",
+          "sceneId": "source-pentablet-troubleshooting-0a627e72-f587-4c68-9cdb-a52db7107cb2",
+          "status": "",
+          "hash": "hc21e0e81",
+          "preview": "XP Pen 24 Pro notes. Only select USB ports seem to work. for the laptop it is the rear usb port. You then need to unplug and plug the power cable in when it is connected if it conn..."
+        },
+        "source-world-note-99adc86d-ad7a-48b2-bc95-9aa4c40b52bd": {
+          "id": "source-world-note-99adc86d-ad7a-48b2-bc95-9aa4c40b52bd",
+          "entityType": "passage_note",
+          "projectId": "project-serva-vitae",
+          "title": "ToDo Notes",
+          "sceneId": "source-todo-notes-99adc86d-ad7a-48b2-bc95-9aa4c40b52bd",
+          "status": "",
+          "hash": "he3b35fc4",
+          "preview": ". Storm rail. EMP has a rifle form. Kinetic rail gun has a shoulder mounted position to make it easier to fire from. Or assess the two. EMP would obviously have less of a fire impa..."
+        },
+        "source-world-note-c1c25593-21cc-4c03-8986-4706562c5a43": {
+          "id": "source-world-note-c1c25593-21cc-4c03-8986-4706562c5a43",
+          "entityType": "passage_note",
+          "projectId": "project-serva-vitae",
+          "title": "Synopsis",
+          "sceneId": "source-synopsis-c1c25593-21cc-4c03-8986-4706562c5a43",
+          "status": "",
+          "hash": "he58bdffa",
+          "preview": "Project Serva Mission Goal and principles set out in the book to change the way people think toward technological advancement. Currently we live in an age where capitalism while it..."
+        },
+        "source-world-note-83580daf-bbcf-466a-b1f3-2f5d3ae6be1c": {
+          "id": "source-world-note-83580daf-bbcf-466a-b1f3-2f5d3ae6be1c",
+          "entityType": "passage_note",
+          "projectId": "project-serva-vitae",
+          "title": "Jump gate technology",
+          "sceneId": "source-jump-gate-technology-83580daf-bbcf-466a-b1f3-2f5d3ae6be1c",
+          "status": "",
+          "hash": "hd4f92331",
+          "preview": "Particle printing and alignment. 1. Transference of consciousness to new bodies in the sentient plane. 2. The psychology of transference. Once transferred to new sentient counter b..."
+        },
+        "source-world-note-484b22e7-a35e-496d-b279-7e5f0baa7084": {
+          "id": "source-world-note-484b22e7-a35e-496d-b279-7e5f0baa7084",
+          "entityType": "passage_note",
+          "projectId": "project-serva-vitae",
+          "title": "Sentient muskuloskeletal design",
+          "sceneId": "source-sentient-muskuloskeletal-design-484b22e7-a35e-496d-b279-7e5f0baa7084",
+          "status": "",
+          "hash": "h3f85c02c",
+          "preview": "The musculoskeletal system of the sentient is designed using that of the human body to have as much likeness to the human body as possible. The following website is used as a base..."
+        },
+        "source-world-note-3039fa8c-8d0b-4375-9268-fc76b8388f88": {
+          "id": "source-world-note-3039fa8c-8d0b-4375-9268-fc76b8388f88",
+          "entityType": "passage_note",
+          "projectId": "project-serva-vitae",
+          "title": "MarketingStrategy",
+          "sceneId": "source-marketingstrategy-3039fa8c-8d0b-4375-9268-fc76b8388f88",
+          "status": "",
+          "hash": "h0703acab",
+          "preview": "1. Linked content, to art illustrations and a live questionarre with limited 10 questions to be answered by the author. And access to the author’s illustration comment feed. 1. Lin..."
+        },
+        "source-world-note-89d66d12-438a-4db3-9651-a20e5c469334": {
+          "id": "source-world-note-89d66d12-438a-4db3-9651-a20e5c469334",
+          "entityType": "passage_note",
+          "projectId": "project-serva-vitae",
+          "title": "01 - CONFUSING Chronology References",
+          "sceneId": "source-01-confusing-chronology-references-89d66d12-438a-4db3-9651-a20e5c469334",
+          "status": "",
+          "hash": "h0323fb30",
+          "preview": "01 - CONFUSING Chronology References This note indexes the manuscript comments titled CONFUSING. Each entry names the scene, the anchored phrase, and the chronology issue behind th..."
+        },
+        "source-front-matter-8e0c473e-9848-42d1-848e-fe142adaf50f": {
+          "id": "source-front-matter-8e0c473e-9848-42d1-848e-fe142adaf50f",
+          "entityType": "passage_note",
+          "projectId": "project-serva-vitae",
+          "title": "Title Page",
+          "sceneId": "source-title-page-8e0c473e-9848-42d1-848e-fe142adaf50f",
+          "status": "",
+          "hash": "hbcc1bd73",
+          "preview": "Mitch Your address Your phone number Your e-mail address (Your agent’s name) (Your agent’s address) <$wc100> words. <$PROJECTTITLE> by <$fullname>"
+        },
+        "source-front-matter-9798b6df-3d60-4330-9f6b-068d7ecaf452": {
+          "id": "source-front-matter-9798b6df-3d60-4330-9f6b-068d7ecaf452",
+          "entityType": "passage_note",
+          "projectId": "project-serva-vitae",
+          "title": "Title Page",
+          "sceneId": "source-title-page-9798b6df-3d60-4330-9f6b-068d7ecaf452",
+          "status": "",
+          "hash": "ha19db93e",
+          "preview": "<$PROJECTTITLE> <$author>"
+        },
+        "source-front-matter-c38e39f6-c949-4034-9ef2-6ab8314a8a3b": {
+          "id": "source-front-matter-c38e39f6-c949-4034-9ef2-6ab8314a8a3b",
+          "entityType": "passage_note",
+          "projectId": "project-serva-vitae",
+          "title": "Copyright",
+          "sceneId": "source-copyright-c38e39f6-c949-4034-9ef2-6ab8314a8a3b",
+          "status": "",
+          "hash": "h9eeccdf7",
+          "preview": "Copyright © <$year> <$author> All rights reserved. ISBN: ISBN-13:"
+        },
+        "source-front-matter-1bcf2368-4406-4f8a-a7b6-16b8b9226586": {
+          "id": "source-front-matter-1bcf2368-4406-4f8a-a7b6-16b8b9226586",
+          "entityType": "passage_note",
+          "projectId": "project-serva-vitae",
+          "title": "Dedication",
+          "sceneId": "source-dedication-1bcf2368-4406-4f8a-a7b6-16b8b9226586",
+          "status": "",
+          "hash": "h942f7215",
+          "preview": "Insert dedication here."
+        },
+        "source-front-matter-087e3c49-27dc-4318-b037-b376c6579aeb": {
+          "id": "source-front-matter-087e3c49-27dc-4318-b037-b376c6579aeb",
+          "entityType": "passage_note",
+          "projectId": "project-serva-vitae",
+          "title": "Blank Page",
+          "sceneId": "source-blank-page-087e3c49-27dc-4318-b037-b376c6579aeb",
+          "status": "",
+          "hash": "h8bca727b",
+          "preview": "<$BLANK_PAGE>"
+        },
+        "source-front-matter-f68da989-4763-451d-98cf-60089a01ab53": {
+          "id": "source-front-matter-f68da989-4763-451d-98cf-60089a01ab53",
+          "entityType": "passage_note",
+          "projectId": "project-serva-vitae",
+          "title": "Dedication",
+          "sceneId": "source-dedication-f68da989-4763-451d-98cf-60089a01ab53",
+          "status": "",
+          "hash": "h81db1006",
+          "preview": "Your dedication here."
+        }
+      }
+    },
+    "world": {
+      "templates": {
+        "template-0001": {
+          "id": "template-0001",
+          "entityType": "world_template",
+          "projectId": "project-serva-vitae",
+          "title": "Character",
+          "sceneId": "",
+          "status": "",
+          "hash": "hd1ab6f9c",
+          "preview": "Character template sheet imported from project file."
+        },
+        "template-0002": {
+          "id": "template-0002",
+          "entityType": "world_template",
+          "projectId": "project-serva-vitae",
+          "title": "Station",
+          "sceneId": "",
+          "status": "",
+          "hash": "hcd28ebd5",
+          "preview": "Station template sheet imported from project file."
+        },
+        "template-0003": {
+          "id": "template-0003",
+          "entityType": "world_template",
+          "projectId": "project-serva-vitae",
+          "title": "Ship",
+          "sceneId": "",
+          "status": "",
+          "hash": "hbf0cd00e",
+          "preview": "Ship template sheet imported from project file."
+        },
+        "template-0004": {
+          "id": "template-0004",
+          "entityType": "world_template",
+          "projectId": "project-serva-vitae",
+          "title": "Weapon",
+          "sceneId": "",
+          "status": "",
+          "hash": "hec2551c1",
+          "preview": "Weapon template sheet imported from project file."
+        },
+        "template-0005": {
+          "id": "template-0005",
+          "entityType": "world_template",
+          "projectId": "project-serva-vitae",
+          "title": "Planet",
+          "sceneId": "",
+          "status": "",
+          "hash": "h1f5d771b",
+          "preview": "Planet template sheet imported from project file."
+        },
+        "template-0006": {
+          "id": "template-0006",
+          "entityType": "world_template",
+          "projectId": "project-serva-vitae",
+          "title": "Fauna",
+          "sceneId": "",
+          "status": "",
+          "hash": "hfe78c5d5",
+          "preview": "Fauna template sheet imported from project file."
+        },
+        "template-0007": {
+          "id": "template-0007",
+          "entityType": "world_template",
+          "projectId": "project-serva-vitae",
+          "title": "Flora",
+          "sceneId": "",
+          "status": "",
+          "hash": "ha020d42f",
+          "preview": "Flora reference records imported into the project-native world model."
+        }
+      },
+      "entities": {
+        "source-entity-9c2d8a8c-6334-4ed3-8c21-0ec770d78ff6": {
+          "id": "source-entity-9c2d8a8c-6334-4ed3-8c21-0ec770d78ff6",
+          "entityType": "world_entity",
+          "projectId": "project-serva-vitae",
+          "title": "John Walker",
+          "sceneId": "",
+          "status": "",
+          "hash": "h45484637",
+          "preview": "John Walker Ethnicity: Greek, American. Position: Captain, Protectant field commander. Age: 34. Sex: Male. Height: 183 cm. Build: Athletic. Role in Story: Primary protagonist. John..."
+        },
+        "source-entity-58bd7ea6-bea6-43c6-b7d7-4a681f5f27d2": {
+          "id": "source-entity-58bd7ea6-bea6-43c6-b7d7-4a681f5f27d2",
+          "entityType": "world_entity",
+          "projectId": "project-serva-vitae",
+          "title": "Ceres (Human)",
+          "sceneId": "",
+          "status": "",
+          "hash": "h30b9537a",
+          "preview": "Ceres (Human) Capacity: Large orbital worker settlement; exact population not stated. Role in Story: Human staging ground for the early novel, John's home base, and the social/poli..."
+        },
+        "source-entity-2b0f3afe-a16e-47e8-8965-6eec9900a400": {
+          "id": "source-entity-2b0f3afe-a16e-47e8-8965-6eec9900a400",
+          "entityType": "world_entity",
+          "projectId": "project-serva-vitae",
+          "title": "Station",
+          "sceneId": "",
+          "status": "",
+          "hash": "h17f5dfc9",
+          "preview": "Name of Station Capacity Role in Story: Related Characters: Season: Unique Features: Description: Sights: Sounds: Smell: Notes: Built at:"
+        },
+        "source-entity-87fcd21f-3487-4284-b51b-b65f5889322c": {
+          "id": "source-entity-87fcd21f-3487-4284-b51b-b65f5889322c",
+          "entityType": "world_entity",
+          "projectId": "project-serva-vitae",
+          "title": "Professor Julie Henderson",
+          "sceneId": "",
+          "status": "",
+          "hash": "h5b1c13cc",
+          "preview": "Professor Julie Henderson Ethnicity: Not stated. Position: Physicist and senior Serva Vitae researcher. Age: Not stated. Sex: Female. Height: Not stated. Build: Not stated. Role in..."
+        },
+        "source-entity-a5b5e83e-3d39-47f1-8231-bf0743ec44c3": {
+          "id": "source-entity-a5b5e83e-3d39-47f1-8231-bf0743ec44c3",
+          "entityType": "world_entity",
+          "projectId": "project-serva-vitae",
+          "title": "Shai Siante",
+          "sceneId": "",
+          "status": "",
+          "hash": "h8f670086",
+          "preview": "Shai Siante Ethnicity: Argentinian. Position: Interpreter and Deep Space Medic Technician. Age: 27. Sex: Female. Height: 163 cm. Build: Small-framed and nimble. Role in Story: Squa..."
+        },
+        "source-entity-3f1e5b90-d488-4545-8104-17e78d691a45": {
+          "id": "source-entity-3f1e5b90-d488-4545-8104-17e78d691a45",
+          "entityType": "world_entity",
+          "projectId": "project-serva-vitae",
+          "title": "Tao Vang",
+          "sceneId": "",
+          "status": "",
+          "hash": "hee081496",
+          "preview": "Tao Vang Ethnicity: Not clearly stated in manuscript. Position: Lieutenant, engineer and team tech. Age: 32. Sex: Female. Height: Not stated. Build: Not stated. Role in Story: John..."
+        },
+        "source-entity-7e96cf74-e2d0-41fc-a25a-ef0a4a00e05c": {
+          "id": "source-entity-7e96cf74-e2d0-41fc-a25a-ef0a4a00e05c",
+          "entityType": "world_entity",
+          "projectId": "project-serva-vitae",
+          "title": "G Wolfgang",
+          "sceneId": "",
+          "status": "",
+          "hash": "hc38b5ba8",
+          "preview": "G Wolfgang Ethnicity: Not stated. Position: Doctor, scientist and architect of Serva Vitae. Age: 132. Sex: Male. Sentient from age 55 onward. Height: 180 cm. Build: Athletic. Role..."
+        },
+        "source-entity-139ad133-a3b4-480f-877a-430f2c143968": {
+          "id": "source-entity-139ad133-a3b4-480f-877a-430f2c143968",
+          "entityType": "world_entity",
+          "projectId": "project-serva-vitae",
+          "title": "Tex Kovachnikov",
+          "sceneId": "",
+          "status": "",
+          "hash": "h1200d4bb",
+          "preview": "Tex Kovachnikov Ethnicity: American Russian. Position: Mechanic and heavy weapons specialist. Age: 36. Sex: Male. Height: 190 cm. Build: Muscular. Role in Story: John's enforcer, m..."
+        },
+        "source-entity-8cdf292f-244f-4b3f-b6d2-d497fe47e363": {
+          "id": "source-entity-8cdf292f-244f-4b3f-b6d2-d497fe47e363",
+          "entityType": "world_entity",
+          "projectId": "project-serva-vitae",
+          "title": "Ava Meerakavita (Lady Meera)",
+          "sceneId": "",
+          "status": "",
+          "hash": "ha77a8e1e",
+          "preview": "Ava Meerakavita (Lady Meera) Ethnicity: Indian. Position: Senior councillor, security adviser and political advocate operating around the Protectant/Federation interface. Age: 132...."
+        },
+        "source-entity-04c00af4-d017-43e5-951e-e1c2184dbbe2": {
+          "id": "source-entity-04c00af4-d017-43e5-951e-e1c2184dbbe2",
+          "entityType": "world_entity",
+          "projectId": "project-serva-vitae",
+          "title": "Tor Engineer",
+          "sceneId": "",
+          "status": "",
+          "hash": "h3d6fd8a8",
+          "preview": "Tor Engineer Ethnicity: Not stated. Position: Engineering cadet / bridge systems operator. Age: 32. Sex: Not stated. Height: Not stated. Build: Not stated. Role in Story: Minor rec..."
+        },
+        "source-entity-9a7bd4f6-19bb-4b7d-81e3-bf314646da0a": {
+          "id": "source-entity-9a7bd4f6-19bb-4b7d-81e3-bf314646da0a",
+          "entityType": "world_entity",
+          "projectId": "project-serva-vitae",
+          "title": "XA24795",
+          "sceneId": "",
+          "status": "",
+          "hash": "hfc281709",
+          "preview": "XA24795 Ethnicity: N/A. Position: Early worker-bot / sentient-adjacent unit. Age: Not stated. Sex: N/A. Height: Not stated. Build: Mechanical. Role in Story: Archive figure used to..."
+        },
+        "source-entity-2c934b83-16ed-4f79-94e2-b058004fff11": {
+          "id": "source-entity-2c934b83-16ed-4f79-94e2-b058004fff11",
+          "entityType": "world_entity",
+          "projectId": "project-serva-vitae",
+          "title": "Marcellus Athos",
+          "sceneId": "",
+          "status": "",
+          "hash": "h2ec7edbe",
+          "preview": "Marcellus Athos Ethnicity: Russian. Position: Commander of the Protectant. Age: Not stated. Sex: Male. Height: Not stated. Build: Commanding presence. Role in Story: Principal huma..."
+        },
+        "source-entity-e0053c66-21f3-40b2-a073-6ff506e0731c": {
+          "id": "source-entity-e0053c66-21f3-40b2-a073-6ff506e0731c",
+          "entityType": "world_entity",
+          "projectId": "project-serva-vitae",
+          "title": "Nova Serra",
+          "sceneId": "",
+          "status": "",
+          "hash": "h004102de",
+          "preview": "Nova Serra Ethnicity: Not stated. Position: Hyperbaric expert, architect and sentient systems designer. Age: 152 Sol years 10 on Oasis, roughly 194 Earth years total. Sex: Sentient..."
+        },
+        "source-entity-13944cb4-5500-4cd1-8682-8ba138790e69": {
+          "id": "source-entity-13944cb4-5500-4cd1-8682-8ba138790e69",
+          "entityType": "world_entity",
+          "projectId": "project-serva-vitae",
+          "title": "Aequitores",
+          "sceneId": "",
+          "status": "",
+          "hash": "hb12fd48e",
+          "preview": "Nautilus, Capacity 1 (Conscious Ship built by the Sentient) Derived from the latin word Aequo to make even, in equal proportions, evenly, fairly. Role in Story: - In Designing the..."
+        },
+        "source-entity-bc07ed16-787d-464b-b55c-f0e29e6c651c": {
+          "id": "source-entity-bc07ed16-787d-464b-b55c-f0e29e6c651c",
+          "entityType": "world_entity",
+          "projectId": "project-serva-vitae",
+          "title": "John's Drop Ship (The Icarus)",
+          "sceneId": "",
+          "status": "",
+          "hash": "he2474283",
+          "preview": "The Icarus Capacity: Small corvette complement built around John's squad; exact numbers not stated. Role in Story: John's dependable drop ship and the team's main human vessel befo..."
+        },
+        "source-entity-b01af76a-bbec-40a9-a8c6-1fe5cb1ac628": {
+          "id": "source-entity-b01af76a-bbec-40a9-a8c6-1fe5cb1ac628",
+          "entityType": "world_entity",
+          "projectId": "project-serva-vitae",
+          "title": "Sentient Flag Ship (The Ignotius)",
+          "sceneId": "",
+          "status": "",
+          "hash": "hff084163",
+          "preview": "Ignotius Capacity: 6000 Role in Story:\"Ignotius\" is a Latin name derived from \"ignotus,\" which means \"unknown\" or \"obscure.\" The root \"ignotus\" is composed of the prefix \"in-\" (not..."
+        },
+        "source-entity-8a7b4a01-4ef9-4e1a-96f2-59c25e7d5548": {
+          "id": "source-entity-8a7b4a01-4ef9-4e1a-96f2-59c25e7d5548",
+          "entityType": "world_entity",
+          "projectId": "project-serva-vitae",
+          "title": "Station",
+          "sceneId": "",
+          "status": "",
+          "hash": "hdfb5845f",
+          "preview": "Name of Station Capacity Role in Story: Related Characters: Season: Unique Features: Description: Sights: Sounds: Smell: Notes: Built at:"
+        },
+        "source-entity-e8ad328e-3873-41eb-8857-8373078bae7a": {
+          "id": "source-entity-e8ad328e-3873-41eb-8857-8373078bae7a",
+          "entityType": "world_entity",
+          "projectId": "project-serva-vitae",
+          "title": "Protectant Flag Ship (Balaenoptera)",
+          "sceneId": "",
+          "status": "",
+          "hash": "h3e9939be",
+          "preview": "Protectant Flag Ship Balaenoptera Capacity: Large flagship / colonial conversion; exact complement not stated. Role in Story: Protectant command ship, training platform and politic..."
+        },
+        "source-entity-ccff3286-a203-4eb4-85af-870ff79f7d8e": {
+          "id": "source-entity-ccff3286-a203-4eb4-85af-870ff79f7d8e",
+          "entityType": "world_entity",
+          "projectId": "project-serva-vitae",
+          "title": "Overhauled Sentient/Protectant Science research vessel (The Beverly)",
+          "sceneId": "",
+          "status": "",
+          "hash": "hef40c432",
+          "preview": "The Beverly Capacity: 12. Role in Story: Hybrid science and escape vessel that carries John's team out of Protectant reach and deeper into the sentient arc. Related Characters: Joh..."
+        },
+        "source-entity-e63e45d1-9b92-405d-a45f-6c750fbc6dfb": {
+          "id": "source-entity-e63e45d1-9b92-405d-a45f-6c750fbc6dfb",
+          "entityType": "world_entity",
+          "projectId": "project-serva-vitae",
+          "title": "Grey Class (",
+          "sceneId": "",
+          "status": "",
+          "hash": "h4bd9174c",
+          "preview": "Grey Class Capacity: Covert gunship complement not stated. Role in Story: Protectant pursuit craft used to hunt John's escape group after the lost-facility reveal. Related Characte..."
+        },
+        "source-entity-3b14dcbd-3454-4c9f-a9a9-c9aeb222dd36": {
+          "id": "source-entity-3b14dcbd-3454-4c9f-a9a9-c9aeb222dd36",
+          "entityType": "world_entity",
+          "projectId": "project-serva-vitae",
+          "title": "Sherpa Rifle",
+          "sceneId": "",
+          "status": "",
+          "hash": "hb50ea0e2",
+          "preview": "Sherpa Rifle Round capacity: Magazine-fed; exact capacity not stated. Role in Story: Standard Protectant rifle for John's team, especially during cold-weather and mountain deployme..."
+        },
+        "source-entity-0632f586-90af-40a6-96a5-415b64df11ee": {
+          "id": "source-entity-0632f586-90af-40a6-96a5-415b64df11ee",
+          "entityType": "world_entity",
+          "projectId": "project-serva-vitae",
+          "title": "Storm Rail",
+          "sceneId": "",
+          "status": "",
+          "hash": "ha38e38c5",
+          "preview": "Storm Rail Round capacity: Variable by load and platform; exact handheld capacity not stated. Role in Story: Heavy anti-material and anti-systems weapon built for rogue AI, used bo..."
+        },
+        "source-entity-c88e0830-2d9c-4a0f-9c64-afe652667b10": {
+          "id": "source-entity-c88e0830-2d9c-4a0f-9c64-afe652667b10",
+          "entityType": "world_entity",
+          "projectId": "project-serva-vitae",
+          "title": "Weapon",
+          "sceneId": "",
+          "status": "",
+          "hash": "h785bbd15",
+          "preview": "Weapon Name Round capacity: Role in Story: Proficient Characters: Season: Unique Features: Description: Sights: Sounds: Smell: Notes: Built at:"
+        },
+        "source-entity-438074ba-35af-41a4-8d04-bf06f2d3aa27": {
+          "id": "source-entity-438074ba-35af-41a4-8d04-bf06f2d3aa27",
+          "entityType": "world_entity",
+          "projectId": "project-serva-vitae",
+          "title": "Weapon",
+          "sceneId": "",
+          "status": "",
+          "hash": "h87ed988c",
+          "preview": "Weapon Name Round capacity: Role in Story: profficient Characters: Season: Unique Features: Description: Sights: Sounds: Smell: Notes: Built at:"
+        },
+        "source-entity-399a0954-d368-4265-b525-018e8c43fd45": {
+          "id": "source-entity-399a0954-d368-4265-b525-018e8c43fd45",
+          "entityType": "world_entity",
+          "projectId": "project-serva-vitae",
+          "title": "Weapon",
+          "sceneId": "",
+          "status": "",
+          "hash": "ha19caadb",
+          "preview": "Weapon Name Round capacity: Role in Story: profficient Characters: Season: Unique Features: Description: Sights: Sounds: Smell: Notes: Built at:"
+        },
+        "source-entity-66964931-8f9b-4d02-98ca-2bff3f3eff9e": {
+          "id": "source-entity-66964931-8f9b-4d02-98ca-2bff3f3eff9e",
+          "entityType": "world_entity",
+          "projectId": "project-serva-vitae",
+          "title": "Europa",
+          "sceneId": "",
+          "status": "",
+          "hash": "h659542ab",
+          "preview": "Europa Population: Human and sentient industrial presence; exact population not stated. Cities: No conventional cities described. The story centres on drilling superstructures, bur..."
+        },
+        "source-entity-b22bab80-fbae-4a66-ad3d-ef03d26dca23": {
+          "id": "source-entity-b22bab80-fbae-4a66-ad3d-ef03d26dca23",
+          "entityType": "world_entity",
+          "projectId": "project-serva-vitae",
+          "title": "RustRot",
+          "sceneId": "",
+          "status": "",
+          "hash": "h37ce4364",
+          "preview": "RustRot Appearance: Parasite that lives under the scales of the Psychotidal. Small maintenance organisms whose saliva leaves an airtight lacquer over corroded metal. Traits: Symbio..."
+        },
+        "source-entity-9bfc14a0-c0f7-48c5-9787-dc43c98d732f": {
+          "id": "source-entity-9bfc14a0-c0f7-48c5-9787-dc43c98d732f",
+          "entityType": "world_entity",
+          "projectId": "project-serva-vitae",
+          "title": "Spychotidal",
+          "sceneId": "",
+          "status": "",
+          "hash": "hb007ed46",
+          "preview": "Psychotidal Appearance: Large scaled marine creature that hosts RustRot colonies beneath its scales. Traits: Maintains a symbiotic relationship with RustRot, which clean its hide w..."
+        },
+        "source-entity-5be71b73-e431-48ef-b213-3826baf59e5d": {
+          "id": "source-entity-5be71b73-e431-48ef-b213-3826baf59e5d",
+          "entityType": "world_entity",
+          "projectId": "project-serva-vitae",
+          "title": "Tempest",
+          "sceneId": "",
+          "status": "",
+          "hash": "h0e5833c5",
+          "preview": "Tempest Appearance: Traits: Temperament: Habitat: Dimensions: Weight: Reproductive type:"
+        },
+        "source-entity-2dc888eb-0203-4608-b1c2-1bc27c1144c3": {
+          "id": "source-entity-2dc888eb-0203-4608-b1c2-1bc27c1144c3",
+          "entityType": "world_entity",
+          "projectId": "project-serva-vitae",
+          "title": "Creature",
+          "sceneId": "",
+          "status": "",
+          "hash": "h157e292e",
+          "preview": "Creature Appearance: Traits: Temperament: Habitat: Dimensions: Weight: Reproductive type:"
+        },
+        "source-entity-d179ce1d-c290-4a8d-b48f-2e8dbf99a5d4": {
+          "id": "source-entity-d179ce1d-c290-4a8d-b48f-2e8dbf99a5d4",
+          "entityType": "world_entity",
+          "projectId": "project-serva-vitae",
+          "title": "Psycho Fungus",
+          "sceneId": "",
+          "status": "",
+          "hash": "h7605bef1",
+          "preview": "Psycho Fungus Appearance: Traits: Temperament: Habitat: Dimensions: Weight: Reproductive type:"
+        }
+      },
+      "timelineNodes": {
+        "source-node-9272d563-8210-4bdd-8900-493d323c503d": {
+          "id": "source-node-9272d563-8210-4bdd-8900-493d323c503d",
+          "entityType": "timeline_node",
+          "spineId": "spine-0001",
+          "title": "00 - Read Me",
+          "hash": "hb6d125a2"
+        },
+        "source-node-b2d781c1-618c-4ca2-a658-e3e9c784f03d": {
+          "id": "source-node-b2d781c1-618c-4ca2-a658-e3e9c784f03d",
+          "entityType": "timeline_node",
+          "spineId": "spine-0001",
+          "title": "01 - Master Lore Timeline",
+          "hash": "ha94bf8a9"
+        },
+        "source-node-e157e859-869a-4c47-8d32-e6d68e8fe3d7": {
+          "id": "source-node-e157e859-869a-4c47-8d32-e6d68e8fe3d7",
+          "entityType": "timeline_node",
+          "spineId": "spine-0001",
+          "title": "02 - Story Sequence",
+          "hash": "haa52f5eb"
+        },
+        "source-node-2098c534-1a39-4669-a18c-2499b1f65228": {
+          "id": "source-node-2098c534-1a39-4669-a18c-2499b1f65228",
+          "entityType": "timeline_node",
+          "spineId": "spine-0001",
+          "title": "03 - Continuity Flags",
+          "hash": "hcf094f68"
+        }
+      }
+    },
+    "settings": {
+      "editorPrefsHash": "h005971e3",
+      "localAiPrefsHash": "h0813798a",
+      "spellcheckHash": "h4085b320",
+      "writingTargetHash": "h005971e3",
+      "layoutHash": "hf5e7bceb"
+    }
+  },
+  "events": [
+    {
+      "id": "revision-event-fixture-02",
+      "timestamp": "2026-05-18T09:10:00.000Z",
+      "updatedAt": "2026-05-18T09:25:00.000Z",
+      "sessionId": "revision-session-fixture-01",
+      "eventType": "manuscript_edit",
+      "origin": "manual_editor",
+      "sourceService": "RevisionFixtureSeeder",
+      "entityType": "scene",
+      "entityId": "scene-0001",
+      "description": "Refined the opening scene prose",
+      "changeCategory": "manuscript",
+      "mode": "manuscript",
+      "beforeSummary": null,
+      "afterSummary": null,
+      "occurrenceCount": 2,
+      "metadata": {}
+    },
+    {
+      "id": "revision-event-fixture-04",
+      "timestamp": "2026-05-18T09:40:00.000Z",
+      "updatedAt": "2026-05-18T09:40:00.000Z",
+      "sessionId": "revision-session-fixture-01",
+      "eventType": "task_edit",
+      "origin": "manual_editor",
+      "sourceService": "RevisionFixtureSeeder",
+      "entityType": "manuscript_task",
+      "entityId": "source-comment-25f39d38-61ca-4214-b185-11f84d4f7e6e-7aad9f36-a218-4260-a211-26300120233e",
+      "description": "Adjusted a task record for diff coverage",
+      "changeCategory": "task",
+      "mode": "task",
+      "beforeSummary": null,
+      "afterSummary": null,
+      "occurrenceCount": 1,
+      "metadata": {}
+    },
+    {
+      "id": "revision-event-fixture-05",
+      "timestamp": "2026-05-18T09:55:00.000Z",
+      "updatedAt": "2026-05-18T09:55:00.000Z",
+      "sessionId": "revision-session-fixture-01",
+      "eventType": "entity_edit",
+      "origin": "manual_editor",
+      "sourceService": "RevisionFixtureSeeder",
+      "entityType": "world_entity",
+      "entityId": "source-entity-9c2d8a8c-6334-4ed3-8c21-0ec770d78ff6",
+      "description": "Adjusted a world entity for diff coverage",
+      "changeCategory": "worldbuilding",
+      "mode": "worldbuilding",
+      "beforeSummary": null,
+      "afterSummary": null,
+      "occurrenceCount": 1,
+      "metadata": {}
+    }
+  ],
+  "diff": {
+    "schemaVersion": 1,
+    "generatedAt": "2026-05-18T10:00:00.000Z",
+    "baselineHash": "hc59c0981",
+    "finalHash": "h529841f4",
+    "operations": [
+      {
+        "op": "replace",
+        "path": "manuscript.tasksById.source-comment-25f39d38-61ca-4214-b185-11f84d4f7e6e-7aad9f36-a218-4260-a211-26300120233e.hash",
+        "before": "h81b823e4",
+        "after": "hcd28c500"
+      },
+      {
+        "op": "replace",
+        "path": "manuscript.tasksById.source-comment-25f39d38-61ca-4214-b185-11f84d4f7e6e-7aad9f36-a218-4260-a211-26300120233e.preview",
+        "before": "CONTINUITY SPELLING: Suggested canonical ship name = Balaenoptera. Standardize Baelenoptera / Bealenoptera to this unless the variants are deliberate in-world corruption.",
+        "after": "CONTINUITY SPELLING: Suggested canonical ship name = Balaenoptera. Standardize Baelenoptera / Bealenoptera to this unless the variants are deliberate in-world corruption. This fixt..."
+      },
+      {
+        "op": "replace",
+        "path": "manuscript.tasksById.source-comment-25f39d38-61ca-4214-b185-11f84d4f7e6e-7aad9f36-a218-4260-a211-26300120233e.status",
+        "before": "open",
+        "after": "in-progress"
+      },
+      {
+        "op": "replace",
+        "path": "manuscript.tasksById.source-comment-25f39d38-61ca-4214-b185-11f84d4f7e6e-7aad9f36-a218-4260-a211-26300120233e.title",
+        "before": "CONTINUITY SPELLING: Suggested canonical ship name =...",
+        "after": "CONTINUITY SPELLING: Suggested canonical ship name =... (seeded panel check)"
+      },
+      {
+        "op": "replace",
+        "path": "world.entities.source-entity-9c2d8a8c-6334-4ed3-8c21-0ec770d78ff6.hash",
+        "before": "h45484637",
+        "after": "hbfc64a6a"
+      },
+      {
+        "op": "replace",
+        "path": "world.entities.source-entity-9c2d8a8c-6334-4ed3-8c21-0ec770d78ff6.title",
+        "before": "John Walker",
+        "after": "John Walker Revised"
+      }
+    ],
+    "changedEntities": [
+      {
+        "entityType": "manuscript_task",
+        "entityId": "source-comment-25f39d38-61ca-4214-b185-11f84d4f7e6e-7aad9f36-a218-4260-a211-26300120233e",
+        "title": "source-comment-25f39d38-61ca-4214-b185-11f84d4f7e6e-7aad9f36-a218-4260-a211-26300120233e",
+        "status": "changed"
+      }
+    ],
+    "sceneChanges": [],
+    "summary": {
+      "added": 0,
+      "removed": 0,
+      "changed": 6
+    }
+  },
+  "changedEntities": [
+    {
+      "entityType": "manuscript_task",
+      "entityId": "source-comment-25f39d38-61ca-4214-b185-11f84d4f7e6e-7aad9f36-a218-4260-a211-26300120233e",
+      "title": "source-comment-25f39d38-61ca-4214-b185-11f84d4f7e6e-7aad9f36-a218-4260-a211-26300120233e",
+      "status": "changed"
+    }
+  ],
+  "summaryMarkdown": "# Revision Summary\n\n- Events recorded: 3\n- Changed entities: 1\n- Changed scenes: 0\n- JSON operations: 6",
+  "checkpoints": []
+}

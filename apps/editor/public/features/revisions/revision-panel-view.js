@@ -40,6 +40,15 @@ function renderOption(value, selectedValue) {
   return `<option value="${escapeHtml(value)}"${selected}>${escapeHtml(label)}</option>`;
 }
 
+function renderChipList(values, fallbackLabel = "") {
+  const entries = [...new Set((Array.isArray(values) ? values : []).map((value) => String(value ?? "").trim()).filter(Boolean))];
+  if (!entries.length) {
+    return fallbackLabel ? `<span class="revision-chip revision-chip--muted">${escapeHtml(fallbackLabel)}</span>` : "";
+  }
+
+  return entries.map((value) => `<span class="revision-chip">${escapeHtml(value.replace(/_/g, " "))}</span>`).join("");
+}
+
 function renderSessionList(model) {
   if (!model.groupedSessions.length) {
     return `
@@ -64,6 +73,7 @@ function renderSessionButton(session, selectedSessionId) {
   const isSelected = session.metadata.id === selectedSessionId;
   const changedEntityCount = Array.isArray(session.changedEntities) ? session.changedEntities.length : 0;
   const eventCount = Array.isArray(session.events) ? session.events.length : 0;
+  const originLabel = (session.metadata.origins ?? []).join(", ") || session.metadata.origin || "manual_editor";
   return `
     <button
       class="revision-session-card ${isSelected ? "is-selected" : ""}"
@@ -75,21 +85,26 @@ function renderSessionButton(session, selectedSessionId) {
       <span class="revision-session-card__meta">${escapeHtml(formatTimestamp(session.metadata.finalisedAt || session.metadata.stagedAt || session.metadata.startedAt))} · ${escapeHtml(formatStatus(session.metadata.status))}</span>
       <strong>${escapeHtml(session.metadata.title || "Writing Session")}</strong>
       <span>${escapeHtml(`${eventCount} event${eventCount === 1 ? "" : "s"} · ${changedEntityCount} changed entit${changedEntityCount === 1 ? "y" : "ies"}`)}</span>
+      <span class="revision-session-card__meta">${escapeHtml(originLabel)}</span>
     </button>
   `;
 }
 
-function renderSelectedSession(session) {
+function renderSelectedSession(session, model) {
   if (!session) {
     return `
       <section class="revision-detail">
         <div class="revision-empty-state">
           <strong>No Writing Session selected.</strong>
-          <span>Choose a session to inspect the revision summary and changed scenes.</span>
+          <span>Choose a session to inspect the revision summary, event ledger, and changed areas.</span>
         </div>
       </section>
     `;
   }
+
+  const originLabel = (session.metadata.origins ?? []).join(", ") || session.metadata.origin || "manual_editor";
+  const categoryTags = renderChipList(session.metadata.changeCategories, "manual");
+  const originTags = renderChipList(session.metadata.origins, originLabel);
 
   return `
     <section class="revision-detail">
@@ -102,16 +117,20 @@ function renderSelectedSession(session) {
         <div><dt>Started</dt><dd>${escapeHtml(formatTimestamp(session.metadata.startedAt))}</dd></div>
         <div><dt>Staged</dt><dd>${escapeHtml(formatTimestamp(session.metadata.stagedAt))}</dd></div>
         <div><dt>Banked</dt><dd>${escapeHtml(formatTimestamp(session.metadata.finalisedAt))}</dd></div>
-        <div><dt>Change Origin</dt><dd>${escapeHtml((session.metadata.origins ?? []).join(", ") || session.metadata.origin || "manual_editor")}</dd></div>
+        <div><dt>Change Origin</dt><dd>${escapeHtml(originLabel)}</dd></div>
       </dl>
+      <div class="revision-chip-row" aria-label="Revision change categories and sources">
+        ${categoryTags}
+        ${originTags}
+      </div>
       ${renderSummary(session)}
       ${renderChangedEntities(session)}
       ${renderEventLedger(session)}
-      ${renderDiffPreview(session)}
-      <div class="revision-future-actions" aria-label="Future revision actions">
-        <button class="tag-button panel-action-button" type="button" disabled>Restore Preview</button>
-        <button class="tag-button panel-action-button" type="button" disabled>Compare</button>
-        <button class="tag-button panel-action-button" type="button" disabled>Export Summary</button>
+      ${renderDiffPreview(session, model.showFullDiff)}
+      <div class="revision-detail-actions" aria-label="Revision actions">
+        <button class="tag-button panel-action-button" type="button" data-action="revision-open-first-scene" data-revision-session-id="${escapeHtml(session.metadata.id)}">Open First Scene</button>
+        <button class="tag-button panel-action-button" type="button" data-action="revision-toggle-diff-detail">${escapeHtml(model.showFullDiff ? "Compact Diff" : "Compare Details")}</button>
+        <button class="tag-button panel-action-button" type="button" data-action="revision-export-summary" data-revision-session-id="${escapeHtml(session.metadata.id)}">Export Summary</button>
       </div>
     </section>
   `;
@@ -135,11 +154,17 @@ function renderChangedEntities(session) {
       ${entities.length ? `
         <div class="revision-entity-list">
           ${entities.slice(0, 30).map((entity) => `
-            <article class="revision-entity-card">
+            <button
+              class="revision-entity-card"
+              type="button"
+              data-action="revision-open-entity"
+              data-revision-entity-type="${escapeHtml(entity.entityType ?? "")}"
+              data-revision-entity-id="${escapeHtml(entity.entityId ?? "")}"
+            >
               <span>${escapeHtml(entity.entityType ?? "entity")}</span>
               <strong>${escapeHtml(entity.title ?? entity.entityId ?? "Changed entity")}</strong>
               <em>${escapeHtml(entity.status ?? "changed")}${Number.isFinite(Number(entity.wordCountDelta)) ? ` · ${Number(entity.wordCountDelta) >= 0 ? "+" : ""}${Number(entity.wordCountDelta)} words` : ""}</em>
-            </article>
+            </button>
           `).join("")}
         </div>
       ` : `<p class="revision-muted">No changed entities listed.</p>`}
@@ -167,13 +192,15 @@ function renderEventLedger(session) {
   `;
 }
 
-function renderDiffPreview(session) {
+function renderDiffPreview(session, showFullDiff = false) {
   const operations = Array.isArray(session.diff?.operations) ? session.diff.operations : [];
+  const visibleOperations = showFullDiff ? operations : operations.slice(0, 16);
   return `
     <section class="revision-detail-section">
-      <h3>Diff Preview</h3>
+      <h3>${escapeHtml(showFullDiff ? "Compare Details" : "Diff Preview")}</h3>
       ${operations.length ? `
-        <pre class="revision-diff-preview">${escapeHtml(JSON.stringify(operations.slice(0, 16), null, 2))}</pre>
+        <pre class="revision-diff-preview">${escapeHtml(JSON.stringify(visibleOperations, null, 2))}</pre>
+        ${!showFullDiff && operations.length > visibleOperations.length ? `<p class="revision-muted">${escapeHtml(`${operations.length - visibleOperations.length} more operation${operations.length - visibleOperations.length === 1 ? "" : "s"} hidden.`)}</p>` : ""}
       ` : `<p class="revision-muted">No structured diff generated yet.</p>`}
     </section>
   `;
@@ -212,7 +239,7 @@ export function renderRevisionPanelHTML(model) {
         <aside class="revision-session-column">
           ${renderSessionList(model)}
         </aside>
-        ${renderSelectedSession(model.selectedSession)}
+        ${renderSelectedSession(model.selectedSession, model)}
       </div>
     </div>
   `;

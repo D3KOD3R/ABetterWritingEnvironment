@@ -174,7 +174,9 @@ export async function runSpellcheckTest() {
     const resilientWords = await loadSpellcheckWordsFromUrls([
       { url: new URL("https://example.test/good.txt"), label: "good word list" },
       { url: new URL("https://example.test/missing.txt"), label: "missing word list" },
-    ]);
+    ], {
+      onSourceLoadError: () => {},
+    });
 
     assert.deepEqual(resilientWords, ["alpha", "beta"]);
   } finally {

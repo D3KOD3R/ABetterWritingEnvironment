@@ -1,0 +1,20 @@
+{
+  "sceneId": "draft-scene-1777528152393",
+  "chapterId": "draft-chapter-1777528152393",
+  "chapterTitle": "",
+  "sceneTitle": "This is a test for the save function ",
+  "sceneSynopsis": "",
+  "editorText": "Testing the save function 5",
+  "blocks": [
+    {
+      "blockId": "draft-block-draft-scene-1777528152393-1",
+      "lineNumber": 0,
+      "kind": "narration",
+      "speakerLabel": "",
+      "text": "",
+      "issueIds": [],
+      "eventTagIds": [],
+      "isDraft": true
+    }
+  ]
+}

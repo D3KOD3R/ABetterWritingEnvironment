@@ -242,13 +242,15 @@ function buildWritingTargetSummaryForRecord(record) {
     2,
     WRITING_TARGET_MAX_HISTORY_DAYS,
   );
-  const sessionWords = Math.max(0, currentWordCount - syncedRecord.sessionBaselineWordCount);
+  // Intent: keep session progress math non-negative while still surfacing deletion deltas in the display model.
+  const sessionWordsDelta = currentWordCount - syncedRecord.sessionBaselineWordCount;
+  const sessionWords = Math.max(0, sessionWordsDelta);
   const dailyBaselineWordCount = resolveWritingTargetDailyBaselineWordCount({
     record: syncedRecord,
     currentWordCount,
     now,
   });
-  const dailyWords = Math.max(0, currentWordCount - dailyBaselineWordCount);
+  const dailyWords = currentWordCount - dailyBaselineWordCount;
   const remainingWords = Math.max(0, targetWords - currentWordCount);
   const targetWordsPerDay = cadenceDays > 0 ? sessionTargetWords / cadenceDays : 0;
   const sessionTargetWordsPerSession = sessionsPerDay > 0 ? sessionTargetWords / sessionsPerDay : sessionTargetWords;
@@ -380,7 +382,7 @@ function buildWritingTargetSummaryForRecord(record) {
       sessionsPerDay,
       sessionTargetWordsPerSession,
       currentSessionIndex,
-      currentSessionWords,
+      currentSessionWords: sessionWordsDelta,
       sessionProgress,
       sessionTimeoutMinutes,
       sessionStatusText,
@@ -443,7 +445,7 @@ function buildWritingTargetSummaryForRecord(record) {
     sessionTargetWords,
     sessionTargetWordsPerSession,
     currentSessionIndex,
-    currentSessionWords,
+    currentSessionWords: sessionWordsDelta,
     sessionProgress,
     sessionStatusText,
     sessionTimeoutMinutes,
@@ -581,13 +583,17 @@ function buildWritingTargetMetric(metricKey, context) {
   }
 
   if (metricKey === "sessionTracker") {
+    const signedSessionWords = Number(currentSessionWords) || 0;
+    const sessionProgressWords = Math.max(0, signedSessionWords);
     return {
       key: metricKey,
       label: "Session tracker",
       value: `Session ${currentSessionIndex} of ${sessionsPerDay}`,
-      leftLabel: formatDisplayNumber(currentSessionWords),
+      leftLabel: formatDisplayNumber(signedSessionWords),
       rightLabel: formatDisplayNumber(sessionTargetWordsPerSession),
-      progress: sessionProgress,
+      progress: sessionTargetWordsPerSession > 0
+        ? Math.max(0, Math.min(1, sessionProgressWords / sessionTargetWordsPerSession))
+        : 0,
       note: sessionStatusText,
     };
   }
@@ -637,9 +643,9 @@ function normalizeWritingTargetDailyWordsForDisplay({
   currentWordCount,
   now = new Date(),
 } = {}) {
-  const normalizedDailyWords = Math.max(0, Math.round(Number(dailyWords) || 0));
+  const normalizedDailyWords = Math.round(Number(dailyWords) || 0);
   const normalizedCurrentWordCount = Math.max(0, Math.round(Number(currentWordCount) || 0));
-  if (normalizedDailyWords <= 0 || normalizedCurrentWordCount <= 0) {
+  if (normalizedCurrentWordCount <= 0) {
     return normalizedDailyWords;
   }
 
@@ -1085,7 +1091,7 @@ function getWritingTargetSelectedEntryModel(summary, dashboard) {
       day: "numeric",
       year: "numeric",
     }).format(parseLocalDateKey(entry.date) ?? new Date()),
-    wordCountValue: Math.max(0, Math.round(Number(entry.wordDelta) || 0)),
+    wordCountValue: Math.round(Number(entry.wordDelta) || 0),
     wordCountLabel: `${formatDisplayNumber(entry.wordDelta)} words`,
     wordDeltaLabel: `${Number(entry.wordDelta) >= 0 ? "+" : ""}${formatDisplayNumber(entry.wordDelta)} words`,
     chapterTitle: entry.chapterTitle || "Unknown chapter",

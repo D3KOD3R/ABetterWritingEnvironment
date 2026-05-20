@@ -149,6 +149,42 @@ export async function runProjectServiceStorageTest() {
     true,
   );
 
+  // Intent: simulate a live browser edit that has not yet reached repository scene chunks before file export.
+  const runtimeEditedRecord = structuredClone(opened.projectRecord);
+  runtimeEditedRecord.sceneDrafts = {
+    ...(runtimeEditedRecord.sceneDrafts ?? {}),
+    "scene-1": {
+      ...projectRepository.loadScene("project-test", "scene-1"),
+      editorText: "Runtime scene edit waiting for file save.",
+      blocks: [
+        {
+          blockId: "block-1",
+          lineNumber: 1,
+          kind: "narration",
+          speakerLabel: "",
+          text: "Runtime scene edit waiting for file save.",
+          issueIds: [],
+          eventTagIds: [],
+          isDraft: false,
+        },
+      ],
+    },
+  };
+  const exportedRuntimeSnapshot = projectService.exportProjectLibrarySnapshot({
+    librarySnapshot: {
+      activeProjectId: "project-test",
+      projects: [runtimeEditedRecord],
+    },
+  });
+  assert.equal(
+    exportedRuntimeSnapshot.sceneStore["project-test"]["scene-1"].editorText,
+    "Runtime scene edit waiting for file save.",
+  );
+  assert.equal(
+    projectRepository.loadScene("project-test", "scene-1")?.editorText,
+    "Scene one opening line.",
+  );
+
   const rewrittenSceneRecord = projectService.saveScene({
     projectRecord: opened.projectRecord,
     sceneId: "scene-1",

@@ -125,6 +125,68 @@ export function runEditorModelTest() {
   assert.equal(findSceneByBlockId(scenes, draftBlock.blockId)?.sceneId, "scene-1");
   assert.equal(findBlockById(scenes, "block-1")?.text, "The frigate crawled toward Halcyon Station in silence.");
   assert.equal(groupScenesByChapter(scenes).length, 2);
+
+  const orderedWorkspace = {
+    project: {
+      lines: [
+        {
+          ...workspace.project.lines[0],
+          blockId: "order-block-1",
+          lineNumber: 1,
+          sceneId: "order-scene-1",
+          sceneTitle: "Opening",
+        },
+        {
+          ...workspace.project.lines[0],
+          blockId: "order-block-2",
+          lineNumber: 2,
+          sceneId: "order-scene-2",
+          sceneTitle: "Closing",
+        },
+      ],
+    },
+  };
+  const unorderedDraftScenes = buildSceneRecords(
+    orderedWorkspace,
+    {},
+    {
+      scenes: [
+        {
+          sceneId: "order-draft-scene",
+          chapterId: "chapter-1",
+          chapterTitle: "Arrival Vector",
+          sceneTitle: "Inserted Draft",
+          initialText: "",
+        },
+      ],
+    },
+  );
+  assert.deepEqual(
+    unorderedDraftScenes.map((scene) => scene.sceneId),
+    ["order-scene-1", "order-scene-2", "order-draft-scene"],
+  );
+
+  const orderedDraftScenes = buildSceneRecords(
+    orderedWorkspace,
+    {},
+    {
+      sceneOrder: ["order-scene-1", "order-draft-scene", "order-scene-2"],
+      scenes: [
+        {
+          sceneId: "order-draft-scene",
+          chapterId: "chapter-1",
+          chapterTitle: "Arrival Vector",
+          sceneTitle: "Inserted Draft",
+          initialText: "",
+        },
+      ],
+    },
+  );
+  assert.deepEqual(
+    orderedDraftScenes.map((scene) => scene.sceneId),
+    ["order-scene-1", "order-draft-scene", "order-scene-2"],
+  );
+
   assert.equal(estimateWrappedLineCount("alpha beta gamma delta", 10), 3);
   assert.deepEqual(
     buildSceneLineMetrics(

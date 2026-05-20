@@ -1,0 +1,38 @@
+[
+  {
+    "id": "revision-event-fixture-07",
+    "timestamp": "2026-05-18T10:00:00.000Z",
+    "updatedAt": "2026-05-18T10:00:00.000Z",
+    "sessionId": "revision-session-fixture-06",
+    "eventType": "manuscript_edit",
+    "origin": "local_ai",
+    "sourceService": "RevisionFixtureSeeder",
+    "entityType": "scene",
+    "entityId": "scene-0023",
+    "description": "Adjusted the closing scene prose",
+    "changeCategory": "manuscript",
+    "mode": "manuscript",
+    "beforeSummary": null,
+    "afterSummary": null,
+    "occurrenceCount": 1,
+    "metadata": {}
+  },
+  {
+    "id": "revision-event-fixture-08",
+    "timestamp": "2026-05-18T10:00:00.000Z",
+    "updatedAt": "2026-05-18T10:00:00.000Z",
+    "sessionId": "revision-session-fixture-06",
+    "eventType": "task_edit",
+    "origin": "local_ai",
+    "sourceService": "RevisionFixtureSeeder",
+    "entityType": "manuscript_task",
+    "entityId": "source-comment-25f39d38-61ca-4214-b185-11f84d4f7e6e-6f381aa7-f335-4d2f-b541-86dc3352d347",
+    "description": "Adjusted a follow-up task record for diff coverage",
+    "changeCategory": "research",
+    "mode": "research",
+    "beforeSummary": null,
+    "afterSummary": null,
+    "occurrenceCount": 1,
+    "metadata": {}
+  }
+]

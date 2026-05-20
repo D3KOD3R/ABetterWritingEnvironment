@@ -561,7 +561,7 @@ function patchSessionTrackerPanel(panel, summary) {
           ? "You’re outperforming"
           : "Need more pace"
     : "Idle";
-  const progressWidth = Math.max(0, Math.min(100, Math.round((Number(summary.currentSessionWords ?? 0) / Math.max(1, Number(summary.sessionTargetWordsPerSession ?? 0))) * 100)));
+  const progressWidth = Math.max(0, Math.min(100, Math.round((Math.max(0, Number(summary.currentSessionWords ?? 0)) / Math.max(1, Number(summary.sessionTargetWordsPerSession ?? 0))) * 100)));
   const paceColor = isPaceActive
     ? summary.sessionWordsPerMinuteBarColor ?? "rgb(113, 215, 177)"
     : "rgba(31, 36, 48, 0.26)";
@@ -1083,25 +1083,18 @@ function recordWritingTargetSnapshot(options = {}) {
     }
 
     nextRecord.history = trimWritingTargetHistory(history, nextRecord.lookbackDays);
-    if (previousDailyBaselineDateKey !== dateKey) {
-      nextRecord.dailyBaselineDateKey = dateKey;
-      nextRecord.dailyBaselineWordCount = resolveWritingTargetDailyBaselineWordCount({
-        record: nextRecord,
-        currentWordCount,
-        now,
-      });
-    } else if (!Number.isFinite(Number(nextRecord.dailyBaselineWordCount))) {
-      nextRecord.dailyBaselineWordCount = resolveWritingTargetDailyBaselineWordCount({
-        record: nextRecord,
-        currentWordCount,
-        now,
-      });
-    }
-    nextRecord.dailyBaselineWordCount = resolveWritingTargetDailyBaselineWordCount({
+    const resolvedDailyBaselineWordCount = resolveWritingTargetDailyBaselineWordCount({
       record: nextRecord,
       currentWordCount,
       now,
     });
+    const storedDailyBaselineWordCount = Number(nextRecord.dailyBaselineWordCount);
+    if (previousDailyBaselineDateKey !== dateKey) {
+      nextRecord.dailyBaselineDateKey = dateKey;
+      nextRecord.dailyBaselineWordCount = resolvedDailyBaselineWordCount;
+    } else if (!Number.isFinite(storedDailyBaselineWordCount) || storedDailyBaselineWordCount <= 0) {
+      nextRecord.dailyBaselineWordCount = resolvedDailyBaselineWordCount;
+    }
     if (nextSessionRecord) {
       nextRecord.sessionIsActive = true;
       nextRecord.sessionStartedAt = nextSessionRecord.sessionStartedAt;

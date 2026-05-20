@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-05-18T10:00:00.000Z",
+  "baselineHash": "hc59c0981",
+  "finalHash": "h529841f4",
+  "operations": [
+    {
+      "op": "replace",
+      "path": "manuscript.tasksById.source-comment-25f39d38-61ca-4214-b185-11f84d4f7e6e-7aad9f36-a218-4260-a211-26300120233e.hash",
+      "before": "h81b823e4",
+      "after": "hcd28c500"
+    },
+    {
+      "op": "replace",
+      "path": "manuscript.tasksById.source-comment-25f39d38-61ca-4214-b185-11f84d4f7e6e-7aad9f36-a218-4260-a211-26300120233e.preview",
+      "before": "CONTINUITY SPELLING: Suggested canonical ship name = Balaenoptera. Standardize Baelenoptera / Bealenoptera to this unless the variants are deliberate in-world corruption.",
+      "after": "CONTINUITY SPELLING: Suggested canonical ship name = Balaenoptera. Standardize Baelenoptera / Bealenoptera to this unless the variants are deliberate in-world corruption. This fixt..."
+    },
+    {
+      "op": "replace",
+      "path": "manuscript.tasksById.source-comment-25f39d38-61ca-4214-b185-11f84d4f7e6e-7aad9f36-a218-4260-a211-26300120233e.status",
+      "before": "open",
+      "after": "in-progress"
+    },
+    {
+      "op": "replace",
+      "path": "manuscript.tasksById.source-comment-25f39d38-61ca-4214-b185-11f84d4f7e6e-7aad9f36-a218-4260-a211-26300120233e.title",
+      "before": "CONTINUITY SPELLING: Suggested canonical ship name =...",
+      "after": "CONTINUITY SPELLING: Suggested canonical ship name =... (seeded panel check)"
+    },
+    {
+      "op": "replace",
+      "path": "world.entities.source-entity-9c2d8a8c-6334-4ed3-8c21-0ec770d78ff6.hash",
+      "before": "h45484637",
+      "after": "hbfc64a6a"
+    },
+    {
+      "op": "replace",
+      "path": "world.entities.source-entity-9c2d8a8c-6334-4ed3-8c21-0ec770d78ff6.title",
+      "before": "John Walker",
+      "after": "John Walker Revised"
+    }
+  ],
+  "changedEntities": [
+    {
+      "entityType": "manuscript_task",
+      "entityId": "source-comment-25f39d38-61ca-4214-b185-11f84d4f7e6e-7aad9f36-a218-4260-a211-26300120233e",
+      "title": "source-comment-25f39d38-61ca-4214-b185-11f84d4f7e6e-7aad9f36-a218-4260-a211-26300120233e",
+      "status": "changed"
+    }
+  ],
+  "sceneChanges": [],
+  "summary": {
+    "added": 0,
+    "removed": 0,
+    "changed": 6
+  }
+}

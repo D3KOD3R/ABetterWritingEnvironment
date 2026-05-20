@@ -1,0 +1,20 @@
+{
+  "sceneId": "scene-0001",
+  "chapterId": "chapter-0001",
+  "chapterTitle": "Chapter 1",
+  "sceneTitle": "Scene 1",
+  "sceneSynopsis": "",
+  "editorText": "this is a test",
+  "blocks": [
+    {
+      "blockId": "block-0001",
+      "lineNumber": 1,
+      "kind": "narration",
+      "speakerLabel": "",
+      "text": "",
+      "issueIds": [],
+      "eventTagIds": [],
+      "isDraft": false
+    }
+  ]
+}

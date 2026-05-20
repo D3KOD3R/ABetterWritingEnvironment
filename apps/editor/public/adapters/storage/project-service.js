@@ -24,6 +24,49 @@ function normalizeSceneId(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+// Intent: decide when a runtime scene draft should replace an older persisted scene chunk during export.
+function sceneDraftHasSubstantiveBody(sceneDraft) {
+  if (!sceneDraft || typeof sceneDraft !== "object" || Array.isArray(sceneDraft)) {
+    return false;
+  }
+
+  if (typeof sceneDraft.editorText === "string" && sceneDraft.editorText.trim()) {
+    return true;
+  }
+
+  const blocks = Array.isArray(sceneDraft.blocks) ? sceneDraft.blocks : [];
+  return blocks.some((block) => typeof block?.text === "string" && block.text.trim().length > 0);
+}
+
+function composeSceneDraftText(blocks = []) {
+  return blocks
+    .map((block) => String(block?.text ?? ""))
+    .filter((text) => text.length > 0)
+    .join("\n\n");
+}
+
+// Intent: normalize live editor scene drafts just enough for portable project-file scene stores.
+function normalizeRuntimeSceneDraft(candidate, fallbackSceneId) {
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+    return null;
+  }
+
+  const sceneId = normalizeSceneId(candidate.sceneId) || normalizeSceneId(fallbackSceneId);
+  if (!sceneId) {
+    return null;
+  }
+
+  const blocks = Array.isArray(candidate.blocks) ? cloneValue(candidate.blocks) : [];
+  return {
+    ...cloneValue(candidate),
+    sceneId,
+    blocks,
+    editorText: typeof candidate.editorText === "string"
+      ? candidate.editorText
+      : composeSceneDraftText(blocks),
+  };
+}
+
 function normalizeLibrarySnapshot(snapshot) {
   return migrateProjectData(snapshot, {
     targetSchemaVersion: PROJECT_SCHEMA_VERSION,
@@ -219,8 +262,33 @@ export function createProjectService({
         continue;
       }
       const scenes = projectRepository.loadAllScenes(project.id);
-      if (scenes && Object.keys(scenes).length) {
-        sceneStore[project.id] = scenes;
+      const mergedScenes = scenes && typeof scenes === "object" && !Array.isArray(scenes)
+        ? cloneValue(scenes)
+        : {};
+      const runtimeDrafts = project.sceneDrafts && typeof project.sceneDrafts === "object" && !Array.isArray(project.sceneDrafts)
+        ? project.sceneDrafts
+        : {};
+
+      // Intent: file exports must prefer live runtime scene drafts over stale repository chunks.
+      for (const [sceneId, candidate] of Object.entries(runtimeDrafts)) {
+        const normalizedSceneId = normalizeSceneId(sceneId);
+        if (!normalizedSceneId) {
+          continue;
+        }
+
+        const normalizedDraft = normalizeRuntimeSceneDraft(candidate, normalizedSceneId);
+        if (!normalizedDraft) {
+          continue;
+        }
+
+        const storedDraft = mergedScenes[normalizedSceneId];
+        if (sceneDraftHasSubstantiveBody(normalizedDraft) || !sceneDraftHasSubstantiveBody(storedDraft)) {
+          mergedScenes[normalizedSceneId] = normalizedDraft;
+        }
+      }
+
+      if (Object.keys(mergedScenes).length) {
+        sceneStore[project.id] = mergedScenes;
       }
     }
 

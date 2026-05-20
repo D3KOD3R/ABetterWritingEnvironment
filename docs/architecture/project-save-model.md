@@ -49,6 +49,8 @@ Each manifest project keeps workspace metadata with:
 - voice profile and render state
 - selection defaults for the UI
 
+Revision history currently lives on the project record as `project.revisions`, where session metadata, event ledgers, diff summaries, and changed-entity lists can be normalized in-browser now and later mapped to a desktop `/revisions` folder without changing the service boundary.
+
 ## Source Provenance
 
 Source provenance remains structured and reviewable. Records use generic source fields such as:

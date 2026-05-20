@@ -136,7 +136,7 @@ export function buildSessionTrackerMetric(summary) {
       ? paceRatio
       : requiredWordsPerMinute > 0
         ? Math.min(1, currentWordsPerMinute / requiredWordsPerMinute)
-      : 0,
+        : 0,
     barClass: `${summary.sessionWordsPerMinuteOverTarget ? "is-session-pace is-over-target" : "is-session-pace"}`,
     barStyle: `--writing-target-bar-color: ${summary.sessionWordsPerMinuteBarColor ?? "rgb(113, 215, 177)"};`,
     note: statusText || "No session data yet",
@@ -195,7 +195,7 @@ export function renderSessionTrackerPanel(summary) {
           ? "You’re outperforming"
           : "Need more pace"
     : "Idle";
-  const progressWidth = Math.max(0, Math.min(100, Math.round((Number(summary?.currentSessionWords ?? 0) / Math.max(1, Number(summary?.sessionTargetWordsPerSession ?? 0))) * 100)));
+  const progressWidth = Math.max(0, Math.min(100, Math.round((Math.max(0, Number(summary?.currentSessionWords ?? 0)) / Math.max(1, Number(summary?.sessionTargetWordsPerSession ?? 0))) * 100)));
   const paceColor = isPaceActive
     ? summary?.sessionWordsPerMinuteBarColor ?? "rgb(113, 215, 177)"
     : "rgba(31, 36, 48, 0.26)";

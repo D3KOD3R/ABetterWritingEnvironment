@@ -253,52 +253,125 @@ function getProjectSceneStore(sceneStore, projectId) {
     : null;
 }
 
-function rewriteProjectRecordIdentity(projectRecord, {
-  projectId,
-  title = projectId,
-  projectFilePath = "",
-} = {}) {
-  const resolvedProjectId = typeof projectId === "string" && projectId.trim() ? projectId.trim() : "";
-  if (!projectRecord || typeof projectRecord !== "object" || !resolvedProjectId) {
-    return projectRecord;
+function getSingleProjectSceneStore(sceneStore) {
+  if (!sceneStore || typeof sceneStore !== "object" || Array.isArray(sceneStore)) {
+    return null;
   }
 
-  const nextRecord = cloneValue(projectRecord);
-  const resolvedTitle = typeof title === "string" && title.trim() ? title.trim() : resolvedProjectId;
-  nextRecord.id = resolvedProjectId;
-  nextRecord.title = resolvedTitle;
-  nextRecord.source = "project-file";
-  nextRecord.projectSettings = {
-    ...(nextRecord.projectSettings && typeof nextRecord.projectSettings === "object" && !Array.isArray(nextRecord.projectSettings)
-      ? nextRecord.projectSettings
-      : {}),
-    projectFilePath,
-  };
-  if (nextRecord.workspace?.project && typeof nextRecord.workspace.project === "object") {
-    nextRecord.workspace.project = {
-      ...nextRecord.workspace.project,
-      id: resolvedProjectId,
-      title: resolvedTitle,
-    };
+  const sceneStores = Object.values(sceneStore)
+    .filter((candidate) => candidate && typeof candidate === "object" && !Array.isArray(candidate));
+  return sceneStores.length === 1 ? cloneValue(sceneStores[0]) : null;
+}
+
+function sceneDraftHasSubstantiveBody(draft) {
+  if (!draft || typeof draft !== "object" || Array.isArray(draft)) {
+    return false;
   }
-  if (typeof nextRecord.workspace?.workspaceTitle === "string") {
-    nextRecord.workspace.workspaceTitle = resolvedTitle;
+
+  if (typeof draft.editorText === "string" && draft.editorText.trim()) {
+    return true;
   }
-  if (nextRecord.workspace?.project?.binder && typeof nextRecord.workspace.project.binder === "object") {
-    nextRecord.workspace.project.binder = {
-      ...nextRecord.workspace.project.binder,
-      refId: resolvedProjectId,
-      title: resolvedTitle,
-    };
+
+  return Array.isArray(draft.blocks) && draft.blocks.some((block) =>
+    typeof block?.text === "string" && block.text.trim().length > 0,
+  );
+}
+
+function getProjectSceneOrder(projectRecord) {
+  if (!projectRecord || typeof projectRecord !== "object") {
+    return [];
   }
-  if (nextRecord.projectIndex && typeof nextRecord.projectIndex === "object" && !Array.isArray(nextRecord.projectIndex)) {
-    nextRecord.projectIndex = {
-      ...nextRecord.projectIndex,
-      projectId: resolvedProjectId,
-      projectTitle: resolvedTitle,
-    };
+
+  const projectStorageOrder = Array.isArray(projectRecord.projectStorage?.sceneOrder)
+    ? projectRecord.projectStorage.sceneOrder
+    : [];
+  const projectIndexOrder = Array.isArray(projectRecord.projectIndex?.sceneOrder)
+    ? projectRecord.projectIndex.sceneOrder
+    : [];
+  const projectIndexScenes = Array.isArray(projectRecord.projectIndex?.scenes)
+    ? projectRecord.projectIndex.scenes.map((scene) => scene?.id)
+    : [];
+  const structureScenes = Array.isArray(projectRecord.structureDrafts?.scenes)
+    ? projectRecord.structureDrafts.scenes.map((scene) => scene?.sceneId)
+    : [];
+  const lineSceneIds = [];
+  const seenLineSceneIds = new Set();
+  for (const line of Array.isArray(projectRecord.workspace?.project?.lines) ? projectRecord.workspace.project.lines : []) {
+    const sceneId = typeof line?.sceneId === "string" ? line.sceneId.trim() : "";
+    if (sceneId && !seenLineSceneIds.has(sceneId)) {
+      seenLineSceneIds.add(sceneId);
+      lineSceneIds.push(sceneId);
+    }
   }
-  return nextRecord;
+
+  const sourceOrder = projectStorageOrder.length
+    ? projectStorageOrder
+    : projectIndexOrder.length
+      ? projectIndexOrder
+      : projectIndexScenes.length
+        ? projectIndexScenes
+        : structureScenes.length
+          ? structureScenes
+          : lineSceneIds;
+  const seen = new Set();
+  return sourceOrder
+    .map((sceneId) => (typeof sceneId === "string" ? sceneId.trim() : ""))
+    .filter((sceneId) => {
+      if (!sceneId || seen.has(sceneId)) {
+        return false;
+      }
+      seen.add(sceneId);
+      return true;
+    });
+}
+
+function projectRecordsHaveMatchingSceneOrder(leftRecord, rightRecord) {
+  const leftOrder = getProjectSceneOrder(leftRecord);
+  const rightOrder = getProjectSceneOrder(rightRecord);
+  return Boolean(
+    leftOrder.length &&
+    rightOrder.length &&
+    leftOrder.length === rightOrder.length &&
+    leftOrder.every((sceneId, index) => sceneId === rightOrder[index]),
+  );
+}
+
+function getCachedProjectSceneStore(projectService, projectRecord) {
+  if (!projectRecord?.id || typeof projectService?.exportProjectLibrarySnapshot !== "function") {
+    return null;
+  }
+
+  try {
+    const exportedSnapshot = projectService.exportProjectLibrarySnapshot({
+      librarySnapshot: {
+        activeProjectId: projectRecord.id,
+        projects: [projectRecord],
+      },
+    });
+    return getProjectSceneStore(exportedSnapshot?.sceneStore, projectRecord.id);
+  } catch {
+    return null;
+  }
+}
+
+function mergeProjectSceneStores(primaryStore, fallbackStore) {
+  if (!fallbackStore || typeof fallbackStore !== "object" || Array.isArray(fallbackStore)) {
+    return primaryStore ? cloneValue(primaryStore) : null;
+  }
+
+  const mergedStore = cloneValue(fallbackStore);
+  if (!primaryStore || typeof primaryStore !== "object" || Array.isArray(primaryStore)) {
+    return mergedStore;
+  }
+
+  for (const [sceneId, sceneDraft] of Object.entries(primaryStore)) {
+    const fallbackDraft = mergedStore[sceneId];
+    if (sceneDraftHasSubstantiveBody(sceneDraft) || !sceneDraftHasSubstantiveBody(fallbackDraft)) {
+      mergedStore[sceneId] = cloneValue(sceneDraft);
+    }
+  }
+
+  return mergedStore;
 }
 
 function resolveMutationDomain(options = {}) {
@@ -989,21 +1062,53 @@ export function createProjectPersistenceService({
       },
     );
     const loadedActiveProject = loadedProjects.find((project) => project.id === loadedActiveProjectId) ?? loadedProjects[0];
-    const identitySource = options.filePath || options.fileName || options.fileHandle?.name || getProjectRecordFilePath(loadedActiveProject);
-    const fileBackedProjectId = getProjectFileIdentity(identitySource);
     const durableLoadedFilePath = hasProjectFilePath(options.filePath) ? normalizeProjectFilePath(options.filePath) : "";
     const loadedHandleFileName = normalizeProjectFilePath(options.fileName || options.fileHandle?.name || "");
     const loadedFileDisplayPath = durableLoadedFilePath || loadedHandleFileName;
-    const importedProject = fileBackedProjectId
-      ? rewriteProjectRecordIdentity(loadedActiveProject, {
-        projectId: fileBackedProjectId,
-        title: fileBackedProjectId,
-        projectFilePath: loadedFileDisplayPath,
-      })
-      : loadedActiveProject;
-    const importedSceneStore = fileBackedProjectId
-      ? getProjectSceneStore(loadedLibrary.sceneStore, loadedActiveProject?.id)
+    const existingProjectWithSameId = loadedActiveProject
+      ? state.projectLibrary.find((project) => project?.id === loadedActiveProject.id) ?? null
       : null;
+    const existingProjectFilePath = getProjectRecordFilePath(existingProjectWithSameId);
+    const shouldRemapLoadedProjectId =
+      Boolean(loadedFileDisplayPath) &&
+      Boolean(existingProjectWithSameId) &&
+      normalizeProjectFilePath(existingProjectFilePath) !== loadedFileDisplayPath;
+    const loadedProjectId = shouldRemapLoadedProjectId
+      ? getProjectFileIdentity(loadedFileDisplayPath) || loadedActiveProject.id
+      : loadedActiveProject?.id ?? "";
+    const importedProject = loadedActiveProject
+      ? {
+        ...cloneValue(loadedActiveProject),
+        id: loadedProjectId,
+        workspace: {
+          ...(loadedActiveProject.workspace && typeof loadedActiveProject.workspace === "object" && !Array.isArray(loadedActiveProject.workspace)
+            ? loadedActiveProject.workspace
+            : {}),
+          project: {
+            ...(loadedActiveProject.workspace?.project && typeof loadedActiveProject.workspace.project === "object" && !Array.isArray(loadedActiveProject.workspace.project)
+              ? loadedActiveProject.workspace.project
+              : {}),
+            id: loadedProjectId,
+          },
+        },
+        projectSettings: {
+          ...(loadedActiveProject.projectSettings && typeof loadedActiveProject.projectSettings === "object" && !Array.isArray(loadedActiveProject.projectSettings)
+            ? loadedActiveProject.projectSettings
+            : {}),
+          projectFilePath: loadedFileDisplayPath,
+        },
+      }
+      : null;
+    const loadedSceneStore = loadedActiveProject
+      ? getProjectSceneStore(loadedLibrary.sceneStore, loadedActiveProject.id) ?? getSingleProjectSceneStore(loadedLibrary.sceneStore)
+      : null;
+    const cachedSceneStoreFallback =
+      shouldRemapLoadedProjectId &&
+      existingProjectWithSameId &&
+      projectRecordsHaveMatchingSceneOrder(existingProjectWithSameId, loadedActiveProject)
+        ? getCachedProjectSceneStore(projectService, existingProjectWithSameId)
+        : null;
+    const importedSceneStore = mergeProjectSceneStores(loadedSceneStore, cachedSceneStoreFallback);
     const importedProjects = importedProject ? [importedProject] : loadedProjects;
     const importedSceneStoreByProject = importedSceneStore
       ? { [importedProject.id]: importedSceneStore }
@@ -1028,12 +1133,15 @@ export function createProjectPersistenceService({
       projects: mergedProjects,
       sceneStore: importedSceneStoreByProject,
     });
-    state.projectLibrary = persistedLibrary.projects;
-    state.activeProjectId = persistedLibrary.activeProjectId;
-    state.projectLibrarySelectionId = persistedLibrary.activeProjectId;
-    persistActiveProjectId(persistedLibrary.activeProjectId);
+    const openedProject = projectService.openProject({
+      projectId: persistedLibrary.activeProjectId,
+    });
+    state.projectLibrary = openedProject.librarySnapshot.projects;
+    state.activeProjectId = openedProject.activeProjectId ?? persistedLibrary.activeProjectId;
+    state.projectLibrarySelectionId = state.activeProjectId;
+    persistActiveProjectId(state.activeProjectId);
 
-    const projectRecord = getActiveProjectRecord();
+    const projectRecord = openedProject.projectRecord ?? getActiveProjectRecord();
     if (!projectRecord) {
       throw new Error("Unable to activate the loaded project file.");
     }

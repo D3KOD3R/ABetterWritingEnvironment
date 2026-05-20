@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 
 import { createProjectPersistenceService } from "../apps/editor/public/adapters/storage/project-persistence-service.js";
+import { getProjectFileIdentity } from "../apps/editor/public/adapters/storage/project-file.js";
 
 export async function runProjectPersistenceServiceTest() {
   const windowRef = createFakeWindowRef();
@@ -138,6 +139,7 @@ export async function runProjectPersistenceServiceTest() {
         reason,
         projectFilePath: state.projectFilePath,
         hasProjectFileHandle: Boolean(state.projectFileHandle),
+        activeSceneText: Object.values(record.sceneDrafts ?? {})[0]?.editorText ?? "",
       });
       state.workspace = record.workspace;
       state.projectTitle = record.title;
@@ -238,11 +240,11 @@ export async function runProjectPersistenceServiceTest() {
     sourceLabel: "desktop file",
     mode: "desktop-path",
   });
-  assert.equal(state.activeProjectId, "loaded");
+  assert.equal(state.activeProjectId, "project-loaded");
   assert.equal(state.projectFilePath, "C:\\Projects\\loaded.abe-project.json");
-  assert.equal(activationLog.at(-1)?.projectId, "loaded");
-  assert.equal(state.projectLibrary.find((project) => project.id === "loaded")?.title, "loaded");
-  assert.equal(activeProjectWrites.includes("loaded"), true);
+  assert.equal(activationLog.at(-1)?.projectId, "project-loaded");
+  assert.equal(state.projectLibrary.find((project) => project.id === "project-loaded")?.title, "Loaded Project");
+  assert.equal(activeProjectWrites.includes("project-loaded"), true);
 
   // The service should be able to recover the durable destination from the canonical record alone.
   state.projectFilePath = "";
@@ -264,15 +266,135 @@ export async function runProjectPersistenceServiceTest() {
     sourceLabel: "browser file",
     mode: "browser-handle",
   });
-  assert.equal(state.activeProjectId, "OriginFileproject-serva-vitae");
+  const browserHandleProjectId = getProjectFileIdentity("OriginFileproject-serva-vitae.abe-project.json");
+  assert.equal(state.activeProjectId, browserHandleProjectId);
   assert.equal(state.projectFilePath, "OriginFileproject-serva-vitae.abe-project.json");
   assert.equal(state.projectFileHandle, browserHandle);
   assert.equal(state.projectFileHandlePermission, "granted");
   assert.equal(activationLog.at(-1)?.projectFilePath, "OriginFileproject-serva-vitae.abe-project.json");
   assert.equal(activationLog.at(-1)?.hasProjectFileHandle, true);
+  assert.equal(activationLog.at(-1)?.activeSceneText, "Loaded project scene text.");
   assert.equal(
-    state.projectLibrary.find((project) => project.id === "OriginFileproject-serva-vitae")?.projectSettings?.projectFilePath,
+    state.projectLibrary.find((project) => project.id === browserHandleProjectId)?.projectSettings?.projectFilePath,
     "OriginFileproject-serva-vitae.abe-project.json",
+  );
+  assert.equal(
+    state.projectLibrary.find((project) => project.id === browserHandleProjectId)?.sceneDrafts?.["scene-loaded"]?.editorText,
+    "Loaded project scene text.",
+  );
+
+  // Loading a different file with the same project id should remap the runtime identity instead of leaking drafts across files.
+  state.projectLibrary = [projectRecord];
+  state.activeProjectId = "project-1";
+  state.projectLibrarySelectionId = "project-1";
+  state.projectFilePath = "project-1.abe-project.json";
+  state.projectFileHandle = createFakeWritableHandle("project-1.abe-project.json", operationLog);
+  state.projectFileHandlePermission = "granted";
+  const loadedSceneStore = {
+    "scene-loaded": createLoadedProjectRecord().sceneDrafts["scene-loaded"],
+  };
+  await projectPersistenceService.hydrateProjectLibraryFromLoadedSnapshot({
+    activeProjectId: "project-1",
+    projects: [
+      {
+        ...createLoadedProjectRecord(),
+        id: "project-1",
+        sceneDrafts: {},
+        workspace: {
+          ...createLoadedProjectRecord().workspace,
+          project: {
+            ...createLoadedProjectRecord().workspace.project,
+            id: "project-1",
+          },
+        },
+        projectSettings: {
+          ...createLoadedProjectRecord().projectSettings,
+          projectFilePath: "C:\\Projects\\project-1-copy.abe-project.json",
+        },
+      },
+    ],
+    sceneStore: {
+      "legacy-project-id": loadedSceneStore,
+    },
+  }, {
+    filePath: "C:\\Projects\\project-1-copy.abe-project.json",
+    fileName: "project-1-copy.abe-project.json",
+    fileHandle: createFakeWritableHandle("project-1-copy.abe-project.json", operationLog),
+    reason: "load-project-file",
+    sourceLabel: "browser file",
+    mode: "browser-handle",
+  });
+  const remappedProjectId = getProjectFileIdentity("C:\\Projects\\project-1-copy.abe-project.json");
+  assert.equal(state.activeProjectId, remappedProjectId);
+  assert.equal(state.projectLibrary.some((project) => project.id === "project-1"), true);
+  assert.equal(state.projectLibrary.some((project) => project.id === remappedProjectId), true);
+  assert.equal(
+    state.projectLibrary.find((project) => project.id === remappedProjectId)?.sceneDrafts?.["scene-loaded"]?.editorText,
+    "Loaded project scene text.",
+  );
+
+  // Renamed split-storage project files without their sceneStore should recover bodies from the existing matching cache.
+  const cachedOriginalRecord = {
+    ...createLoadedProjectRecord(),
+    id: "project-1",
+    workspace: {
+      ...createLoadedProjectRecord().workspace,
+      project: {
+        ...createLoadedProjectRecord().workspace.project,
+        id: "project-1",
+      },
+    },
+    projectIndex: {
+      sceneOrder: ["scene-loaded"],
+      scenes: [
+        {
+          id: "scene-loaded",
+          title: "Loaded Scene",
+          chapterId: "chapter-loaded",
+          chapterTitle: "Loaded Chapter",
+          wordCount: 4,
+        },
+      ],
+    },
+    projectSettings: {
+      projectFilePath: "C:\\Projects\\project-1.abe-project.json",
+    },
+  };
+  state.projectLibrary = [cachedOriginalRecord];
+  state.activeProjectId = "project-1";
+  state.projectLibrarySelectionId = "project-1";
+  state.projectFilePath = "C:\\Projects\\project-1.abe-project.json";
+  await projectPersistenceService.hydrateProjectLibraryFromLoadedSnapshot({
+    activeProjectId: "project-1",
+    projects: [
+      {
+        ...cachedOriginalRecord,
+        sceneDrafts: {},
+        projectSettings: {
+          projectFilePath: "C:\\Projects\\project-1-renamed.abe-project.json",
+        },
+      },
+    ],
+  }, {
+    filePath: "C:\\Projects\\project-1-renamed.abe-project.json",
+    fileName: "project-1-renamed.abe-project.json",
+    fileHandle: createFakeWritableHandle("project-1-renamed.abe-project.json", operationLog),
+    reason: "load-project-file",
+    sourceLabel: "browser file",
+    mode: "browser-handle",
+  });
+  const renamedProjectId = getProjectFileIdentity("C:\\Projects\\project-1-renamed.abe-project.json");
+  assert.equal(state.activeProjectId, renamedProjectId);
+  assert.equal(
+    state.projectLibrary.find((project) => project.id === renamedProjectId)?.sceneDrafts?.["scene-loaded"]?.editorText,
+    "Loaded project scene text.",
+  );
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(
+      state.projectLibrary.find((project) => project.id === renamedProjectId) ?? {},
+      "revisions",
+    ),
+    false,
   );
 
   // Filename-only records should still hydrate display identity without pretending to have a durable path.
@@ -280,8 +402,8 @@ export async function runProjectPersistenceServiceTest() {
   state.projectFileHandle = null;
   state.projectFileHandlePermission = "";
   projectPersistenceService.syncActiveProjectFileDestinationFromRecord();
-  assert.equal(state.projectFilePath, "OriginFileproject-serva-vitae.abe-project.json");
-  assert.equal(projectPersistenceService.hasProjectSaveDestination(), false);
+  assert.equal(state.projectFilePath, "C:\\Projects\\project-1-renamed.abe-project.json");
+  assert.equal(projectPersistenceService.hasProjectSaveDestination(), true);
 
   // Restore-last-opened flow should hit desktop load/settings routes and keep persistence state coherent.
   await projectPersistenceService.restoreLastOpenedProject({
@@ -300,6 +422,11 @@ export async function runProjectPersistenceServiceTest() {
 }
 
 function createFakeProjectService(projectRecord, loadedRecord, browserCacheWrites = []) {
+  let lastHydratedSnapshot = {
+    activeProjectId: loadedRecord.id,
+    projects: [loadedRecord],
+  };
+
   return {
     saveProject({ projectRecord: incomingRecord, librarySnapshot }) {
       const nextRecord = incomingRecord ?? projectRecord;
@@ -312,14 +439,69 @@ function createFakeProjectService(projectRecord, loadedRecord, browserCacheWrite
     },
     saveProjectLibrarySnapshot(snapshot) {
       browserCacheWrites.push(snapshot);
-      return snapshot;
-    },
-    exportProjectLibrarySnapshot() {
+      lastHydratedSnapshot = snapshot;
       return {
-        schemaVersion: 2,
+        ...snapshot,
+        projects: snapshot.projects.map((project) => ({
+          ...project,
+          sceneDrafts: {},
+        })),
+      };
+    },
+    openProject({ projectId = null, librarySnapshot = null } = {}) {
+      const snapshot = librarySnapshot ?? lastHydratedSnapshot ?? {
         activeProjectId: loadedRecord.id,
         projects: [loadedRecord],
-        sceneStore: {},
+      };
+      const activeProjectId = typeof projectId === "string" && projectId.trim()
+        ? projectId
+        : snapshot.activeProjectId;
+      const projectRecord = snapshot.projects.find((project) => project.id === activeProjectId)
+        ?? snapshot.projects[0]
+        ?? null;
+      const sceneStore = projectRecord?.id && snapshot.sceneStore?.[projectRecord.id]
+        ? snapshot.sceneStore[projectRecord.id]
+        : null;
+      const hydratedProjectRecord = projectRecord
+        ? {
+          ...projectRecord,
+          sceneDrafts: sceneStore && typeof sceneStore === "object" && !Array.isArray(sceneStore)
+            ? sceneStore
+            : projectRecord.sceneDrafts,
+        }
+        : null;
+      return {
+        activeProjectId: hydratedProjectRecord?.id ?? null,
+        librarySnapshot: {
+          ...snapshot,
+          projects: snapshot.projects.map((project) => (
+            project.id === hydratedProjectRecord?.id ? hydratedProjectRecord : project
+          )),
+        },
+        projectRecord: hydratedProjectRecord,
+      };
+    },
+    exportProjectLibrarySnapshot({ librarySnapshot = null } = {}) {
+      const snapshot = librarySnapshot ?? lastHydratedSnapshot;
+      const sceneStore = {
+        ...(snapshot.sceneStore && typeof snapshot.sceneStore === "object" ? snapshot.sceneStore : {}),
+      };
+      for (const project of snapshot.projects ?? []) {
+        if (
+          project?.id &&
+          project.sceneDrafts &&
+          typeof project.sceneDrafts === "object" &&
+          !Array.isArray(project.sceneDrafts) &&
+          Object.keys(project.sceneDrafts).length
+        ) {
+          sceneStore[project.id] = project.sceneDrafts;
+        }
+      }
+      return {
+        schemaVersion: 2,
+        activeProjectId: snapshot.activeProjectId ?? loadedRecord.id,
+        projects: snapshot.projects ?? [loadedRecord],
+        sceneStore,
       };
     },
   };
@@ -381,6 +563,28 @@ function createLoadedProjectRecord() {
       },
       selectionDefaults: {
         sceneId: "scene-loaded",
+      },
+    },
+    sceneDrafts: {
+      "scene-loaded": {
+        sceneId: "scene-loaded",
+        chapterId: "chapter-loaded",
+        chapterTitle: "Loaded Chapter",
+        sceneTitle: "Loaded Scene",
+        sceneSynopsis: "",
+        editorText: "Loaded project scene text.",
+        blocks: [
+          {
+            blockId: "block-loaded-1",
+            lineNumber: 1,
+            kind: "narration",
+            speakerLabel: "",
+            text: "Loaded project scene text.",
+            issueIds: [],
+            eventTagIds: [],
+            isDraft: false,
+          },
+        ],
       },
     },
     projectSettings: {

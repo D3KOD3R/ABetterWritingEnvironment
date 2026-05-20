@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "activeSessionId": "",
+  "sessions": [
+    {
+      "id": "revision-session-fixture-01",
+      "status": "archived",
+      "title": "Fixture Revision Session A",
+      "sessionPath": "revisions\\sessions\\revision-session-fixture-01\\revision.json",
+      "eventsPath": "revisions\\sessions\\revision-session-fixture-01\\events.json",
+      "diffPath": "revisions\\sessions\\revision-session-fixture-01\\project.diff.json",
+      "summaryPath": "revisions\\sessions\\revision-session-fixture-01\\summary.md"
+    },
+    {
+      "id": "revision-session-fixture-06",
+      "status": "finalised",
+      "title": "Fixture Revision Session B",
+      "sessionPath": "revisions\\sessions\\revision-session-fixture-06\\revision.json",
+      "eventsPath": "revisions\\sessions\\revision-session-fixture-06\\events.json",
+      "diffPath": "revisions\\sessions\\revision-session-fixture-06\\project.diff.json",
+      "summaryPath": "revisions\\sessions\\revision-session-fixture-06\\summary.md"
+    }
+  ],
+  "projectPath": "project.json"
+}

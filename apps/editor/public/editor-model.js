@@ -163,6 +163,72 @@ function normalizeSpellcheckWord(word) {
   return /[a-z]/.test(normalized) ? normalized : "";
 }
 
+// Intent: keep binder ordering deterministic when draft-only scenes need to sit between persisted manuscript scenes.
+function getOrderedStructureSceneIds(structureDrafts = {}) {
+  const explicitSceneOrder = Array.isArray(structureDrafts?.sceneOrder)
+    ? structureDrafts.sceneOrder
+    : [];
+  const structureSceneOrder = Array.isArray(structureDrafts?.scenes)
+    ? structureDrafts.scenes.map((scene) => scene?.sceneId)
+    : [];
+  const candidateOrder = explicitSceneOrder.length ? explicitSceneOrder : structureSceneOrder;
+  const seenSceneIds = new Set();
+  const orderedSceneIds = [];
+
+  for (const candidate of candidateOrder) {
+    const sceneId = typeof candidate === "string" ? candidate.trim() : "";
+    if (!sceneId || seenSceneIds.has(sceneId)) {
+      continue;
+    }
+
+    seenSceneIds.add(sceneId);
+    orderedSceneIds.push(sceneId);
+  }
+
+  return orderedSceneIds;
+}
+
+// Intent: apply explicit structure order only when it is a real ordering overlay, not a lone draft metadata record.
+function orderSceneRecordsByStructureDrafts(scenes, structureDrafts = {}) {
+  const orderedSceneIds = getOrderedStructureSceneIds(structureDrafts);
+  if (!orderedSceneIds.length) {
+    return scenes;
+  }
+
+  const sceneById = new Map(
+    scenes
+      .filter((scene) => typeof scene?.sceneId === "string" && scene.sceneId.trim())
+      .map((scene) => [scene.sceneId, scene]),
+  );
+  const knownOrderedSceneIds = orderedSceneIds.filter((sceneId) => sceneById.has(sceneId));
+  const hasExplicitSceneOrder = Array.isArray(structureDrafts?.sceneOrder) && structureDrafts.sceneOrder.length > 0;
+  const hasCompleteStructureOrder = knownOrderedSceneIds.length >= sceneById.size;
+
+  if (!hasExplicitSceneOrder && !hasCompleteStructureOrder) {
+    return scenes;
+  }
+
+  const emittedSceneIds = new Set();
+  const orderedScenes = [];
+  for (const sceneId of knownOrderedSceneIds) {
+    const scene = sceneById.get(sceneId);
+    if (!scene || emittedSceneIds.has(sceneId)) {
+      continue;
+    }
+
+    emittedSceneIds.add(sceneId);
+    orderedScenes.push(scene);
+  }
+
+  for (const scene of scenes) {
+    if (!emittedSceneIds.has(scene.sceneId)) {
+      orderedScenes.push(scene);
+    }
+  }
+
+  return orderedScenes;
+}
+
 // Intent: derive scene records from canonical workspace lines plus draft structure without mutating the project.
 export function buildSceneRecords(workspace, sceneDrafts = {}, structureDrafts = {}) {
   const baseScenes = [];
@@ -264,7 +330,7 @@ export function buildSceneRecords(workspace, sceneDrafts = {}, structureDrafts =
       }))
     : [];
 
-  return [...baseScenes, ...draftScenes].map((scene) => {
+  const sceneRecords = [...baseScenes, ...draftScenes].map((scene) => {
     const draft = sceneDrafts?.[scene.sceneId];
     if (!draft) {
       return cloneValue(scene);
@@ -300,6 +366,8 @@ export function buildSceneRecords(workspace, sceneDrafts = {}, structureDrafts =
         : cloneValue(scene.blocks),
     };
   });
+
+  return orderSceneRecordsByStructureDrafts(sceneRecords, structureDrafts);
 }
 
 export function createSceneDraft(scene) {
@@ -324,6 +392,7 @@ export function createDraftBlock(kind, blockCount) {
 export function createStructureDrafts() {
   return {
     scenes: [],
+    sceneOrder: [],
   };
 }
 

@@ -76,8 +76,11 @@ async function loadSpellcheckWordsFromUrl(url, label) {
   return text.split(/\r?\n/).filter(Boolean);
 }
 
-export async function loadSpellcheckWordsFromUrls(sources = []) {
+export async function loadSpellcheckWordsFromUrls(sources = [], options = {}) {
   const sourceEntries = Array.isArray(sources) ? sources : [];
+  const onSourceLoadError = typeof options?.onSourceLoadError === "function"
+    ? options.onSourceLoadError
+    : console.warn;
   const settledSources = await Promise.allSettled(
     sourceEntries.map((source) => loadSpellcheckWordsFromUrl(
       source?.url,
@@ -95,7 +98,7 @@ export async function loadSpellcheckWordsFromUrls(sources = []) {
     }
 
     const label = String(sourceEntries[index]?.label ?? "spellcheck word list");
-    console.warn(`Unable to load ${label}`, sourceResult.reason);
+    onSourceLoadError(`Unable to load ${label}`, sourceResult.reason);
   }
 
   return words;

@@ -305,6 +305,10 @@ export async function runDesktopApplicationTest() {
   assert.match(appScript.body, /binderSceneMoveHistory/);
   assert.match(appScript.body, /undoBinderSceneMove\(\)/);
   assert.match(appScript.body, /redoBinderSceneMove\(\)/);
+  assert.match(appScript.body, /function isMovableScene\(scene\)/);
+  assert.match(appScript.body, /const canDragScene = isMovableScene\(scene\);/);
+  assert.match(appScript.body, /moveDraftBinderScene\(sceneId, dropTarget\)/);
+  assert.match(appScript.body, /sceneOrder: movableScenes\.map\(\(scene\) => scene\.sceneId\)/);
   assert.match(appScript.body, /captureSceneSelectionDefaultsForSave/);
   assert.match(appScript.body, /restoreSceneSelectionRange/);
   assert.match(appScript.body, /sceneSelectionStart/);
@@ -434,7 +438,9 @@ export async function runDesktopApplicationTest() {
   assert.match(writingGoalsStateServiceScript, /function getWritingTargetPreviousHistoryEntry\(record, now = new Date\(\)\)/);
   assert.doesNotMatch(appScript.body, /function shouldRebaseWritingTargetDailyBaseline/);
   assert.doesNotMatch(appScript.body, /return Math\.min\(baseline, normalizedCurrentWordCount\);/);
-  assert.match(writingGoalsStateServiceScript, /const dailyWords = Math\.max\(0, currentWordCount - dailyBaselineWordCount\);/);
+  assert.match(writingGoalsStateServiceScript, /const sessionWordsDelta = currentWordCount - syncedRecord\.sessionBaselineWordCount;/);
+  assert.match(writingGoalsStateServiceScript, /const dailyWords = currentWordCount - dailyBaselineWordCount;/);
+  assert.match(writingGoalsStateServiceScript, /leftLabel: formatDisplayNumber\(signedSessionWords\),/);
   assert.match(writingGoalsStateServiceScript, /activeProjectRecord\?\.projectIndex\?\.scenes/);
   assert.match(writingGoalsStateServiceScript, /const indexedWordCountValue = Number\(indexedScene\.wordCount\);/);
   assert.match(writingGoalsStateServiceScript, /const shouldTrustDraftWordCount = draftWordCount > 0 \|\| sceneId === state\.selectedSceneId \|\| indexedWordCount <= 0;/);

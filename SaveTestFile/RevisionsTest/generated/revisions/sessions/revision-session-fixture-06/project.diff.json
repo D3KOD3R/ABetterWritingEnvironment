@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-05-18T10:00:00.000Z",
+  "baselineHash": "h529841f4",
+  "finalHash": "h9a9b9d81",
+  "operations": [
+    {
+      "op": "replace",
+      "path": "manuscript.tasksById.source-comment-25f39d38-61ca-4214-b185-11f84d4f7e6e-6f381aa7-f335-4d2f-b541-86dc3352d347.hash",
+      "before": "hc649a7dc",
+      "after": "heed05e49"
+    },
+    {
+      "op": "replace",
+      "path": "manuscript.tasksById.source-comment-25f39d38-61ca-4214-b185-11f84d4f7e6e-6f381aa7-f335-4d2f-b541-86dc3352d347.title",
+      "before": "CONTINUITY INSTITUTION: Suggested canonical reading = CLEAR...",
+      "after": "CONTINUITY INSTITUTION: Suggested canonical reading = CLEAR... (local AI pass)"
+    }
+  ],
+  "changedEntities": [
+    {
+      "entityType": "manuscript_task",
+      "entityId": "source-comment-25f39d38-61ca-4214-b185-11f84d4f7e6e-6f381aa7-f335-4d2f-b541-86dc3352d347",
+      "title": "source-comment-25f39d38-61ca-4214-b185-11f84d4f7e6e-6f381aa7-f335-4d2f-b541-86dc3352d347",
+      "status": "changed"
+    }
+  ],
+  "sceneChanges": [],
+  "summary": {
+    "added": 0,
+    "removed": 0,
+    "changed": 2
+  }
+}

@@ -91,6 +91,7 @@ export function createRevisionPanelController() {
       categoryOptions: collectOptions(sessions, (session) => session.metadata.changeCategories),
       originOptions: collectOptions(sessions, (session) => session.metadata.origins),
       statusMessage: normalizeText(panelState.statusMessage, ""),
+      showFullDiff: panelState.showFullDiff === true,
     };
   }
 

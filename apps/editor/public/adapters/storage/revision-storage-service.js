@@ -117,9 +117,13 @@ function normalizeRevisionSession(candidate) {
   const checkpoints = Array.isArray(candidate.checkpoints)
     ? candidate.checkpoints.filter((item) => item && typeof item === "object").map(cloneValue)
     : [];
+  const baselineDigest = candidate.baselineDigest && typeof candidate.baselineDigest === "object" && !Array.isArray(candidate.baselineDigest)
+    ? cloneValue(candidate.baselineDigest)
+    : null;
 
   return {
     metadata,
+    baselineDigest,
     events,
     diff,
     changedEntities,
@@ -149,6 +153,7 @@ function createCorruptRevisionSession(reason) {
       origins: ["revision_storage"],
       writingSessionBoundaryKey: "",
     },
+    baselineDigest: null,
     events: [],
     diff: null,
     changedEntities: [],
@@ -163,6 +168,19 @@ export function createEmptyRevisionProjectState() {
     activeSessionId: "",
     sessions: [],
   };
+}
+
+export function hasPersistableRevisionProjectState(candidate) {
+  const revisionState = normalizeRevisionProjectState(candidate);
+  return Boolean(
+    revisionState.activeSessionId ||
+    revisionState.sessions.length > 0,
+  );
+}
+
+export function getPersistableRevisionProjectState(candidate) {
+  const revisionState = normalizeRevisionProjectState(candidate);
+  return hasPersistableRevisionProjectState(revisionState) ? revisionState : undefined;
 }
 
 export function normalizeRevisionProjectState(candidate) {

@@ -14,6 +14,8 @@ import { runProjectPersistenceServiceTest } from "./project-persistence-service.
 import { runProjectServiceStorageTest } from "./project-service-storage.test.mjs";
 import { runProjectSourceTest } from "./project-source.test.mjs";
 import { runRuntimePortabilityGuardrailsTest } from "./runtime-portability-guardrails.test.mjs";
+import { runRevisionPanelTest } from "./revision-panel.test.mjs";
+import { runRevisionStorageTest } from "./revision-storage.test.mjs";
 import { runSpellcheckTest } from "./spellcheck.test.mjs";
 import { runVoiceNarrationFoundationTest } from "./voice-narration-foundation.test.mjs";
 import { runVoiceServiceTest } from "./voice-service.test.mjs";
@@ -80,6 +82,14 @@ const tests = [
   {
     name: "runtime portability guardrails keep browser-only APIs inside adapters",
     run: runRuntimePortabilityGuardrailsTest,
+  },
+  {
+    name: "revision panel banks reloadable writing sessions",
+    run: runRevisionPanelTest,
+  },
+  {
+    name: "revision storage normalizes empty, legacy, and aggregated revision state",
+    run: runRevisionStorageTest,
   },
   {
     name: "spellcheck utilities extract words and propose alternatives",
