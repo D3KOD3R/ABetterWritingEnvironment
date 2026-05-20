@@ -7,7 +7,7 @@
       "title": "OriginFileproject-serva-vitae",
       "source": "project-file",
       "createdAt": "2026-04-21T05:00:00.000Z",
-      "updatedAt": "2026-05-20T08:53:02.488Z",
+      "updatedAt": "2026-05-20T08:56:12.213Z",
       "workspace": {
         "generatedAt": "2026-04-21T05:00:00.000Z",
         "workspaceTitle": "OriginFileproject-serva-vitae",
@@ -16638,9 +16638,9 @@
           "nodeId": "source-node-9272d563-8210-4bdd-8900-493d323c503d",
           "entityId": "source-entity-9c2d8a8c-6334-4ed3-8c21-0ec770d78ff6",
           "sceneSelectionBlockId": "",
-          "sceneSelectionLineNumber": 3149,
-          "sceneSelectionStart": 0,
-          "sceneSelectionEnd": 0,
+          "sceneSelectionLineNumber": 3151,
+          "sceneSelectionStart": 67,
+          "sceneSelectionEnd": 67,
           "sceneSelectionScrollTop": 0,
           "sceneSelectionScrollLeft": 0,
           "inlinePassageDraft": null
@@ -19043,8 +19043,87 @@
           "chapterTitle": "Untitled Chapter",
           "sceneTitle": "Untitled Scene",
           "sceneSynopsis": "",
-          "editorText": "",
-          "blocks": []
+          "editorText": "OriginFileproject-serva-vitae.abe-project.json\n\nREvison test level \n",
+          "blocks": [],
+          "revisionStats": {
+            "editCount": 26,
+            "lastEditedAt": "2026-05-20T08:56:06.992Z",
+            "lastChangeSummary": "Inserted 1 chars",
+            "history": [
+              {
+                "id": "revision-1779267366992-b97sv0",
+                "createdAt": "2026-05-20T08:56:06.992Z",
+                "updatedAt": "2026-05-20T08:56:06.992Z",
+                "summary": "Inserted 1 chars",
+                "previousLength": 67,
+                "nextLength": 68,
+                "deltaCharacters": 1
+              },
+              {
+                "id": "revision-1779267366855-rs7grq",
+                "createdAt": "2026-05-20T08:56:06.855Z",
+                "updatedAt": "2026-05-20T08:56:06.855Z",
+                "summary": "Inserted 1 chars",
+                "previousLength": 66,
+                "nextLength": 67,
+                "deltaCharacters": 1
+              },
+              {
+                "id": "revision-1779267366704-05s3r2",
+                "createdAt": "2026-05-20T08:56:06.704Z",
+                "updatedAt": "2026-05-20T08:56:06.704Z",
+                "summary": "Inserted 1 chars",
+                "previousLength": 65,
+                "nextLength": 66,
+                "deltaCharacters": 1
+              },
+              {
+                "id": "revision-1779267366583-knqk4m",
+                "createdAt": "2026-05-20T08:56:06.583Z",
+                "updatedAt": "2026-05-20T08:56:06.583Z",
+                "summary": "Inserted 1 chars",
+                "previousLength": 64,
+                "nextLength": 65,
+                "deltaCharacters": 1
+              },
+              {
+                "id": "revision-1779267366371-rtquvd",
+                "createdAt": "2026-05-20T08:56:06.371Z",
+                "updatedAt": "2026-05-20T08:56:06.371Z",
+                "summary": "Inserted 1 chars",
+                "previousLength": 63,
+                "nextLength": 64,
+                "deltaCharacters": 1
+              },
+              {
+                "id": "revision-1779267366248-uz8o4h",
+                "createdAt": "2026-05-20T08:56:06.248Z",
+                "updatedAt": "2026-05-20T08:56:06.248Z",
+                "summary": "Inserted 1 chars",
+                "previousLength": 62,
+                "nextLength": 63,
+                "deltaCharacters": 1
+              },
+              {
+                "id": "revision-1779267366004-hgyjog",
+                "createdAt": "2026-05-20T08:56:06.004Z",
+                "updatedAt": "2026-05-20T08:56:06.004Z",
+                "summary": "Removed 1 chars",
+                "previousLength": 63,
+                "nextLength": 62,
+                "deltaCharacters": -1
+              },
+              {
+                "id": "revision-1779267365555-1kpneg",
+                "createdAt": "2026-05-20T08:56:05.555Z",
+                "updatedAt": "2026-05-20T08:56:05.555Z",
+                "summary": "Inserted 1 chars",
+                "previousLength": 62,
+                "nextLength": 63,
+                "deltaCharacters": 1
+              }
+            ]
+          }
         }
       },
       "structureDrafts": {
@@ -20824,7 +20903,7 @@
           "dailyBaselineWordCount": 72458,
           "sessionIsActive": true,
           "sessionStartedAt": "2026-05-20T08:50:26.603Z",
-          "sessionLastActiveAt": "2026-05-20T08:52:29.301Z",
+          "sessionLastActiveAt": "2026-05-20T08:56:07.867Z",
           "sessionConcludedAt": "",
           "sessionConcludedReason": "",
           "sessionSamples": [
@@ -20870,6 +20949,22 @@
             },
             {
               "capturedAt": "2026-05-20T08:52:29.301Z",
+              "wordCount": 72440
+            },
+            {
+              "capturedAt": "2026-05-20T08:55:56.411Z",
+              "wordCount": 72437
+            },
+            {
+              "capturedAt": "2026-05-20T08:55:57.963Z",
+              "wordCount": 72436
+            },
+            {
+              "capturedAt": "2026-05-20T08:56:01.345Z",
+              "wordCount": 72437
+            },
+            {
+              "capturedAt": "2026-05-20T08:56:07.867Z",
               "wordCount": 72440
             }
           ],
@@ -21712,20 +21807,20 @@
             },
             {
               "date": "2026-05-20",
-              "wordCount": 72436,
-              "wordDelta": -22,
-              "capturedAt": "2026-05-20T08:53:02.422Z",
+              "wordCount": 72440,
+              "wordDelta": -18,
+              "capturedAt": "2026-05-20T08:56:12.131Z",
               "chapterId": "chapter-0004",
               "chapterTitle": "Chapter 4: Oasis",
               "sceneId": "draft-scene-1779267177275",
               "sceneTitle": "Untitled Scene",
-              "passageExcerpt": "",
+              "passageExcerpt": "OriginFileproject-serva-vitae.abe-project.json REvison test level",
               "issueCount": 0,
               "inspirationCount": 0,
               "noteText": ""
             }
           ],
-          "updatedAt": "2026-05-20T08:53:02.422Z"
+          "updatedAt": "2026-05-20T08:56:12.131Z"
         },
         "writingTargetViewMode": "month",
         "writingTargetSelectedDateKey": "2026-05-20",
@@ -23142,6 +23237,36 @@
                 },
                 "occurrenceCount": 71,
                 "metadata": {}
+              },
+              {
+                "id": "revision-event-1779267355502-j6hjzz",
+                "timestamp": "2026-05-20T08:55:55.502Z",
+                "updatedAt": "2026-05-20T08:56:06.991Z",
+                "sessionId": "revision-session-1779255028175-y678kw",
+                "eventType": "manuscript_edit",
+                "origin": "manual_editor",
+                "sourceService": "scene-editor",
+                "entityType": "scene",
+                "entityId": "draft-scene-1779267177275",
+                "description": "Inserted 1 chars",
+                "changeCategory": "manuscript",
+                "mode": "typing",
+                "beforeSummary": {
+                  "title": "Untitled Scene",
+                  "chapterId": "chapter-0004",
+                  "chapterTitle": "Chapter 4: Oasis",
+                  "wordCount": 0,
+                  "charCount": 0
+                },
+                "afterSummary": {
+                  "title": "Untitled Scene",
+                  "chapterId": "chapter-0004",
+                  "chapterTitle": "Chapter 4: Oasis",
+                  "wordCount": 4,
+                  "charCount": 68
+                },
+                "occurrenceCount": 26,
+                "metadata": {}
               }
             ],
             "diff": null,
@@ -23157,7 +23282,7 @@
         "projectId": "OriginFileproject-serva-vitae",
         "projectTitle": "OriginFileproject-serva-vitae",
         "createdAt": "2026-04-21T05:00:00.000Z",
-        "updatedAt": "2026-05-20T08:53:02.488Z",
+        "updatedAt": "2026-05-20T08:56:12.213Z",
         "chapters": [
           {
             "id": "chapter-0001",
@@ -23223,7 +23348,7 @@
               "draft-scene-1779267177275"
             ],
             "lineCount": 131,
-            "wordCount": 9574
+            "wordCount": 9578
           }
         ],
         "scenes": [
@@ -23523,7 +23648,7 @@
             "chapterId": "chapter-0004",
             "order": 30,
             "lineCount": 0,
-            "wordCount": 0,
+            "wordCount": 4,
             "synopsis": "",
             "assetIds": []
           }
@@ -32422,8 +32547,87 @@
         "chapterTitle": "Untitled Chapter",
         "sceneTitle": "Untitled Scene",
         "sceneSynopsis": "",
-        "editorText": "",
-        "blocks": []
+        "editorText": "OriginFileproject-serva-vitae.abe-project.json\n\nREvison test level \n",
+        "blocks": [],
+        "revisionStats": {
+          "editCount": 26,
+          "lastEditedAt": "2026-05-20T08:56:06.992Z",
+          "lastChangeSummary": "Inserted 1 chars",
+          "history": [
+            {
+              "id": "revision-1779267366992-b97sv0",
+              "createdAt": "2026-05-20T08:56:06.992Z",
+              "updatedAt": "2026-05-20T08:56:06.992Z",
+              "summary": "Inserted 1 chars",
+              "previousLength": 67,
+              "nextLength": 68,
+              "deltaCharacters": 1
+            },
+            {
+              "id": "revision-1779267366855-rs7grq",
+              "createdAt": "2026-05-20T08:56:06.855Z",
+              "updatedAt": "2026-05-20T08:56:06.855Z",
+              "summary": "Inserted 1 chars",
+              "previousLength": 66,
+              "nextLength": 67,
+              "deltaCharacters": 1
+            },
+            {
+              "id": "revision-1779267366704-05s3r2",
+              "createdAt": "2026-05-20T08:56:06.704Z",
+              "updatedAt": "2026-05-20T08:56:06.704Z",
+              "summary": "Inserted 1 chars",
+              "previousLength": 65,
+              "nextLength": 66,
+              "deltaCharacters": 1
+            },
+            {
+              "id": "revision-1779267366583-knqk4m",
+              "createdAt": "2026-05-20T08:56:06.583Z",
+              "updatedAt": "2026-05-20T08:56:06.583Z",
+              "summary": "Inserted 1 chars",
+              "previousLength": 64,
+              "nextLength": 65,
+              "deltaCharacters": 1
+            },
+            {
+              "id": "revision-1779267366371-rtquvd",
+              "createdAt": "2026-05-20T08:56:06.371Z",
+              "updatedAt": "2026-05-20T08:56:06.371Z",
+              "summary": "Inserted 1 chars",
+              "previousLength": 63,
+              "nextLength": 64,
+              "deltaCharacters": 1
+            },
+            {
+              "id": "revision-1779267366248-uz8o4h",
+              "createdAt": "2026-05-20T08:56:06.248Z",
+              "updatedAt": "2026-05-20T08:56:06.248Z",
+              "summary": "Inserted 1 chars",
+              "previousLength": 62,
+              "nextLength": 63,
+              "deltaCharacters": 1
+            },
+            {
+              "id": "revision-1779267366004-hgyjog",
+              "createdAt": "2026-05-20T08:56:06.004Z",
+              "updatedAt": "2026-05-20T08:56:06.004Z",
+              "summary": "Removed 1 chars",
+              "previousLength": 63,
+              "nextLength": 62,
+              "deltaCharacters": -1
+            },
+            {
+              "id": "revision-1779267365555-1kpneg",
+              "createdAt": "2026-05-20T08:56:05.555Z",
+              "updatedAt": "2026-05-20T08:56:05.555Z",
+              "summary": "Inserted 1 chars",
+              "previousLength": 62,
+              "nextLength": 63,
+              "deltaCharacters": 1
+            }
+          ]
+        }
       }
     }
   }
