@@ -8,10 +8,10 @@
 
 - rendering binder navigation and the editable scene viewport
 - deriving IDE-style visual line gutters from editor width preferences for the active scene
-- managing local scene draft state and editor presentation preferences inside the UI shell
-- exposing binder-side local draft creation for chapters and scenes
-- exposing world-side local draft creation for templates
-- composing local anchored task, inspiration, and research note interactions in the scene editor
+- managing scene editing interactions and transient editor presentation preferences inside the UI shell
+- exposing binder-side chapter and scene creation commands that commit through the project persistence boundary
+- exposing world-side template editing interactions while preserving structured world ownership
+- composing anchored task, inspiration, and research note interactions in the scene editor
 - presenting issue console and event pin data
 - visualizing world spine lanes, nodes, and cross-spine edges
 - presenting narration follow state
@@ -23,26 +23,30 @@
 - `apps/editor` does not create manuscript or world invariants on its own.
 - `apps/editor` does not host the runtime or local settings layer.
 - The browser UI consumes a serialized workspace snapshot from `apps/desktop`.
-- Selection, local draft edits, and editor preferences stay in the UI; diagnostics, narration state, and voice jobs remain service-owned data.
-- Browser-local drafts are advisory editing state until a later persistence layer writes accepted scene changes back through canonical manuscript workflows.
-- The file menu can round-trip the current saved-project library to a local JSON project file through the desktop host, but the browser UI does not own the file I/O itself.
-- Draft chapters, scenes, and templates are local overlays until a persistence path is added through canonical packages and services.
+- Cursor, active selection, open panels, scroll position, and render-only decorations stay in UI state; durable scene edits, tasks, notes, and current formatting compatibility ranges belong to project data.
+- The active `.abe-project.json` snapshot is current durable project truth for the browser/desktop prototype and all save, load, autosave, import, and export workflows route through `ProjectPersistenceService`.
+- Browser cache is a disposable compatibility layer. Loading a project snapshot must replace stale cached author data rather than merge old scene content, tasks, notes, revisions, or metrics into the loaded record.
+- Author formatting currently persists as scene-record `inlineFormatRanges` only as a compatibility representation; it must converge on canonical anchor-backed manuscript marks rather than an editor-owned decorations collection.
+- Tasks and passage notes are durable anchored author records. Their visible highlights are projections, not storage records.
 - Diagnostics are overlays on scene documents. They reference scene-local line positions derived from canonical anchors; they do not define editor segmentation or create manuscript structure.
 
 ## Current Flow
 
 1. `apps/desktop` composes canonical manuscript and world data with analysis, audio, and voice services.
 2. The desktop host serializes that composition into shared workspace DTOs.
-3. The browser fetches `/api/workspace`, derives scene records, overlays any browser-local draft edits, and computes width-driven visual line gutters for the active scene viewport.
-4. Diagnostics remain anchored to the scene document and resolve to scene-local line references in the UI instead of driving manuscript structure.
-5. The narration follow pane centers the current reading line and keeps the voice rail beside it, but the UI still only renders the state that the audio and voice services own.
-6. User selections, scene text edits, typography preferences, and draft structure/template additions stay in UI state and never rewrite canonical data implicitly.
+3. The browser fetches `/api/workspace`, activates the current project record, hydrates scene content through the persistence boundary, and computes width-driven visual line gutters for the active scene viewport.
+4. User manuscript commands mutate the active scene/project record, mark relevant persistence domains dirty, and are committed through `ProjectPersistenceService` to cache and the configured project-file destination.
+5. Tasks, notes, formatting compatibility ranges, diagnostics, AI proposals, search state, and narration follow state are converted into distinct visual channels for the active scene; runtime-only channels are discarded and rebuilt rather than stored as project truth.
+6. Diagnostics remain anchored to manuscript content and resolve to scene-local line references in the UI instead of driving manuscript structure.
+7. The narration follow pane centers the current reading line and keeps the voice rail beside it, but the UI only projects the session/alignment state owned by audio and voice services.
 
 ## Anchored Author Notes
 
 Tasks, inspiration notes, and research notes are documented in [Anchored Editor Notes](./anchored-editor-notes.md). Tasks save with selected manuscript text as recovery evidence, but they behave as location-first markers that should return the user to the same manuscript area even if the selected text changes. Inspiration and research use a draft-only blue inline bubble first; the note is not persisted until the user types the related verse in the bubble's normal manuscript field and explicitly saves the note against the inserted typed range.
 
-Project save-file requirements are tracked in [Project Save Model](./project-save-model.md). The save path must treat source-linked comments as tasks, preserve manuscript/worldbuilding provenance, and support media-aware research cards before a loaded project can fully replace the seeded demo workspace.
+Project save-file requirements are tracked in [Project Save Model](./project-save-model.md). The save path treats source-linked comments as tasks, preserves manuscript/worldbuilding provenance, and must keep loaded project data isolated from stale browser cache.
+
+Author marks, anchored author records, AI proposals, and transient rendering are distinguished in [Manuscript Marks And Decoration Projection Layer](./manuscript-decoration-layer.md). The corresponding component, sequence, and conceptual-domain views are maintained in [Editor Boundary Diagrams](./editor-boundary-diagrams.md).
 
 ## Refactor Roadmap
 

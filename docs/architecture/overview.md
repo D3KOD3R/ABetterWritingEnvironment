@@ -59,6 +59,10 @@ The center scene-editor surface now lives in `apps/editor/public/features/scene-
 
 Project file save/load/autosave behavior is now consolidated under `ProjectPersistenceService` so editor UI workflows do not directly call browser file APIs or desktop file endpoints.
 
+Manuscript styling and highlighted workflow state follow the boundary in [Manuscript Marks And Decoration Projection Layer](./manuscript-decoration-layer.md): durable author marks and anchored records belong to project data, while editor decorations are rebuilt projections suitable for a future editor-host adapter and local-AI suggestion surface.
+
+The current-to-target dependency direction, durable edit path, conceptual project relationships, and suggestion/projection lifecycle are shown in [Editor Boundary Diagrams](./editor-boundary-diagrams.md).
+
 That separation is the key correction from the earlier bootstrap. The editor renders author workflows, while the desktop host owns composition and runtime lifecycle.
 
 ## Parallel Worktree Topology

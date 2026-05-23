@@ -210,6 +210,10 @@ export async function runDesktopApplicationTest() {
     path.join(repoRoot, "apps/editor/public/features/writing-targets/writing-target-window.js"),
     "utf8",
   );
+  const revisionWindowScript = readFileSync(
+    path.join(repoRoot, "apps/editor/public/features/revisions/revision-window.js"),
+    "utf8",
+  );
   const writingGoalsServiceScript = readFileSync(
     path.join(repoRoot, "apps/editor/public/features/writing-targets/writing-goals-service.js"),
     "utf8",
@@ -373,7 +377,15 @@ export async function runDesktopApplicationTest() {
   assert.match(appScript.body, /task-body/);
   assert.match(appScript.body, /task-reference/);
   assert.match(appScript.body, /task-title-input/);
+  assert.match(appScript.body, /function persistManuscriptTasksState\(options = \{\}\)/);
+  assert.match(appScript.body, /domain: "manuscript-tasks"/);
+  assert.doesNotMatch(appScript.body, /writeStoredJson\(EDITOR_TASKS_KEY/);
+  assert.match(appScript.body, /return "Imported task";/);
+  assert.match(appScript.body, /return "Imported note";/);
   assert.match(appScript.body, /passage-note-title-input/);
+  assert.match(appScript.body, /function persistPassageNotesState\(options = \{\}\)/);
+  assert.match(appScript.body, /domain: "passage-notes"/);
+  assert.doesNotMatch(appScript.body, /writeStoredJson\(EDITOR_PASSAGE_NOTES_KEY/);
   assert.match(shellScript, /Local AI/);
   assert.match(appScript.body, /suggest-scene-title/);
   assert.match(appScript.body, /api\/local-ai\/generate-title/);
@@ -403,11 +415,24 @@ export async function runDesktopApplicationTest() {
   assert.match(appScript.body, /function deleteChapterFromBinder\(chapterId\) \{[\s\S]*?const chapterScenes = getScenesForChapter\(chapterId\);/);
   assert.match(appScript.body, /binder-nav-action-short/);
   assert.match(appScript.body, /toggle-writing-target-window/);
+  assert.match(appScript.body, /toggle-revision-window/);
+  assert.match(appScript.body, /renderRevisionWindow/);
+  assert.match(appScript.body, /revision-window-slot/);
+  assert.doesNotMatch(appScript.body, /renderSidePanelTab\("revisions"/);
+  assert.doesNotMatch(appScript.body, /state\.sidePanelMode === "revisions"/);
+  assert.doesNotMatch(appScript.body, /revision-panel-view\.js/);
+  assert.match(shellScript, /toggle-revision-window/);
   assert.match(writingTargetWindowScript, /renderWritingTargetWindowHTML/);
   assert.match(writingTargetWindowScript, /writing-target-window/);
   assert.match(writingTargetWindowScript, /data-action="close-writing-target-window"/);
   assert.match(writingTargetWindowScript, /Writing Goals/);
   assert.match(writingTargetWindowScript, /writing-target-window-copy/);
+  assert.match(revisionWindowScript, /renderRevisionWindowHTML/);
+  assert.match(revisionWindowScript, /revision-window-compare-table/);
+  assert.match(revisionWindowScript, /data-action="close-revision-window"/);
+  assert.match(revisionWindowScript, /Changed files/);
+  assert.match(revisionWindowScript, /Before/);
+  assert.match(revisionWindowScript, /After/);
   assert.doesNotMatch(appScript.body, /renderStat\("Words", getCurrentManuscriptWordCount\(\), "words"\)/);
   assert.doesNotMatch(appScript.body, /renderStat\("Issues", workspace\.project\.stats\.issueCount, "issues"\)/);
   assert.doesNotMatch(appScript.body, /renderStat\("Events", workspace\.project\.stats\.eventCount, "events"\)/);

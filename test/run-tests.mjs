@@ -8,13 +8,15 @@ import { runEditorModelTest } from "./editor-model.test.mjs";
 import { runLocalAiRouterContractTest } from "./local-ai-router.test.mjs";
 import { runLocalAiServiceTest } from "./local-ai-service.test.mjs";
 import { runManuscriptSchemaTest } from "./manuscript-schema.test.mjs";
+import { runManuscriptCommandControllerTest } from "./manuscript-command-controller.test.mjs";
 import { runProjectFileStorageAdaptersTest } from "./project-file-storage-adapters.test.mjs";
+import { runProgressTrackerTest } from "./progress-tracker.test.mjs";
 import { runProjectRefreshPersistenceTest } from "./project-refresh-persistence.test.mjs";
 import { runProjectPersistenceServiceTest } from "./project-persistence-service.test.mjs";
 import { runProjectServiceStorageTest } from "./project-service-storage.test.mjs";
 import { runProjectSourceTest } from "./project-source.test.mjs";
 import { runRuntimePortabilityGuardrailsTest } from "./runtime-portability-guardrails.test.mjs";
-import { runRevisionPanelTest } from "./revision-panel.test.mjs";
+import { runRevisionWindowTest } from "./revision-panel.test.mjs";
 import { runRevisionStorageTest } from "./revision-storage.test.mjs";
 import { runSpellcheckTest } from "./spellcheck.test.mjs";
 import { runVoiceNarrationFoundationTest } from "./voice-narration-foundation.test.mjs";
@@ -60,8 +62,16 @@ const tests = [
     run: runManuscriptSchemaTest,
   },
   {
+    name: "manuscript command controller scopes inline formatting to selections and carets",
+    run: runManuscriptCommandControllerTest,
+  },
+  {
     name: "project file storage adapters isolate save paths and autosave state",
     run: runProjectFileStorageAdaptersTest,
+  },
+  {
+    name: "progress tracker hides inactive session carryover",
+    run: runProgressTrackerTest,
   },
   {
     name: "project refresh persistence keeps autosaved editor text after refresh",
@@ -84,8 +94,8 @@ const tests = [
     run: runRuntimePortabilityGuardrailsTest,
   },
   {
-    name: "revision panel banks reloadable writing sessions",
-    run: runRevisionPanelTest,
+    name: "revision window banks reloadable writing sessions",
+    run: runRevisionWindowTest,
   },
   {
     name: "revision storage normalizes empty, legacy, and aggregated revision state",

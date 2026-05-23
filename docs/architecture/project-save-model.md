@@ -2,12 +2,12 @@
 
 ## Canonical Save Package
 
-The application now treats the chunked project package as canonical storage:
+The browser/desktop-prototype workflow currently treats the `.abe-project.json` snapshot routed through `ProjectPersistenceService` as durable project truth. Internally, that JSON uses a chunk-aware shape:
 
-- `project.json` manifest
-- per-scene files under `manuscript/scenes/`
+- project manifest records in `projects[]`
+- scene content carried separately in `sceneStore`
 
-Legacy single-file `*.abe-project.json` payloads are supported as migration input only.
+A future desktop storage adapter may materialize that same boundary as `project.json` plus per-scene files under `manuscript/scenes/`, or another local storage backend. This is a transport migration, not permission for feature code to bypass `ProjectPersistenceService`.
 
 ## Manifest Shape
 
@@ -34,7 +34,7 @@ Each manifest project record preserves:
 
 ## Scene Chunks
 
-Scene bodies are stored separately as one file per scene. Manifest records keep scene order and scene-file references.
+Scene bodies are logically stored separately from manifest records. In the current JSON export/load flow they travel in `sceneStore`; a desktop folder-backed adapter may later store each scene as its own file. Manifest records keep scene order and scene-file references.
 
 Manifest `projectIndex.scenes[]` also stores last-known per-scene metrics such as `wordCount` so writing-target dashboards can bootstrap from the master file before lazy-loading scene bodies.
 
@@ -68,7 +68,7 @@ Source archive entries and project-media records point to app-owned asset locati
 
 ## Load and Save Flow
 
-The desktop host loads a project package directory, reads `project.json` first, then resolves scene files separately. The editor loads manifest/index state first and reads scene content on demand. Saving a scene writes that scene chunk instead of rewriting one monolithic manuscript blob.
+The current host loads or saves a project snapshot through `ProjectPersistenceService`, which hydrates manifest/index state and scene content without merging stale browser project data into a newly loaded file. When folder-backed desktop storage is introduced, the host can load `project.json` first and resolve scene files separately while preserving the same service contract.
 
 ## ProjectPersistenceService Boundary
 
@@ -85,4 +85,4 @@ UI and feature modules should call service methods (for example `saveProjectSnap
 
 ## Review Boundary
 
-Any future migration from older project shapes should be handled as an explicit normalization step before data reaches the editor shell. Single-file `.abe-project.json` is legacy import data, not the active write target.
+Any future migration between snapshot and folder-backed project shapes must be an explicit normalization step before data reaches the editor shell. The current `.abe-project.json` flow remains the active durable write target until a desktop storage migration is implemented and tested.

@@ -16,6 +16,10 @@ import {
   preserveSpellcheckWordCase,
   suggestSpellcheckAlternatives,
 } from "../apps/editor/public/spellcheck.js";
+import {
+  resolveLiveSpellcheckWordRange,
+  validateLiveSpellcheckMenuRange,
+} from "../apps/editor/public/features/manuscript-editor/spellcheck-range-guard.js";
 
 export async function runSpellcheckTest() {
   const baseLexicon = createSpellcheckLexiconFromWords([
@@ -66,6 +70,15 @@ export async function runSpellcheckTest() {
   assert.equal(wordRange.word, "parrallel");
   assert.equal(wordRange.startOffset, "The crew saw ".length);
   assert.equal(wordRange.endOffset, "The crew saw parrallel".length);
+  const stalePrefixRange = resolveLiveSpellcheckWordRange("Icarus", 0, 5);
+  assert.ok(stalePrefixRange);
+  assert.equal(stalePrefixRange.word, "Icarus");
+  assert.equal(stalePrefixRange.startOffset, 0);
+  assert.equal(stalePrefixRange.endOffset, "Icarus".length);
+  assert.equal(
+    resolveLiveSpellcheckWordRange("Icarus", 0, 5, { expectedWord: "Icaru" }),
+    null,
+  );
 
   assert.equal(isSpellcheckKnownWord("Serva", { baseLexicon, projectLexicon }), true);
   assert.equal(isSpellcheckKnownWord("when", { baseLexicon, referenceLexicon, projectLexicon }), true);
@@ -98,6 +111,21 @@ export async function runSpellcheckTest() {
   assert.equal(isSpellcheckMisspelledWord("crushed", { baseLexicon: auditLexicon, referenceLexicon: auditLexicon, projectLexicon }), false);
   assert.equal(isSpellcheckMisspelledWord("silhouette", { baseLexicon: auditLexicon, referenceLexicon: auditLexicon, projectLexicon }), false);
   assert.equal(isSpellcheckMisspelledWord("rifle", { baseLexicon: auditLexicon, referenceLexicon: auditLexicon, projectLexicon }), false);
+  assert.equal(
+    validateLiveSpellcheckMenuRange("Icarus", { word: "Icaru", startOffset: 0, endOffset: 5 }, {
+      baseLexicon: auditLexicon,
+      referenceLexicon: auditLexicon,
+      projectLexicon,
+    }),
+    null,
+  );
+  const liveMisspelledRange = validateLiveSpellcheckMenuRange("Icaru", { word: "Icaru", startOffset: 0, endOffset: 5 }, {
+    baseLexicon: auditLexicon,
+    referenceLexicon: auditLexicon,
+    projectLexicon,
+  });
+  assert.ok(liveMisspelledRange);
+  assert.equal(liveMisspelledRange.word, "Icaru");
 
   assert.ok(
     suggestSpellcheckAlternatives("Wehn", { baseLexicon: auditLexicon, projectLexicon }).includes("When"),

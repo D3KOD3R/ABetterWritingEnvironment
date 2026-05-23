@@ -2,15 +2,18 @@
 
 ## Purpose
 
-The editor can attach author-created tasks, inspiration notes, and research notes to manuscript locations. These records are local browser-side authoring overlays today; they preserve scene, chapter, text excerpt, offsets, and location evidence so later canonical persistence can promote them into repository-owned manuscript anchors.
+The editor can attach author-created tasks, inspiration notes, and research notes to manuscript locations. These are durable author records carried through the project snapshot and `ProjectPersistenceService`; they preserve scene, chapter, text excerpt, offsets, and location evidence while the schema evolves toward canonical `ManuscriptAnchor` records.
+
+Visual highlighting for these records is a derived editor projection. It must remain separate from durable author formatting marks and ephemeral visuals such as spellcheck or hover state. See `docs/architecture/manuscript-decoration-layer.md` for the integration boundary.
 
 Tasks and passage notes have different anchoring intent. Tasks are location-first markers: they should take the user back to roughly the same part of the manuscript where work was identified, even if the originally selected text has been edited or deleted. Inspiration and research notes are passage-first records: they should stay attached to the specific verse or text range that the note explains or supports whenever that range can still be recovered.
 
-## Storage Keys
+## Storage Boundary
 
-- Tasks are saved in `localStorage` under `abe-manuscript-tasks-v1`.
-- Inspiration and research notes are saved in `localStorage` under `abe-passage-notes-v1`.
-- Scene draft text is saved separately under `abe-scene-drafts-v1`.
+- Tasks are stored in the active project record as `manuscriptTasks` and committed through `ProjectPersistenceService`.
+- Inspiration and research notes are stored in the active project record as `passageNotes` and committed through `ProjectPersistenceService`.
+- Scene draft text and current author-formatting compatibility data are persisted in scene records within the project snapshot/scene store.
+- Legacy browser keys may be read during compatibility migration, but feature interactions must not write project truth directly to browser storage.
 
 ## Task Flow
 
@@ -18,7 +21,7 @@ Tasks and passage notes have different anchoring intent. Tasks are location-firs
 2. `getEditorContextFromEvent` resolves the selected text and start/end offsets from the active scene textarea.
 3. `openTaskComposerFromContextMenu` opens the task composer.
 4. `saveTaskFromComposer` calls `createManuscriptTask` with the scene, selected text, offsets, task body, and next scene task number.
-5. The task is appended to `state.manuscriptTasks` and persisted to `abe-manuscript-tasks-v1`.
+5. The task is appended to `state.manuscriptTasks` and committed to the current project snapshot through `ProjectPersistenceService`.
 6. Navigation and hover previews call `resolveManuscriptTaskRange` so a task can recover its anchor if nearby text shifts.
 
 Tasks should behave like floating issue markers around the place where the user first opened the task. The selected text is evidence for recovery and highlighting, not the only durable identity of the task. Future task records should store enough location evidence to return the user to the same working area:
@@ -57,8 +60,8 @@ Task navigation should resolve in this order:
 7. The top of the bubble prompts the user to save the note against that typed verse.
 8. `commitInlinePassageNote` refuses to save until both the note body and a non-empty verse exist.
 9. On save, `insertInlinePassageVerse` inserts the verse into the scene textarea at the original right-click offset for blank-space drafts, or anchors to the existing selected range for seeded-selection drafts.
-10. If the user edits a seeded-selection verse before saving, `insertInlinePassageVerse` replaces the original selected range with the edited verse and updates `abe-scene-drafts-v1`.
-11. `createPassageNote` receives the final verse excerpt plus its offsets, then the note is persisted to `abe-passage-notes-v1`.
+10. If the user edits a seeded-selection verse before saving, `insertInlinePassageVerse` replaces the original selected range with the edited verse and commits the updated scene record through the project persistence boundary.
+11. `createPassageNote` receives the final verse excerpt plus its offsets, then the note is committed as `passageNotes` data in the active project snapshot.
 12. The right panel lists the note under Inspiration or Research, and selecting it uses `resolveManuscriptTaskRange` to recover and highlight the stored manuscript range.
 13. When the Inspiration or Research panel is open, clicking inside a saved note's manuscript range in the scene editor resolves the passage back to the saved note, selects that note in the side panel, and scrolls the note item into view.
 14. Inspiration note highlights use the same blue family as the inline inspiration bubble. Issue and task previews remain orange so issue-console diagnostics are visually distinct from author inspiration notes.

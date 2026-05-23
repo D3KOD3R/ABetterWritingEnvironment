@@ -1,4 +1,4 @@
-// Intent: verify the revision panel can render a seeded, file-backed revision package end to end.
+// Intent: verify the revisions window can render a seeded, file-backed revision package end to end.
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
@@ -8,10 +8,10 @@ import { fileURLToPath } from "node:url";
 
 import { createRevisionStorageService } from "../apps/editor/public/adapters/storage/revision-storage-service.js";
 import { createRevisionPanelController } from "../apps/editor/public/features/revisions/revision-panel-controller.js";
-import { renderRevisionPanelHTML } from "../apps/editor/public/features/revisions/revision-panel-view.js";
+import { renderRevisionWindowHTML } from "../apps/editor/public/features/revisions/revision-window.js";
 import { createRevisionPanelFixture, getDefaultRevisionFixtureSourcePath } from "./revision-panel-fixture.mjs";
 
-export async function runRevisionPanelTest() {
+export async function runRevisionWindowTest() {
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
   const scriptPath = path.join(repoRoot, "scripts", "seed-revision-panel-fixture.mjs");
   const sourcePath = getDefaultRevisionFixtureSourcePath();
@@ -106,15 +106,15 @@ export async function runRevisionPanelTest() {
     assert.equal(filteredModel.query, "fixture");
     assert.equal(filteredModel.showFullDiff, true);
 
-    const html = renderRevisionPanelHTML(model);
-    assert.match(html, /Revision History/);
-    assert.match(html, /Writing Sessions/);
-    assert.match(html, /Archived/);
-    assert.match(html, /Banked/);
-    assert.match(html, /Diff Preview/);
-    assert.match(html, /Revision Summary/);
-    assert.match(html, /Event Ledger/);
-    assert.match(html, /Changed Scenes and Entities/);
+    const windowHtml = renderRevisionWindowHTML(model);
+    assert.match(windowHtml, /Revisions Panel/);
+    assert.match(windowHtml, /Revision Compare/);
+    assert.match(windowHtml, /Changed files/);
+    assert.match(windowHtml, /Before/);
+    assert.match(windowHtml, /After/);
+    assert.match(windowHtml, /Banked/);
+    assert.match(windowHtml, /data-action="close-revision-window"/);
+    assert.match(windowHtml, /revision-window-compare-table/);
 
     const directFixture = createRevisionPanelFixture({ sourcePath });
     assert.equal(directFixture.revisionState.sessions.length, roundTripRevisionState.sessions.length);

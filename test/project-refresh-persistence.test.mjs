@@ -143,6 +143,14 @@ export async function runProjectRefreshPersistenceTest() {
       sceneSynopsis: "",
       editorText: "Edited browser text survives refresh.",
       blocks: [],
+      inlineFormatRanges: [
+        {
+          id: "inline-italic-0-6",
+          formatId: "italic",
+          startOffset: 0,
+          endOffset: 6,
+        },
+      ],
     },
   };
   state.projectLibrary[0].workspace.selectionDefaults = {
@@ -219,6 +227,8 @@ export async function runProjectRefreshPersistenceTest() {
   const desktopSnapshot = desktopFiles.get(filePath);
 
   assert.equal(refreshedScene?.editorText, "Edited browser text survives refresh.");
+  assert.equal(refreshedScene?.inlineFormatRanges?.[0]?.formatId, "italic");
+  assert.equal(refreshedScene?.inlineFormatRanges?.[0]?.endOffset, 6);
   assert.equal(refreshedProject?.passageNotes?.length, 1);
   assert.equal(refreshedProject?.passageNotes?.[0]?.id, "inspiration-1");
   assert.equal(
@@ -277,6 +287,10 @@ export async function runProjectRefreshPersistenceTest() {
   assert.equal(
     desktopSnapshot?.sceneStore?.["project-test"]?.["scene-1"]?.editorText,
     "Edited browser text survives refresh.",
+  );
+  assert.equal(
+    desktopSnapshot?.sceneStore?.["project-test"]?.["scene-1"]?.inlineFormatRanges?.[0]?.formatId,
+    "italic",
   );
 }
 

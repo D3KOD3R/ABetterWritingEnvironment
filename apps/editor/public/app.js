@@ -43,6 +43,21 @@ import {
   getPassageNotePlaceholder,
   renderManuscriptPanelHTML,
 } from "./features/scene-editor.js";
+import {
+  applyTextareaTextMutation,
+  createDefaultManuscriptInlineFormattingState,
+  createManuscriptCommandController,
+  INLINE_FORMATS,
+  isInlineFormatActiveAtOffset,
+  normalizeInlineFormatRanges,
+  normalizeManuscriptInlineFormattingState,
+  resolveTextareaManuscriptSelection,
+  updateInlineFormatRangesForTextEdit,
+} from "./features/manuscript-editor/manuscript-command-controller.js";
+import {
+  resolveLiveSpellcheckWordRange,
+  validateLiveSpellcheckMenuRange,
+} from "./features/manuscript-editor/spellcheck-range-guard.js";
 import { escapeHtml, formatDisplayNumber } from "./shared/ui-utils.js";
 import { createDeveloperLogger } from "./shared/developer-logger.js";
 import {
@@ -87,7 +102,7 @@ import {
 } from "./adapters/storage/revision-storage-service.js";
 import { createRevisionService } from "./features/revisions/revision-service.js";
 import { createRevisionPanelController } from "./features/revisions/revision-panel-controller.js";
-import { renderRevisionPanelHTML } from "./features/revisions/revision-panel-view.js";
+import { renderRevisionWindowHTML } from "./features/revisions/revision-window.js";
 
 // Intent: keep shell-wide constants and state visible until each concern moves into its roadmap owner.
 const appRoot = document.querySelector("#app");
@@ -214,6 +229,7 @@ const state = {
   userSettingPanelResizerLeftPercent: null,
   userSettingPanelResizerRightPercent: null,
   writingTargetWindowOpen: false,
+  revisionWindowOpen: false,
   writingTargetProjectId: null,
   writingTargetState: null,
   writingTargetDraft: null,
@@ -244,6 +260,7 @@ const state = {
   },
   taskComposer: null,
   taskPreview: null,
+  manuscriptInlineFormatting: createDefaultManuscriptInlineFormattingState(),
   manuscriptFind: {
     open: false,
     query: "",
@@ -295,6 +312,7 @@ const state = {
 let eventsWired = false;
 let layoutResizeSession = null;
 let writingTargetPointerDownStartedInsideWindow = false;
+let revisionWindowPointerDownStartedInsideWindow = false;
 let writingTargetDebugLastTypingLogAt = 0;
 let writingTargetDebugLastSceneTypingWordCount = null;
 let binderTitleClickState = null;
@@ -747,10 +765,14 @@ function wireEvents() {
 
   document.addEventListener("pointerdown", (event) => {
     const clickTarget = event.target instanceof Element ? event.target : null;
+    if (clickTarget?.closest('[data-action="toggle-inline-format"]')) {
+      event.preventDefault();
+    }
     if (clickTarget instanceof HTMLTextAreaElement && clickTarget.classList.contains("editor-document-input")) {
       markSceneEditorAsCurrent(clickTarget);
     }
     writingTargetPointerDownStartedInsideWindow = Boolean(clickTarget?.closest(".writing-target-window"));
+    revisionWindowPointerDownStartedInsideWindow = Boolean(clickTarget?.closest(".revision-window"));
     const resizeHandle = clickTarget?.closest("[data-resize-handle]");
     if (!(resizeHandle instanceof HTMLElement)) {
       return;
@@ -774,6 +796,7 @@ function wireEvents() {
   document.addEventListener("pointerup", () => {
     window.setTimeout(() => {
       writingTargetPointerDownStartedInsideWindow = false;
+      revisionWindowPointerDownStartedInsideWindow = false;
     }, 0);
   });
   document.addEventListener("pointerdown", handleGrammarCheckPointerDown);
@@ -790,6 +813,7 @@ function wireEvents() {
     if (activeElement instanceof HTMLTextAreaElement && activeElement.classList.contains("editor-document-input")) {
       updateSceneEditorSelectionSnapshotFromTextarea(activeElement);
       syncSceneEditorWordCountReadouts(activeElement);
+      updateInlineFormatToolbarState(activeElement);
     }
 
     if (state.activePane !== "narration" || state.narrationTakeSession?.status === "recording") {
@@ -824,6 +848,15 @@ function wireEvents() {
       !writingTargetPointerDownStartedInsideWindow
     ) {
       closeWritingTargetWindow();
+    }
+    if (
+      state.revisionWindowOpen &&
+      clickTarget &&
+      !clickTarget.closest(".revision-window") &&
+      !clickTarget.closest('[data-action="toggle-revision-window"]') &&
+      !revisionWindowPointerDownStartedInsideWindow
+    ) {
+      closeRevisionWindow();
     }
     if (clickTarget?.closest("[data-title-input], [data-passage-note-body-input]")) {
       hideTaskSurfaces();
@@ -868,6 +901,7 @@ function wireEvents() {
         "load-project-source",
         "open-developer-logs",
         "toggle-writing-target-window",
+        "toggle-revision-window",
         "select-scene",
       ]);
       if (trackedUserActions.has(action)) {
@@ -937,7 +971,19 @@ function wireEvents() {
 
     if (action === "toggle-writing-target-window") {
       hideFileMenu();
+      closeRevisionWindow();
       toggleWritingTargetWindow();
+      return;
+    }
+
+    if (action === "toggle-revision-window") {
+      hideFileMenu();
+      toggleRevisionWindow();
+      return;
+    }
+
+    if (action === "close-revision-window") {
+      closeRevisionWindow();
       return;
     }
 
@@ -976,8 +1022,8 @@ function wireEvents() {
       return;
     }
 
-    if (action === "toggle-italic-text") {
-      toggleItalicText();
+    if (action === "toggle-inline-format") {
+      toggleManuscriptInlineFormat(target.dataset.inlineFormat);
       return;
     }
 
@@ -1838,7 +1884,10 @@ function wireEvents() {
         target.dataset.taskId,
         target.value,
       );
-      writeStoredJson(EDITOR_TASKS_KEY, state.manuscriptTasks);
+      persistManuscriptTasksState({
+        dirtyReason: "manuscript-task-title-edited",
+        source: "task-title-input",
+      });
       return;
     }
 
@@ -1848,7 +1897,10 @@ function wireEvents() {
         target.dataset.noteId,
         target.value,
       );
-      writeStoredJson(EDITOR_PASSAGE_NOTES_KEY, state.passageNotes);
+      persistPassageNotesState({
+        dirtyReason: "passage-note-title-edited",
+        source: "passage-note-title-input",
+      });
       return;
     }
 
@@ -1858,7 +1910,10 @@ function wireEvents() {
         target.dataset.noteId,
         target.value,
       );
-      writeStoredJson(EDITOR_PASSAGE_NOTES_KEY, state.passageNotes);
+      persistPassageNotesState({
+        dirtyReason: "passage-note-body-edited",
+        source: "passage-note-body-input",
+      });
       return;
     }
 
@@ -1884,13 +1939,22 @@ function wireEvents() {
     if (editField === "editor-text") {
       markSceneEditorAsCurrent(target);
       updateSceneEditorSelectionSnapshotFromTextarea(target);
+      updateInlineFormatToolbarState(target);
       clearTaskAnchorPreview({ restoreSelection: false });
       const previousText = getScene(sceneId)?.editorText ?? "";
+      const previousInlineFormatRanges = getSceneInlineFormatRanges(sceneId, previousText.length);
+      const pendingFormats = normalizeManuscriptInlineFormattingState(state.manuscriptInlineFormatting).pendingFormats;
       recordRevisionSceneTextEdit(sceneId, previousText, target.value);
       trackInlinePassageDraftTyping(sceneId, previousText, target);
       const activeTypingWordRange = getEditorTypingSpellcheckRange(target);
       updateSceneDraft(sceneId, (draft) => {
         draft.editorText = target.value;
+        draft.inlineFormatRanges = updateInlineFormatRangesForTextEdit({
+          ranges: previousInlineFormatRanges,
+          previousText,
+          nextText: target.value,
+          pendingFormats,
+        });
         draft.revisionStats = updateSceneRevisionStats(draft.revisionStats, previousText, target.value);
       });
       scheduleSceneEditorTypingRefresh(sceneId, target.value, {
@@ -2038,8 +2102,13 @@ function wireEvents() {
   });
 
   document.addEventListener("keydown", (event) => {
+    if (event.defaultPrevented) {
+      return;
+    }
+
     if ((event.ctrlKey || event.metaKey) && event.altKey && event.key.toLowerCase() === "t") {
       event.preventDefault();
+      closeRevisionWindow();
       toggleWritingTargetWindow();
       return;
     }
@@ -2095,6 +2164,10 @@ function wireEvents() {
     }
 
     if (event.key === "Escape") {
+      if (state.revisionWindowOpen) {
+        closeRevisionWindow();
+        return;
+      }
       if (state.writingTargetWindowOpen) {
         closeWritingTargetWindow();
         return;
@@ -2124,6 +2197,7 @@ function render() {
   renderTaskContextMenu();
   renderDeleteConfirmationDialog();
   renderWritingTargetWindow();
+  renderRevisionWindow();
   renderPaneVisibility();
   if (state.activePane === "manuscript" || state.activePane === "narration") {
     syncSceneDocumentLayout();
@@ -2168,6 +2242,7 @@ function renderShell() {
     <div id="find-slot"></div>
     <div id="grammar-check-slot"></div>
     <div id="writing-target-slot"></div>
+    <div id="revision-window-slot"></div>
   `;
 }
 
@@ -2213,6 +2288,7 @@ function renderTaskContextMenu() {
                   data-spellcheck-start-offset="${escapeHtml(String(spellcheckMenu.startOffset))}"
                   data-spellcheck-end-offset="${escapeHtml(String(spellcheckMenu.endOffset))}"
                   data-spellcheck-scene-id="${escapeHtml(spellcheckMenu.sceneId)}"
+                  data-spellcheck-word="${escapeHtml(spellcheckMenu.normalizedWord ?? spellcheckMenu.word ?? "")}"
                   role="menuitem"
                 >
                   <span class="task-menu-icon" aria-hidden="true">✓</span>
@@ -2501,6 +2577,12 @@ function handleGlobalKeyboardShortcut(event) {
   const key = typeof event.key === "string" ? event.key.toLowerCase() : "";
 
   if (key === "escape") {
+    if (state.revisionWindowOpen) {
+      event.preventDefault();
+      closeRevisionWindow();
+      return;
+    }
+
     if (state.writingTargetWindowOpen) {
       event.preventDefault();
       closeWritingTargetWindow();
@@ -2548,6 +2630,7 @@ function handleGlobalKeyboardShortcut(event) {
   if (event.altKey && key === "t") {
     event.preventDefault();
     hideFileMenu();
+    closeRevisionWindow();
     toggleWritingTargetWindow();
     return;
   }
@@ -2947,6 +3030,9 @@ function renderConsolePanel() {
 
   slot.classList.toggle("is-collapsed", state.consoleDockCollapsed);
   appRoot.classList.toggle("is-console-dock-collapsed", state.consoleDockCollapsed);
+  if (!["issues", "inspiration", "research"].includes(state.sidePanelMode)) {
+    state.sidePanelMode = "issues";
+  }
   slot.innerHTML = `
     <div class="console-dock ${state.consoleDockCollapsed ? "is-collapsed" : ""}">
       <button
@@ -2964,9 +3050,7 @@ function renderConsolePanel() {
         ${renderSidePanelTabs()}
         ${state.sidePanelMode === "issues"
           ? renderIssuePanelBody()
-          : state.sidePanelMode === "revisions"
-            ? renderRevisionPanelBody()
-            : renderPassageNotePanel(state.sidePanelMode)}
+          : renderPassageNotePanel(state.sidePanelMode)}
       </div>
     </div>
   `;
@@ -4033,6 +4117,43 @@ function getCurrentManuscriptSelectionText() {
   return activeElement.value.slice(startOffset, endOffset).trim();
 }
 
+// Intent: reflect the shared inline command state without re-rendering the whole manuscript panel on caret moves.
+function updateInlineFormatToolbarState(textarea = null) {
+  const activeTextarea = textarea instanceof HTMLTextAreaElement
+    ? textarea
+    : document.activeElement instanceof HTMLTextAreaElement
+      ? document.activeElement
+      : null;
+  const inlineFormattingState = normalizeManuscriptInlineFormattingState(state.manuscriptInlineFormatting);
+  const text = activeTextarea instanceof HTMLTextAreaElement ? String(activeTextarea.value ?? "") : "";
+  const offset = activeTextarea instanceof HTMLTextAreaElement && Number.isInteger(activeTextarea.selectionStart)
+    ? activeTextarea.selectionStart
+    : 0;
+  const sceneId = activeTextarea instanceof HTMLTextAreaElement ? String(activeTextarea.dataset.sceneId ?? "") : "";
+  const ranges = getSceneInlineFormatRanges(sceneId, text.length);
+
+  for (const formatId of Object.keys(INLINE_FORMATS)) {
+    const isPending = inlineFormattingState.pendingFormats[formatId] === true;
+    const isActive = isPending || isInlineFormatActiveAtOffset(ranges, offset, formatId);
+    const button = document.querySelector(`[data-action="toggle-inline-format"][data-inline-format="${CSS.escape(formatId)}"]`);
+    if (!(button instanceof HTMLButtonElement)) {
+      continue;
+    }
+
+    button.setAttribute("aria-pressed", isActive ? "true" : "false");
+    button.classList.toggle("is-active", isActive);
+  }
+}
+
+// Intent: keep visual manuscript styling as scene-draft metadata instead of embedding markup in the manuscript text.
+function getSceneInlineFormatRanges(sceneId, textLength = Number.POSITIVE_INFINITY) {
+  if (typeof sceneId !== "string" || !sceneId.trim()) {
+    return [];
+  }
+
+  return normalizeInlineFormatRanges(state.sceneDrafts?.[sceneId]?.inlineFormatRanges, textLength);
+}
+
 // Intent: keep the scene-editor word-count readouts live while the user types or changes a text selection.
 function syncSceneEditorWordCountReadouts(textarea = null) {
   const activeTextarea = textarea instanceof HTMLTextAreaElement
@@ -4151,11 +4272,9 @@ function renderSidePanelTabs() {
   const taskCount = getOpenManuscriptTasks().length;
   const inspirationCount = state.passageNotes.filter((note) => note.noteType === "inspiration").length;
   const researchCount = state.passageNotes.filter((note) => note.noteType === "research").length;
-  const revisionCount = getRevisionSessionCount();
   return `
     <div class="side-panel-tabs" aria-label="Editor side panel modes">
       ${renderSidePanelTab("issues", "Tasks", taskCount)}
-      ${renderSidePanelTab("revisions", "Revisions", revisionCount)}
       ${renderSidePanelTab("inspiration", "Inspiration", inspirationCount)}
       ${renderSidePanelTab("research", "Research", researchCount)}
     </div>
@@ -4219,16 +4338,64 @@ function renderPassageNotePanel(noteType) {
   `;
 }
 
-function renderRevisionPanelBody() {
-  return renderRevisionPanelHTML(buildRevisionPanelModel());
-}
-
 function buildRevisionPanelModel() {
   return revisionPanelController.buildPanelModel(state.revisionState, state.revisionPanelState);
 }
 
 function getRevisionSessionCount() {
   return Array.isArray(state.revisionState?.sessions) ? state.revisionState.sessions.length : 0;
+}
+
+// Intent: render the standalone revisions window from the revision feature model without moving domain state into the shell.
+function renderRevisionWindow() {
+  const slot = document.querySelector("#revision-window-slot");
+  if (!slot) {
+    return;
+  }
+
+  slot.innerHTML = state.revisionWindowOpen
+    ? renderRevisionWindowHTML(buildRevisionPanelModel())
+    : "";
+}
+
+// Intent: keep the standalone revision window refreshed while preserving the shared revision model.
+function renderRevisionWindowSurface({ renderChrome = false } = {}) {
+  if (state.revisionWindowOpen) {
+    renderRevisionWindow();
+  }
+  if (renderChrome) {
+    renderHeader();
+  }
+}
+
+function toggleRevisionWindow() {
+  if (state.revisionWindowOpen) {
+    closeRevisionWindow();
+    return;
+  }
+
+  closeWritingTargetWindow();
+  ensureSelectedRevisionSession();
+  state.revisionWindowOpen = true;
+  revisionServiceLog.info("user-action", "revision.window.open", "Opened revisions window.", {
+    projectId: state.activeProjectId ?? "",
+    sessionCount: getRevisionSessionCount(),
+  });
+  renderHeader();
+  renderRevisionWindow();
+}
+
+function closeRevisionWindow() {
+  if (!state.revisionWindowOpen) {
+    return;
+  }
+
+  state.revisionWindowOpen = false;
+  revisionServiceLog.info("user-action", "revision.window.close", "Closed revisions window.", {
+    projectId: state.activeProjectId ?? "",
+  });
+  renderHeader();
+  renderRevisionWindow();
 }
 
 function renderEmptyPassageNoteState(label) {
@@ -4310,7 +4477,7 @@ function renderDeleteConfirmationDialog() {
     return;
   }
 
-  const preferenceKey = dialog.preferenceKey === "comments" ? "comments" : "passageNotes";
+  const preferenceKey = dialog.preferenceKey === "tasks" ? "tasks" : "passageNotes";
   const skipConfirmation = Boolean(state.deleteConfirmationPreferences?.[preferenceKey]);
   slot.innerHTML = `
     <div class="delete-confirmation-backdrop" data-action="cancel-delete-confirmation" aria-hidden="true"></div>
@@ -4354,7 +4521,7 @@ function renderDeleteConfirmationDialog() {
 function createDeleteConfirmationPreferences(candidate = {}) {
   return {
     passageNotes: Boolean(candidate?.passageNotes),
-    comments: Boolean(candidate?.comments),
+    tasks: Boolean(candidate?.tasks ?? candidate?.comments),
   };
 }
 
@@ -4443,7 +4610,7 @@ function cancelDeleteConfirmationDialog() {
 }
 
 function toggleDeleteConfirmationPreference(preferenceKey, checked) {
-  const normalizedKey = preferenceKey === "comments" ? "comments" : "passageNotes";
+  const normalizedKey = preferenceKey === "tasks" ? "tasks" : "passageNotes";
   state.deleteConfirmationPreferences = {
     ...(state.deleteConfirmationPreferences ?? createDeleteConfirmationPreferences()),
     [normalizedKey]: Boolean(checked),
@@ -4468,7 +4635,10 @@ function performPassageNoteDeletion(noteId) {
   ) ?? null;
 
   state.passageNotes = state.passageNotes.filter((candidate) => candidate.id !== note.id);
-  writeStoredJson(EDITOR_PASSAGE_NOTES_KEY, state.passageNotes);
+  persistPassageNotesState({
+    dirtyReason: `${note.noteType}-note-deleted`,
+    source: "performPassageNoteDeletion",
+  });
 
   if (wasPreviewing) {
     clearTaskAnchorPreview({ restoreSelection: false });
@@ -4556,11 +4726,11 @@ function formatImportSourceLabel(source) {
   }
 
   if (source === "source-comment") {
-    return "Comment";
+    return "Imported task";
   }
 
   if (source === "source-comment-note") {
-    return "Comment note";
+    return "Imported note";
   }
 
   if (source === "source-asset") {
@@ -6380,10 +6550,12 @@ function syncSceneDocumentLayout(options = {}) {
   const textarea = editor.querySelector(".editor-document-input");
   const gutter = editor.querySelector("[data-editor-gutter]");
   const spellcheckLayer = editor.querySelector("[data-spellcheck-layer]");
+  const inlineFormatLayer = editor.querySelector("[data-inline-format-layer]");
   if (
     !(textarea instanceof HTMLTextAreaElement) ||
     !(gutter instanceof HTMLElement) ||
-    !(spellcheckLayer instanceof HTMLElement)
+    !(spellcheckLayer instanceof HTMLElement) ||
+    !(inlineFormatLayer instanceof HTMLElement)
   ) {
     return;
   }
@@ -6418,6 +6590,7 @@ function syncSceneDocumentLayout(options = {}) {
   gutter.innerHTML = Array.from({ length: visualLineCount }, (_, index) => `
     <span class="editor-gutter-line">${lineStartNumber + index}</span>
   `).join("");
+  syncInlineFormatLayer(inlineFormatLayer, textarea, selectedSceneId);
   if (state.editorPrefs.grammarCheckEnabled === false) {
     spellcheckLayer.innerHTML = "";
   } else if (options.skipSpellcheck === true) {
@@ -6426,6 +6599,45 @@ function syncSceneDocumentLayout(options = {}) {
     syncSpellcheckLayer(spellcheckLayer, textarea, selectedSceneId, options);
   }
   syncInlinePassageDraftLayout();
+}
+
+// Intent: mirror the textarea text in a non-editable layer so inline styling can render without becoming manuscript text.
+function syncInlineFormatLayer(layer, textarea, sceneId) {
+  if (!(layer instanceof HTMLElement) || !(textarea instanceof HTMLTextAreaElement)) {
+    return;
+  }
+
+  // Intent: keep the editor usable while the visual inline-format overlay is reworked for exact textarea metrics.
+  layer.innerHTML = "";
+}
+
+function renderInlineFormattedTextHTML(text, ranges) {
+  const normalizedText = String(text ?? "");
+  const normalizedRanges = normalizeInlineFormatRanges(ranges, normalizedText.length);
+  const boundaries = new Set([0, normalizedText.length]);
+  for (const range of normalizedRanges) {
+    boundaries.add(range.startOffset);
+    boundaries.add(range.endOffset);
+  }
+
+  const offsets = [...boundaries].sort((left, right) => left - right);
+  const parts = [];
+  for (let index = 0; index < offsets.length - 1; index += 1) {
+    const startOffset = offsets[index];
+    const endOffset = offsets[index + 1];
+    const segment = normalizedText.slice(startOffset, endOffset);
+    if (!segment) {
+      continue;
+    }
+
+    const classNames = normalizedRanges
+      .filter((range) => range.startOffset <= startOffset && range.endOffset >= endOffset)
+      .map((range) => `editor-inline-format-${range.formatId}`);
+    const classAttribute = classNames.length ? ` class="${escapeHtml(classNames.join(" "))}"` : "";
+    parts.push(`<span${classAttribute}>${escapeHtml(segment)}</span>`);
+  }
+
+  return parts.join("");
 }
 
 const sceneEditorTypingRefreshState = {
@@ -8280,6 +8492,28 @@ function persistCurrentProjectRecord(options = {}) {
   projectPersistenceService.commitCanonicalProjectMutation(options);
 }
 
+// Intent: persist task diagnostics through the canonical project-file boundary instead of legacy task cache writes.
+function persistManuscriptTasksState(options = {}) {
+  persistCurrentProjectRecord({
+    domain: "manuscript-tasks",
+    dirtyReason: options.dirtyReason ?? "manuscript-task-updated",
+    source: options.source ?? "persistManuscriptTasksState",
+    skipProjectFileAutosave: options.skipProjectFileAutosave === true,
+    markWorkingState: options.markWorkingState,
+  });
+}
+
+// Intent: persist inspiration and research notes through the same project-file boundary as manuscript tasks.
+function persistPassageNotesState(options = {}) {
+  persistCurrentProjectRecord({
+    domain: "passage-notes",
+    dirtyReason: options.dirtyReason ?? "passage-note-updated",
+    source: options.source ?? "persistPassageNotesState",
+    skipProjectFileAutosave: options.skipProjectFileAutosave === true,
+    markWorkingState: options.markWorkingState,
+  });
+}
+
 function loadSelectedProject() {
   persistCurrentProjectRecord({
     domain: "project",
@@ -9074,28 +9308,7 @@ function isPointInsideElementRects(element, clientX, clientY, tolerance = 0) {
 }
 
 function getSpellcheckWordRangeFromKnownOffsets(sourceText, startOffset, endOffset) {
-  const source = String(sourceText ?? "");
-  if (
-    !Number.isInteger(startOffset) ||
-    !Number.isInteger(endOffset) ||
-    startOffset < 0 ||
-    endOffset <= startOffset ||
-    endOffset > source.length
-  ) {
-    return null;
-  }
-
-  const word = source.slice(startOffset, endOffset);
-  if (!/^[A-Za-z][A-Za-z'’-]*$/u.test(word)) {
-    return null;
-  }
-
-  return {
-    word,
-    normalizedWord: normalizeSpellcheckWord(word),
-    startOffset,
-    endOffset,
-  };
+  return resolveLiveSpellcheckWordRange(sourceText, startOffset, endOffset);
 }
 
 function getTextareaOffsetFromPoint(textarea, clientX, clientY) {
@@ -9523,7 +9736,7 @@ function renderPaneVisibility() {
 }
 
 function selectSidePanel(panelId) {
-  if (!["issues", "revisions", "inspiration", "research"].includes(panelId)) {
+  if (!["issues", "inspiration", "research"].includes(panelId)) {
     return;
   }
 
@@ -9531,10 +9744,6 @@ function selectSidePanel(panelId) {
   if (panelId === "issues") {
     state.selectedPassageNoteId = null;
     state.selectedIssueId = null;
-  } else if (panelId === "revisions") {
-    state.selectedPassageNoteId = null;
-    state.selectedIssueId = null;
-    ensureSelectedRevisionSession();
   } else {
     const selectedNote = state.passageNotes.find((note) =>
       note.noteType === panelId && note.id === state.selectedPassageNoteId,
@@ -9561,8 +9770,8 @@ function updateRevisionPanelSearch(value) {
     query: String(value ?? ""),
     selectedSessionId: "",
   };
-  renderConsolePanel();
-  focusRevisionPanelControl("[data-revision-search]");
+  renderRevisionWindowSurface();
+  focusRevisionPanelControl(state.revisionWindowOpen ? ".revision-window [data-revision-search]" : "[data-revision-search]");
 }
 
 function updateRevisionPanelFilter(fieldName, value) {
@@ -9575,7 +9784,7 @@ function updateRevisionPanelFilter(fieldName, value) {
     [fieldName]: String(value ?? "all"),
     selectedSessionId: "",
   };
-  renderConsolePanel();
+  renderRevisionWindowSurface();
 }
 
 function focusRevisionPanelControl(selector) {
@@ -9599,7 +9808,7 @@ function selectRevisionSession(sessionId) {
     selectedSessionId,
     statusMessage: "",
   };
-  renderConsolePanel();
+  renderRevisionWindowSurface();
 }
 
 function setRevisionPanelStatus(statusMessage) {
@@ -9607,9 +9816,7 @@ function setRevisionPanelStatus(statusMessage) {
     ...state.revisionPanelState,
     statusMessage: String(statusMessage ?? ""),
   };
-  if (state.sidePanelMode === "revisions") {
-    renderConsolePanel();
-  }
+  renderRevisionWindowSurface();
 }
 
 function bankCurrentRevisionFromPanel() {
@@ -9625,7 +9832,7 @@ function bankCurrentRevisionFromPanel() {
       statusMessage: "Revision banked into this project.",
       showFullDiff: false,
     };
-    renderConsolePanel();
+    renderRevisionWindowSurface({ renderChrome: true });
     return;
   }
 
@@ -9642,7 +9849,7 @@ function toggleRevisionDiffDetail() {
     ...state.revisionPanelState,
     showFullDiff: !state.revisionPanelState.showFullDiff,
   };
-  renderConsolePanel();
+  renderRevisionWindowSurface();
 }
 
 function exportRevisionSummary(sessionId = "") {
@@ -9934,7 +10141,10 @@ function syncResolvedTaskRange(task, resolvedRange) {
         }
       : candidate,
   );
-  writeStoredJson(EDITOR_TASKS_KEY, state.manuscriptTasks);
+  persistManuscriptTasksState({
+    dirtyReason: "manuscript-task-anchor-repaired",
+    source: "syncResolvedTaskRange",
+  });
 }
 
 function centerEditorOnCaret(textarea) {
@@ -10250,7 +10460,10 @@ function savePassageNoteFromComposer() {
   state.passageNotes = [note, ...state.passageNotes];
   state.sidePanelMode = note.noteType;
   state.selectedPassageNoteId = note.id;
-  writeStoredJson(EDITOR_PASSAGE_NOTES_KEY, state.passageNotes);
+  persistPassageNotesState({
+    dirtyReason: `${note.noteType}-note-created`,
+    source: "savePassageNoteFromComposer",
+  });
   maybeSuggestPassageNoteTitle(note);
   state.taskComposer = null;
   renderConsolePanel();
@@ -10303,7 +10516,10 @@ function commitInlinePassageNote() {
     state.sidePanelMode = updatedNote.noteType;
     state.selectedPassageNoteId = updatedNote.id;
     state.inlinePassageDraft = null;
-    writeStoredJson(EDITOR_PASSAGE_NOTES_KEY, state.passageNotes);
+    persistPassageNotesState({
+      dirtyReason: `${updatedNote.noteType}-note-body-edited`,
+      source: "commitInlinePassageNote.edit",
+    });
     renderManuscriptPanel();
     syncSceneDocumentLayout();
     renderConsolePanel();
@@ -10347,7 +10563,10 @@ function commitInlinePassageNote() {
   state.sidePanelMode = note.noteType;
   state.selectedPassageNoteId = note.id;
   state.inlinePassageDraft = null;
-  writeStoredJson(EDITOR_PASSAGE_NOTES_KEY, state.passageNotes);
+  persistPassageNotesState({
+    dirtyReason: `${note.noteType}-note-created`,
+    source: "commitInlinePassageNote.create",
+  });
   maybeSuggestPassageNoteTitle(note);
   renderManuscriptPanel();
   syncSceneDocumentLayout();
@@ -10864,7 +11083,10 @@ function syncResolvedPassageNoteRange(note, resolvedRange) {
         }
       : candidate,
   );
-  writeStoredJson(EDITOR_PASSAGE_NOTES_KEY, state.passageNotes);
+  persistPassageNotesState({
+    dirtyReason: "passage-note-anchor-repaired",
+    source: "syncResolvedPassageNoteRange",
+  });
 }
 
 function openTaskComposerFromContextMenu(event) {
@@ -10921,7 +11143,10 @@ function saveTaskFromComposer() {
     endOffset: composer.endOffset,
   });
   state.manuscriptTasks = [...state.manuscriptTasks, task];
-  writeStoredJson(EDITOR_TASKS_KEY, state.manuscriptTasks);
+  persistManuscriptTasksState({
+    dirtyReason: "manuscript-task-created",
+    source: "saveTaskFromComposer",
+  });
   maybeSuggestTaskTitle(task);
   state.taskComposer = null;
   renderBinderPanel();
@@ -11003,7 +11228,10 @@ function maybeSuggestTaskTitle(task) {
       task.id,
       result.title,
     );
-    writeStoredJson(EDITOR_TASKS_KEY, state.manuscriptTasks);
+    persistManuscriptTasksState({
+      dirtyReason: "manuscript-task-title-suggested",
+      source: "maybeSuggestTaskTitle",
+    });
     renderConsolePanel();
   }).catch((error) => console.warn("Unable to suggest task title", error));
 }
@@ -11038,7 +11266,10 @@ function maybeSuggestPassageNoteTitle(note) {
       note.id,
       result.title,
     );
-    writeStoredJson(EDITOR_PASSAGE_NOTES_KEY, state.passageNotes);
+    persistPassageNotesState({
+      dirtyReason: `${currentNote.noteType}-note-title-suggested`,
+      source: "maybeSuggestPassageNoteTitle",
+    });
     renderConsolePanel();
   }).catch((error) => console.warn("Unable to suggest passage note title", error));
 }
@@ -11155,7 +11386,10 @@ function completeTask(taskId) {
   }
   clearTaskAnchorPreview();
   state.manuscriptTasks = completeManuscriptTask(state.manuscriptTasks, taskId);
-  writeStoredJson(EDITOR_TASKS_KEY, state.manuscriptTasks);
+  persistManuscriptTasksState({
+    dirtyReason: "manuscript-task-completed",
+    source: "completeTask",
+  });
   renderBinderPanel();
   renderConsolePanel();
 }
@@ -11276,6 +11510,7 @@ function applySpellcheckSuggestionFromMenu(target) {
 
   const sceneId = String(target.dataset.spellcheckSceneId ?? "");
   const replacement = String(target.dataset.spellcheckReplacement ?? "");
+  const menuWord = String(target.dataset.spellcheckWord ?? "");
   const startOffset = Number(target.dataset.spellcheckStartOffset);
   const endOffset = Number(target.dataset.spellcheckEndOffset);
 
@@ -11294,10 +11529,22 @@ function applySpellcheckSuggestionFromMenu(target) {
     return;
   }
 
-  const safeStart = clampEditorOffset(startOffset, textarea.value.length);
-  const safeEnd = clampEditorOffset(endOffset, textarea.value.length);
+  const liveRange = validateLiveSpellcheckMenuRange(textarea.value, {
+    word: menuWord,
+    startOffset,
+    endOffset,
+  }, {
+    baseLexicon: spellcheckBaseLexicon,
+    projectLexicon: buildCurrentProjectSpellcheckLexicon(),
+    referenceLexicon: spellcheckReferenceLexicon,
+  });
+  if (!liveRange) {
+    syncSceneDocumentLayout();
+    return;
+  }
+
   textarea.focus({ preventScroll: true });
-  textarea.setRangeText(replacement, Math.min(safeStart, safeEnd), Math.max(safeStart, safeEnd), "end");
+  textarea.setRangeText(replacement, liveRange.startOffset, liveRange.endOffset, "end");
   textarea.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
@@ -11616,16 +11863,51 @@ function toggleRevisionOverlay(sceneId) {
   }
 }
 
-function toggleItalicText() {
-  state.editorPrefs = normalizeEditorPrefs({
-    ...state.editorPrefs,
-    italicText: !state.editorPrefs.italicText,
+// Intent: route manuscript styling through a shared command controller instead of scene-wide editor preferences.
+function toggleManuscriptInlineFormat(formatId) {
+  const activeElement = document.activeElement;
+  const textarea = activeElement instanceof HTMLTextAreaElement && activeElement.classList.contains("editor-document-input")
+    ? activeElement
+    : document.querySelector(".editor-document-input");
+  const controller = createManuscriptCommandController({
+    getInlineFormattingState: () => state.manuscriptInlineFormatting,
+    setInlineFormattingState: (nextInlineFormattingState) => {
+      state.manuscriptInlineFormatting = normalizeManuscriptInlineFormattingState(nextInlineFormattingState);
+    },
+    resolveSelection: () => resolveTextareaManuscriptSelection(
+      textarea,
+      getSceneInlineFormatRanges(String(textarea?.dataset?.sceneId ?? ""), String(textarea?.value ?? "").length),
+    ),
+    applyTextMutation: (mutation) => applyTextareaTextMutation(textarea, mutation),
+    applyRangeMutation: (ranges) => {
+      const sceneId = String(textarea?.dataset?.sceneId ?? "");
+      if (!sceneId) {
+        return;
+      }
+
+      updateSceneDraft(sceneId, (draft) => {
+        draft.inlineFormatRanges = normalizeInlineFormatRanges(ranges, String(textarea?.value ?? "").length);
+      }, {
+        reason: "manuscript-inline-format",
+        markSessionActivity: false,
+      });
+      syncSceneDocumentLayout({ skipSpellcheck: true });
+    },
+    log: editorInteractionLog,
   });
-  writeStoredJson(EDITOR_PREFS_KEY, state.editorPrefs);
-  persistCurrentProjectRecord();
-  renderManuscriptPanel();
-  syncLayoutWidths();
-  syncSceneDocumentLayout();
+  const result = controller.execute("toggleInlineFormat", {
+    format: formatId,
+  });
+
+  if (!result.applied) {
+    editorInteractionLog.warn("user-action", "manuscript.inline-format.skipped", "Skipped manuscript inline formatting command.", {
+      format: String(formatId ?? ""),
+      reason: result.reason,
+    });
+    return;
+  }
+
+  updateInlineFormatToolbarState(textarea);
 }
 
 function resetSceneDraft(sceneId) {
@@ -13838,7 +14120,6 @@ function syncLayoutWidths(persist = false) {
     "is-binder-panel-compact",
     state.binderPanelWidth <= BINDER_PANEL_COMPACT_THRESHOLD,
   );
-  appRoot.classList.toggle("is-italic-text", state.editorPrefs.italicText === true);
   appRoot.classList.toggle(
     "is-revision-overlay-enabled",
     state.editorPrefs.revisionOverlayEnabled === true,

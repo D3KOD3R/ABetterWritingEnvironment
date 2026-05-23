@@ -8,7 +8,7 @@ import {
 } from "../apps/editor/public/adapters/storage/revision-storage-service.js";
 import { createRevisionPanelController } from "../apps/editor/public/features/revisions/revision-panel-controller.js";
 import { createRevisionService } from "../apps/editor/public/features/revisions/revision-service.js";
-import { renderRevisionPanelHTML } from "../apps/editor/public/features/revisions/revision-panel-view.js";
+import { renderRevisionWindowHTML } from "../apps/editor/public/features/revisions/revision-window.js";
 
 function createMinimalProjectRecord() {
   return {
@@ -70,9 +70,9 @@ export async function runRevisionStorageTest() {
   assert.equal(emptyState.activeSessionId, "");
   assert.equal(getPersistableRevisionProjectState(emptyProject.revisions), undefined);
 
-  const emptyPanelHtml = renderRevisionPanelHTML(panelController.buildPanelModel(emptyState));
-  assert.match(emptyPanelHtml, /No writing sessions match this view/);
-  assert.match(emptyPanelHtml, /No Writing Session selected/);
+  const emptyWindowHtml = renderRevisionWindowHTML(panelController.buildPanelModel(emptyState));
+  assert.match(emptyWindowHtml, /No revision sessions/);
+  assert.match(emptyWindowHtml, /No writing session selected/);
 
   // Intent: legacy shapes should still normalize into revision sessions.
   const legacyProject = createMinimalProjectRecord();

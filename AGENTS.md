@@ -4,6 +4,8 @@ First rule: if the user asks or types `fix issues` in Codex, read `voiceissues/V
 
 Second rule: if the user asks or types `finalise work` in Codex, read `finalisework/FinaliseWorkAgent.md` before closing out the session.
 
+Third Rule: If the user says retrace steps on task x they are asking you to go over the task threads and look for a thread where a context compact has failed due to a disconnect. You should refer to agentContextRetrace.md and follow it exactly before continuing the interrupted work.
+
 ## Purpose
 
 This repository is for a local-first, open-source, AI-augmented authoring and audiobook-generation environment.
@@ -252,15 +254,17 @@ When changing `apps/editor`, follow the refactor roadmap in `docs/architecture/e
 ### Refactor checkpoint
 
 Current roadmap phase:
-- Phase 1: shell/store boundary extraction
+- Phase 1: stabilize persistence and project-state ownership
 
 Completed slice:
 - `apps/editor/public/shell/editor-chrome.js` now owns the top editor chrome, file menu, pane tabs, autosave toggle, local AI toggle, and writing-goal CTA markup.
 - `apps/editor/public/features/writing-targets/writing-target-window.js` now owns the full writing-goals window markup.
 - `apps/editor/public/adapters/storage/project-persistence-service.js` now owns project-file save/load/autosave/import/export orchestration, and `app.js` calls it as the persistence boundary.
+- `apps/editor/public/features/scene-editor.js` now owns scene editor markup, and `apps/editor/public/features/manuscript-editor/manuscript-command-controller.js` owns the first inline-format command path.
+- `apps/editor/public/features/revisions/revision-window.js` now owns the standalone revision comparison window markup.
 
 Next slice:
-- Split remaining manuscript and side-panel runtime behavior out of `apps/editor/public/app.js` after the persistence boundary extraction.
+- Move remaining project activation/cache-normalization glue out of `apps/editor/public/app.js`, then centralize manuscript projection selection before adding further editor workflows.
 
 Verification for the current slice:
 - `node --check apps/editor/public/app.js`

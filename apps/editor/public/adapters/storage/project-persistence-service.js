@@ -169,6 +169,20 @@ function buildDomainComparablePayload(projectRecord, {
     };
   }
 
+  if (normalizedDomain === "manuscript-tasks" || normalizedDomain === "tasks") {
+    return {
+      id: projectRecord.id ?? "",
+      manuscriptTasks: projectRecord.manuscriptTasks ?? [],
+    };
+  }
+
+  if (normalizedDomain === "passage-notes" || normalizedDomain === "notes") {
+    return {
+      id: projectRecord.id ?? "",
+      passageNotes: projectRecord.passageNotes ?? [],
+    };
+  }
+
   if (normalizedDomain === "writing-goals" || normalizedDomain === "writinggoals") {
     return {
       id: projectRecord.id ?? "",
@@ -321,6 +335,12 @@ function resolveMutationDomain(options = {}) {
   const classifier = `${String(options.source ?? "")} ${String(options.dirtyReason ?? "")}`.toLowerCase();
   if (classifier.includes("writing-target") || classifier.includes("session-tracker") || classifier.includes("writing-goal")) {
     return "writing-goals";
+  }
+  if (classifier.includes("task")) {
+    return "manuscript-tasks";
+  }
+  if (classifier.includes("passage-note") || classifier.includes("passage note") || classifier.includes("inspiration") || classifier.includes("research")) {
+    return "passage-notes";
   }
   if (classifier.includes("manuscript") || classifier.includes("scene") || classifier.includes("chapter")) {
     return "manuscript";

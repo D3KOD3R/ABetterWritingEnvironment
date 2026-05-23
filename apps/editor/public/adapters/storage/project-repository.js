@@ -79,6 +79,8 @@ function normalizeSceneDraft(candidate, fallback = {}) {
     sceneSynopsis: typeof base.sceneSynopsis === "string" ? base.sceneSynopsis : (fallback.sceneSynopsis ?? ""),
     editorText,
     blocks,
+    // Intent: preserve author-applied formatting metadata until canonical manuscript marks replace this compatibility field.
+    inlineFormatRanges: Array.isArray(base.inlineFormatRanges) ? cloneValue(base.inlineFormatRanges) : [],
   };
 }
 

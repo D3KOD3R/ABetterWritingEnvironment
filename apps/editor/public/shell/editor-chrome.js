@@ -67,6 +67,7 @@ export function renderEditorChrome({
         <div class="desktop-stat-strip" aria-label="Project statistics">
           ${renderStat("Lines", projectWorkspace?.project?.stats?.lineCount ?? 0, "lines")}
           ${renderWritingTargetToggle(state, writingTargetSummary)}
+          ${renderRevisionToggle(state)}
         </div>
       </div>
       ${renderWritingTargetStrip(writingTargetSummary, {
@@ -379,6 +380,28 @@ function renderWritingTargetToggle(state, summary) {
       <span class="chrome-target-icon" aria-hidden="true">◎</span>
       <span>Writing Goals</span>
       <strong data-writing-target-toggle-value>${escapeHtml(targetLabel)}</strong>
+    </button>
+  `;
+}
+
+// Intent: keep the revision-window CTA beside writing goals while the revisions feature owns the window body.
+function renderRevisionToggle(state) {
+  const revisionCount = Array.isArray(state?.revisionState?.sessions)
+    ? state.revisionState.sessions.length
+    : 0;
+
+  return `
+    <button
+      class="chrome-stat chrome-target-toggle chrome-revision-toggle"
+      type="button"
+      data-action="toggle-revision-window"
+      aria-pressed="${state.revisionWindowOpen ? "true" : "false"}"
+      title="Open revisions panel"
+      aria-label="Open revisions panel"
+    >
+      <span class="chrome-target-icon" aria-hidden="true">R</span>
+      <span>Revisions</span>
+      <strong>${escapeHtml(`${formatDisplayNumber(revisionCount)} session${revisionCount === 1 ? "" : "s"}`)}</strong>
     </button>
   `;
 }

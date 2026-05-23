@@ -115,6 +115,8 @@ export function buildSessionTrackerMetric(summary) {
   const requiredWordsPerMinute = Number(summary.sessionRequiredWordsPerMinute) || 0;
   const paceRatio = Number(summary.sessionWordsPerMinuteRatio);
   const statusText = summary.sessionWordsPerMinuteStatusText ?? "";
+  const sessionIsActive = summary.sessionIsActive === true;
+  const visibleSessionWords = sessionIsActive ? Math.round(Number(summary.currentSessionWords) || 0) : 0;
   return {
     key: "sessionTracker",
     label: "Session tracker",
@@ -122,11 +124,11 @@ export function buildSessionTrackerMetric(summary) {
     leftLabel: summary.sessionWordsPerMinuteLabel ?? formatDisplayNumber(currentWordsPerMinute),
     rightLabel: summary.sessionRequiredWordsPerMinuteLabel ?? formatDisplayNumber(requiredWordsPerMinute),
     clockLabel: summary.sessionCurrentTimeLabel ?? "—",
-    wordsWrittenLabel: formatDisplayNumber(Math.round(summary.currentSessionWords ?? 0)),
+    wordsWrittenLabel: formatDisplayNumber(visibleSessionWords),
     wordsTargetLabel: formatDisplayNumber(Math.round(summary.sessionTargetWordsPerSession ?? 0)),
     sessionStartTimeLabel: summary.sessionStartTimeLabel ?? "—",
     sessionMinutesLapsedLabel: formatDisplayNumber(Math.max(0, Math.floor(Number(summary.sessionMinutesLapsed ?? 0)))),
-    sessionIsActive: summary.sessionIsActive === true,
+    sessionIsActive,
     sessionPaceActive: summary.sessionPaceActive === true,
     sessionIdleLabel: summary.sessionIdleLabel ?? "Idle",
     wpmValue: currentWordsPerMinute,
@@ -195,7 +197,8 @@ export function renderSessionTrackerPanel(summary) {
           ? "You’re outperforming"
           : "Need more pace"
     : "Idle";
-  const progressWidth = Math.max(0, Math.min(100, Math.round((Math.max(0, Number(summary?.currentSessionWords ?? 0)) / Math.max(1, Number(summary?.sessionTargetWordsPerSession ?? 0))) * 100)));
+  const visibleSessionWords = isLiveSession ? Math.max(0, Number(summary?.currentSessionWords ?? 0)) : 0;
+  const progressWidth = Math.max(0, Math.min(100, Math.round((visibleSessionWords / Math.max(1, Number(summary?.sessionTargetWordsPerSession ?? 0))) * 100)));
   const paceColor = isPaceActive
     ? summary?.sessionWordsPerMinuteBarColor ?? "rgb(113, 215, 177)"
     : "rgba(31, 36, 48, 0.26)";

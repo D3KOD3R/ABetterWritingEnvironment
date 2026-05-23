@@ -1,4 +1,4 @@
-// Intent: build a repeatable revision-history fixture from a source project file for panel testing.
+// Intent: build a repeatable revision-history fixture from a source project file for window testing.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -95,7 +95,7 @@ function applySessionOneChanges(projectRecord) {
   const firstTask = Array.isArray(projectRecord.manuscriptTasks) ? projectRecord.manuscriptTasks[0] : null;
   if (firstTask) {
     firstTask.title = `${String(firstTask.title ?? "Revision Task")} (seeded panel check)`;
-    firstTask.body = `${String(firstTask.body ?? firstTask.description ?? "Revision body")} This fixture adds an explicit task edit so the revision panel has a non-scene entity to display.`;
+    firstTask.body = `${String(firstTask.body ?? firstTask.description ?? "Revision body")} This fixture adds an explicit task edit so the revisions window has a non-scene entity to display.`;
     firstTask.description = firstTask.body;
     firstTask.status = "in-progress";
   }
@@ -105,7 +105,7 @@ function applySessionOneChanges(projectRecord) {
     : null;
   if (firstEntity) {
     firstEntity.name = `${String(firstEntity.name ?? firstEntity.title ?? "World Entity")} Revised`;
-    firstEntity.notes = `${String(firstEntity.notes ?? "")}\n\nSeeded revision-panel fixture note: this entity was adjusted for diff coverage.`;
+    firstEntity.notes = `${String(firstEntity.notes ?? "")}\n\nSeeded revision-window fixture note: this entity was adjusted for diff coverage.`;
   }
 }
 

@@ -33,6 +33,26 @@ The browser app should be organized by responsibility, not by "everything that h
 
 It should not be the place where new feature logic is added.
 
+## Current Checkpoint
+
+The browser shell remains a high-coupling migration surface. `app.js` is still responsible for broad rendering, event routing, project activation glue, manuscript interactions, and several feature workflows even though extraction has begun.
+
+Completed or active slices:
+
+- `apps/editor/public/shell/editor-chrome.js` owns the top editor chrome and the writing-goals/revisions launch surfaces.
+- `apps/editor/public/features/writing-targets/writing-target-window.js` owns the writing-goals window markup.
+- `apps/editor/public/features/revisions/revision-window.js` owns the standalone revision comparison window markup.
+- `apps/editor/public/features/scene-editor.js` owns central scene-editor markup.
+- `apps/editor/public/features/manuscript-editor/manuscript-command-controller.js` owns the first selection-aware inline formatting command path.
+- `apps/editor/public/adapters/storage/project-persistence-service.js` owns project-file save/load/autosave/import/export orchestration.
+- `apps/editor/public/adapters/storage/project-repository.js` preserves the scene-level inline formatting compatibility field through persistence.
+
+Immediate constraint:
+
+- Do not expand major editor workflows in `app.js`; extract ownership or add a small compatibility call into an existing boundary.
+- Treat `inlineFormatRanges` as compatibility data while canonical anchor-backed marks and render projections are designed and tested.
+- Treat the active `.abe-project.json` snapshot as durable truth until a desktop folder-backed adapter is implemented.
+
 ## Architecture Principles
 
 - Feature slices own their own UI, local state, and event handlers.
@@ -102,11 +122,82 @@ That coupling means a simple UI fix can accidentally touch unrelated layout or p
 
 ## Recommended Migration Order
 
-### Phase 1: Create a Real Editor Shell
+### Phase 1: Stabilize Persistence And Project-State Ownership
 
 Goal:
-- reduce `app.js` to a composition root and event dispatcher
-- create a predictable module boundary for the rest of the work
+- prevent author data loss while shell extraction continues
+- move remaining project activation, cache, normalization, and selection-default hydration behind state/persistence boundaries
+
+Deliverables:
+- completed project-file persistence service boundary
+- completed task/note and inline-format compatibility round-trip coverage
+- project snapshot/cache activation controller outside feature UI
+- explicit selectors for active-project and persisted-scene state
+
+Exit criteria:
+- project-file load cannot merge stale cached author data into the activated project
+- project features commit canonical mutations through `ProjectPersistenceService`
+- project normalization and cache replacement are no longer embedded across `app.js`
+
+Status:
+- In progress: persistence service and round-trip guardrails exist; project activation/cache glue still remains in `app.js`.
+
+### Phase 2: Establish Manuscript Projection And Command Boundaries
+
+Goal:
+- separate manuscript command state and visual channels from shell rendering
+- keep author-approved data distinct from runtime-only editor visuals
+
+Deliverables:
+- manuscript controller for input actions, selection snapshots, find/replace, and inline command dispatch
+- projection selector combining author marks/compatibility ranges, anchored records, diagnostics, suggestions, spellcheck, search, and narration channels
+- editor-host interface with the textarea overlay as the compatibility adapter
+- tests for projection priority/lifecycle and persistence exclusion of runtime-only channels
+
+Exit criteria:
+- editor rendering consumes projections without persisting editor decoration objects
+- inline formatting mutations and anchored records route through durable project commands
+- scene editing no longer depends on unrelated shell rerenders
+
+Status:
+- In progress: scene-editor extraction and inline-format command controller are present; centralized projection selection and editor-host interfaces remain.
+
+### Phase 3: Extract Grammar And Spellcheck As A Projection Source
+
+Goal:
+- isolate the highest-churn editor feature first
+
+Deliverables:
+- spellcheck service/module
+- spellcheck projection producer and grammar panel renderer
+- grammar toggle control
+- active-word typing suppression logic
+- dictionary and exceptions workflow
+
+Exit criteria:
+- grammar UI can be refreshed without re-rendering the full manuscript shell
+- spellcheck rules can be unit tested independently of the editor page
+- spellcheck ranges are runtime projections and cannot enter project persistence
+
+### Phase 4: Extract Anchored Records And Workflow Panels
+
+Goal:
+- give task, inspiration, and research workflows one anchor-aware owner
+
+Deliverables:
+- task controller and passage-note controller
+- shared anchor recovery/navigation helpers
+- writing-target dashboard ownership completion
+- context-menu routing for anchored manuscript actions
+
+Exit criteria:
+- durable anchored records persist through project services
+- side-panel navigation uses projection/anchor selectors rather than shell-specific range state
+
+### Phase 5: Reduce The Shell And Introduce The Store Facade
+
+Goal:
+- reduce `app.js` to bootstrap, composition, compatibility wiring, and global effect scheduling
 
 Deliverables:
 - a central editor bootstrap module
@@ -116,74 +207,8 @@ Deliverables:
 
 Exit criteria:
 - feature modules can read state without directly mutating unrelated global objects
-- `app.js` no longer contains new feature-specific logic
-
-### Phase 2: Extract Persistence and Autosave
-
-Goal:
-- move all save/load and autosave behavior behind a service boundary
-
-Deliverables:
-- project file service
-- autosave service
-- local storage adapter for editor preferences and drafts
-- clear separation between "dirty state" and "write to disk"
-
-Exit criteria:
-- saving a project does not require feature code to know file API details
-- autosave can be tested without rendering the full editor
-
-Status:
-- Completed: low-level project-file I/O lives in `apps/editor/public/adapters/storage/project-file.js`.
-- Completed: project-file autosave timing and dirty-state transitions live in `apps/editor/public/adapters/storage/autosave.js`.
-- Completed: `apps/editor/public/adapters/storage/project-persistence-service.js` now owns save/load/autosave/import/export orchestration and is the persistence boundary for `app.js`.
-- Remaining: move project-library snapshot normalization, local preference storage, and project-cache persistence out of `apps/editor/public/app.js`.
-
-### Phase 3: Extract Grammar and Spellcheck
-
-Goal:
-- isolate the highest-churn editor feature first
-
-Deliverables:
-- spellcheck service/module
-- grammar panel renderer
-- grammar toggle control
-- active-word typing suppression logic
-- dictionary and exceptions workflow
-
-Exit criteria:
-- grammar UI can be refreshed without re-rendering the full manuscript shell
-- spellcheck rules can be unit tested independently of the editor page
-
-### Phase 4: Extract Manuscript Editing
-
-Goal:
-- separate the scene editor from global shell behavior
-
-Deliverables:
-- scene editor feature module
-- line gutter and selection helpers
-- binder and scene navigation helpers
-- find/replace controller
-
-Exit criteria:
-- the manuscript viewport can render from a feature module without `app.js` constructing it directly
-- text-edit interactions do not require unrelated shell re-renders
-
-### Phase 5: Extract Tasks, Notes, and Workflow Panels
-
-Goal:
-- split the remaining authoring workflows into their own feature slices
-
-Deliverables:
-- task composer and task list feature
-- anchored inspiration and research note feature
-- writing target dashboard feature
-- right-click context menus for manuscript actions
-
-Exit criteria:
-- each workflow panel has one obvious owner
-- feature state changes do not cascade through the whole app
+- new feature-specific logic is no longer added to `app.js`
+- `app.js` is reduced toward a composition/compatibility target of approximately 3,000 lines or fewer
 
 ### Phase 6: Extract Narration, Voice, and Worldbuilding Surfaces
 
@@ -199,6 +224,20 @@ Deliverables:
 Exit criteria:
 - these surfaces use shared workspace data and services, but do not rely on the manuscript shell for core behavior
 
+### Phase 7: Evaluate A CodeMirror Editor-Host Adapter
+
+Goal:
+- replace fragile textarea-overlay rendering only after manuscript ownership and projection contracts are enforceable
+
+Deliverables:
+- CodeMirror-backed editor-host experiment for one scene surface
+- mapping from canonical anchors/projected channels into editor decorations
+- parity checks for save/load, selection, IME input, spellcheck, autosave, navigation, and narration projection
+
+Exit criteria:
+- the adapter can be enabled without changing canonical project records or persistence paths
+- the textarea host remains a viable fallback until the experiment satisfies behavior checks
+
 ## Suggested File Map
 
 This is the first-pass directory plan for the browser app.
@@ -210,15 +249,28 @@ apps/editor/public/
   shell/
   state/
   features/
-    manuscript/
-    grammar/
+    manuscript-editor/
+      manuscript-controller.js
+      manuscript-view.js
+      projection-selector.js
+      editor-host-interface.js
+    spellcheck/
+      spellcheck-controller.js
+      spellcheck-projection-source.js
+    anchored-records/
+      task-controller.js
+      passage-note-controller.js
+      anchor-recovery.js
+    revisions/
     writing-targets/
-    tasks/
     narration/
     voice/
     world/
   adapters/
     desktop-host/
+    editor-host/
+      textarea-editor-host.js
+      codemirror-editor-host.js
     storage/
     workspace/
   shared/
@@ -231,13 +283,15 @@ These are the lowest-risk extractions to start with:
 | Current file | Likely target home | Why |
 | --- | --- | --- |
 | `apps/editor/public/app.js` | `bootstrap/editor-app.js`, `shell/editor-shell.js`, `state/editor-store.js` | split boot, render orchestration, and state ownership |
-| `apps/editor/public/spellcheck.js` | `features/grammar/spellcheck-core.js` | pure grammar logic should stay DOM-free and testable |
-| `apps/editor/public/features/scene-editor.js` | `features/manuscript/scene-editor-view.js` | scene editor rendering already has a clear slice boundary |
+| `apps/editor/public/spellcheck.js` | `features/spellcheck/spellcheck-core.js` | pure grammar logic should stay DOM-free and testable |
+| `apps/editor/public/features/scene-editor.js` | `features/manuscript-editor/manuscript-view.js` | scene editor rendering already has a clear slice boundary |
 | `apps/editor/public/features/progress-tracker.js` | `features/writing-targets/progress-tracker-view.js` | writing-target UI should be isolated from manuscript shell code |
 | `apps/editor/public/session-tracker-icons.js` | `features/writing-targets/session-tracker-icons.js` | feature-local asset helper |
 | `apps/editor/public/serva-vitae-project-library.js` | `adapters/storage/project-library.js` | project library persistence belongs with storage and load/save code |
 | save/load and autosave helpers inside `app.js` | `adapters/storage/project-file.js` and `adapters/storage/autosave.js` | persistence should be moved out of the shell |
-| grammar check panel helpers inside `app.js` | `features/grammar/panel.js` | panel rendering and interactions should live with the feature |
+| grammar check panel helpers inside `app.js` | `features/spellcheck/panel.js` | panel rendering and interactions should live with the feature |
+| task/note anchor and navigation handlers inside `app.js` | `features/anchored-records/*` | persisted records and their navigation should have an anchor-aware owner |
+| inline range and visual overlay selection inside `app.js` | `features/manuscript-editor/projection-selector.js` | durable and runtime visual channels need one deterministic render contract |
 
 Those pieces already have a clear responsibility and are easy to validate without changing the canonical manuscript model.
 
@@ -248,6 +302,7 @@ Every extraction should bring tests with it.
 - Unit tests for reducers, selectors, and pure helpers.
 - DOM integration tests for feature controllers and panel interactions.
 - Persistence round-trip tests for save/load and autosave.
+- Projection lifecycle tests ensuring runtime-only decoration channels are never persisted.
 - Schema migration tests for any change that affects local storage or project files.
 - A small smoke test for each new feature slice before the next slice is extracted.
 
@@ -259,6 +314,7 @@ Every extraction should bring tests with it.
 - `apps/desktop` owns filesystem integration, local settings, and workspace composition.
 - `apps/editor` owns presentation, interaction, and feature orchestration.
 - `apps/editor/public/app.js` should eventually be reduced to shell wiring and compatibility glue.
+- The diagrams in `docs/architecture/editor-boundary-diagrams.md` define migration ownership, not a permanent class inventory of the current monolith.
 
 ## Non-Goals
 

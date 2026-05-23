@@ -4,6 +4,15 @@ Single merged feature reference and process tracker for [An AI augmented author 
 
 This file merges the Word-document feature definitions with the implementation process headers and progress notes. Use this as the active reference when working through numbered features.
 
+## Feature ID Rule
+
+Feature IDs use a parent number plus a testable workflow number, then a lowercase letter for individual checks, for example `Feature 1.3c`. The parent number keeps the workflow tied to the original product feature area, the middle number identifies a specific feature workflow, and the letter identifies a precise interaction that can be tested, debugged, ported, or reported independently.
+
+When a workflow grows large enough to need separate testing, add a new numbered feature set with indented lettered checks instead of folding it into a broad progress paragraph. Keep the same ID in:
+- the parent feature's `Testable Subfeatures` list
+- the `Feature Implementation Index`
+- bug reports, porting notes, and manual test checklists
+
 ## Feature Confirmation Rule
 
 When the user says `Feature working`, that phrase confirms the current feature or workflow is accepted and must be documented immediately. Update the relevant numbered feature section and the implementation index in this file before moving on to unrelated work.
@@ -11,6 +20,7 @@ When the user says `Feature working`, that phrase confirms the current feature o
 The update must:
 - describe the feature in product terms, not only as a code change
 - place it under the closest numbered feature area
+- assign or update the most specific feature/check ID, for example `Feature 1.6b`
 - add or revise the `Feature Implementation Index` entry with code locations and line numbers
 - include the execution flow from user action to state update, persistence, rendering, logging, or tests where relevant
 - note any classification decision if the feature spans more than one feature area
@@ -25,12 +35,97 @@ Gives the writer a structured, code-like review panel that logs detected issues 
 
 The writer reviews manuscript problems as structured diagnostics, with each issue linked to a stable manuscript anchor rather than vague prose feedback.
 
+### Testable Subfeatures
+
+1.1 Anchored manuscript diagnostics console
+
+   The writer sees manuscript problems as structured issue records rather than loose comments. The code keeps each issue tied to a canonical manuscript anchor so clicking an issue can resolve back to a scene, block, line, or span even after the editor rerenders.
+   1.1a Issue records include severity, category, source, confidence, and anchor data.
+   1.1b Issue panel rows render as actionable diagnostics.
+   1.1c Clicking an issue navigates back to the flagged manuscript location.
+
+1.2 Context-aware scene insertion
+
+   When the author is actively editing scene `x`, pressing New Scene inserts the new draft scene immediately after that scene instead of appending it to the end of the binder. The code captures the active editor scene from pointer, focus, and typing events, then writes the resulting order into `structureDrafts.sceneOrder` so autosave and refresh preserve the placement.
+   1.2a Pointer/focus/input events mark the scene currently being edited.
+   1.2b New Scene resolves the active scene as the insertion anchor.
+   1.2c The new scene is inserted at `x + 1` in the same chapter and selected immediately.
+
+1.3 Manuscript spellcheck and project dictionary
+
+   The manuscript editor underlines local spelling issues while the author writes and lets them resolve a word from an app-owned context menu or grammar-check panel. The code builds a project-aware lexicon from the base word lists, manuscript terms, project dictionary entries, and exception lists so invented names and world terms can become trusted project vocabulary.
+   1.3a Right-clicking a misspelled word opens a suggestions dropdown.
+   1.3b Selecting a suggestion replaces the exact flagged word range in the scene draft.
+   1.3c Add-to-dictionary and exception actions update project-scoped spellcheck settings.
+   1.3d The grammar-check list supports batch approval of selected words.
+   1.3e When a word is flagged, there is a red underline squiggle showing the user.
+   1.3f The user can turn on and off the spell check feature with the grammar checkbox built into the UI.
+
+1.4 Manuscript find and replace
+
+   Ctrl+F opens a manuscript find panel that searches structured scene text without treating the editor as a flat browser document. The code preserves caret and scroll state while navigating matches, then applies replacements through scene-draft mutation paths so word counts, dirty state, and persistence stay consistent.
+   1.4a Opening the find panel can preload selected text.
+   1.4b Next/previous navigation selects and centers the matching scene range.
+   1.4c Replace Current changes only the active match.
+   1.4d Replace All mutates all matching scene drafts through the editor model path.
+
+1.5 Anchored task, inspiration, and research notes
+
+   The author can select manuscript text and turn it into a task, inspiration note, or research note that remains linked to the passage. The code stores scene IDs, offsets, selected text, source type, and note/task metadata, then uses exact and fuzzy matching to recover the range if nearby text changes.
+   1.5a Selected text can create a scene-linked task.
+   1.5b Selected text can create an inline inspiration or research note.
+   1.5c Side-panel note/task clicks navigate back to the saved manuscript range.
+   1.5d Fuzzy drift recovery attempts to relocate a note when text has shifted.
+
+1.6 Binder scene and chapter management
+
+   The binder lets the author manage chapters and scenes as story structure, including creation, title editing, ordering, collapse state, trimming, and deletion. The code mutates draft structure overlays and cleans scene-linked metadata so tasks, notes, narration, voice jobs, and selected state do not point at deleted or moved scene records.
+   1.6a Chapter and scene titles can be edited from binder/editor surfaces.
+   1.6b Scene drag/drop writes an explicit `sceneOrder` overlay.
+   1.6c Scene deletion cleans linked task, note, narration, voice, and selection metadata.
+   1.6d Scene trimming normalizes whitespace while preserving the draft scene identity.
+
+1.7 Scene editor focus, viewport, and line-aware navigation
+
+   The scene editor remembers where the author is working so navigation, refreshes, and diagnostics land in useful manuscript positions instead of resetting the writing surface. The code captures selection offsets, viewport scroll, line metrics, and layout measurements, then restores them after rerenders or targeted navigation.
+   1.7a Selection changes capture scene, offsets, line number, and viewport state.
+   1.7b Issue/task/note navigation restores the intended caret and scroll location.
+   1.7c Gutter, textarea, underline layer, and line metrics are synchronized.
+   1.7d Clicking editor whitespace moves focus into the nearest useful writing position.
+
+1.8 Writing targets, daily progress, and session tracker
+
+   The writing target system turns manuscript edits into live progress, pacing, session, and calendar history rather than a simple static word count. The code separates total manuscript words from words written today, records session samples and baselines, and persists dashboard state with the project record.
+   1.8a Header metrics show selectable writing target, projected-days, and pacing data.
+   1.8b The session tracker records active, idle, split, and resumed writing sessions.
+   1.8c The writing-goals dashboard shows calendar, streak, selected-day, and note views.
+   1.8d Per-day history archives chapter, scene, issue, inspiration, and progress data.
+
+1.9 Revision session banking
+
+   Revision banking records a structured revision session around manuscript changes so future undo, review, and export workflows can inspect what changed. The code normalizes stored revision state, builds project digests, records events, stages diffs, and renders grouped banked sessions through a dedicated revision history model and a standalone revisions window mockup.
+   1.9a Starting a session captures a baseline project digest.
+   1.9b Revision events aggregate into a session ledger.
+   1.9c Staging a session produces changed-entity and summary data.
+   1.9d Banked sessions persist through the revision storage adapter.
+   1.9e The revisions window opens beside the writing-goals control and presents a developer-style before/after compare surface.
+
+1.10 Manuscript inline formatting commands
+
+   The scene editor routes bold, italic, underline, and highlight through a shared command controller so toolbar actions affect only the selected manuscript span or the active insertion point. Inline style state is stored as scene-draft range metadata and rendered through the editor overlay, keeping literal markup out of the manuscript body.
+   1.10a Selecting text and pressing a format control toggles only that selected span in structured range metadata.
+   1.10b Pressing a format control at a collapsed caret creates a pending insertion point for newly typed formatted text.
+   1.10c Bold, italic, underline, and highlight share the same command controller, selection resolver, range mutation path, toolbar state update, render layer, and tests.
+
 ### Progress
 
 - Status: Foundation implemented.
-- Repository coverage: `IssueRecord`, `ManuscriptAnchor`, local analysis issue suggestions, issue console records, editor navigation to flagged scene lines, simplified issue-console headings, collapsible chapter groups in the issue, inspiration, research, and task consoles, chapter-grouped open task lists, collapsible manuscript chapter tabs, double-click editable binder chapter titles, double-click editable binder scene titles, double-click editable manuscript scene titles, scene-editor chapter breadcrumb sync, resizable left and right sidebar splitters, browser keyboard shortcuts for save/new/open/writing-goals/pane switching, right-click selected-text task creation with generated scene-order task titles, blue task-body instructions, thumbnail-hover task expansion, click-only manuscript references, draft-only inline editor inspiration/research bubbles with a normal manuscript verse field that preloads selected text or saves against the inserted typed verse, two-way inspiration/research navigation between saved manuscript ranges and side-panel note items, hover previews that glow the selected manuscript range, task-click navigation back to the editor range with fuzzy selected-text drift recovery, whitespace-click writing focus, caret-centering while typing, pane-local editor scrolling, scene task completion, app-owned Grammar Check underlines with an app-owned suggestions popup in the manuscript editor, now backed by a SCOWL-derived default wordlist plus the prior supplemental alpha list and contraction-aware matching, plus project-scoped dictionary and exception lists stored on each project save file, bulk-add actions from multi-word selections, and a movable grammar-check list panel with per-word checkboxes for batch project-dictionary approval, Ctrl+F manuscript find/replace that preserves the editor caret and scroll position when the panel opens, remaining-task chapter badges in the Manuscript panel, live manuscript word counts with release-date-aware projected-days forecasting and on-track/off-track hints, a Ctrl+Alt+T writing-target utility window, selectable top-header writing metrics, linked release-date and daily-target goal syncing, a session-split and inactivity timer panel with a 20-minute session time default, a 15-minute segment-close window, a 30-minute new-session window, resumable session history, and an idle session indicator that flips back to active on the first new manuscript edit, plus recent-snapshot words/minute pacing, red-to-blue-to-green progress signaling, and pulsing over-target glow, plus a full writing-goals dashboard modal with top summary cards, a month/week/list calendar, streak summary, selected-day detail panel, notes, and explicit save/cancel/reset actions, with the daily target tracker now counting words written today separately from the session tracker, a per-day progress archive with chapter/scene/issue/inspiration breakdown, a 30-day believable sample-history seeding action for tracker testing, a project save-file load command that emits manuscript, world, task, timeline, and template data with source provenance, nested source template sheets, full source-path provenance, retained source sheet text, file-backed desktop/browser logging, a saved-project library with browser load/save/create controls and file-backed Save As/load routes, and a documented project save model for the Serva Vitae reference fixture. The revision drafting UI is currently benched from the scene editor while a new revision-history service, diff/event/panel modules, and revision storage adapter preserve the bookkeeping path for future undo/redo and banking workflows. Modal dismissal is deliberate: a single outside click closes the writing-target window, but a pointer that starts inside the modal and is released outside should leave the window open.
+- Repository coverage: `IssueRecord`, `ManuscriptAnchor`, local analysis issue suggestions, issue console records, editor navigation to flagged scene lines, simplified issue-console headings, collapsible chapter groups in the issue, inspiration, research, and task consoles, chapter-grouped open task lists, collapsible manuscript chapter tabs, double-click editable binder chapter titles, double-click editable binder scene titles, double-click editable manuscript scene titles, scene-editor chapter breadcrumb sync, resizable left and right sidebar splitters, browser keyboard shortcuts for save/new/open/writing-goals/pane switching, right-click selected-text task creation with generated scene-order task titles, blue task-body instructions, thumbnail-hover task expansion, click-only manuscript references, draft-only inline editor inspiration/research bubbles with a normal manuscript verse field that preloads selected text or saves against the inserted typed verse, two-way inspiration/research navigation between saved manuscript ranges and side-panel note items, hover previews that glow the selected manuscript range, task-click navigation back to the editor range with fuzzy selected-text drift recovery, whitespace-click writing focus, caret-centering while typing, pane-local editor scrolling, scene task completion, app-owned Grammar Check underlines with an app-owned suggestions popup in the manuscript editor, now backed by a SCOWL-derived default wordlist plus the prior supplemental alpha list and contraction-aware matching, plus project-scoped dictionary and exception lists stored on each project save file, bulk-add actions from multi-word selections, and a movable grammar-check list panel with per-word checkboxes for batch project-dictionary approval, Ctrl+F manuscript find/replace that preserves the editor caret and scroll position when the panel opens, remaining-task chapter badges in the Manuscript panel, live manuscript word counts with release-date-aware projected-days forecasting and on-track/off-track hints, a Ctrl+Alt+T writing-target utility window, selectable top-header writing metrics, linked release-date and daily-target goal syncing, a session-split and inactivity timer panel with a 20-minute session time default, a 15-minute segment-close window, a 30-minute new-session window, resumable session history, and an idle session indicator that flips back to active on the first new manuscript edit, plus recent-snapshot words/minute pacing, red-to-blue-to-green progress signaling, and pulsing over-target glow, plus a full writing-goals dashboard modal with top summary cards, a month/week/list calendar, streak summary, selected-day detail panel, notes, and explicit save/cancel/reset actions, with the daily target tracker now counting words written today separately from the session tracker, a per-day progress archive with chapter/scene/issue/inspiration breakdown, a 30-day believable sample-history seeding action for tracker testing, a project save-file load command that emits manuscript, world, task, timeline, and template data with source provenance, nested source template sheets, full source-path provenance, retained source sheet text, file-backed desktop/browser logging, a saved-project library with browser load/save/create controls and file-backed Save As/load routes, and a documented project save model for the Serva Vitae reference fixture. The revision drafting UI is currently benched from the scene editor while a new revision-history service, diff/event/model modules, revision storage adapter, and standalone revisions window mockup preserve the bookkeeping and review path for future undo/redo and banking workflows. The right-hand console now stays focused on Tasks, Inspiration, and Research; revision review has moved out of that dock. Modal dismissal is deliberate: a single outside click closes the writing-target window, but a pointer that starts inside the modal and is released outside should leave the window open; the revisions window now follows the same deliberate close behavior.
 - Process update (2026-05-21): confirmed context-aware scene insertion. When the author is editing scene `x`, the New Scene action creates the next draft scene at `x + 1` in the same chapter and persists that placement through the scene-order overlay instead of appending to the end of the binder.
-- Revision panel testing now includes a repeatable fixture seeder and on-disk revision package writer for `revision.json`, `events.json`, `project.diff.json`, and `summary.md` outputs derived from `SaveTestFile/RevisionsTest/RevisionsTestOriginFileproject-serva-vitae.abe-project.json`, and that source fixture now carries seeded `REVISIONSTEST` manuscript text plus banked revision sessions for panel inspection.
+- Revisions window testing now includes a repeatable fixture seeder and on-disk revision package writer for `revision.json`, `events.json`, `project.diff.json`, and `summary.md` outputs derived from `SaveTestFile/RevisionsTest/RevisionsTestOriginFileproject-serva-vitae.abe-project.json`, and that source fixture now carries seeded `REVISIONSTEST` manuscript text plus banked revision sessions for window inspection.
+- Process update (2026-05-21): revision review now lives in a standalone window mockup opened from the top chrome beside Writing Goals, and the right-hand console no longer has a Revisions tab. The UI presents session filters, a changed-file rail, changed entities, and side-by-side before/after digest operations so the author can review banked revisions with developer diff ergonomics before final design implementation.
+- Process update (2026-05-22): manuscript inline formatting now stores bold, italic, underline, and highlight as scene-draft range metadata rendered by the editor overlay, replacing literal inserted HTML tags and the older scene-wide italic preference path.
+- Process update (2026-05-23): established the manuscript mark/decoration projection boundary in `docs/architecture/manuscript-decoration-layer.md`. Author-applied inline formatting remains a scene-record compatibility field during the browser slice, now survives project JSON save/load and refresh through scene normalization, and must later be promoted to canonical anchor-backed manuscript marks rather than combined with spellcheck, AI-suggestion, hover, or narration visuals.
 - Note: The session tracker now renders as the full inline metrics panel with a circular WPM tracker, and its stateful pen artwork lives at `apps/editor/public/assets/icons/session-tracker-sleeping-pen.svg`, `apps/editor/public/assets/icons/session-tracker-working-pen.svg`, and `apps/editor/public/assets/icons/session-tracker-flaming-pen.svg`.
 - Next work: promote local selected-text tasks into canonical anchored task records, add host-seeded passage-note/research records, persist task resolution with project data, and move the saved-project library from browser storage into a host-backed project store if needed later.
 
@@ -43,6 +138,36 @@ Provides real-time writing support by identifying potential issues as the author
 ### Process Header
 
 The writing assistant runs behind provider boundaries and returns local-first, anchored feedback that can be reviewed without making cloud execution a core dependency.
+
+### Testable Subfeatures
+
+2.1 Local AI provider routing
+
+   The assistant routes local writing requests through provider contracts instead of calling a model directly from the editor. The code selects a model tier, builds a provider-safe prompt, and returns structured fallback results when a local provider is unavailable.
+   2.1a Provider descriptors define local model capabilities.
+   2.1b Routing policy selects Tiny, Standard, or Large model tiers.
+   2.1c Unavailable providers return structured non-destructive failures.
+
+2.2 Local AI editor preference
+
+   The Local AI Only toggle lets the author control whether writing assistance should stay on the local machine. The code persists the preference with editor/project state so UI actions can respect local-first behavior after refresh or project reload.
+   2.2a The Local AI toggle is exposed in the editor chrome.
+   2.2b Preference state persists with project/editor settings.
+   2.2c Local AI UI actions check the current preference before invoking assistance.
+
+2.3 Local AI scene-title suggestion
+
+   The author can request a scene title suggestion from the active scene editor. The code sends scene context through the local AI router and applies the returned title through normal scene-draft update logic so persistence, rendering, and dirty state stay consistent.
+   2.3a The scene editor exposes a title suggestion action.
+   2.3b Scene text and context are converted into a local AI request.
+   2.3c Accepted title output updates the current scene draft title.
+
+2.4 Anchored writing analysis suggestions
+
+   Local analysis can identify writing issues and event candidates while preserving manuscript addressability. The code translates analysis output into issue/event suggestions with canonical anchors so the editor can navigate the author back to the relevant scene text.
+   2.4a Rule analysis emits anchored issue suggestions.
+   2.4b Event evidence emits anchored event suggestions.
+   2.4c Suggestions remain reviewable and do not silently mutate manuscript structure.
 
 ### Progress
 
@@ -60,6 +185,29 @@ Lets the program automatically detect and mark major story moments throughout a 
 
 Important story beats are modeled as anchored event tags that can be searched, navigated, and reused by continuity and worldbuilding workflows.
 
+### Testable Subfeatures
+
+3.1 Anchored event detection
+
+   Event detection scans manuscript blocks for major story moments and returns suggestions rather than silently tagging the project. The code packages each suggestion with an excerpt and manuscript anchor so it can be reviewed, searched, and later reused by continuity or worldbuilding tools.
+   3.1a Analysis detects candidate story events from manuscript text.
+   3.1b Event suggestions include excerpt, kind, confidence, and anchor data.
+   3.1c Detection remains advisory until accepted into canonical project data.
+
+3.2 Event tag persistence model
+
+   Accepted or seeded events use canonical `EventTag` objects instead of plain highlights. The code stores event kind, source, confidence, and anchor fields so timeline, issue-console, and worldbuilding workflows can resolve the same story beat consistently.
+   3.2a `EventTag` records preserve source and kind metadata.
+   3.2b Event tags attach to canonical manuscript anchors.
+   3.2c Persisted tags can be reused by later continuity and timeline systems.
+
+3.3 Event console navigation foundation
+
+   Event suggestions share the same addressable navigation principle as manuscript issues. The code renders event-like records through the console path and relies on anchors to navigate back to the appropriate scene line or passage.
+   3.3a Event rows can be rendered beside issue-console records.
+   3.3b Clicking an event resolves the target manuscript location.
+   3.3c Event navigation avoids screen-coordinate or DOM-only references.
+
 ### Progress
 
 - Status: Foundation implemented.
@@ -75,6 +223,36 @@ Is a live reading view that listens to the narrator's voice, matches the spoken 
 ### Process Header
 
 Narration follow tracks a live read-through against canonical manuscript spans, keeping alignment state separate from editor rendering state.
+
+### Testable Subfeatures
+
+4.1 Narration session service
+
+   Narration follow state is represented as session and alignment data rather than being hidden inside the editor UI. The code keeps audio-session state separate from rendering state so a future live follow engine can pause, recover, and align against canonical manuscript spans.
+   4.1a Narration sessions are explicit service records.
+   4.1b Alignment jobs use typed request/status/result data.
+   4.1c Session state can evolve independently from editor layout.
+
+4.2 Anchored narration take recording
+
+   The author can select or arm a manuscript verse and record a take linked to that passage. The code records scene, block, and span metadata with the take so saved audio remains traceable after the editor rerenders or metadata is synchronized.
+   4.2a Verse selection arms a passage for recording.
+   4.2b Record, stop, and finalize actions create a take session.
+   4.2c Saved takes retain manuscript anchor and media pointer data.
+
+4.3 Narration recording tools UI
+
+   The narration controls live inside the manuscript-oriented scene editor instead of a detached audio tool. The code renders armed verse state, recording status, narration chips, and saved take cards so the author can work from the script while recording.
+   4.3a Narration mode displays recording controls near the manuscript.
+   4.3b Recording status updates as the take moves through runtime states.
+   4.3c Saved take cards expose preview/open actions where available.
+
+4.4 Narration metadata synchronization
+
+   Narration records must survive ordinary manuscript edits where their original scene and block still resolve. The code synchronizes session and alignment metadata against current manuscript structure to keep take records tied to usable anchors.
+   4.4a Session metadata is reconciled with current scene/block records.
+   4.4b Alignment job metadata is synchronized after manuscript structure changes.
+   4.4c Broken or stale references are isolated for later recovery handling.
 
 ### Progress
 
@@ -92,6 +270,36 @@ Allows the author to produce full audiobook performances directly inside the wri
 
 Character voice narration maps manuscript speaker assignments to voice profiles and render jobs without hardwiring the editor to a specific speech engine.
 
+### Testable Subfeatures
+
+5.1 Voice profile and speaker binding model
+
+   Character voice narration starts by separating manuscript speaker identity from the audio engine that may eventually render it. The code normalizes voice profiles and speaker bindings through provider-neutral service contracts so narrator, character, and future conversion voices can be swapped without changing manuscript data.
+   5.1a Voice profiles normalize names, roles, and provider references.
+   5.1b Speaker bindings map manuscript speakers to voice profiles.
+   5.1c Provider details remain behind service boundaries.
+
+5.2 Voice render job lifecycle
+
+   Voice output is modeled as explicit jobs rather than hidden async UI state. The code moves preview and chapter render jobs through draft, queued, rendering, rendered, failed, and cancelled states so long-running audio work can be inspected and retried.
+   5.2a Preview and chapter render jobs are created from manuscript context.
+   5.2b Queue transitions are explicit and status-bearing.
+   5.2c Failed and cancelled jobs remain inspectable.
+
+5.3 Voice narration storage
+
+   Generated or recorded voice assets need to remain traceable to the manuscript locations that produced them. The code stores local voice narration records with output pointers and metadata so project media can be reopened or reconciled later.
+   5.3a Voice narration records persist profile/job/output metadata.
+   5.3b Stored outputs retain project-media pointers.
+   5.3c Storage normalizes legacy and current voice record shapes.
+
+5.4 Editor voice narration controls
+
+   The editor exposes voice controls where the author can inspect bindings, create previews, and review saved narration records. The code keeps those controls connected to voice services while avoiding direct coupling to a specific TTS or conversion engine.
+   5.4a The right-side voice rail exposes voice narration actions.
+   5.4b Saved recording cards display preview/open actions.
+   5.4c Editor job helpers create service-backed narration jobs.
+
 ### Progress
 
 - Status: Foundation implemented.
@@ -107,6 +315,43 @@ Gives the author an interactive worldbuilding workspace built around visual time
 ### Process Header
 
 The world spine view represents chronology, locality, and causality as structured spines, nodes, and edges rather than flat notes.
+
+### Testable Subfeatures
+
+6.1 Structured world model
+
+   Worldbuilding data is stored as typed templates, entities, spines, nodes, edges, and links instead of decorative notes. The code gives chronology and locality stable IDs so world events can be filtered, linked, and reused by manuscript and continuity workflows.
+   6.1a World models contain typed templates, entities, spines, nodes, and edges.
+   6.1b Timeline nodes and edges preserve stable IDs.
+   6.1c World links can reference manuscript and timeline anchors.
+
+6.2 Template-driven entity instantiation
+
+   Templates act as blueprints for reusable world entities such as planets, factions, cultures, or technologies. The code preserves template ancestry, typed fields, and user-edited values so created entities remain structured and portable.
+   6.2a Templates define typed entity fields.
+   6.2b Instantiated entities get stable IDs and template ancestry.
+   6.2c User-edited field data stays attached to the entity record.
+
+6.3 Timeline spine rendering
+
+   The world spine view renders horizontal timeline lanes and supporting inspection panels so the author can reason about chronology visually. The code reads structured spine/node data and renders selected node, entity, template, and suggestion context without flattening the model into notes.
+   6.3a Spine lanes render from timeline spine records.
+   6.3b Selected node/entity panels show structured context.
+   6.3c World inspector cards expose templates, entities, and suggestions.
+
+6.4 Cross-spine causality links
+
+   Events on different spines can influence one another and should be represented as explicit links. The code models timeline edges and entity introductions so causality, locality, and presence can be followed across planets, factions, characters, or story threads.
+   6.4a Timeline edges connect events across spines.
+   6.4b Entity introductions link entities to timeline/manuscript anchors.
+   6.4c Link rendering foundations expose cross-spine relationships.
+
+6.5 Reviewable world suggestions
+
+   AI worldbuilding assistance can suggest templates, entities, and links but must not mutate canonical world data by itself. The code keeps suggestions advisory and evidence-linked so the author can accept or reject structural changes deliberately.
+   6.5a Analysis can suggest world templates and entities.
+   6.5b Suggested cross-spine links remain reviewable.
+   6.5c Canonical world data changes only after explicit acceptance.
 
 ### Progress
 
@@ -124,6 +369,29 @@ Dream Scaping is an outlier feature for moments where the writer has an idea or 
 
 Dream Scaping lets an author submit a powerful loose idea or scene and receive reviewable story-fit proposals against the current manuscript and world spine evidence.
 
+### Testable Subfeatures
+
+7.1 Dream-scaping request and result contracts
+
+   Dream Scaping starts with a loose author idea and turns it into structured suggestion data. The code records the idea input, fit classification, placement target, and suggestion status so later UI and acceptance flows can handle it predictably.
+   7.1a Idea input is represented as a typed request.
+   7.1b Fit and placement results classify where the idea may belong.
+   7.1c Suggestion status stays explicit and reviewable.
+
+7.2 Reviewable story-fit suggestion generation
+
+   The analysis service compares the loose idea against manuscript and world evidence before proposing how it could fit. The code returns evidence-linked suggestions instead of directly inserting scenes or timeline nodes, preserving author control over story structure.
+   7.2a Analysis builds story-fit suggestions from the idea text.
+   7.2b Suggestions include evidence records and placement reasoning.
+   7.2c No manuscript or world mutation happens during suggestion generation.
+
+7.3 Dream Scaping panel rendering
+
+   The editor panel presents pending Dream Scaping suggestions for review. The code renders fit, placement, and evidence summary data so the author can inspect the proposal before future accept/reject actions are added.
+   7.3a Pending suggestions render as review cards.
+   7.3b Fit and placement labels are visible in the panel.
+   7.3c Evidence summaries remain tied to the suggestion record.
+
 ### Progress
 
 - Status: Foundation implemented on 2026-04-24.
@@ -139,6 +407,43 @@ Allows a writer to open a local project save file or project folder into this ap
 ### Process Header
 
 The project loader imports a user-owned project save file, translates it into the app's normal project model, and stores it as a regular saved project while keeping the original source file untouched.
+
+### Testable Subfeatures
+
+8.1 Source project file import
+
+   The author can load a local `.abe-project.json` or supported source project file into the application's canonical project model. The code preserves provenance, source path, retained template text, manuscript hierarchy, and project metrics while leaving the original file untouched.
+   8.1a Desktop/browser load actions read project files through controlled routes.
+   8.1b Imported records preserve source provenance and path details.
+   8.1c Loaded manuscript hierarchy becomes the active project model.
+
+8.2 Project persistence service boundary
+
+   All project save, load, autosave, import, export, restore, and canonical mutation behavior must route through `ProjectPersistenceService`. The code centralizes persistence so UI features do not write directly to browser storage, file handles, or ad hoc JSON blobs.
+   8.2a Editor save/load commands call `ProjectPersistenceService`.
+   8.2b Canonical project mutations go through the persistence boundary.
+   8.2c Restore-last-opened behavior is owned by the persistence service.
+
+8.3 Disposable browser cache policy
+
+   Browser storage is treated as a temporary convenience cache, not the desktop source of truth. The code clears stale project-content cache when loading or switching projects and repopulates active state from the selected JSON project file.
+   8.3a Loading a JSON project clears stale project-content storage.
+   8.3b Cache hydration does not merge old project data into the new project.
+   8.3c Active project cache reflects only the current manuscript version.
+
+8.4 Autosave and dirty-state control
+
+   Autosave should only mark work clean after a real save path succeeds. The code reports save failures, falls back deliberately when permissions are unavailable, and reschedules dirty work instead of silently treating failed writes as successful.
+   8.4a Autosave calls the persistence service rather than direct storage writes.
+   8.4b Failed saves keep dirty state active.
+   8.4c Permission fallback behavior is explicit and test-covered.
+
+8.5 Project metrics derivation
+
+   Project counts and dashboard metrics must be calculated from the loaded project record rather than stale browser cache. The code derives manuscript, world, task, timeline, template, and note metrics from canonical JSON data so refreshes and project switches show the current project accurately.
+   8.5a Project index metrics are rebuilt from loaded project content.
+   8.5b Passage-note counts derive from canonical notes.
+   8.5c Metrics update after load, save, refresh, and project switch flows.
 
 ### Progress
 
@@ -158,7 +463,7 @@ Also update this index immediately when the user says `Feature working`; that co
 
 ### Entry Template
 
-- Feature: `Feature NN - Name`
+- Feature: `Feature N.N - Specific workflow name`, for example `Feature 1.3 - Manuscript spellcheck and project dictionary`
 - Workflow: concise workflow name, for example `Scene drag/drop reorder`
 - Status: `Planned`, `In Progress`, `Implemented`, `Partially Implemented`, `Needs Review`, or `Deprecated`
 - Code locations: `path:start-end` with the main function or block name
@@ -168,23 +473,23 @@ Also update this index immediately when the user says `Feature working`; that co
 
 ### Indexed Workflows
 
-- Feature: `Feature 01 - Manuscript Issue Console`
+- Feature: `Feature 1.2 - Context-aware scene insertion`
 - Workflow: Context-aware scene insertion
 - Status: `Implemented`
 - Code locations: `apps/editor/public/app.js:751` (`pointerdown` current-scene capture), `apps/editor/public/app.js:1620` (`focusin` current-scene capture), `apps/editor/public/app.js:1885` (`editor-text` input current-scene capture), `apps/editor/public/app.js:8072-8091` (`markSceneEditorAsCurrent`), `apps/editor/public/app.js:11671-11694` (`addSceneDraft`), `apps/editor/public/app.js:11698-11721` (`getSceneIdForNewSceneDraftAnchor`), `apps/editor/public/editor-model.js:400-455` (`insertStructureSceneDraftAfterAnchor`), `test/editor-model.test.mjs:203-222` (scene-order insertion coverage)
 - Execution flow: the manuscript editor records the active scene on pointer, focus, and typing -> `addSceneDraft` resolves the active editor scene as the insertion anchor -> `insertStructureSceneDraftAfterAnchor` creates a complete `structureDrafts.sceneOrder` with the new draft scene inserted immediately after that anchor -> the editor writes `EDITOR_STRUCTURE_KEY`, refreshes scene records, and selects the new scene
 - Flow-on effects: the new scene stays in the same chapter as the active scene, binder order survives refresh/autosave/project persistence through `structureDrafts.sceneOrder`, the manuscript render selects the new scene after creation, and automated editor-model coverage verifies the persisted order
-- Extraction/port notes: classified under Feature 01 because it is a manuscript editor/binder workflow that preserves author navigation and scene addressability; the insertion-order helper already lives in `editor-model.js`, while the UI event capture should move with the future scene-editor feature slice
+- Extraction/port notes: classified under Feature 1.2 because it is a manuscript editor/binder workflow that preserves author navigation and scene addressability; the insertion-order helper already lives in `editor-model.js`, while the UI event capture should move with the future scene-editor feature slice
 
-- Feature: `Feature 01 - Manuscript Issue Console`
+- Feature: `Feature 1.1 - Anchored manuscript diagnostics console`
 - Workflow: Anchored manuscript diagnostics console
 - Status: `Implemented`
 - Code locations: `packages/manuscript-schema/src/index.ts:125-157` (`ManuscriptAnchor`, `IssueRecord`, `EventTag`), `packages/manuscript-schema/src/index.ts:529-626` (`buildManuscriptIndex`, `createManuscriptAnchor`, `resolveManuscriptAnchor`), `packages/manuscript-schema/src/index.ts:629-701` (`addIssueRecord`, `addEventTag`), `services/analysis/src/index.ts:31-176` (`createLocalAnalysisService`, `analyze`), `apps/editor/public/app.js:2919-2939` (`renderManuscriptPanel`), `apps/editor/public/app.js:4181-4204` (`renderIssuePanelBody`), `apps/editor/public/features/scene-editor.js:75-139` (`renderManuscriptPanelHTML`), `test/manuscript-schema.test.mjs:17-132` (anchor/issue/event schema coverage), `test/analysis-service.test.mjs:21-213` (anchored analysis coverage)
 - Execution flow: manuscript content is modeled as projects, chapters, scenes, blocks, and anchors -> local analysis returns issue and event suggestions with canonical anchors -> editor state renders the manuscript scene panel and the issue/task console -> issue/task navigation resolves anchors back to the relevant scene text
 - Flow-on effects: diagnostics remain line/span addressable, issue and event records can survive rendering changes, and schema plus analysis tests verify anchor creation, resolution, issue records, and event records
-- Extraction/port notes: Feature 01 spans `packages/manuscript-schema`, `services/analysis`, and the editor scene/console surfaces; future extraction should move remaining issue-console orchestration out of `app.js` into a dedicated feature slice
+- Extraction/port notes: Feature 1.1 spans `packages/manuscript-schema`, `services/analysis`, and the editor scene/console surfaces; future extraction should move remaining issue-console orchestration out of `app.js` into a dedicated feature slice
 
-- Feature: `Feature 01 - Manuscript Issue Console`
+- Feature: `Feature 1.3 - Manuscript spellcheck and project dictionary`
 - Workflow: Manuscript spellcheck and project dictionary
 - Status: `Implemented`
 - Code locations: `apps/editor/public/spellcheck.js:17-41` (`ensureSpellcheckBaseLexicon`, `ensureSpellcheckReferenceLexicon`), `apps/editor/public/spellcheck.js:79-153` (`loadSpellcheckWordsFromUrls`, `createSpellcheckLexiconFromWords`, `buildSpellcheckProjectLexicon`), `apps/editor/public/spellcheck.js:155-245` (`getSpellcheckWordRange`, `isSpellcheckKnownWord`, `isSpellcheckMisspelledWord`), `apps/editor/public/spellcheck.js:247-364` (`suggestSpellcheckAlternatives`, `normalizeSpellcheckWord`, `preserveSpellcheckWordCase`), `apps/editor/public/spellcheck.js:463-538` (`collectSpellcheckMisspellings`, `groupSpellcheckMisspellings`, `countSpellcheckMisspellings`), `apps/editor/public/editor-model.js:57-88` (`createDefaultSpellcheckProjectSettings`, `normalizeSpellcheckProjectSettings`), `apps/editor/public/app.js:716-717` (lexicon boot), `apps/editor/public/app.js:1095-1163` (spellcheck and grammar-panel actions), `apps/editor/public/app.js:3226-3488` (`renderGrammarCheckPanel`, `renderGrammarCheckPanelHTML`, `getCurrentSceneGrammarCheckEntries`), `apps/editor/public/app.js:8876-9095` (right-click spellcheck context resolution), `apps/editor/public/app.js:11216-11301` (`hideSpellcheckContextMenu`, project dictionary/exception writes, suggestion application), `apps/editor/public/app.js:12164-12303` (typing-aware underline layer), `test/spellcheck.test.mjs:1-181` (tokenization, lexicon, suggestions, fallback loading coverage), `test/editor-model.test.mjs:276-284` (project dictionary normalization coverage)
@@ -192,7 +497,7 @@ Also update this index immediately when the user says `Feature working`; that co
 - Flow-on effects: spelling feedback remains local and project-scoped, user-added names and world terms are preserved in project settings, the movable grammar panel can bulk-select words for the dictionary, underlines stay aligned to textarea offsets, and tests cover contractions, inflections, edit-distance suggestions, resilient word-list loading, and duplicate-normalized dictionary entries
 - Extraction/port notes: spellcheck rules are already isolated in `spellcheck.js`, but UI orchestration still lives in `app.js`; future extraction should create a spellcheck feature controller that owns context menus, panel state, underline refresh scheduling, and project dictionary writes
 
-- Feature: `Feature 01 - Manuscript Issue Console`
+- Feature: `Feature 1.4 - Manuscript find and replace`
 - Workflow: Manuscript find and replace
 - Status: `Implemented`
 - Code locations: `apps/editor/public/app.js:783-787` (find panel drag/wheel event wiring), `apps/editor/public/app.js:989-1020` (find/replace click actions), `apps/editor/public/app.js:1764-1767` (find field input handling), `apps/editor/public/app.js:2079-2093` (keyboard shortcuts and Enter/Escape behavior), `apps/editor/public/app.js:2975-3224` (`renderManuscriptFindPanel`, positioning, draggable panel HTML), `apps/editor/public/app.js:3682-3745` (`renderManuscriptFindResult`, `getManuscriptFindMatches`, snippets), `apps/editor/public/app.js:3747-4017` (`openManuscriptFind`, navigation, replace current/all, wheel navigation), `apps/editor/public/app.js:3894-3995` (`replaceManuscriptFindCurrent`, `replaceManuscriptFindAll`)
@@ -200,7 +505,7 @@ Also update this index immediately when the user says `Feature working`; that co
 - Flow-on effects: search operates across structured scenes rather than a flat DOM document, replacement participates in draft persistence and word-count updates, panel position and focused field selection are preserved across rerenders, and leaving the manuscript pane closes the find state
 - Extraction/port notes: this is a manuscript-editor utility and should move into a `features/manuscript-find` slice with a small contract to `updateSceneDraft`, scene lookup, and editor focus helpers
 
-- Feature: `Feature 01 - Manuscript Issue Console`
+- Feature: `Feature 1.5 - Anchored task, inspiration, and research notes`
 - Workflow: Anchored task, inspiration, and research notes
 - Status: `Implemented`
 - Code locations: `apps/editor/public/editor-model.js:569-625` (`createManuscriptTask`, `createManuscriptTaskTitle`), `apps/editor/public/editor-model.js:627-723` (`createPassageNote`, note title/body updates), `apps/editor/public/features/scene-editor.js:320-370` (`renderInlinePassageDraftHTML`), `apps/editor/public/app.js:1168-1189` (selection task/note actions), `apps/editor/public/app.js:2276-2341` (selection task context menu), `apps/editor/public/app.js:4205-4221` (`renderPassageNotePanel`), `apps/editor/public/app.js:9816-10010` (`navigateTaskAnchor`, `focusTaskRange`, editor offset focus), `apps/editor/public/app.js:10183-10366` (inline passage note create/update/commit/cancel flow), `apps/editor/public/app.js:10661-10725` (selection click recovery for notes/tasks), `apps/editor/public/app.js:10725-10876` (range matching and passage-note anchoring), `apps/editor/public/app.js:10884-10927` (task composer save), `test/editor-model.test.mjs:288-405` (task and passage-note construction coverage)
@@ -208,7 +513,7 @@ Also update this index immediately when the user says `Feature working`; that co
 - Flow-on effects: review items are actionable diagnostics rather than disconnected notes, passage notes are grouped into inspiration and research panels, deleting or moving scenes synchronizes linked metadata, and note/task edits persist through the project record
 - Extraction/port notes: domain constructors live in `editor-model.js`; UI orchestration should be split into task-console and passage-note feature slices so future issue records can converge on canonical `IssueRecord` anchors
 
-- Feature: `Feature 01 - Manuscript Issue Console`
+- Feature: `Feature 1.6 - Binder scene and chapter management`
 - Workflow: Binder scene and chapter management
 - Status: `Implemented`
 - Code locations: `apps/editor/public/app.js:805-808` (binder drag/drop event wiring), `apps/editor/public/app.js:1204-1295` (trim, collapse, delete, context-menu actions), `apps/editor/public/app.js:1435-1440` (add chapter/scene actions), `apps/editor/public/app.js:1643-1659` (title edit focusout commit), `apps/editor/public/app.js:11631-11694` (`resetSceneDraft`, `addChapterDraft`, `addSceneDraft`), `apps/editor/public/app.js:11857-11877` (`toggleChapterCollapse`), `apps/editor/public/app.js:12043-12155` (`beginChapterTitleEdit`, `finishChapterTitleEdit`, `beginSceneTitleEdit`, `finishSceneTitleEdit`), `apps/editor/public/app.js:12970-13019` (`buildStructureDraftScenesFromOrderedScenes`, `moveDraftBinderScene`), `apps/editor/public/app.js:13112-13299` (`deleteSceneFromBinder` metadata cleanup), `apps/editor/public/app.js:13358-13397` (`trimSceneWhitespace`), `apps/editor/public/app.js:13702-13789` (binder scene drag handlers), `test/desktop-application.test.mjs:315-402` and `test/desktop-application.test.mjs:577` (binder behavior assertions)
@@ -216,7 +521,7 @@ Also update this index immediately when the user says `Feature working`; that co
 - Flow-on effects: the binder remains an author-facing structural editor, empty draft scenes can be ordered between canonical scenes, chapter collapse state persists per project, and scene-linked metadata is cleaned or rebuilt when structure changes
 - Extraction/port notes: this should become a manuscript-binder feature slice; ordering helpers already started moving into `editor-model.js`, but drag/drop, deletion, and metadata synchronization still sit in the app shell
 
-- Feature: `Feature 01 - Manuscript Issue Console`
+- Feature: `Feature 1.7 - Scene editor focus, viewport, and line-aware navigation`
 - Workflow: Scene editor focus, viewport, and line-aware navigation
 - Status: `Implemented`
 - Code locations: `apps/editor/public/app.js:791-792` (selectionchange caret/word-count sync), `apps/editor/public/app.js:6374-6437` (`syncSceneDocumentLayout`), `apps/editor/public/app.js:7781-8192` (selection-default restore and scene editor snapshot application), `apps/editor/public/app.js:8029-8112` (`captureSceneEditorSelectionSnapshotFromTextarea`, `updateSceneEditorSelectionSnapshotFromTextarea`, line-number mapping), `apps/editor/public/app.js:9756-9981` (`focusEditorWhitespace`, `takeToEditorOffset`), `apps/editor/public/app.js:10140-10170` (`restoreSceneEditorViewport`), `apps/editor/public/app.js:12396-12734` (scene line metric and rebuilt manuscript line mapping helpers), `test/desktop-application.test.mjs:282-327` and `test/desktop-application.test.mjs:592-685` (scroll, focus, selection, layout assertions)
@@ -224,7 +529,7 @@ Also update this index immediately when the user says `Feature working`; that co
 - Flow-on effects: autosave and reload can preserve author context, issue/task/note navigation lands in useful manuscript positions, pane-local scrolling avoids browser-page jumps, and line-aware metrics support diagnostics, narration, and world links
 - Extraction/port notes: keep low-level offset and layout helpers in a shared editor utility module; scene-specific state capture belongs with the future scene-editor feature controller
 
-- Feature: `Feature 01 - Manuscript Issue Console`
+- Feature: `Feature 1.8 - Writing targets, daily progress, and session tracker`
 - Workflow: Writing targets, daily progress, and session tracker
 - Status: `Implemented`
 - Code locations: `apps/editor/public/features/progress-tracker.js:6-307` (`renderWritingTargetStrip`, session tracker card and metric cards), `apps/editor/public/features/writing-targets/writing-target-window.js:6-120` (`renderWritingTargetWindowHTML` dashboard shell), `apps/editor/public/features/writing-targets/writing-goals-service.js:8-104` (`createWritingGoalsService`, `renderWritingTargetWindow`), `apps/editor/public/features/writing-targets/writing-goals-state-service.js:1910-1954` (snapshot and history entries), `apps/editor/public/features/writing-targets/writing-goals-state-service.js:2015-2255` (session lifecycle, timeout, history), `apps/editor/public/features/writing-targets/writing-goals-state-service.js:2295-2488` (recent WPM, daily baseline, default record), `apps/editor/public/app.js:567-658` (writing goals service wiring), `apps/editor/public/app.js:1024-1074` (window save/cancel/reset/calendar actions), `apps/editor/public/app.js:11316-11415` (word-count mutation to writing-target/session updates), `test/writing-goals-state-service.test.mjs:6-261` and `test/desktop-application.test.mjs:405-540` (dashboard/session/daily baseline coverage)
@@ -232,15 +537,23 @@ Also update this index immediately when the user says `Feature working`; that co
 - Flow-on effects: daily target progress is separated from total manuscript word count, sessions can idle/conclude/resume without losing history, project save files carry progress data, and tests cover deletion scenarios, implausible baselines, session lifecycle text, dashboard structure, and persistence wiring
 - Extraction/port notes: most rendering/state logic is already in `features/progress-tracker.js` and `features/writing-targets/*`; remaining shell wiring in `app.js` should be limited to project persistence callbacks and scene-edit notifications
 
-- Feature: `Feature 01 - Manuscript Issue Console`
+- Feature: `Feature 1.9 - Revision session banking`
 - Workflow: Revision session banking
-- Status: `Partially Implemented`
-- Code locations: `apps/editor/public/adapters/storage/revision-storage-service.js:1-241` (`createRevisionStorageService`, `normalizeRevisionProjectState`, `readRevisionState`, `writeRevisionState`), `apps/editor/public/features/revisions/revision-diff-service.js:1-443` (`buildRevisionProjectDigest`, `createJsonDiff`, `summariseDiff`), `apps/editor/public/features/revisions/revision-event-service.js:1-110` (`createRevisionEventService`, `createEvent`, `aggregateEvents`), `apps/editor/public/features/revisions/revision-service.js:1-465` (`loadRevisionHistory`, `startSession`, `recordEvent`, `stageSession`, `finaliseSession`, `bankCurrentRevision`), `apps/editor/public/features/revisions/revision-panel-controller.js:1-76` (`buildPanelModel`), `apps/editor/public/features/revisions/revision-panel-view.js:1-211` (`renderRevisionPanelHTML`)
-- Execution flow: a host shell wires project-record and revision-state callbacks into `RevisionService` -> `RevisionStorageService.readRevisionState` normalizes stored history when present -> `RevisionService.loadRevisionHistory` hydrates in-memory state -> `startSession` creates a baseline digest from `buildRevisionProjectDigest` -> `recordEvent` aggregates revision ledger entries -> `stageSession` computes the diff, changed entities, and summary -> `finaliseSession` or `bankCurrentRevision` writes the banked session back into revision state -> `RevisionPanelController` filters and groups sessions -> `RevisionPanelView` renders the revision history panel
-- Flow-on effects: normalized revision records in project-shaped state, banked-session logging, diff preview generation, grouped session summaries, session status transitions, and a benched scene-editor overlay path that still reads from revision stats in code
+- Status: `Partially Implemented - standalone window mockup added`
+- Code locations: `apps/editor/public/adapters/storage/revision-storage-service.js:1-241` (`createRevisionStorageService`, `normalizeRevisionProjectState`, `readRevisionState`, `writeRevisionState`), `apps/editor/public/features/revisions/revision-diff-service.js:1-443` (`buildRevisionProjectDigest`, `createJsonDiff`, `summariseDiff`), `apps/editor/public/features/revisions/revision-event-service.js:1-110` (`createRevisionEventService`, `createEvent`, `aggregateEvents`), `apps/editor/public/features/revisions/revision-service.js:1-465` (`loadRevisionHistory`, `startSession`, `recordEvent`, `stageSession`, `finaliseSession`, `bankCurrentRevision`), `apps/editor/public/features/revisions/revision-panel-controller.js:1-76` (`buildPanelModel`), `apps/editor/public/features/revisions/revision-window.js:1-405` (`renderRevisionWindowHTML`, changed-file rail, before/after compare rows), `apps/editor/public/shell/editor-chrome.js:70` and `apps/editor/public/shell/editor-chrome.js:388-407` (top-chrome revisions button beside writing goals), `apps/editor/public/app.js:4274-4322` (revision window render/toggle/close orchestration), `apps/editor/public/styles.css:3925-4443` (revision window and side-by-side diff styling), `test/revision-panel.test.mjs:109-117`, `test/revision-storage.test.mjs:73-75`, and `test/desktop-application.test.mjs:410-427` (window renderer, storage, and no-RHS-tab wiring assertions)
+- Execution flow: a host shell wires project-record and revision-state callbacks into `RevisionService` -> `RevisionStorageService.readRevisionState` normalizes stored history when present -> `RevisionService.loadRevisionHistory` hydrates in-memory state -> `startSession` creates a baseline digest from `buildRevisionProjectDigest` -> `recordEvent` aggregates revision ledger entries -> `stageSession` computes the diff, changed entities, and summary -> `finaliseSession` or `bankCurrentRevision` writes the banked session back into revision state -> `RevisionPanelController` filters and groups sessions -> `RevisionWindow` renders the model as a standalone session/file rail with before/after digest comparison
+- Flow-on effects: normalized revision records in project-shaped state, banked-session logging, diff preview generation, grouped session summaries, session status transitions, a developer-style review mockup for user feedback, and a benched scene-editor overlay path that still reads from revision stats in code
 - Extraction/port notes: `apps/editor/public/features/revisions/*` and `apps/editor/public/adapters/storage/revision-storage-service.js` own the slice; the wiring should remain behind `ProjectPersistenceService` or an equivalent storage boundary when connected
 
-- Feature: `Feature 02 - Local Writing Assistant`
+- Feature: `Feature 1.10 - Manuscript inline formatting commands`
+- Workflow: Selection-aware bold, italic, underline, and highlight controls
+- Status: `Implemented browser slice; canonical mark promotion planned`
+- Code locations: `apps/editor/public/features/manuscript-editor/manuscript-command-controller.js:3-348` (`INLINE_FORMATS`, controller factory, selection resolver, inline range normalization/toggling, pending-format typing range updates), `apps/editor/public/app.js:813`, `apps/editor/public/app.js:1023`, `apps/editor/public/app.js:1939-1954`, `apps/editor/public/app.js:4118-4150`, `apps/editor/public/app.js:6602-6641`, and `apps/editor/public/app.js:11865-11908` (selection/input toolbar sync, action dispatch, draft range persistence, overlay refresh, controller wiring), `apps/editor/public/features/scene-editor.js:240-258` and `apps/editor/public/features/scene-editor.js:449-493` (shared toolbar buttons and inline-format render layer), `apps/editor/public/adapters/storage/project-repository.js:47-84` (scene-record normalization retaining compatibility ranges), `apps/editor/public/styles.css:2644-2659` and `apps/editor/public/styles.css:2845-2939` (toolbar buttons, transparent textarea, format/highlight overlay styling), `docs/architecture/manuscript-decoration-layer.md` (durable mark/projection/AI/editor-host architecture), `test/manuscript-command-controller.test.mjs:9-122` and `test/project-refresh-persistence.test.mjs:136-292` (selection/caret behavior and JSON/refresh round-trip coverage)
+- Execution flow: author clicks Bold/Italic/Underline/Highlight -> `toggleManuscriptInlineFormat` resolves the active scene textarea selection and current scene-draft ranges -> `ManuscriptCommandController` runs `toggleInlineFormat` -> selected spans add/remove structured `inlineFormatRanges`, while collapsed carets toggle pending format state -> subsequent typed text updates those ranges through `updateInlineFormatRangesForTextEdit` during the normal scene-draft input path -> `syncInlineFormatLayer` mirrors the plain textarea text through a styled overlay while the textarea remains the editable source for caret, spellcheck, revision tracking, word counts, and project persistence
+- Flow-on effects: literal `<strong>`, `<em>`, and `<u>` tags are no longer inserted into manuscript text, highlight is implemented beside the other inline controls, the old scene-wide italic CSS class is no longer applied, current author formatting survives JSON-backed scene storage, and the editor has a dedicated manuscript-editor feature slice for future rich inline mark storage
+- Extraction/port notes: this is classified under Feature 1 because it is core scene-editor authoring behavior; `inlineFormatRanges` is explicitly a browser-slice compatibility representation, and the next schema pass should promote it into canonical anchor-backed manuscript marks while all render-only visual channels remain derived decorations
+
+- Feature: `Feature 2.1/2.2/2.3 - Local AI routing, preference, and scene-title suggestion`
 - Workflow: Local AI scene-title and provider routing
 - Status: `Implemented`
 - Code locations: `services/local-ai/local-ai-types.ts:2-59` (`AiRequest`, `AiResult`, `LocalAiProvider`), `services/local-ai/model-routing-policy.ts:5-26` (`selectModelTier`), `services/local-ai/prompt-builder.ts:5-48` (`buildLocalAiPrompt`), `services/local-ai/local-ai-router.ts:12-76` (`LocalAiRouter`), `services/local-ai/providers/llama-cpp-provider.ts:25-145` (`LlamaCppProvider`), `apps/editor/public/app.js:1972-1981` (Local AI toggle), `apps/editor/public/app.js:10933-10972` (`suggestSceneTitle`), `apps/editor/public/features/scene-editor.js:141-277` (`renderSceneEditorHTML` title suggestion control), `test/local-ai-service.test.mjs:13-115` and `test/local-ai-router.test.mjs:36-66` (routing, prompt, provider fallback coverage)
@@ -248,7 +561,7 @@ Also update this index immediately when the user says `Feature working`; that co
 - Flow-on effects: local-first behavior is preserved behind provider contracts, unavailable providers return structured fallback results, editor preferences persist with project state, and tests cover model-tier routing, prompt shape, successful responses, unavailable providers, and unconfigured tiers
 - Extraction/port notes: local AI routing already lives in `services/local-ai`; editor-specific invocation remains in `app.js` and should move into a Local Writing Assistant feature controller when the shell is split
 
-- Feature: `Feature 03 - Event Pinning`
+- Feature: `Feature 3.1/3.2/3.3 - Anchored event detection, event tags, and navigation foundation`
 - Workflow: Anchored event detection and tagging foundation
 - Status: `Implemented`
 - Code locations: `packages/manuscript-schema/src/index.ts:12-18` (`EventTagKind`, `EventSource`), `packages/manuscript-schema/src/index.ts:149-157` (`EventTag`), `packages/manuscript-schema/src/index.ts:662-701` (`addEventTag`), `services/analysis/src/index.ts:53-176` (`analyze` event suggestions), `services/analysis/src/index.ts:240-259` (`createEvent`), `apps/editor/public/app.js:4181-4204` (`renderIssuePanelBody` shares anchored console flow), `test/manuscript-schema.test.mjs:130-132` (event persistence coverage), `test/analysis-service.test.mjs:202-213` (event suggestion coverage)
@@ -256,7 +569,7 @@ Also update this index immediately when the user says `Feature working`; that co
 - Flow-on effects: detected events remain tied to project/chapter/scene/block/span references, event records can be reused by world and continuity systems, and tests verify event suggestions and persisted event tags
 - Extraction/port notes: event records belong in `packages/manuscript-schema`; richer user-authored pinning should get a dedicated editor feature slice instead of adding more event workflow code to `app.js`
 
-- Feature: `Feature 04 - Narration Follow Mode`
+- Feature: `Feature 4.1/4.2/4.3/4.4 - Narration service, take recording, tools UI, and metadata sync`
 - Workflow: Anchored narration take recording and alignment service foundation
 - Status: `Partially Implemented`
 - Code locations: `services/audio/src/index.ts:11-86` (`createInMemoryAudioService`), `apps/editor/public/features/scene-editor.js:141-277` (`renderSceneEditorHTML` narration mode), `apps/editor/public/features/scene-editor.js:372-428` (`renderNarrationRecordingTools`), `apps/editor/public/app.js:5048-5125` (narration take selection/session helpers), `apps/editor/public/app.js:5384-5439` (`createNarrationTakeSession`, runtime status updates), `apps/editor/public/app.js:5445-5704` (`startNarrationRecording`, `stopNarrationRecording`, `finalizeNarrationRecording`), `apps/editor/public/app.js:12802-12859` (`syncNarrationSessionMetadata`, `syncNarrationAlignmentJobs`), `test/audio-service.test.mjs:13-64` (session and alignment service coverage)
@@ -264,7 +577,7 @@ Also update this index immediately when the user says `Feature working`; that co
 - Flow-on effects: narration state is separate from editor rendering state, recorded takes remain tied to manuscript anchors, alignment jobs have typed service coverage, and the current implementation supports recording/recovery scaffolding before full live follow mode is added
 - Extraction/port notes: recording runtime still lives in `app.js`; the service boundary exists in `services/audio`, and the UI/runtime orchestration should move into a narration feature slice or desktop bridge as the follow engine matures
 
-- Feature: `Feature 05 - Character Voice Narration`
+- Feature: `Feature 5.1/5.2/5.3/5.4 - Voice profiles, render jobs, storage, and editor controls`
 - Workflow: Voice profile, binding, render-job, and recording foundation
 - Status: `Implemented`
 - Code locations: `services/voice/src/index.ts:50-121` (`createInMemoryVoiceService`), `services/voice/src/voice-profile.ts:49-193` (`createVoiceProfile`, normalization), `services/voice/src/narration-job.ts:51-214` (`createNarrationJob`, job transitions), `services/voice/src/voice-queue.ts:22-83` (`createVoiceQueue`), `services/voice/src/placeholder-renderer.ts:5-7` (`renderPlaceholderNarration`), `services/voice/src/voice-storage.ts:7-128` (voice narration storage), `apps/editor/public/app.js:5956-6047` (editor voice narration job helpers), `apps/editor/public/app.js:6058-6268` (voice narration state normalization), `apps/editor/public/app.js:12860-12894` (`syncVoiceRecordingsMetadata`, `syncVoiceRenderJobsMetadata`), `test/voice-service.test.mjs:14-79` and `test/voice-narration-foundation.test.mjs:25-188` (voice binding, queue, render, storage coverage)
@@ -272,7 +585,7 @@ Also update this index immediately when the user says `Feature working`; that co
 - Flow-on effects: character/narrator voice data is decoupled from provider implementation, render jobs are explicit and inspectable, recording metadata survives scene edits where anchors still resolve, and tests cover voice profiles, bindings, previews, job transitions, placeholder rendering, and local storage
 - Extraction/port notes: provider-neutral service code is already under `services/voice`; editor job/recording orchestration should be extracted from `app.js` into a voice/narration feature controller before real TTS or conversion providers are attached
 
-- Feature: `Feature 06 - World Spine View`
+- Feature: `Feature 6.1/6.2/6.3/6.4/6.5 - World model, entities, rendering, links, and suggestions`
 - Workflow: Structured world spine, entity, template, and link model
 - Status: `Implemented`
 - Code locations: `packages/world-schema/src/index.ts:20-153` (`WorldModel`, templates, entities, spines, nodes, edges, links), `packages/world-schema/src/index.ts:227-574` (`createWorldModel`, `addWorldTemplate`, `instantiateWorldEntity`, `addTimelineSpine`, `addTimelineNode`, `linkTimelineNodes`, `registerEntityIntroduction`), `services/analysis/src/index.ts:266-313` (`buildWorldSuggestions`), `apps/editor/public/app.js:4802-4858` (`renderWorldPanel`, `renderSpine`, `renderEdge`), `apps/editor/public/app.js:4860-5026` (`renderEntityPanel`, entity/template/suggestion cards), `apps/editor/public/app.js:11947-11968` (world node/entity lookup helpers), `test/world-schema.test.mjs:21-173` (world template/entity/timeline/link coverage)
@@ -280,7 +593,7 @@ Also update this index immediately when the user says `Feature working`; that co
 - Flow-on effects: chronology and worldbuilding remain structured rather than note-only, entity introductions can link to manuscript and timeline anchors, cross-spine causality is represented explicitly, and tests verify template instantiation, timeline nodes, entity introduction links, and edge relationships
 - Extraction/port notes: schema ownership is correctly in `packages/world-schema`; editor rendering is still in `app.js` and should move into world-spine/entity feature slices with reviewable suggestion acceptance flows
 
-- Feature: `Feature 07 - Dream Scaping`
+- Feature: `Feature 7.1/7.2/7.3 - Dream-scaping contracts, suggestions, and panel rendering`
 - Workflow: Reviewable dream-scaping story-fit suggestions
 - Status: `Implemented`
 - Code locations: `packages/shared-types/src/index.ts:134-168` (`DreamScapeFit`, `DreamScapePlacement`, `DreamScapeSuggestion`), `services/analysis/src/index.ts:47-50` (`exploreDreamScape` service entry), `services/analysis/src/index.ts:178-214` (`exploreDreamScape` job wrapper), `services/analysis/src/index.ts:315-424` (`buildDreamScapeSuggestions`, fit, placement, prompt helpers), `apps/editor/public/app.js:4962-5016` (`renderDreamScapingPanel`, `renderDreamSuggestion`), `test/analysis-service.test.mjs:224-233` (dream-scaping suggestion coverage)
@@ -288,10 +601,53 @@ Also update this index immediately when the user says `Feature working`; that co
 - Flow-on effects: dream-scaping does not silently mutate manuscript or world data, evidence records stay traceable, suggestion review state is explicit, and tests verify the dream-scaping job, fit classification, placement target, and evidence list
 - Extraction/port notes: the analysis side is service-owned; the current editor panel is display-only in `app.js` and should become a dedicated feature slice when author input and accept/reject actions are added
 
-- Feature: `Feature 08 - Project Save File Loader`
+- Feature: `Feature 8.1/8.2/8.3/8.4/8.5 - Project import, persistence, cache policy, autosave, and metrics`
 - Workflow: Local project-file load/save, autosave, and source import boundary
 - Status: `Implemented`
 - Code locations: `apps/desktop/src/project-source.ts:17-49` (`loadProjectLibrarySeedFromPath`), `apps/desktop/src/project-source.ts:50-105` (`resolveProjectSourcePath`), `apps/desktop/src/http-app.ts:338-363` (`/api/project-source`), `apps/editor/public/app.js:477-551` (`ProjectPersistenceService` wiring), `apps/editor/public/app.js:8542-8634` (`loadProjectSource`), `apps/editor/public/adapters/storage/project-persistence-service.js:338-399` (`createProjectPersistenceService`), `apps/editor/public/adapters/storage/project-persistence-service.js:554-676` (`commitCanonicalProjectMutation`), `apps/editor/public/adapters/storage/project-persistence-service.js:1019-1179` (`hydrateProjectLibraryFromLoadedSnapshot`), `apps/editor/public/adapters/storage/project-persistence-service.js:1258-1339` (`loadProjectSnapshotFromFile`), `apps/editor/public/adapters/storage/project-persistence-service.js:1351-1499` (`saveProjectSnapshot`), `apps/editor/public/adapters/storage/project-persistence-service.js:1697-1741` (`restoreLastOpenedProject`), `apps/editor/public/adapters/storage/autosave.js:2-103` (`createProjectFileAutosaveController`), `apps/editor/public/adapters/storage/project-repository.js:517-791` (`createProjectRepository`), `apps/editor/public/adapters/storage/project-service.js:224-273` (`createProjectService`), `test/project-source.test.mjs:14-132` and `test/project-persistence-service.test.mjs` (source import and persistence boundary coverage)
 - Execution flow: desktop or browser load action reads a `.abe-project.json` or project source through the persistence service -> loaded JSON replaces stale browser project cache before activation -> the active project record is normalized and rendered -> save/autosave routes through `ProjectPersistenceService` to browser handles, desktop paths, or controlled browser-cache fallback
 - Flow-on effects: project JSON is the source of truth for desktop-style workflows, browser cache is disposable and failure-aware, project metrics are derived from loaded records, autosave dirty state is explicit, and tests cover source provenance, imported counts, save/load/restore flows, and cache replacement behavior
 - Extraction/port notes: persistence ownership is already separated into adapters and services; remaining editor calls should continue routing through `ProjectPersistenceService` rather than direct localStorage/file writes
+
+## Feature Code Index Checklist
+
+Use this compact checklist when testing or porting individual feature IDs. The detailed implementation notes above explain the full flow; this checklist gives the fastest code entry points for each feature.
+
+- Feature 1.1 - Anchored manuscript diagnostics console: `packages/manuscript-schema/src/index.ts:125-157`, `packages/manuscript-schema/src/index.ts:529-701`, `services/analysis/src/index.ts:31-176`, `apps/editor/public/app.js:4181-4204`, `test/manuscript-schema.test.mjs:17-132`, `test/analysis-service.test.mjs:21-213`.
+- Feature 1.2 - Context-aware scene insertion: `apps/editor/public/app.js:751`, `apps/editor/public/app.js:1620`, `apps/editor/public/app.js:1885`, `apps/editor/public/app.js:8072-8091`, `apps/editor/public/app.js:11671-11721`, `apps/editor/public/editor-model.js:400-455`, `test/editor-model.test.mjs:203-222`.
+- Feature 1.3 - Manuscript spellcheck and project dictionary: `apps/editor/public/spellcheck.js:17-538`, `apps/editor/public/editor-model.js:57-88`, `apps/editor/public/app.js:1095-1163`, `apps/editor/public/app.js:3226-3488`, `apps/editor/public/app.js:8876-9095`, `apps/editor/public/app.js:11216-11301`, `apps/editor/public/app.js:12164-12303`, `test/spellcheck.test.mjs:1-181`.
+- Feature 1.4 - Manuscript find and replace: `apps/editor/public/app.js:783-787`, `apps/editor/public/app.js:989-1020`, `apps/editor/public/app.js:1764-1767`, `apps/editor/public/app.js:2079-2093`, `apps/editor/public/app.js:2975-3224`, `apps/editor/public/app.js:3682-4017`.
+- Feature 1.5 - Anchored task, inspiration, and research notes: `apps/editor/public/editor-model.js:569-723`, `apps/editor/public/features/scene-editor.js:320-370`, `apps/editor/public/app.js:1168-1189`, `apps/editor/public/app.js:2276-2341`, `apps/editor/public/app.js:9816-10010`, `apps/editor/public/app.js:10183-10927`, `test/editor-model.test.mjs:288-405`.
+- Feature 1.6 - Binder scene and chapter management: `apps/editor/public/app.js:805-808`, `apps/editor/public/app.js:1204-1295`, `apps/editor/public/app.js:1435-1440`, `apps/editor/public/app.js:11631-11694`, `apps/editor/public/app.js:12043-12155`, `apps/editor/public/app.js:12970-13397`, `apps/editor/public/app.js:13702-13789`, `test/desktop-application.test.mjs:315-402`.
+- Feature 1.7 - Scene editor focus, viewport, and line-aware navigation: `apps/editor/public/app.js:791-792`, `apps/editor/public/app.js:6374-6437`, `apps/editor/public/app.js:7781-8192`, `apps/editor/public/app.js:8029-8112`, `apps/editor/public/app.js:9756-9981`, `apps/editor/public/app.js:10140-10170`, `apps/editor/public/app.js:12396-12734`, `test/desktop-application.test.mjs:592-685`.
+- Feature 1.8 - Writing targets, daily progress, and session tracker: `apps/editor/public/features/progress-tracker.js:6-307`, `apps/editor/public/features/writing-targets/writing-target-window.js:6-120`, `apps/editor/public/features/writing-targets/writing-goals-service.js:8-104`, `apps/editor/public/features/writing-targets/writing-goals-state-service.js:1910-2488`, `apps/editor/public/app.js:567-658`, `apps/editor/public/app.js:1024-1074`, `apps/editor/public/app.js:11316-11415`, `test/writing-goals-state-service.test.mjs:6-261`.
+- Feature 1.9 - Revision session banking: `apps/editor/public/adapters/storage/revision-storage-service.js:1-241`, `apps/editor/public/features/revisions/revision-diff-service.js:1-443`, `apps/editor/public/features/revisions/revision-event-service.js:1-110`, `apps/editor/public/features/revisions/revision-service.js:1-465`, `apps/editor/public/features/revisions/revision-panel-controller.js:1-76`, `apps/editor/public/features/revisions/revision-window.js:1-405`, `apps/editor/public/app.js:4274-4322`, `apps/editor/public/shell/editor-chrome.js:388-407`.
+- Feature 1.10 - Manuscript inline formatting commands: `apps/editor/public/features/manuscript-editor/manuscript-command-controller.js:3-348`, `apps/editor/public/app.js:1939-1954`, `apps/editor/public/app.js:4118-4150`, `apps/editor/public/app.js:6602-6641`, `apps/editor/public/app.js:11865-11908`, `apps/editor/public/features/scene-editor.js:240-258`, `apps/editor/public/features/scene-editor.js:449-493`, `apps/editor/public/styles.css:2845-2939`, `test/manuscript-command-controller.test.mjs:9-122`.
+- Feature 2.1 - Local AI provider routing: `services/local-ai/local-ai-types.ts:2-59`, `services/local-ai/model-routing-policy.ts:5-26`, `services/local-ai/prompt-builder.ts:5-48`, `services/local-ai/local-ai-router.ts:12-76`, `services/local-ai/providers/llama-cpp-provider.ts:25-145`, `test/local-ai-router.test.mjs:36-66`.
+- Feature 2.2 - Local AI editor preference: `apps/editor/public/app.js:1972-1981`, `apps/editor/public/shell/editor-chrome.js`, `test/desktop-application.test.mjs`.
+- Feature 2.3 - Local AI scene-title suggestion: `apps/editor/public/app.js:10933-10972`, `apps/editor/public/features/scene-editor.js:141-277`, `test/local-ai-service.test.mjs:13-115`.
+- Feature 2.4 - Anchored writing analysis suggestions: `services/analysis/src/index.ts:31-176`, `packages/manuscript-schema/src/index.ts:125-157`, `test/analysis-service.test.mjs:21-213`.
+- Feature 3.1 - Anchored event detection: `services/analysis/src/index.ts:53-176`, `services/analysis/src/index.ts:240-259`, `test/analysis-service.test.mjs:202-213`.
+- Feature 3.2 - Event tag persistence model: `packages/manuscript-schema/src/index.ts:12-18`, `packages/manuscript-schema/src/index.ts:149-157`, `packages/manuscript-schema/src/index.ts:662-701`, `test/manuscript-schema.test.mjs:130-132`.
+- Feature 3.3 - Event console navigation foundation: `apps/editor/public/app.js:4181-4204`, `packages/manuscript-schema/src/index.ts:529-626`.
+- Feature 4.1 - Narration session service: `services/audio/src/index.ts:11-86`, `test/audio-service.test.mjs:13-64`.
+- Feature 4.2 - Anchored narration take recording: `apps/editor/public/app.js:5048-5125`, `apps/editor/public/app.js:5384-5704`.
+- Feature 4.3 - Narration recording tools UI: `apps/editor/public/features/scene-editor.js:141-277`, `apps/editor/public/features/scene-editor.js:372-428`.
+- Feature 4.4 - Narration metadata synchronization: `apps/editor/public/app.js:12802-12859`, `services/audio/src/index.ts:11-86`.
+- Feature 5.1 - Voice profile and speaker binding model: `services/voice/src/index.ts:50-121`, `services/voice/src/voice-profile.ts:49-193`, `test/voice-service.test.mjs:14-79`.
+- Feature 5.2 - Voice render job lifecycle: `services/voice/src/narration-job.ts:51-214`, `services/voice/src/voice-queue.ts:22-83`, `apps/editor/public/app.js:5956-6047`.
+- Feature 5.3 - Voice narration storage: `services/voice/src/voice-storage.ts:7-128`, `apps/editor/public/app.js:6058-6268`, `apps/editor/public/app.js:12860-12894`.
+- Feature 5.4 - Editor voice narration controls: `apps/editor/public/app.js:5956-6268`, `test/voice-narration-foundation.test.mjs:25-188`.
+- Feature 6.1 - Structured world model: `packages/world-schema/src/index.ts:20-153`, `packages/world-schema/src/index.ts:227-574`, `test/world-schema.test.mjs:21-173`.
+- Feature 6.2 - Template-driven entity instantiation: `packages/world-schema/src/index.ts:227-574`, `test/world-schema.test.mjs:21-173`.
+- Feature 6.3 - Timeline spine rendering: `apps/editor/public/app.js:4802-4858`, `apps/editor/public/app.js:4860-5026`.
+- Feature 6.4 - Cross-spine causality links: `packages/world-schema/src/index.ts:20-153`, `packages/world-schema/src/index.ts:227-574`, `apps/editor/public/app.js:4802-4858`.
+- Feature 6.5 - Reviewable world suggestions: `services/analysis/src/index.ts:266-313`, `apps/editor/public/app.js:4860-5026`.
+- Feature 7.1 - Dream-scaping request and result contracts: `packages/shared-types/src/index.ts:134-168`, `services/analysis/src/index.ts:47-50`.
+- Feature 7.2 - Reviewable story-fit suggestion generation: `services/analysis/src/index.ts:178-214`, `services/analysis/src/index.ts:315-424`, `test/analysis-service.test.mjs:224-233`.
+- Feature 7.3 - Dream Scaping panel rendering: `apps/editor/public/app.js:4962-5016`.
+- Feature 8.1 - Source project file import: `apps/desktop/src/project-source.ts:17-105`, `apps/desktop/src/http-app.ts:338-363`, `apps/editor/public/app.js:8542-8634`, `test/project-source.test.mjs:14-132`.
+- Feature 8.2 - Project persistence service boundary: `apps/editor/public/app.js:477-551`, `apps/editor/public/adapters/storage/project-persistence-service.js:338-399`, `apps/editor/public/adapters/storage/project-persistence-service.js:554-676`, `apps/editor/public/adapters/storage/project-service.js:224-273`, `test/project-persistence-service.test.mjs`.
+- Feature 8.3 - Disposable browser cache policy: `apps/editor/public/adapters/storage/editor-storage.js`, `apps/editor/public/adapters/storage/project-repository.js:517-791`, `apps/editor/public/adapters/storage/project-persistence-service.js:1019-1179`, `test/project-refresh-persistence.test.mjs`.
+- Feature 8.4 - Autosave and dirty-state control: `apps/editor/public/adapters/storage/autosave.js:2-103`, `apps/editor/public/adapters/storage/project-persistence-service.js:1351-1499`, `test/project-persistence-service.test.mjs`.
+- Feature 8.5 - Project metrics derivation: `apps/editor/public/adapters/storage/project-index.js`, `apps/editor/public/adapters/storage/project-migrations.js`, `test/project-service-storage.test.mjs`, `test/project-refresh-persistence.test.mjs`.

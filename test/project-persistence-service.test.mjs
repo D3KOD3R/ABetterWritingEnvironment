@@ -14,6 +14,7 @@ export async function runProjectPersistenceServiceTest() {
   const browserLogs = [];
   let runtimeWritingTargetState = null;
   let runtimePassageNotes = [];
+  let runtimeManuscriptTasks = [];
 
   const projectRecord = createProjectRecord();
   const loadedRecord = createLoadedProjectRecord();
@@ -123,6 +124,7 @@ export async function runProjectPersistenceServiceTest() {
     writeProjectFilePathCache: () => {},
     createProjectRecordFromRuntimeState: () => ({
       ...projectRecord,
+      manuscriptTasks: runtimeManuscriptTasks,
       passageNotes: runtimePassageNotes,
       projectSettings: {
         ...(projectRecord.projectSettings ?? {}),
@@ -243,6 +245,40 @@ export async function runProjectPersistenceServiceTest() {
   assert.equal(state.projectFileAutosaveDirty, false);
   assert.equal(state.projectFileAutosaveRevision, 0);
 
+  // Task mutations should persist through the project record and mark the project file autosave dirty.
+  runtimeManuscriptTasks = [
+    {
+      id: "task-runtime-1",
+      title: "Tighten opening task",
+      body: "Clarify the opening image.",
+      description: "Clarify the opening image.",
+      chapterId: "chapter-1",
+      chapterTitle: "Chapter One",
+      sceneId: "scene-1",
+      sceneTitle: "Scene One",
+      selectedText: "Scene one",
+      startOffset: 0,
+      endOffset: 9,
+      status: "open",
+      source: "manual",
+    },
+  ];
+  state.projectLibrary = [projectRecord];
+  state.activeProjectId = "project-1";
+  state.projectLibrarySelectionId = "project-1";
+  browserCacheWrites.length = 0;
+  projectPersistenceService.commitCanonicalProjectMutation({
+    domain: "manuscript-tasks",
+    dirtyReason: "manuscript-task-created",
+    source: "test-task-create",
+  });
+  assert.equal(state.projectLibrary[0].manuscriptTasks.length, 1);
+  assert.equal(state.projectLibrary[0].manuscriptTasks[0].id, "task-runtime-1");
+  assert.equal(browserCacheWrites.at(-1)?.projects?.[0]?.manuscriptTasks?.[0]?.id, "task-runtime-1");
+  assert.equal(state.projectFileAutosaveDirty, true);
+  assert.equal(state.projectPersistenceDirtyDomains?.["manuscript-tasks"]?.reason, "manuscript-task-created");
+  projectPersistenceService.clearProjectAutosaveState();
+
   // Autosave should not repeatedly attempt browser-handle writes that require a user permission prompt.
   operationLog.length = 0;
   browserCacheWrites.length = 0;
@@ -290,6 +326,23 @@ export async function runProjectPersistenceServiceTest() {
       source: "manual",
     },
   ];
+  runtimeManuscriptTasks = [
+    {
+      id: "task-preload-1",
+      title: "Preserve task before load",
+      body: "Do not lose this task before reading the file.",
+      description: "Do not lose this task before reading the file.",
+      chapterId: "chapter-1",
+      chapterTitle: "Chapter One",
+      sceneId: "scene-1",
+      sceneTitle: "Scene One",
+      selectedText: "Scene one",
+      startOffset: 0,
+      endOffset: 9,
+      status: "open",
+      source: "manual",
+    },
+  ];
   state.activeProjectId = "project-1";
   state.projectLibrarySelectionId = "project-1";
   state.projectLibrary = [projectRecord];
@@ -306,6 +359,45 @@ export async function runProjectPersistenceServiceTest() {
   assert.equal(preLoadSaveIndex < loadIndex, true);
   assert.equal(fetchCalls[preLoadSaveIndex].requestOptions.body.snapshot.projects[0].passageNotes.length, 1);
   assert.equal(fetchCalls[preLoadSaveIndex].requestOptions.body.snapshot.projects[0].passageNotes[0].id, "inspiration-1");
+  assert.equal(fetchCalls[preLoadSaveIndex].requestOptions.body.snapshot.projects[0].manuscriptTasks.length, 1);
+  assert.equal(fetchCalls[preLoadSaveIndex].requestOptions.body.snapshot.projects[0].manuscriptTasks[0].id, "task-preload-1");
+  runtimePassageNotes = [];
+  runtimeManuscriptTasks = [];
+
+  // Research-note mutations use the same passage-note project-file domain and should mark autosave dirty.
+  runtimePassageNotes = [
+    {
+      id: "research-runtime-1",
+      noteType: "research",
+      chapterId: "chapter-1",
+      chapterTitle: "Chapter One",
+      sceneId: "scene-1",
+      sceneTitle: "Scene One",
+      selectedText: "Scene one",
+      startOffset: 0,
+      endOffset: 9,
+      body: "Check the technical implication.",
+      title: "Technical check",
+      createdAt: "2026-05-20T01:00:00.000Z",
+      source: "manual",
+    },
+  ];
+  state.projectLibrary = [projectRecord];
+  state.activeProjectId = "project-1";
+  state.projectLibrarySelectionId = "project-1";
+  browserCacheWrites.length = 0;
+  projectPersistenceService.commitCanonicalProjectMutation({
+    domain: "passage-notes",
+    dirtyReason: "research-note-created",
+    source: "test-research-create",
+  });
+  assert.equal(state.projectLibrary[0].passageNotes.length, 1);
+  assert.equal(state.projectLibrary[0].passageNotes[0].id, "research-runtime-1");
+  assert.equal(state.projectLibrary[0].passageNotes[0].noteType, "research");
+  assert.equal(browserCacheWrites.at(-1)?.projects?.[0]?.passageNotes?.[0]?.id, "research-runtime-1");
+  assert.equal(state.projectFileAutosaveDirty, true);
+  assert.equal(state.projectPersistenceDirtyDomains?.["passage-notes"]?.reason, "research-note-created");
+  projectPersistenceService.clearProjectAutosaveState();
   runtimePassageNotes = [];
   state.activeProjectId = "project-1";
   state.projectLibrarySelectionId = "project-1";
@@ -514,7 +606,7 @@ function createFakeProjectService(projectRecord, loadedRecord, browserCacheWrite
   };
 
   return {
-    saveProject({ projectRecord: incomingRecord, librarySnapshot }) {
+    saveProject({ projectRecord: incomingRecord, librarySnapshot, persist = true }) {
       const nextRecord = incomingRecord ?? projectRecord;
       const currentProjects = Array.isArray(librarySnapshot?.projects) && librarySnapshot.projects.length
         ? librarySnapshot.projects
@@ -522,12 +614,14 @@ function createFakeProjectService(projectRecord, loadedRecord, browserCacheWrite
       const nextProjects = currentProjects.some((project) => project.id === nextRecord.id)
         ? currentProjects.map((project) => (project.id === nextRecord.id ? nextRecord : project))
         : [...currentProjects, nextRecord];
-      return {
-        librarySnapshot: {
-          activeProjectId: nextRecord.id,
-          projects: nextProjects,
-        },
+      const nextSnapshot = {
+        activeProjectId: nextRecord.id,
+        projects: nextProjects,
       };
+      if (persist) {
+        browserCacheWrites.push(nextSnapshot);
+      }
+      return { librarySnapshot: nextSnapshot };
     },
     saveProjectLibrarySnapshot(snapshot) {
       browserCacheWrites.push(snapshot);

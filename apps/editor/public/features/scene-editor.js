@@ -5,6 +5,10 @@ import {
   FONT_SIZE_OPTIONS,
   LINE_HEIGHT_OPTIONS,
 } from "../editor-model.js";
+import {
+  INLINE_FORMATS,
+  normalizeInlineFormatRanges,
+} from "./manuscript-editor/manuscript-command-controller.js";
 import { escapeHtml } from "../shared/ui-utils.js";
 
 const REVISION_DRAFTING_UI_ENABLED = false;
@@ -162,6 +166,10 @@ export function renderSceneEditorHTML(scene, {
     ? state.narrationTakeSelection
     : null;
   const narrationSession = mode === "narration" ? state.narrationTakeSession : null;
+  const inlineFormatRanges = normalizeInlineFormatRanges(
+    state.sceneDrafts?.[scene.sceneId]?.inlineFormatRanges,
+    String(scene.editorText ?? "").length,
+  );
   const chapterTitle = typeof formatChapterDisplayTitle === "function"
     ? formatChapterDisplayTitle(scene.chapterTitle)
     : String(scene.chapterTitle ?? "").trim() || "Untitled chapter";
@@ -229,12 +237,11 @@ export function renderSceneEditorHTML(scene, {
                 value: String(value),
                 label: `${value}px`,
               })), String(state.editorPrefs.editorWidth))}
-              <button
-                class="tag-button editor-action-button editor-toggle-button"
-                type="button"
-                data-action="toggle-italic-text"
-                aria-pressed="${state.editorPrefs.italicText === true ? "true" : "false"}"
-              >${state.editorPrefs.italicText === true ? "Italic on" : "Italic text"}</button>
+              ${renderInlineFormatButton("bold", "B", state)}
+              ${renderInlineFormatButton("italic", "I", state)}
+              ${renderInlineFormatButton("underline", "U", state)}
+              ${renderInlineFormatButton("strikethrough", "S", state)}
+              ${renderInlineFormatButton("highlight", "H", state)}
             `}
           ${hasDraft ? `<button class="tag-button editor-action-button" data-action="reset-scene-draft" data-scene-id="${escapeHtml(scene.sceneId)}">Revert local draft</button>` : ""}
         </div>
@@ -248,6 +255,9 @@ export function renderSceneEditorHTML(scene, {
       >
         <div class="editor-document-gutter" data-editor-gutter aria-hidden="true"></div>
         <div class="editor-document-body">
+          <div class="editor-inline-format-layer" data-inline-format-layer aria-hidden="true">
+            ${renderInlineFormatLayerContent(scene.editorText ?? "", inlineFormatRanges)}
+          </div>
           <div class="editor-spellcheck-layer" data-spellcheck-layer aria-hidden="true"></div>
           <textarea
             class="editor-document-input ${showRevisionHighlight ? "has-revision-preview" : ""}"
@@ -435,4 +445,51 @@ function renderEditorSetting(label, prefKey, options, selectedValue) {
       </select>
     </label>
   `;
+}
+
+function renderInlineFormatButton(formatId, label, state) {
+  const isActive = state.manuscriptInlineFormatting?.pendingFormats?.[formatId] === true;
+  const title = INLINE_FORMATS[formatId]?.label ?? label;
+  return `
+    <button
+      class="tag-button editor-action-button editor-toggle-button inline-format-button inline-format-${escapeHtml(formatId)}"
+      type="button"
+      data-action="toggle-inline-format"
+      data-inline-format="${escapeHtml(formatId)}"
+      aria-pressed="${isActive ? "true" : "false"}"
+      title="${escapeHtml(title)}"
+    >${escapeHtml(label)}</button>
+  `;
+}
+
+// Intent: render plain manuscript text with visual styling from range metadata without inserting tags into the manuscript body.
+function renderInlineFormatLayerContent(text, ranges) {
+  const normalizedText = String(text ?? "");
+  const normalizedRanges = normalizeInlineFormatRanges(ranges, normalizedText.length);
+  const boundaries = new Set([0, normalizedText.length]);
+  for (const range of normalizedRanges) {
+    boundaries.add(range.startOffset);
+    boundaries.add(range.endOffset);
+  }
+
+  const offsets = [...boundaries].sort((left, right) => left - right);
+  const parts = [];
+  for (let index = 0; index < offsets.length - 1; index += 1) {
+    const startOffset = offsets[index];
+    const endOffset = offsets[index + 1];
+    const segment = normalizedText.slice(startOffset, endOffset);
+    if (!segment) {
+      continue;
+    }
+
+    const activeFormats = normalizedRanges
+      .filter((range) => range.startOffset <= startOffset && range.endOffset >= endOffset)
+      .map((range) => range.formatId);
+    const className = activeFormats.length
+      ? ` class="${activeFormats.map((formatId) => `editor-inline-format-${escapeHtml(formatId)}`).join(" ")}"`
+      : "";
+    parts.push(`<span${className}>${escapeHtml(segment)}</span>`);
+  }
+
+  return `<div class="editor-inline-format-layer__content">${parts.join("")}</div>`;
 }
