@@ -1,1557 +1,13 @@
 {
   "schemaVersion": 2,
-  "activeProjectId": "project-20260514T06102",
+  "activeProjectId": "project-serva-vitae",
   "projects": [
     {
-      "id": "project-20260514T05180",
-      "title": "FolderedProjectTest",
-      "source": "user-created",
-      "createdAt": "2026-05-14T05:18:01.095Z",
-      "updatedAt": "2026-05-14T05:19:17.763Z",
-      "workspace": {
-        "generatedAt": "2026-05-14T05:18:01.095Z",
-        "workspaceTitle": "ABetterNovelAuthoringEnvironment",
-        "settings": {
-          "executionMode": "local-only",
-          "modelRoot": "C:\\Models\\AuthorSuite",
-          "assetRoot": "C:\\AuthorAssets",
-          "projectRoot": "C:\\Users\\ASUS\\Desktop\\Repos\\ABetterNovelAuthoringEnvironment\\SaveTestFile"
-        },
-        "project": {
-          "id": "project-20260514T05180",
-          "title": "FolderedProjectTest",
-          "binder": {
-            "id": "project-20260514T05180",
-            "kind": "project",
-            "refId": "project-20260514T05180",
-            "title": "FolderedProjectTest",
-            "order": 1,
-            "children": []
-          },
-          "stats": {
-            "chapterCount": 0,
-            "sceneCount": 0,
-            "lineCount": 0,
-            "issueCount": 0,
-            "eventCount": 0,
-            "characterCount": 0
-          },
-          "navigationTargets": {},
-          "lines": [],
-          "issues": [],
-          "eventTags": [],
-          "characters": []
-        },
-        "world": {
-          "id": "world-project-20260514T05180",
-          "title": "FolderedProjectTest World",
-          "stats": {
-            "templateCount": 0,
-            "entityCount": 0,
-            "spineCount": 0,
-            "nodeCount": 0,
-            "edgeCount": 0
-          },
-          "templates": [],
-          "entities": [],
-          "spines": [],
-          "edges": []
-        },
-        "analysis": {
-          "provider": {
-            "id": "local-rule-analysis",
-            "label": "Local Rule Analysis",
-            "availability": "ready",
-            "executionMode": "local-only"
-          },
-          "lastJob": {
-            "id": "analysis-project-20260514T05180",
-            "type": "analysis",
-            "status": "completed",
-            "createdAt": "2026-05-14T05:18:01.095Z",
-            "updatedAt": "2026-05-14T05:18:01.095Z",
-            "request": {
-              "projectId": "project-20260514T05180",
-              "trigger": "manual"
-            },
-            "result": {
-              "providerId": "local-rule-analysis",
-              "issueCount": 0,
-              "eventCount": 0,
-              "suggestionCount": 0
-            }
-          },
-          "suggestionQueue": []
-        },
-        "narration": {
-          "provider": {
-            "id": "local-alignment-monitor",
-            "label": "Local Alignment Monitor",
-            "availability": "ready",
-            "alignmentStrategy": "anchor-tracked incremental alignment"
-          },
-          "session": null,
-          "alignmentJobs": []
-        },
-        "voice": {
-          "provider": {
-            "id": "local-voice-suite",
-            "label": "Local Voice Suite",
-            "availability": "ready",
-            "synthesisMode": "local"
-          },
-          "profiles": [
-            {
-              "id": "voice-narrator-lantern",
-              "label": "Lantern Narrator",
-              "providerId": "local-voice-suite",
-              "role": "narrator",
-              "style": "measured documentary warmth"
-            },
-            {
-              "id": "voice-auren-cinder",
-              "label": "Auren Cinder",
-              "providerId": "local-voice-suite",
-              "role": "character",
-              "style": "steady command with restrained pressure"
-            },
-            {
-              "id": "voice-voss-iron",
-              "label": "Voss Iron",
-              "providerId": "local-voice-suite",
-              "role": "character",
-              "style": "hard official diction"
-            },
-            {
-              "id": "voice-mara-glass",
-              "label": "Mara Glass",
-              "providerId": "local-voice-suite",
-              "role": "character",
-              "style": "precise curiosity with clipped urgency"
-            }
-          ],
-          "bindings": [],
-          "renderJobs": [],
-          "recordings": []
-        },
-        "selectionDefaults": {
-          "lineId": ""
-        }
-      },
-      "sceneDrafts": {
-        "draft-scene-1778735892118": {
-          "sceneId": "draft-scene-1778735892118",
-          "chapterId": "",
-          "chapterTitle": "Untitled Chapter",
-          "sceneTitle": "Untitled Scene",
-          "sceneSynopsis": "",
-          "editorText": "",
-          "blocks": []
-        }
-      },
-      "structureDrafts": {
-        "scenes": [
-          {
-            "sceneId": "draft-scene-1778735892118",
-            "chapterId": "",
-            "chapterTitle": "Untitled Chapter",
-            "sceneTitle": "Untitled Scene",
-            "sceneSynopsis": "",
-            "order": 2,
-            "initialText": ""
-          },
-          {
-            "sceneId": "draft-scene-1778735892379",
-            "chapterId": "",
-            "chapterTitle": "Untitled Chapter",
-            "sceneTitle": "Untitled Scene",
-            "sceneSynopsis": "",
-            "order": 3,
-            "initialText": ""
-          },
-          {
-            "sceneId": "draft-scene-1778735892543",
-            "chapterId": "",
-            "chapterTitle": "Untitled Chapter",
-            "sceneTitle": "Untitled Scene",
-            "sceneSynopsis": "",
-            "order": 4,
-            "initialText": ""
-          },
-          {
-            "sceneId": "draft-scene-1778735892709",
-            "chapterId": "",
-            "chapterTitle": "Untitled Chapter",
-            "sceneTitle": "Untitled Scene",
-            "sceneSynopsis": "",
-            "order": 5,
-            "initialText": ""
-          },
-          {
-            "sceneId": "draft-scene-1778735892847",
-            "chapterId": "",
-            "chapterTitle": "Untitled Chapter",
-            "sceneTitle": "Untitled Scene",
-            "sceneSynopsis": "",
-            "order": 6,
-            "initialText": ""
-          },
-          {
-            "sceneId": "draft-scene-1778735893233",
-            "chapterId": "",
-            "chapterTitle": "Untitled Chapter",
-            "sceneTitle": "Untitled Scene",
-            "sceneSynopsis": "",
-            "order": 7,
-            "initialText": ""
-          },
-          {
-            "sceneId": "draft-scene-1778735893568",
-            "chapterId": "",
-            "chapterTitle": "Untitled Chapter",
-            "sceneTitle": "Untitled Scene",
-            "sceneSynopsis": "",
-            "order": 8,
-            "initialText": ""
-          },
-          {
-            "sceneId": "draft-scene-1778735893695",
-            "chapterId": "",
-            "chapterTitle": "Untitled Chapter",
-            "sceneTitle": "Untitled Scene",
-            "sceneSynopsis": "",
-            "order": 9,
-            "initialText": ""
-          }
-        ]
-      },
-      "templateDrafts": [],
-      "manuscriptTasks": [],
-      "passageNotes": [],
-      "sourceArchive": [],
-      "importReport": {},
-      "projectSettings": {
-        "editorPrefs": {
-          "fontFamilyId": "story-serif",
-          "fontSize": 18,
-          "lineHeight": 1.7,
-          "editorWidth": 760,
-          "projectFileAutosaveEnabled": true,
-          "grammarCheckEnabled": true,
-          "revisionOverlayEnabled": false,
-          "italicText": false
-        },
-        "localAiPrefs": {
-          "enabled": true
-        },
-        "binderPanelWidth": 518,
-        "consoleDockWidth": 320,
-        "consoleDockCollapsed": false,
-        "collapsedChapterIds": [],
-        "collapsedConsoleChapterIds": {
-          "issueTasks": [],
-          "issues": [],
-          "inspiration": [],
-          "research": []
-        },
-        "projectFilePath": "C:\\Users\\ASUS\\Desktop\\Repos\\ABetterNovelAuthoringEnvironment\\SaveTestFile\\folderedprojecttest.abe-project.json",
-        "projectSourcePath": "",
-        "writingTargetState": {
-          "targetWords": 150000,
-          "releaseDate": "",
-          "sessionTargetWords": 5000,
-          "sessionsPerDay": 5,
-          "sessionTimeoutMinutes": 20,
-          "targetCadence": "daily",
-          "goalSyncSource": "releaseDate",
-          "lookbackDays": 7,
-          "visibleMetricsVersion": 2,
-          "visibleMetrics": [
-            "wordTarget",
-            "sessionTarget",
-            "forecast",
-            "sessionTracker"
-          ],
-          "sessionBaselineWordCount": 0,
-          "sessionLastWordCount": 7,
-          "dailyBaselineDateKey": "2026-05-14",
-          "dailyBaselineWordCount": 0,
-          "sessionIsActive": true,
-          "sessionStartedAt": "2026-05-14T05:18:14.962Z",
-          "sessionLastActiveAt": "2026-05-14T05:18:24.040Z",
-          "sessionConcludedAt": "",
-          "sessionConcludedReason": "",
-          "sessionSamples": [
-            {
-              "capturedAt": "2026-05-14T05:18:14.962Z",
-              "wordCount": 0
-            },
-            {
-              "capturedAt": "2026-05-14T05:18:14.986Z",
-              "wordCount": 1
-            },
-            {
-              "capturedAt": "2026-05-14T05:18:16.101Z",
-              "wordCount": 1
-            },
-            {
-              "capturedAt": "2026-05-14T05:18:24.040Z",
-              "wordCount": 7
-            }
-          ],
-          "sessionHistory": [],
-          "history": [
-            {
-              "date": "2026-05-14",
-              "wordCount": 5,
-              "wordDelta": 5,
-              "capturedAt": "2026-05-14T05:19:06.529Z",
-              "chapterId": "",
-              "chapterTitle": "Untitled Chapter",
-              "sceneId": "draft-scene-1778735892543",
-              "sceneTitle": "Untitled Scene",
-              "passageExcerpt": "dasfasdfas",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            }
-          ],
-          "updatedAt": "2026-05-14T05:19:06.529Z"
-        },
-        "writingTargetViewMode": "month",
-        "writingTargetSelectedDateKey": "2026-05-14",
-        "writingTargetCalendarMonthKey": "2026-05",
-        "spellcheck": {
-          "dictionaryWords": [],
-          "exceptionWords": []
-        },
-        "assetRegistry": [],
-        "activeSceneId": "draft-scene-1778735892118"
-      },
-      "editorPrefs": {
-        "fontFamilyId": "story-serif",
-        "fontSize": 18,
-        "lineHeight": 1.7,
-        "editorWidth": 760,
-        "projectFileAutosaveEnabled": true,
-        "grammarCheckEnabled": true,
-        "revisionOverlayEnabled": false,
-        "italicText": false
-      },
-      "localAiPrefs": {
-        "enabled": true
-      },
-      "schemaVersion": 2,
-      "projectIndex": {
-        "schemaVersion": 2,
-        "projectId": "project-20260514T05180",
-        "projectTitle": "FolderedProjectTest",
-        "createdAt": "2026-05-14T05:18:01.095Z",
-        "updatedAt": "2026-05-14T05:19:17.763Z",
-        "chapters": [
-          {
-            "id": "unassigned-chapter",
-            "title": "Untitled Chapter",
-            "order": 1,
-            "sceneIds": [
-              "draft-scene-1778735892118",
-              "draft-scene-1778735892379",
-              "draft-scene-1778735892543",
-              "draft-scene-1778735892709",
-              "draft-scene-1778735892847",
-              "draft-scene-1778735893233",
-              "draft-scene-1778735893568",
-              "draft-scene-1778735893695"
-            ]
-          }
-        ],
-        "scenes": [
-          {
-            "id": "draft-scene-1778735892118",
-            "title": "Untitled Scene",
-            "chapterId": "unassigned-chapter",
-            "order": 1,
-            "lineCount": 0,
-            "wordCount": 0,
-            "synopsis": "",
-            "assetIds": []
-          },
-          {
-            "id": "draft-scene-1778735892379",
-            "title": "Untitled Scene",
-            "chapterId": "unassigned-chapter",
-            "order": 2,
-            "lineCount": 0,
-            "wordCount": 0,
-            "synopsis": "",
-            "assetIds": []
-          },
-          {
-            "id": "draft-scene-1778735892543",
-            "title": "Untitled Scene",
-            "chapterId": "unassigned-chapter",
-            "order": 3,
-            "lineCount": 0,
-            "wordCount": 0,
-            "synopsis": "",
-            "assetIds": []
-          },
-          {
-            "id": "draft-scene-1778735892709",
-            "title": "Untitled Scene",
-            "chapterId": "unassigned-chapter",
-            "order": 4,
-            "lineCount": 0,
-            "wordCount": 0,
-            "synopsis": "",
-            "assetIds": []
-          },
-          {
-            "id": "draft-scene-1778735892847",
-            "title": "Untitled Scene",
-            "chapterId": "unassigned-chapter",
-            "order": 5,
-            "lineCount": 0,
-            "wordCount": 0,
-            "synopsis": "",
-            "assetIds": []
-          },
-          {
-            "id": "draft-scene-1778735893233",
-            "title": "Untitled Scene",
-            "chapterId": "unassigned-chapter",
-            "order": 6,
-            "lineCount": 0,
-            "wordCount": 0,
-            "synopsis": "",
-            "assetIds": []
-          },
-          {
-            "id": "draft-scene-1778735893568",
-            "title": "Untitled Scene",
-            "chapterId": "unassigned-chapter",
-            "order": 7,
-            "lineCount": 0,
-            "wordCount": 0,
-            "synopsis": "",
-            "assetIds": []
-          },
-          {
-            "id": "draft-scene-1778735893695",
-            "title": "Untitled Scene",
-            "chapterId": "unassigned-chapter",
-            "order": 8,
-            "lineCount": 0,
-            "wordCount": 0,
-            "synopsis": "",
-            "assetIds": []
-          }
-        ],
-        "sceneOrder": [
-          "draft-scene-1778735892118",
-          "draft-scene-1778735892379",
-          "draft-scene-1778735892543",
-          "draft-scene-1778735892709",
-          "draft-scene-1778735892847",
-          "draft-scene-1778735893233",
-          "draft-scene-1778735893568",
-          "draft-scene-1778735893695"
-        ],
-        "assetIds": [],
-        "assets": [],
-        "fileRefs": {
-          "projectFilePath": "C:\\Users\\ASUS\\Desktop\\Repos\\ABetterNovelAuthoringEnvironment\\SaveTestFile\\folderedprojecttest.abe-project.json",
-          "projectSourcePath": ""
-        }
-      },
-      "projectStorage": {
-        "format": "chunked-project-package-v1",
-        "sceneOrder": [
-          "draft-scene-1778735892118",
-          "draft-scene-1778735892379",
-          "draft-scene-1778735892543",
-          "draft-scene-1778735892709",
-          "draft-scene-1778735892847",
-          "draft-scene-1778735893233",
-          "draft-scene-1778735893568",
-          "draft-scene-1778735893695"
-        ],
-        "sceneFiles": {
-          "draft-scene-1778735892118": "manuscript/scenes/project-20260514t05180/scene_draft-scene-1778735892118.json",
-          "draft-scene-1778735892379": "manuscript/scenes/project-20260514t05180/scene_draft-scene-1778735892379.json",
-          "draft-scene-1778735892543": "manuscript/scenes/project-20260514t05180/scene_draft-scene-1778735892543.json",
-          "draft-scene-1778735892709": "manuscript/scenes/project-20260514t05180/scene_draft-scene-1778735892709.json",
-          "draft-scene-1778735892847": "manuscript/scenes/project-20260514t05180/scene_draft-scene-1778735892847.json",
-          "draft-scene-1778735893233": "manuscript/scenes/project-20260514t05180/scene_draft-scene-1778735893233.json",
-          "draft-scene-1778735893568": "manuscript/scenes/project-20260514t05180/scene_draft-scene-1778735893568.json",
-          "draft-scene-1778735893695": "manuscript/scenes/project-20260514t05180/scene_draft-scene-1778735893695.json"
-        }
-      }
-    },
-    {
-      "id": "project-20260514T04340",
-      "title": "TestProject",
-      "source": "user-created",
-      "createdAt": "2026-05-14T04:34:00.800Z",
-      "updatedAt": "2026-05-14T04:43:04.019Z",
-      "workspace": {
-        "generatedAt": "2026-05-14T04:34:00.800Z",
-        "workspaceTitle": "ABetterNovelAuthoringEnvironment",
-        "settings": {
-          "executionMode": "local-only",
-          "modelRoot": "C:\\Models\\AuthorSuite",
-          "assetRoot": "C:\\AuthorAssets",
-          "projectRoot": "C:\\Users\\ASUS\\Desktop\\Repos\\ABetterNovelAuthoringEnvironment\\SaveTestFile"
-        },
-        "project": {
-          "id": "project-20260514T04340",
-          "title": "TestProject",
-          "binder": {
-            "id": "project-20260514T04340",
-            "kind": "project",
-            "refId": "project-20260514T04340",
-            "title": "TestProject",
-            "order": 1,
-            "children": []
-          },
-          "stats": {
-            "chapterCount": 0,
-            "sceneCount": 0,
-            "lineCount": 0,
-            "issueCount": 0,
-            "eventCount": 0,
-            "characterCount": 0
-          },
-          "navigationTargets": {},
-          "lines": [],
-          "issues": [],
-          "eventTags": [],
-          "characters": []
-        },
-        "world": {
-          "id": "world-project-20260514T04340",
-          "title": "TestProject World",
-          "stats": {
-            "templateCount": 0,
-            "entityCount": 0,
-            "spineCount": 0,
-            "nodeCount": 0,
-            "edgeCount": 0
-          },
-          "templates": [],
-          "entities": [],
-          "spines": [],
-          "edges": []
-        },
-        "analysis": {
-          "provider": {
-            "id": "local-rule-analysis",
-            "label": "Local Rule Analysis",
-            "availability": "ready",
-            "executionMode": "local-only"
-          },
-          "lastJob": {
-            "id": "analysis-project-20260514T04340",
-            "type": "analysis",
-            "status": "completed",
-            "createdAt": "2026-05-14T04:34:00.800Z",
-            "updatedAt": "2026-05-14T04:34:00.800Z",
-            "request": {
-              "projectId": "project-20260514T04340",
-              "trigger": "manual"
-            },
-            "result": {
-              "providerId": "local-rule-analysis",
-              "issueCount": 0,
-              "eventCount": 0,
-              "suggestionCount": 0
-            }
-          },
-          "suggestionQueue": []
-        },
-        "narration": {
-          "provider": {
-            "id": "local-alignment-monitor",
-            "label": "Local Alignment Monitor",
-            "availability": "ready",
-            "alignmentStrategy": "anchor-tracked incremental alignment"
-          },
-          "session": {
-            "id": "narration-project-20260514T04340",
-            "projectId": "project-20260514T04340",
-            "providerId": "local-alignment-monitor",
-            "sessionLabel": "TestProject",
-            "status": "paused",
-            "currentAnchor": {
-              "projectId": "project-20260514T04340",
-              "chapterId": "",
-              "sceneId": "",
-              "blockId": "",
-              "paragraphId": "",
-              "startOffset": 0,
-              "endOffset": 0
-            },
-            "currentLineNumber": 0,
-            "currentText": "",
-            "updatedAt": "2026-05-14T04:34:00.800Z"
-          },
-          "alignmentJobs": []
-        },
-        "voice": {
-          "provider": {
-            "id": "local-voice-suite",
-            "label": "Local Voice Suite",
-            "availability": "ready",
-            "synthesisMode": "local"
-          },
-          "profiles": [
-            {
-              "id": "voice-narrator-lantern",
-              "label": "Lantern Narrator",
-              "providerId": "local-voice-suite",
-              "role": "narrator",
-              "style": "measured documentary warmth"
-            },
-            {
-              "id": "voice-auren-cinder",
-              "label": "Auren Cinder",
-              "providerId": "local-voice-suite",
-              "role": "character",
-              "style": "steady command with restrained pressure"
-            },
-            {
-              "id": "voice-voss-iron",
-              "label": "Voss Iron",
-              "providerId": "local-voice-suite",
-              "role": "character",
-              "style": "hard official diction"
-            },
-            {
-              "id": "voice-mara-glass",
-              "label": "Mara Glass",
-              "providerId": "local-voice-suite",
-              "role": "character",
-              "style": "precise curiosity with clipped urgency"
-            }
-          ],
-          "bindings": [],
-          "renderJobs": [],
-          "recordings": []
-        },
-        "selectionDefaults": {
-          "lineId": ""
-        }
-      },
-      "sceneDrafts": {},
-      "structureDrafts": {
-        "scenes": []
-      },
-      "templateDrafts": [],
-      "manuscriptTasks": [],
-      "passageNotes": [],
-      "sourceArchive": [],
-      "importReport": {},
-      "projectSettings": {
-        "editorPrefs": {
-          "fontFamilyId": "story-serif",
-          "fontSize": 18,
-          "lineHeight": 1.7,
-          "editorWidth": 760,
-          "projectFileAutosaveEnabled": true,
-          "grammarCheckEnabled": true,
-          "revisionOverlayEnabled": false,
-          "italicText": false
-        },
-        "localAiPrefs": {
-          "enabled": true
-        },
-        "binderPanelWidth": 475,
-        "consoleDockWidth": 486,
-        "consoleDockCollapsed": false,
-        "collapsedChapterIds": [],
-        "collapsedConsoleChapterIds": {
-          "issueTasks": [],
-          "issues": [],
-          "inspiration": [],
-          "research": []
-        },
-        "projectFilePath": "C:\\Users\\ASUS\\Desktop\\Repos\\ABetterNovelAuthoringEnvironment\\SaveTestFile\\testproject.abe-project.json",
-        "projectSourcePath": "",
-        "writingTargetState": {
-          "targetWords": 150000,
-          "releaseDate": "",
-          "sessionTargetWords": 5000,
-          "sessionsPerDay": 5,
-          "sessionTimeoutMinutes": 20,
-          "targetCadence": "daily",
-          "goalSyncSource": "releaseDate",
-          "lookbackDays": 7,
-          "visibleMetricsVersion": 2,
-          "visibleMetrics": [
-            "wordTarget",
-            "sessionTarget",
-            "forecast",
-            "sessionTracker"
-          ],
-          "sessionBaselineWordCount": 0,
-          "sessionLastWordCount": 0,
-          "dailyBaselineDateKey": "2026-05-14",
-          "dailyBaselineWordCount": 0,
-          "sessionIsActive": false,
-          "sessionStartedAt": "2026-05-14T04:34:00.800Z",
-          "sessionLastActiveAt": "2026-05-14T04:34:00.800Z",
-          "sessionConcludedAt": "",
-          "sessionConcludedReason": "idle",
-          "sessionSamples": [
-            {
-              "capturedAt": "2026-05-14T04:34:00.800Z",
-              "wordCount": 0
-            }
-          ],
-          "sessionHistory": [],
-          "history": [
-            {
-              "date": "2026-05-14",
-              "wordCount": 0,
-              "wordDelta": 0,
-              "capturedAt": "2026-05-14T04:42:59.782Z",
-              "chapterId": "",
-              "chapterTitle": "Unknown chapter",
-              "sceneId": "",
-              "sceneTitle": "Unknown scene",
-              "passageExcerpt": "",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            }
-          ],
-          "updatedAt": "2026-05-14T04:42:59.782Z"
-        },
-        "writingTargetViewMode": "month",
-        "writingTargetSelectedDateKey": "2026-05-14",
-        "writingTargetCalendarMonthKey": "2026-05",
-        "spellcheck": {
-          "dictionaryWords": [],
-          "exceptionWords": []
-        },
-        "assetRegistry": [],
-        "activeSceneId": ""
-      },
-      "editorPrefs": {
-        "fontFamilyId": "story-serif",
-        "fontSize": 18,
-        "lineHeight": 1.7,
-        "editorWidth": 760,
-        "projectFileAutosaveEnabled": true,
-        "grammarCheckEnabled": true,
-        "revisionOverlayEnabled": false,
-        "italicText": false
-      },
-      "localAiPrefs": {
-        "enabled": true
-      },
-      "schemaVersion": 2,
-      "projectIndex": {
-        "schemaVersion": 2,
-        "projectId": "project-20260514T04340",
-        "projectTitle": "TestProject",
-        "createdAt": "2026-05-14T04:34:00.800Z",
-        "updatedAt": "2026-05-14T04:43:04.019Z",
-        "chapters": [],
-        "scenes": [],
-        "sceneOrder": [],
-        "assetIds": [],
-        "assets": [],
-        "fileRefs": {
-          "projectFilePath": "C:\\Users\\ASUS\\Desktop\\Repos\\ABetterNovelAuthoringEnvironment\\SaveTestFile\\testproject.abe-project.json",
-          "projectSourcePath": ""
-        }
-      },
-      "projectStorage": {
-        "format": "chunked-project-package-v1",
-        "sceneOrder": [],
-        "sceneFiles": {}
-      }
-    },
-    {
-      "id": "project-20260514T04310",
-      "title": "Untitled Project",
-      "source": "user-created",
-      "createdAt": "2026-05-14T04:31:01.950Z",
-      "updatedAt": "2026-05-14T05:15:46.246Z",
-      "workspace": {
-        "generatedAt": "2026-05-14T04:31:01.950Z",
-        "workspaceTitle": "ABetterNovelAuthoringEnvironment",
-        "settings": {
-          "executionMode": "local-only",
-          "modelRoot": "C:\\Models\\AuthorSuite",
-          "assetRoot": "C:\\AuthorAssets",
-          "projectRoot": "C:\\Users\\ASUS\\Desktop\\Repos\\ABetterNovelAuthoringEnvironment\\SaveTestFile"
-        },
-        "project": {
-          "id": "project-20260514T04310",
-          "title": "Untitled Project",
-          "binder": {
-            "id": "project-20260514T04310",
-            "kind": "project",
-            "refId": "project-20260514T04310",
-            "title": "Untitled Project",
-            "order": 1,
-            "children": []
-          },
-          "stats": {
-            "chapterCount": 0,
-            "sceneCount": 0,
-            "lineCount": 0,
-            "issueCount": 0,
-            "eventCount": 0,
-            "characterCount": 0
-          },
-          "navigationTargets": {},
-          "lines": [],
-          "issues": [],
-          "eventTags": [],
-          "characters": []
-        },
-        "world": {
-          "id": "world-project-20260514T04310",
-          "title": "Untitled Project World",
-          "stats": {
-            "templateCount": 0,
-            "entityCount": 0,
-            "spineCount": 0,
-            "nodeCount": 0,
-            "edgeCount": 0
-          },
-          "templates": [],
-          "entities": [],
-          "spines": [],
-          "edges": []
-        },
-        "analysis": {
-          "provider": {
-            "id": "local-rule-analysis",
-            "label": "Local Rule Analysis",
-            "availability": "ready",
-            "executionMode": "local-only"
-          },
-          "lastJob": {
-            "id": "analysis-project-20260514T04310",
-            "type": "analysis",
-            "status": "completed",
-            "createdAt": "2026-05-14T04:31:01.950Z",
-            "updatedAt": "2026-05-14T04:31:01.950Z",
-            "request": {
-              "projectId": "project-20260514T04310",
-              "trigger": "manual"
-            },
-            "result": {
-              "providerId": "local-rule-analysis",
-              "issueCount": 0,
-              "eventCount": 0,
-              "suggestionCount": 0
-            }
-          },
-          "suggestionQueue": []
-        },
-        "narration": {
-          "provider": {
-            "id": "local-alignment-monitor",
-            "label": "Local Alignment Monitor",
-            "availability": "ready",
-            "alignmentStrategy": "anchor-tracked incremental alignment"
-          },
-          "session": {
-            "id": "narration-project-20260514T04310",
-            "projectId": "project-20260514T04310",
-            "providerId": "local-alignment-monitor",
-            "sessionLabel": "Untitled Project",
-            "status": "paused",
-            "currentAnchor": {
-              "projectId": "project-20260514T04310",
-              "chapterId": "",
-              "sceneId": "",
-              "blockId": "",
-              "paragraphId": "",
-              "startOffset": 0,
-              "endOffset": 0
-            },
-            "currentLineNumber": 0,
-            "currentText": "",
-            "updatedAt": "2026-05-14T04:31:01.950Z"
-          },
-          "alignmentJobs": []
-        },
-        "voice": {
-          "provider": {
-            "id": "local-voice-suite",
-            "label": "Local Voice Suite",
-            "availability": "ready",
-            "synthesisMode": "local"
-          },
-          "profiles": [
-            {
-              "id": "voice-narrator-lantern",
-              "label": "Lantern Narrator",
-              "providerId": "local-voice-suite",
-              "role": "narrator",
-              "style": "measured documentary warmth"
-            },
-            {
-              "id": "voice-auren-cinder",
-              "label": "Auren Cinder",
-              "providerId": "local-voice-suite",
-              "role": "character",
-              "style": "steady command with restrained pressure"
-            },
-            {
-              "id": "voice-voss-iron",
-              "label": "Voss Iron",
-              "providerId": "local-voice-suite",
-              "role": "character",
-              "style": "hard official diction"
-            },
-            {
-              "id": "voice-mara-glass",
-              "label": "Mara Glass",
-              "providerId": "local-voice-suite",
-              "role": "character",
-              "style": "precise curiosity with clipped urgency"
-            }
-          ],
-          "bindings": [],
-          "renderJobs": [],
-          "recordings": []
-        },
-        "selectionDefaults": {
-          "lineId": ""
-        }
-      },
-      "sceneDrafts": {
-        "draft-scene-1778733072636": {
-          "sceneId": "draft-scene-1778733072636",
-          "chapterId": "draft-chapter-1778733072636",
-          "chapterTitle": "",
-          "sceneTitle": "New Scene",
-          "sceneSynopsis": "",
-          "editorText": "This is a test to see if the save is working. ",
-          "blocks": [
-            {
-              "blockId": "draft-block-draft-scene-1778733072636-1",
-              "lineNumber": 0,
-              "kind": "narration",
-              "speakerLabel": "",
-              "text": "",
-              "issueIds": [],
-              "eventTagIds": [],
-              "isDraft": true
-            }
-          ]
-        }
-      },
-      "structureDrafts": {
-        "scenes": [
-          {
-            "sceneId": "draft-scene-1778733072636",
-            "chapterId": "draft-chapter-1778733072636",
-            "chapterTitle": "",
-            "sceneTitle": "New Scene",
-            "sceneSynopsis": "",
-            "order": 1,
-            "initialText": ""
-          }
-        ]
-      },
-      "templateDrafts": [],
-      "manuscriptTasks": [],
-      "passageNotes": [],
-      "sourceArchive": [],
-      "importReport": {},
-      "projectSettings": {
-        "editorPrefs": {
-          "fontFamilyId": "story-serif",
-          "fontSize": 18,
-          "lineHeight": 1.7,
-          "editorWidth": 760,
-          "projectFileAutosaveEnabled": true,
-          "grammarCheckEnabled": true,
-          "revisionOverlayEnabled": false,
-          "italicText": false
-        },
-        "localAiPrefs": {
-          "enabled": true
-        },
-        "binderPanelWidth": 456,
-        "consoleDockWidth": 320,
-        "consoleDockCollapsed": false,
-        "collapsedChapterIds": [],
-        "collapsedConsoleChapterIds": {
-          "issueTasks": [],
-          "issues": [],
-          "inspiration": [],
-          "research": []
-        },
-        "projectFilePath": "C:\\Users\\ASUS\\Desktop\\Repos\\ABetterNovelAuthoringEnvironment\\SaveTestFile\\untitled-project.abe-project.json",
-        "projectSourcePath": "",
-        "writingTargetState": {
-          "targetWords": 150000,
-          "releaseDate": "",
-          "sessionTargetWords": 5000,
-          "sessionsPerDay": 5,
-          "sessionTimeoutMinutes": 20,
-          "targetCadence": "daily",
-          "goalSyncSource": "releaseDate",
-          "lookbackDays": 7,
-          "visibleMetricsVersion": 2,
-          "visibleMetrics": [
-            "wordTarget",
-            "sessionTarget",
-            "forecast",
-            "sessionTracker"
-          ],
-          "sessionBaselineWordCount": 0,
-          "sessionLastWordCount": 11,
-          "dailyBaselineDateKey": "2026-05-14",
-          "dailyBaselineWordCount": 0,
-          "sessionIsActive": false,
-          "sessionStartedAt": "2026-05-14T04:31:15.675Z",
-          "sessionLastActiveAt": "2026-05-14T04:31:22.884Z",
-          "sessionConcludedAt": "2026-05-14T04:51:22.884Z",
-          "sessionConcludedReason": "idle",
-          "sessionSamples": [
-            {
-              "capturedAt": "2026-05-14T04:31:15.675Z",
-              "wordCount": 0
-            },
-            {
-              "capturedAt": "2026-05-14T04:31:15.688Z",
-              "wordCount": 1
-            },
-            {
-              "capturedAt": "2026-05-14T04:31:22.884Z",
-              "wordCount": 11
-            }
-          ],
-          "sessionHistory": [
-            {
-              "startedAt": "2026-05-14T04:31:15.675Z",
-              "endedAt": "2026-05-14T04:51:22.884Z",
-              "endedReason": "idle",
-              "wordCountStart": 0,
-              "wordCountEnd": 11,
-              "wordGain": 11,
-              "activeMinutes": 20,
-              "idleMinutes": 20,
-              "sessionTargetWordsPerSession": 1000,
-              "goalReached": false
-            }
-          ],
-          "history": [
-            {
-              "date": "2026-05-14",
-              "wordCount": 11,
-              "wordDelta": 11,
-              "capturedAt": "2026-05-14T05:15:40.757Z",
-              "chapterId": "draft-chapter-1778733072636",
-              "chapterTitle": "",
-              "sceneId": "draft-scene-1778733072636",
-              "sceneTitle": "New Scene",
-              "passageExcerpt": "This is a test to see if the save is working.",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            }
-          ],
-          "updatedAt": "2026-05-14T05:15:40.757Z"
-        },
-        "writingTargetViewMode": "month",
-        "writingTargetSelectedDateKey": "2026-05-14",
-        "writingTargetCalendarMonthKey": "2026-05",
-        "spellcheck": {
-          "dictionaryWords": [],
-          "exceptionWords": []
-        },
-        "assetRegistry": [],
-        "activeSceneId": "draft-scene-1778733072636"
-      },
-      "editorPrefs": {
-        "fontFamilyId": "story-serif",
-        "fontSize": 18,
-        "lineHeight": 1.7,
-        "editorWidth": 760,
-        "projectFileAutosaveEnabled": true,
-        "grammarCheckEnabled": true,
-        "revisionOverlayEnabled": false,
-        "italicText": false
-      },
-      "localAiPrefs": {
-        "enabled": true
-      },
-      "schemaVersion": 2,
-      "projectIndex": {
-        "schemaVersion": 2,
-        "projectId": "project-20260514T04310",
-        "projectTitle": "Untitled Project",
-        "createdAt": "2026-05-14T04:31:01.950Z",
-        "updatedAt": "2026-05-14T05:15:46.246Z",
-        "chapters": [
-          {
-            "id": "draft-chapter-1778733072636",
-            "title": "Untitled Chapter",
-            "order": 1,
-            "sceneIds": [
-              "draft-scene-1778733072636"
-            ]
-          }
-        ],
-        "scenes": [
-          {
-            "id": "draft-scene-1778733072636",
-            "title": "New Scene",
-            "chapterId": "draft-chapter-1778733072636",
-            "order": 1,
-            "lineCount": 0,
-            "wordCount": 11,
-            "synopsis": "",
-            "assetIds": []
-          }
-        ],
-        "sceneOrder": [
-          "draft-scene-1778733072636"
-        ],
-        "assetIds": [],
-        "assets": [],
-        "fileRefs": {
-          "projectFilePath": "C:\\Users\\ASUS\\Desktop\\Repos\\ABetterNovelAuthoringEnvironment\\SaveTestFile\\untitled-project.abe-project.json",
-          "projectSourcePath": ""
-        }
-      },
-      "projectStorage": {
-        "format": "chunked-project-package-v1",
-        "sceneOrder": [
-          "draft-scene-1778733072636"
-        ],
-        "sceneFiles": {
-          "draft-scene-1778733072636": "manuscript/scenes/project-20260514t04310/scene_draft-scene-1778733072636.json"
-        }
-      }
-    },
-    {
-      "id": "project-20260514T04394",
-      "title": "test2",
-      "source": "user-created",
-      "createdAt": "2026-05-14T04:39:48.542Z",
-      "updatedAt": "2026-05-14T04:40:23.903Z",
-      "workspace": {
-        "generatedAt": "2026-05-14T04:39:48.542Z",
-        "workspaceTitle": "ABetterNovelAuthoringEnvironment",
-        "settings": {
-          "executionMode": "local-only",
-          "modelRoot": "C:\\Models\\AuthorSuite",
-          "assetRoot": "C:\\AuthorAssets",
-          "projectRoot": "C:\\Users\\ASUS\\Desktop\\Repos\\ABetterNovelAuthoringEnvironment\\SaveTestFile"
-        },
-        "project": {
-          "id": "project-20260514T04394",
-          "title": "test2",
-          "binder": {
-            "id": "project-20260514T04394",
-            "kind": "project",
-            "refId": "project-20260514T04394",
-            "title": "test2",
-            "order": 1,
-            "children": [
-              {
-                "id": "binder-chapter-0001",
-                "kind": "chapter",
-                "refId": "chapter-0001",
-                "title": "Chapter 1",
-                "order": 1,
-                "children": [
-                  {
-                    "id": "binder-scene-0001",
-                    "kind": "scene",
-                    "refId": "scene-0001",
-                    "title": "Scene 1",
-                    "order": 1,
-                    "children": []
-                  }
-                ]
-              }
-            ]
-          },
-          "stats": {
-            "chapterCount": 1,
-            "sceneCount": 1,
-            "lineCount": 1,
-            "issueCount": 0,
-            "eventCount": 0,
-            "characterCount": 0
-          },
-          "navigationTargets": {
-            "project-20260514T04394": {
-              "refId": "project-20260514T04394",
-              "kind": "project",
-              "title": "test2",
-              "lineId": "block-0001",
-              "lineNumber": 1
-            },
-            "chapter-0001": {
-              "refId": "chapter-0001",
-              "kind": "chapter",
-              "title": "Chapter 1",
-              "lineId": "block-0001",
-              "lineNumber": 1
-            },
-            "scene-0001": {
-              "refId": "scene-0001",
-              "kind": "scene",
-              "title": "Scene 1",
-              "lineId": "block-0001",
-              "lineNumber": 1
-            }
-          },
-          "lines": [
-            {
-              "id": "block-0001",
-              "blockId": "block-0001",
-              "paragraphId": "paragraph-0001",
-              "lineNumber": 1,
-              "sceneLineNumber": 1,
-              "kind": "narration",
-              "speakerLabel": "",
-              "text": "",
-              "chapterId": "chapter-0001",
-              "chapterTitle": "Chapter 1",
-              "sceneId": "scene-0001",
-              "sceneTitle": "Scene 1",
-              "sceneSynopsis": "",
-              "startsChapter": true,
-              "startsScene": true,
-              "issueIds": [],
-              "eventTagIds": []
-            }
-          ],
-          "issues": [],
-          "eventTags": [],
-          "characters": []
-        },
-        "world": {
-          "id": "world-project-20260514T04394",
-          "title": "test2 World",
-          "stats": {
-            "templateCount": 0,
-            "entityCount": 0,
-            "spineCount": 0,
-            "nodeCount": 0,
-            "edgeCount": 0
-          },
-          "templates": [],
-          "entities": [],
-          "spines": [],
-          "edges": []
-        },
-        "analysis": {
-          "provider": {
-            "id": "local-rule-analysis",
-            "label": "Local Rule Analysis",
-            "availability": "ready",
-            "executionMode": "local-only"
-          },
-          "lastJob": {
-            "id": "analysis-project-20260514T04394",
-            "type": "analysis",
-            "status": "completed",
-            "createdAt": "2026-05-14T04:39:48.542Z",
-            "updatedAt": "2026-05-14T04:39:48.542Z",
-            "request": {
-              "projectId": "project-20260514T04394",
-              "trigger": "manual"
-            },
-            "result": {
-              "providerId": "local-rule-analysis",
-              "issueCount": 0,
-              "eventCount": 0,
-              "suggestionCount": 0
-            }
-          },
-          "suggestionQueue": []
-        },
-        "narration": {
-          "provider": {
-            "id": "local-alignment-monitor",
-            "label": "Local Alignment Monitor",
-            "availability": "ready",
-            "alignmentStrategy": "anchor-tracked incremental alignment"
-          },
-          "session": {
-            "id": "narration-project-20260514T04394",
-            "projectId": "project-20260514T04394",
-            "providerId": "local-alignment-monitor",
-            "sessionLabel": "test2",
-            "status": "paused",
-            "currentAnchor": {
-              "projectId": "project-20260514T04394",
-              "chapterId": "chapter-0001",
-              "sceneId": "scene-0001",
-              "blockId": "block-0001",
-              "paragraphId": "paragraph-0001",
-              "startOffset": 0,
-              "endOffset": 0
-            },
-            "currentLineNumber": 1,
-            "currentText": "",
-            "updatedAt": "2026-05-14T04:39:48.542Z"
-          },
-          "alignmentJobs": []
-        },
-        "voice": {
-          "provider": {
-            "id": "local-voice-suite",
-            "label": "Local Voice Suite",
-            "availability": "ready",
-            "synthesisMode": "local"
-          },
-          "profiles": [
-            {
-              "id": "voice-narrator-lantern",
-              "label": "Lantern Narrator",
-              "providerId": "local-voice-suite",
-              "role": "narrator",
-              "style": "measured documentary warmth"
-            },
-            {
-              "id": "voice-auren-cinder",
-              "label": "Auren Cinder",
-              "providerId": "local-voice-suite",
-              "role": "character",
-              "style": "steady command with restrained pressure"
-            },
-            {
-              "id": "voice-voss-iron",
-              "label": "Voss Iron",
-              "providerId": "local-voice-suite",
-              "role": "character",
-              "style": "hard official diction"
-            },
-            {
-              "id": "voice-mara-glass",
-              "label": "Mara Glass",
-              "providerId": "local-voice-suite",
-              "role": "character",
-              "style": "precise curiosity with clipped urgency"
-            }
-          ],
-          "bindings": [],
-          "renderJobs": [],
-          "recordings": []
-        },
-        "selectionDefaults": {
-          "lineId": "block-0001"
-        }
-      },
-      "sceneDrafts": {
-        "scene-0001": {
-          "sceneId": "scene-0001",
-          "chapterId": "chapter-0001",
-          "chapterTitle": "Chapter 1",
-          "sceneTitle": "Scene 1",
-          "sceneSynopsis": "",
-          "editorText": "this is a test",
-          "blocks": [
-            {
-              "blockId": "block-0001",
-              "lineNumber": 1,
-              "kind": "narration",
-              "speakerLabel": "",
-              "text": "",
-              "issueIds": [],
-              "eventTagIds": [],
-              "isDraft": false
-            }
-          ]
-        }
-      },
-      "structureDrafts": {
-        "scenes": [
-          {
-            "sceneId": "scene-0001",
-            "chapterId": "chapter-0001",
-            "chapterTitle": "Chapter 1",
-            "sceneTitle": "Scene 1",
-            "sceneSynopsis": "",
-            "order": 1,
-            "initialText": ""
-          }
-        ]
-      },
-      "templateDrafts": [],
-      "manuscriptTasks": [],
-      "passageNotes": [],
-      "sourceArchive": [],
-      "importReport": {},
-      "projectSettings": {
-        "editorPrefs": {
-          "fontFamilyId": "story-serif",
-          "fontSize": 18,
-          "lineHeight": 1.7,
-          "editorWidth": 760,
-          "projectFileAutosaveEnabled": true,
-          "grammarCheckEnabled": true,
-          "revisionOverlayEnabled": false,
-          "italicText": false
-        },
-        "localAiPrefs": {
-          "enabled": true
-        },
-        "binderPanelWidth": 551,
-        "consoleDockWidth": 502,
-        "consoleDockCollapsed": false,
-        "collapsedChapterIds": [],
-        "collapsedConsoleChapterIds": {
-          "issueTasks": [],
-          "issues": [],
-          "inspiration": [],
-          "research": []
-        },
-        "projectFilePath": "C:\\Users\\ASUS\\Desktop\\Repos\\ABetterNovelAuthoringEnvironment\\SaveTestFile\\test2.abe-project.json",
-        "projectSourcePath": "",
-        "writingTargetState": {
-          "targetWords": 150000,
-          "releaseDate": "",
-          "sessionTargetWords": 5000,
-          "sessionsPerDay": 5,
-          "sessionTimeoutMinutes": 20,
-          "targetCadence": "daily",
-          "goalSyncSource": "releaseDate",
-          "lookbackDays": 7,
-          "visibleMetricsVersion": 2,
-          "visibleMetrics": [
-            "wordTarget",
-            "sessionTarget",
-            "forecast",
-            "sessionTracker"
-          ],
-          "sessionBaselineWordCount": 0,
-          "sessionLastWordCount": 4,
-          "dailyBaselineDateKey": "2026-05-14",
-          "dailyBaselineWordCount": 0,
-          "sessionIsActive": true,
-          "sessionStartedAt": "2026-05-14T04:39:59.015Z",
-          "sessionLastActiveAt": "2026-05-14T04:40:01.186Z",
-          "sessionConcludedAt": "",
-          "sessionConcludedReason": "",
-          "sessionSamples": [
-            {
-              "capturedAt": "2026-05-14T04:39:59.015Z",
-              "wordCount": 0
-            },
-            {
-              "capturedAt": "2026-05-14T04:39:59.028Z",
-              "wordCount": 1
-            },
-            {
-              "capturedAt": "2026-05-14T04:40:01.186Z",
-              "wordCount": 4
-            }
-          ],
-          "sessionHistory": [],
-          "history": [
-            {
-              "date": "2026-05-14",
-              "wordCount": 4,
-              "wordDelta": 4,
-              "capturedAt": "2026-05-14T04:40:21.809Z",
-              "chapterId": "chapter-0001",
-              "chapterTitle": "Chapter 1",
-              "sceneId": "scene-0001",
-              "sceneTitle": "Scene 1",
-              "passageExcerpt": "this is a test",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            }
-          ],
-          "updatedAt": "2026-05-14T04:40:21.809Z"
-        },
-        "writingTargetViewMode": "month",
-        "writingTargetSelectedDateKey": "2026-05-14",
-        "writingTargetCalendarMonthKey": "2026-05",
-        "spellcheck": {
-          "dictionaryWords": [],
-          "exceptionWords": []
-        },
-        "assetRegistry": [],
-        "activeSceneId": "scene-0001"
-      },
-      "editorPrefs": {
-        "fontFamilyId": "story-serif",
-        "fontSize": 18,
-        "lineHeight": 1.7,
-        "editorWidth": 760,
-        "projectFileAutosaveEnabled": true,
-        "grammarCheckEnabled": true,
-        "revisionOverlayEnabled": false,
-        "italicText": false
-      },
-      "localAiPrefs": {
-        "enabled": true
-      },
-      "schemaVersion": 2,
-      "projectIndex": {
-        "schemaVersion": 2,
-        "projectId": "project-20260514T04394",
-        "projectTitle": "test2",
-        "createdAt": "2026-05-14T04:39:48.542Z",
-        "updatedAt": "2026-05-14T04:40:23.903Z",
-        "chapters": [
-          {
-            "id": "chapter-0001",
-            "title": "Chapter 1",
-            "order": 1,
-            "sceneIds": [
-              "scene-0001"
-            ]
-          }
-        ],
-        "scenes": [
-          {
-            "id": "scene-0001",
-            "title": "Scene 1",
-            "chapterId": "chapter-0001",
-            "order": 1,
-            "lineCount": 1,
-            "wordCount": 4,
-            "synopsis": "",
-            "assetIds": []
-          }
-        ],
-        "sceneOrder": [
-          "scene-0001"
-        ],
-        "assetIds": [],
-        "assets": [],
-        "fileRefs": {
-          "projectFilePath": "C:\\Users\\ASUS\\Desktop\\Repos\\ABetterNovelAuthoringEnvironment\\SaveTestFile\\test2.abe-project.json",
-          "projectSourcePath": ""
-        }
-      },
-      "projectStorage": {
-        "format": "chunked-project-package-v1",
-        "sceneOrder": [
-          "scene-0001"
-        ],
-        "sceneFiles": {
-          "scene-0001": "manuscript/scenes/project-20260514t04394/scene_scene-0001.json"
-        }
-      }
-    },
-    {
       "id": "project-serva-vitae",
-      "title": "Project Serva Vitae",
+      "title": "test2",
       "source": "project-file",
       "createdAt": "2026-04-21T05:00:00.000Z",
-      "updatedAt": "2026-05-14T06:10:37.092Z",
+      "updatedAt": "2026-05-20T12:23:25.777Z",
       "workspace": {
         "generatedAt": "2026-04-21T05:00:00.000Z",
         "workspaceTitle": "ABetterNovelAuthoringEnvironment",
@@ -1559,11 +15,11 @@
           "executionMode": "local-only",
           "modelRoot": "C:\\Models\\AuthorSuite",
           "assetRoot": "C:\\AuthorAssets",
-          "projectRoot": "C:\\Users\\ASUS\\Desktop\\Repos\\ABetterNovelAuthoringEnvironment\\SaveTestFile"
+          "projectRoot": "C:\\Users\\ASUS\\Desktop\\Repos\\ABetterNovelAuthoringEnvironment"
         },
         "project": {
           "id": "project-serva-vitae",
-          "title": "Project Serva Vitae",
+          "title": "test2",
           "binder": {
             "id": "binder-project-serva-vitae",
             "kind": "project",
@@ -1842,8 +298,8 @@
             ]
           },
           "stats": {
-            "chapterCount": 4,
-            "sceneCount": 29,
+            "chapterCount": 5,
+            "sceneCount": 30,
             "lineCount": 855,
             "issueCount": 0,
             "eventCount": 0,
@@ -18195,8 +16651,16 @@
         },
         "selectionDefaults": {
           "lineId": "block-0001",
+          "sceneId": "scene-0001",
           "nodeId": "source-node-9272d563-8210-4bdd-8900-493d323c503d",
-          "entityId": "source-entity-9c2d8a8c-6334-4ed3-8c21-0ec770d78ff6"
+          "entityId": "source-entity-9c2d8a8c-6334-4ed3-8c21-0ec770d78ff6",
+          "sceneSelectionBlockId": "block-0001",
+          "sceneSelectionLineNumber": 2,
+          "sceneSelectionStart": 75,
+          "sceneSelectionEnd": 75,
+          "sceneSelectionScrollTop": 0,
+          "sceneSelectionScrollLeft": 0,
+          "inlinePassageDraft": null
         }
       },
       "sceneDrafts": {
@@ -18206,7 +16670,7 @@
           "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
           "sceneTitle": "John's Dream",
           "sceneSynopsis": "",
-          "editorText": "Icicles clung to the cavern roof, daring anyone brave enough to trespass below them. Nuancing Radiant beams of warm morning light pierced through them, momentarily blinding the Captain – A sensation both agonizing yet strangely enchanting. Stirring like needles into his brain as he awoke from a painful concussion. “I thought you would come to about now!” The cheerful sweet voice of Johns on-board Assistant chimed in, a little too cheery to John’s liking, given the circumstances. “you took one hell of a stack cap, ”. “What the f…” John wheezed helplessly as a chilling air filled his lungs. He coughed and spluttered, his lungs like a wet towel, yet his throat felt dry like razor blades. He mustered up the strength to speak, “Thank you… Kitten, you didn’t think to just..knock!”. “your med capsule is busted, your neural bridge down, it’s all you at the wheel cap, all a girl can do is wait..”.\n\nWaking from what felt like a decade of deep sleep, John rolled over with immense effort “If you say so Kitten”, there was a slight but humble distrust in the captains voice, breaking free from the cavern's icy grip to the sound of cracking ice and crushed dirt beneath him. His vision slowly came into focus, he could make out the silhouette of his Sherpa rifle laying only a few feet away from him deeper into the cavern. He reached to grip it, but it lay stubbornly embedded into the icy floor. On his second attempt he gave up, the rifle laid useless embedded in the ice. John opened his survival suits wrist terminal bringing up the wireless interface to his rifle. An amber icon with the symbol of a snowflake accompanied by the words “Reverse Cooling Cycle” changed to a pulsating red upon John tapping the screen. The rifles center began to glow and hum. Steam billowed from the shroud of the rifle as it’s icy cage rescinded into water beneath it, scurrying away clearing the snow in its path. John re gripped the rifle stock and yanked it once more, finally freeing it’s icy hold.\n\n“How long have I been out?'' John mumbled weakly to himself, struggling to manage his breath with each painful gasp. The cold air felt like a vice inside his chest. His knees ached and tingled as blood slowly began to recirculate through them. His frail body started to rise with agonizing effort, every muscle spasming as he fought his way upright into a shaky stand.\n\nJohn pondered how he was still alive as the sun's kiss pressed against his frame, he stood in awe looking out. Gazing back at him, bright glimmering mountain peaks reflected a reassuring warmth across his face.\n\nThe sunset painted a blossoming red hue in the hanging icicles like the blood stained teeth of a deep-sea beast’s open jaw they hung form the caves arches, alluring with the beauty of refracted colors of broken light.\n\nWalker felt at peace for a moment, until a subtle beeping sound whispered in the back of his ear. Puzzled John began to approach the sound pinging from the rear of the cavern drawn like a weary glow worm to the allure of a soft pulsing amber glow from within icy walls.\n\nSomething was amiss within the ice at the rear of the cavern, John could just make out the beeping sound source now standing only a few meters from the belly of the cave. The Amber glow pulsed “what are you” John thought. It  seemed to be an LED from before the final war. The beeping pulse continued but this time making strides, speeding up, the light turned from Amber to a dark blood red, paused for a moment then lit a solid green with a pleasant chime at the end. “What the fuck” John took a cautious step back from the belly.\n\nA gentle hiss filled the cave with steam as the steady sound of grinding steel erupted into a roar shaking the very ground beneath the captain's heavy knees. Shards fell in disarray, breaking chaotically throughout the cave sending John scrambling for shelter to preserve his fragile shell. John shoved himself to the side of the cave seeking what limited shelter he could find for his frail body. The cave quaked and moaned with steam now bellowing from its belly like a rupture from a blistering ulcer beneath its crusted gut had been waiting for half a century to burst. The sound of a creeping crack stirred in the ceiling above him but it was too late. John felt the wind snatched from his chest a moment later. A large ice section shattered across his shoulders breaking in two, sending him to his knees, his palm splayed out before in a ditched effort to hold himself steady. Through his bones the cavern spoke to him as though it was coming to life. John collected his thoughts, and realized the soft ceiling he was once under had vanished, his stumble had inadvertently exposed him to the teeth of the cave dangling above him. A final screeching roar emitted as the rear belly of the cave began to crumble and crack, spewing broken shards and thick sections of ice from its belly onto the floor before him.\n\nThe cold sting of ice pierced into John’s shoulder like a dagger from the barrage of stray icicles. He watched helplessly as his blood trickled down from his shoulder, slithering through the snow, turning white passages to red veins. A dark surge of adrenaline overwhelmed the captain as he raised his head in shock. The belly of the cave, that had been alluded to by what seemed an age of ice, now gave way to dark winding steel walls receding deep within the mountain. John’s breath stuttered, turning to gasps, as he breathed rapidly and stumbled forward frantically to take shelter within the tunnel from the malevolent icicles crashing around him. the sound of breaking ice rescinded as he wandered deeper into the steel halls until all was quiet, too quiet. Metallic taps of drumming blood kissed floor from John’s wounded shoulder. Exhausted, he fell to his knees calming himself, slowly collecting his breath. he felt his chest began to ease, in the stillness of breath, John raised his head to the sound of something approaching him from within the misty tunnel. Steam vents ahead vomited out a gaseous substance obscuring his vision.\n\nSlowly, intermittently, metallic clangs of steel on steel could be heard, gradually getting louder with each foregoing clap, closer. John desperately hit the side of his helmet, attempting to jog the thermal scan feed on his visor’s HUD “Come onnn work you piece of Junk!”. Nothing but scratchy static could be seen as the fog stirred before him. He held his breath to hone his hearing in one silent moment of stillness; the fog was now dead. One more knock to the side of his helmet and the system began to boot up. He looked down on himself in almost third person. He could see his body; now he saw himself glaring into the fog, hollow with fear and empty breath. Suddenly his thermal feed actuated, illuminating  glowing embers around a steel amalgamation of flesh and machine erupting from the fog right before him, a grotesque arm, neither machine nor human, something in between, fanned out its large drooping countless fingers clasping gently around the entirety of his skull. John saw his own body ripped from his knees into the depths of the tunnel, never to be seen again. He saw nothing but darkness",
+          "editorText": "Icicles clung to the cavern roof, daring anyone brave enough to trespass below them. Nuancing Radiant beams of warm morning light pierced through them, momentarily blinding the Captain – A sensation both agonizing yet strangely enchanting. Stirring like needles into his brain as he awoke from a painful concussion. “I thought you would come to about now!” The cheerful sweet voice of Johns on-board Assistant chimed in, a little too cheery to John’s liking, given the circumstances. “you took one hell of a stack cap, ”. “What the f…” John wheezed helplessly as a chilling air filled his lungs. He coughed and spluttered, his lungs like a wet towel, yet his throat felt dry like razor blades. He mustered up the strength to speak, “Thank you… Kitten, you didn’t think to just..knock!”. “your med capsule is busted, your neural bridge down, it’s all you at the wheel cap, all a girl can do is wait..”.\n\n\n\nWaking from what felt like a decade of deep sleep, John rolled over with immense effort “If you say so Kitten”, there was a slight but humble distrust in the captains voice, breaking free from the cavern's icy grip to the sound of cracking ice and crushed dirt beneath him. His vision slowly came into focus, he could make out the silhouette of his Sherpa rifle laying only a few feet away from him deeper into the cavern. He reached to grip it, but it lay stubbornly embedded into the icy floor. On his second attempt he gave up, the rifle laid useless embedded in the ice. John opened his survival suits wrist terminal bringing up the wireless interface to his rifle. An amber icon with the symbol of a snowflake accompanied by the words “Reverse Cooling Cycle” changed to a pulsating red upon John tapping the screen. The rifles center began to glow and hum. Steam billowed from the shroud of the rifle as it’s icy cage rescinded into water beneath it, scurrying away clearing the snow in its path. John re gripped the rifle stock and yanked it once more, finally freeing it’s icy hold.\n\n“How long have I been out?'' John mumbled weakly to himself, struggling to manage his breath with each painful gasp. The cold air felt like a vice inside his chest. His knees ached and tingled as blood slowly began to recirculate through them. His frail body started to rise with agonizing effort, every muscle spasming as he fought his way upright into a shaky stand.\n\nJohn pondered how he was still alive as the sun's kiss pressed against his frame, he stood in awe looking out. Gazing back at him, bright glimmering mountain peaks reflected a reassuring warmth across his face.\n\nThe sunset painted a blossoming red hue in the hanging icicles like the blood stained teeth of a deep-sea beast’s open jaw they hung form the caves arches, alluring with the beauty of refracted colors of broken light.\n\nWalker felt at peace for a moment, until a subtle beeping sound whispered in the back of his ear. Puzzled John began to approach the sound pinging from the rear of the cavern drawn like a weary glow worm to the allure of a soft pulsing amber glow from within icy walls.\n\nSomething was amiss within the ice at the rear of the cavern, John could just make out the beeping sound source now standing only a few meters from the belly of the cave. The Amber glow pulsed “what are you” John thought. It  seemed to be an LED from before the final war. The beeping pulse continued but this time making strides, speeding up, the light turned from Amber to a dark blood red, paused for a moment then lit a solid green with a pleasant chime at the end. “What the fuck” John took a cautious step back from the belly.\n\nA gentle hiss filled the cave with steam as the steady sound of grinding steel erupted into a roar shaking the very ground beneath the captain's heavy knees. Shards fell in disarray, breaking chaotically throughout the cave sending John scrambling for shelter to preserve his fragile shell. John shoved himself to the side of the cave seeking what limited shelter he could find for his frail body. The cave quaked and moaned with steam now bellowing from its belly like a rupture from a blistering ulcer beneath its crusted gut had been waiting for half a century to burst. The sound of a creeping crack stirred in the ceiling above him but it was too late. John felt the wind snatched from his chest a moment later. A large ice section shattered across his shoulders breaking in two, sending him to his knees, his palm splayed out before in a ditched effort to hold himself steady. Through his bones the cavern spoke to him as though it was coming to life. John collected his thoughts, and realized the soft ceiling he was once under had vanished, his stumble had inadvertently exposed him to the teeth of the cave dangling above him. A final screeching roar emitted as the rear belly of the cave began to crumble and crack, spewing broken shards and thick sections of ice from its belly onto the floor before him.\n\nThe cold sting of ice pierced into John’s shoulder like a dagger from the barrage of stray icicles. He watched helplessly as his blood trickled down from his shoulder, slithering through the snow, turning white passages to red veins. A dark surge of adrenaline overwhelmed the captain as he raised his head in shock. The belly of the cave, that had been alluded to by what seemed an age of ice, now gave way to dark winding steel walls receding deep within the mountain. John’s breath stuttered, turning to gasps, as he breathed rapidly and stumbled forward frantically to take shelter within the tunnel from the malevolent icicles crashing around him. the sound of breaking ice rescinded as he wandered deeper into the steel halls until all was quiet, too quiet. Metallic taps of drumming blood kissed floor from John’s wounded shoulder. Exhausted, he fell to his knees calming himself, slowly collecting his breath. he felt his chest began to ease, in the stillness of breath, John raised his head to the sound of something approaching him from within the misty tunnel. Steam vents ahead vomited out a gaseous substance obscuring his vision.\n\nSlowly, intermittently, metallic clangs of steel on steel could be heard, gradually getting louder with each foregoing clap, closer. John desperately hit the side of his helmet, attempting to jog the thermal scan feed on his visor’s HUD “Come onnn work you piece of Junk!”. Nothing but scratchy static could be seen as the fog stirred before him. He held his breath to hone his hearing in one silent moment of stillness; the fog was now dead. One more knock to the side of his helmet and the system began to boot up. He looked down on himself in almost third person. He could see his body; now he saw himself glaring into the fog, hollow with fear and empty breath. Suddenly his thermal feed actuated, illuminating  glowing embers around a steel amalgamation of flesh and machine erupting from the fog right before him, a grotesque arm, neither machine nor human, something in between, fanned out its large drooping countless fingers clasping gently around the entirety of his skull. John saw his own body ripped from his knees into the depths of the tunnel, never to be seen again. He saw nothing but darkness",
           "blocks": [
             {
               "blockId": "block-0001",
@@ -18598,8 +17062,8 @@
           "body": "CONTINUITY SPELLING: Suggested canonical ship name = Balaenoptera. Standardize Baelenoptera / Bealenoptera to this unless the variants are deliberate in-world corruption.",
           "description": "CONTINUITY SPELLING: Suggested canonical ship name = Balaenoptera. Standardize Baelenoptera / Bealenoptera to this unless the variants are deliberate in-world corruption.",
           "selectedText": "Balaenoptera",
-          "startOffset": 1404,
-          "endOffset": 1416,
+          "startOffset": 1402,
+          "endOffset": 1414,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -18624,8 +17088,8 @@
           "body": "CONTINUITY INSTITUTION: Suggested canonical reading = CLEAR is the public adaptive governance / economic model. If CLEAR is also a protocol stack, define that relationship explicitly on-page.",
           "description": "CONTINUITY INSTITUTION: Suggested canonical reading = CLEAR is the public adaptive governance / economic model. If CLEAR is also a protocol stack, define that relationship explicitly on-page.",
           "selectedText": "CLEAR program",
-          "startOffset": 7949,
-          "endOffset": 7962,
+          "startOffset": 7940,
+          "endOffset": 7953,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -18676,8 +17140,8 @@
           "body": "CONTINUITY SPELLING: Suggested canonical ship name = Balaenoptera. Standardize Baelenoptera / Bealenoptera to this unless the variants are deliberate in-world corruption.",
           "description": "CONTINUITY SPELLING: Suggested canonical ship name = Balaenoptera. Standardize Baelenoptera / Bealenoptera to this unless the variants are deliberate in-world corruption.",
           "selectedText": "Baelenoptera",
-          "startOffset": 4747,
-          "endOffset": 4759,
+          "startOffset": 4742,
+          "endOffset": 4754,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -18702,8 +17166,8 @@
           "body": "1, 15/06/2024 6:22 PM What is the Iris? The algorithm?",
           "description": "1, 15/06/2024 6:22 PM What is the Iris? The algorithm?",
           "selectedText": "Iris,",
-          "startOffset": 635,
-          "endOffset": 640,
+          "startOffset": 634,
+          "endOffset": 639,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -18728,8 +17192,8 @@
           "body": "CONTINUITY NAME: Suggested canonical standard = Tao. Update Tau / Tam variants unless the difference is deliberate.",
           "description": "CONTINUITY NAME: Suggested canonical standard = Tao. Update Tau / Tam variants unless the difference is deliberate.",
           "selectedText": "Said Tao",
-          "startOffset": 1914,
-          "endOffset": 1922,
+          "startOffset": 1910,
+          "endOffset": 1918,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -18780,8 +17244,8 @@
           "body": "CONFUSING: If Chapter 1 is still the 2056 pre-gate present, this puts John's family photo in his future. Either the present-day spine is later here, or this photo date needs to move earlier.",
           "description": "CONFUSING: If Chapter 1 is still the 2056 pre-gate present, this puts John's family photo in his future. Either the present-day spine is later here, or this photo date needs to move earlier.",
           "selectedText": "the end of the 21st century, I think.",
-          "startOffset": 4401,
-          "endOffset": 4438,
+          "startOffset": 4378,
+          "endOffset": 4415,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -18806,8 +17270,8 @@
           "body": "1, 16/04/2026 2:52 PM Design Note: Atmospheric Trail Ejection System (ATES) System Overview A suit-mounted pyrotechnic/chemical deployment system designed for high-altitude, low-visibility team tracking (e.g., skydiving through high-density snow/clouds). 1. Component Placement: Lower Lumbar / Rear Hip • Location:~Dual ports located on the lower back, just above the glutes, angled slightly outward. • Rationale:~Placing ports on the \"lee side\" (back) of the diver protects the mechanisms from direct ram-air cooling and moisture impact at terminal velocity. This position utilizes the body’s natural aerodynamic \"teardrop\" to seed the smoke directly into the stable vortices trailing the legs. • Visual Result:~Creates two clean, parallel \"braiding\" trails that avoid the turbulent \"burble\" behind the head and shoulders, ensuring the diver’s own vision remains clear. 2. Redundancy & Navigation: Dual-Port Configuration • Depth Perception:~Two parallel lines allow followers to judge distance and closure rates (stereoscopic tracking). • HUD Integration:~Dual heat/density signatures allow the \"Echo\" HUD to calculate the lead diver’s~roll and bank angle~in real-time. • The \"Corridor\":~The gap between trails marks the low-drag wake, allowing the team to \"slot in\" and maintain high speeds with less effort. 3. Cold-Weather Reliability: Intermittent Actuation • The \"Freeze\" Risk:~High-moisture environments (snow clouds) combined with sub-zero temps cause \"ice bridging\" on ejection gates. • Operational Protocol:~\"Pulse\" or intermittent firing. This cycles the mechanical gates to break up ice and uses the chemical reaction’s~high thermal output~to flash-evaporate moisture and keep the \"ejection gates\" clear. 4. Sensor Visibility: Thermal vs. Radar • Thermal/IR:~The primary tracking method. The smoke is a byproduct of a high-heat reaction, making it \"glow\" on thermal HUDs against the freezing atmospheric backdrop. • Radar (Echo):~The density of the aerosolized trail provides a consistent backscatter, allowing the HUD to draw \"Echo visuals\" (the misty road) even when visual sight (Vis) is zero. 5. Atmospheric Behaviour • Cold Air Effect:~The dense, freezing air keeps the trails \"tight\" and low-hanging, preventing rapid dissipation. • Vortex Seeding:~At high speeds, the trails will naturally swirl into tubes, making them look like \"fine misty roads\" or \"white snakes\" in the sky.",
           "description": "1, 16/04/2026 2:52 PM Design Note: Atmospheric Trail Ejection System (ATES) System Overview A suit-mounted pyrotechnic/chemical deployment system designed for high-altitude, low-visibility team tracking (e.g., skydiving through high-density snow/clouds). 1. Component Placement: Lower Lumbar / Rear Hip • Location:~Dual ports located on the lower back, just above the glutes, angled slightly outward. • Rationale:~Placing ports on the \"lee side\" (back) of the diver protects the mechanisms from direct ram-air cooling and moisture impact at terminal velocity. This position utilizes the body’s natural aerodynamic \"teardrop\" to seed the smoke directly into the stable vortices trailing the legs. • Visual Result:~Creates two clean, parallel \"braiding\" trails that avoid the turbulent \"burble\" behind the head and shoulders, ensuring the diver’s own vision remains clear. 2. Redundancy & Navigation: Dual-Port Configuration • Depth Perception:~Two parallel lines allow followers to judge distance and closure rates (stereoscopic tracking). • HUD Integration:~Dual heat/density signatures allow the \"Echo\" HUD to calculate the lead diver’s~roll and bank angle~in real-time. • The \"Corridor\":~The gap between trails marks the low-drag wake, allowing the team to \"slot in\" and maintain high speeds with less effort. 3. Cold-Weather Reliability: Intermittent Actuation • The \"Freeze\" Risk:~High-moisture environments (snow clouds) combined with sub-zero temps cause \"ice bridging\" on ejection gates. • Operational Protocol:~\"Pulse\" or intermittent firing. This cycles the mechanical gates to break up ice and uses the chemical reaction’s~high thermal output~to flash-evaporate moisture and keep the \"ejection gates\" clear. 4. Sensor Visibility: Thermal vs. Radar • Thermal/IR:~The primary tracking method. The smoke is a byproduct of a high-heat reaction, making it \"glow\" on thermal HUDs against the freezing atmospheric backdrop. • Radar (Echo):~The density of the aerosolized trail provides a consistent backscatter, allowing the HUD to draw \"Echo visuals\" (the misty road) even when visual sight (Vis) is zero. 5. Atmospheric Behaviour • Cold Air Effect:~The dense, freezing air keeps the trails \"tight\" and low-hanging, preventing rapid dissipation. • Vortex Seeding:~At high speeds, the trails will naturally swirl into tubes, making them look like \"fine misty roads\" or \"white snakes\" in the sky.",
           "selectedText": "ediately two small ports about a foot apart on her lower back propped out momentarily in timed successions,  Small specks of condensation trails fanned out behind her",
-          "startOffset": 5642,
-          "endOffset": 5808,
+          "startOffset": 5631,
+          "endOffset": 5797,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -18832,8 +17296,8 @@
           "body": "CONTINUITY NAME: Suggested canonical fix = either rename Cerena to Julie Henderson for consistency, or establish Cerena as her private / familial / alias name and Julie Henderson as the formal public record name.",
           "description": "CONTINUITY NAME: Suggested canonical fix = either rename Cerena to Julie Henderson for consistency, or establish Cerena as her private / familial / alias name and Julie Henderson as the formal public record name.",
           "selectedText": "mother Cerena",
-          "startOffset": 12409,
-          "endOffset": 12422,
+          "startOffset": 12391,
+          "endOffset": 12404,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -18858,8 +17322,8 @@
           "body": "CONFUSING: If this cache was left around the 2023 / 2024 facility shutdown and John is still in the 2056 mission present, this file is roughly three decades old, not over half a century.",
           "description": "CONFUSING: If this cache was left around the 2023 / 2024 facility shutdown and John is still in the 2056 mission present, this file is roughly three decades old, not over half a century.",
           "selectedText": "half a century old",
-          "startOffset": 8576,
-          "endOffset": 8594,
+          "startOffset": 8563,
+          "endOffset": 8581,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -18884,8 +17348,8 @@
           "body": "CONFUSING: This pod / gate hardware reads as abandoned since the 2023 / 2024 shutdown thread, so half a century does not fit a 2056 present. If Chapter 2 is later than that, the later date needs to be clearer sooner.",
           "description": "CONFUSING: This pod / gate hardware reads as abandoned since the 2023 / 2024 shutdown thread, so half a century does not fit a 2056 present. If Chapter 2 is later than that, the later date needs to be clearer sooner.",
           "selectedText": "near on half a century",
-          "startOffset": 6788,
-          "endOffset": 6810,
+          "startOffset": 6783,
+          "endOffset": 6805,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -18910,8 +17374,8 @@
           "body": "CONTINUITY TITLE/SPELLING: this scene is titled \"Into the Vail\"; compare with \"veil\" usage elsewhere.",
           "description": "CONTINUITY TITLE/SPELLING: this scene is titled \"Into the Vail\"; compare with \"veil\" usage elsewhere.",
           "selectedText": "directive of CLEAR",
-          "startOffset": 1089,
-          "endOffset": 1107,
+          "startOffset": 1086,
+          "endOffset": 1104,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -18962,8 +17426,8 @@
           "body": "CONTINUITY SPELLING: Suggested canonical ship name = Beverly. If you prefer Beverley, standardize every ship reference and the worldbuilding entry to that spelling.",
           "description": "CONTINUITY SPELLING: Suggested canonical ship name = Beverly. If you prefer Beverley, standardize every ship reference and the worldbuilding entry to that spelling.",
           "selectedText": "Beverly...",
-          "startOffset": 2142,
-          "endOffset": 2152,
+          "startOffset": 2136,
+          "endOffset": 2146,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -18988,8 +17452,8 @@
           "body": "CONTINUITY SPELLING: Suggested canonical ship name = Beverly. If you prefer Beverley, standardize every ship reference and the worldbuilding entry to that spelling.",
           "description": "CONTINUITY SPELLING: Suggested canonical ship name = Beverly. If you prefer Beverley, standardize every ship reference and the worldbuilding entry to that spelling.",
           "selectedText": "The outside of the Beverley",
-          "startOffset": 5650,
-          "endOffset": 5677,
+          "startOffset": 5633,
+          "endOffset": 5660,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -19040,8 +17504,8 @@
           "body": "CONTINUITY TIMESPAN: If the main pre-gate present stays 2056, this likely overstates Beverly's disappearance unless you place the ship much earlier. Consider compressing it to a decade / two decades, or tie it to a different era explicitly.",
           "description": "CONTINUITY TIMESPAN: If the main pre-gate present stays 2056, this likely overstates Beverly's disappearance unless you place the ship much earlier. Consider compressing it to a decade / two decades, or tie it to a different era explicitly.",
           "selectedText": "over half a century ago",
-          "startOffset": 22387,
-          "endOffset": 22410,
+          "startOffset": 22322,
+          "endOffset": 22345,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -19066,8 +17530,8 @@
           "body": "ASUS, 31/03/2026 7:50 PM The first mention point of the grey class ship.",
           "description": "ASUS, 31/03/2026 7:50 PM The first mention point of the grey class ship.",
           "selectedText": "grey class.",
-          "startOffset": 42718,
-          "endOffset": 42729,
+          "startOffset": 42582,
+          "endOffset": 42593,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -19118,8 +17582,8 @@
           "body": "——————————————————————————————— NOTES: How does AC EF Field detect a ship and what gives it away in terms on vulnerabillity? A: In real world EF tracking in not really feasible as this is modtly dampened. We don’t focus on EF tracking but why though? ———————————————————————————————",
           "description": "——————————————————————————————— NOTES: How does AC EF Field detect a ship and what gives it away in terms on vulnerabillity? A: In real world EF tracking in not really feasible as this is modtly dampened. We don’t focus on EF tracking but why though? ———————————————————————————————",
           "selectedText": "“Not suer I guess I just wanted to see if there was a boogey man was still hiding under my bed” Said Tau. “If they're smart they’ll only perform passive tracking, image processing, light distortion, these kind of things. We won’t pick up an",
-          "startOffset": 50143,
-          "endOffset": 50536,
+          "startOffset": 49989,
+          "endOffset": 50382,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -19144,8 +17608,8 @@
           "body": "CONTINUITY SPELLING: Suggested canonical ship name = Balaenoptera. Standardize Baelenoptera / Bealenoptera to this unless the variants are deliberate in-world corruption.",
           "description": "CONTINUITY SPELLING: Suggested canonical ship name = Balaenoptera. Standardize Baelenoptera / Bealenoptera to this unless the variants are deliberate in-world corruption.",
           "selectedText": "Bealenoptera",
-          "startOffset": 27375,
-          "endOffset": 27387,
+          "startOffset": 27293,
+          "endOffset": 27305,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -19170,8 +17634,8 @@
           "body": "ASUS, 31/03/2026 7:53 PM ______________________ BACKGROUND NOTES ______________________ NOTE: The courier, is well disguised beyond human comprehension. Shielded from EF, and magnetic detection, slow moving yet undetectable by the sense that it projects a hardlight image, and emulates magnetically a blanket that constricts it’s true intention. It doesn’t necessarily have to be hardlight it could be. _____________________________________________________________ There should be something discreet that instills confidence in Tebo’s plan to get the crew to Oasis, here The Gates are referred to as Couriers. To instill the image of a feasable and possible way out, given their current lack of knowledge in the Technology a plan is made with positive manipulation based on the limits and scopes of their current mental capacity. _____________________________________________________________ The gate is disguised as a passing asteroid, at which the beverly enters into cloaking it’s journey. The grey class ship; trails the beverly based on light distortion tracking, the ships engines are far advanced , thus leaving no vapour or gaseous decay signature, all these bi products of the drice are captured while operating in cloaked mode, with the reduced low enerfy consumption. - Space tracking of vessels and asteroids. - Ground based radar, reveals distance velocity and shape rotation. Counter measures, EM tracking would need to be deflected or cloaked by a continued projection of the incoming magnetic field. - This could be used to detect an incoming ship but, at a cost of giving away postiion, on a hot burn this would be the time to use such a technology. The skin of the ship would beed to counter the EM tech in that moment when it went cold, the AI modes of the ship would only be primitive. _____________________________________________________________ _____________________________________________________________",
           "description": "ASUS, 31/03/2026 7:53 PM ______________________ BACKGROUND NOTES ______________________ NOTE: The courier, is well disguised beyond human comprehension. Shielded from EF, and magnetic detection, slow moving yet undetectable by the sense that it projects a hardlight image, and emulates magnetically a blanket that constricts it’s true intention. It doesn’t necessarily have to be hardlight it could be. _____________________________________________________________ There should be something discreet that instills confidence in Tebo’s plan to get the crew to Oasis, here The Gates are referred to as Couriers. To instill the image of a feasable and possible way out, given their current lack of knowledge in the Technology a plan is made with positive manipulation based on the limits and scopes of their current mental capacity. _____________________________________________________________ The gate is disguised as a passing asteroid, at which the beverly enters into cloaking it’s journey. The grey class ship; trails the beverly based on light distortion tracking, the ships engines are far advanced , thus leaving no vapour or gaseous decay signature, all these bi products of the drice are captured while operating in cloaked mode, with the reduced low enerfy consumption. - Space tracking of vessels and asteroids. - Ground based radar, reveals distance velocity and shape rotation. Counter measures, EM tracking would need to be deflected or cloaked by a continued projection of the incoming magnetic field. - This could be used to detect an incoming ship but, at a cost of giving away postiion, on a hot burn this would be the time to use such a technology. The skin of the ship would beed to counter the EM tech in that moment when it went cold, the AI modes of the ship would only be primitive. _____________________________________________________________ _____________________________________________________________",
           "selectedText": "Regardless, they will expose themselves the moment they open fire on our position,” said Tebo confidently.“Precisely,” Tex agreed. “By that point hopefully we will already be at the courier…” Tebo concluded. “So, yes, don’t go getting any c",
-          "startOffset": 48238,
-          "endOffset": 48489,
+          "startOffset": 48089,
+          "endOffset": 48340,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -19196,8 +17660,8 @@
           "body": "CONTINUITY NAME: Suggested canonical standard = Tao. Update Tau / Tam variants unless the difference is deliberate.",
           "description": "CONTINUITY NAME: Suggested canonical standard = Tao. Update Tau / Tam variants unless the difference is deliberate.",
           "selectedText": "said Tau",
-          "startOffset": 1768,
-          "endOffset": 1776,
+          "startOffset": 1764,
+          "endOffset": 1772,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -19300,8 +17764,8 @@
           "body": "CONTINUITY NAME: Suggested canonical standard = Tao. Update Tau / Tam variants unless the difference is deliberate.",
           "description": "CONTINUITY NAME: Suggested canonical standard = Tao. Update Tau / Tam variants unless the difference is deliberate.",
           "selectedText": "Said Tam",
-          "startOffset": 14519,
-          "endOffset": 14527,
+          "startOffset": 14483,
+          "endOffset": 14491,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -19326,8 +17790,8 @@
           "body": "CONTINUITY DATE-2155: Suggested canonical spine keeps 2155 as the post-gate later-era arrival date, explicitly flagged as Oeacion-adjusted rather than Earth-present.",
           "description": "CONTINUITY DATE-2155: Suggested canonical spine keeps 2155 as the post-gate later-era arrival date, explicitly flagged as Oeacion-adjusted rather than Earth-present.",
           "selectedText": "Oeacion calendar 2155",
-          "startOffset": 22951,
-          "endOffset": 22972,
+          "startOffset": 22896,
+          "endOffset": 22917,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -19352,8 +17816,8 @@
           "body": "CONTINUITY TIMESPAN: If the pre-gate present stays 2056 and this line points back to the 2023 / 2024 hidden-history thread, reduce this to roughly three decades or rephrase without a fixed span.",
           "description": "CONTINUITY TIMESPAN: If the pre-gate present stays 2056 and this line points back to the 2023 / 2024 hidden-history thread, reduce this to roughly three decades or rephrase without a fixed span.",
           "selectedText": "half a century",
-          "startOffset": 14503,
-          "endOffset": 14517,
+          "startOffset": 14467,
+          "endOffset": 14481,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -19378,8 +17842,8 @@
           "body": "CONTINUITY SPELLING: Suggested canonical ship name = Beverly. If you prefer Beverley, standardize every ship reference and the worldbuilding entry to that spelling.",
           "description": "CONTINUITY SPELLING: Suggested canonical ship name = Beverly. If you prefer Beverley, standardize every ship reference and the worldbuilding entry to that spelling.",
           "selectedText": "cargo hold of the Beverly",
-          "startOffset": 3716,
-          "endOffset": 3741,
+          "startOffset": 3708,
+          "endOffset": 3733,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -19404,8 +17868,8 @@
           "body": "CONTINUITY TITLE / SPELLING: Suggested canonical phrase = veil. Rename the scene title to \"Into the Veil\" unless \"Vail\" is deliberate wordplay.",
           "description": "CONTINUITY TITLE / SPELLING: Suggested canonical phrase = veil. Rename the scene title to \"Into the Veil\" unless \"Vail\" is deliberate wordplay.",
           "selectedText": "behind the veil",
-          "startOffset": 17843,
-          "endOffset": 17858,
+          "startOffset": 17799,
+          "endOffset": 17814,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -19430,8 +17894,8 @@
           "body": "CONFUSING: This is the manuscript's biggest visible date jump. The scene moves from the earlier mission chronology to an Oeacion-adjusted 2155 without a strong on-page elapsed-time explanation yet.",
           "description": "CONFUSING: This is the manuscript's biggest visible date jump. The scene moves from the earlier mission chronology to an Oeacion-adjusted 2155 without a strong on-page elapsed-time explanation yet.",
           "selectedText": "back to sol the year is by adjustment from the",
-          "startOffset": 22904,
-          "endOffset": 22950,
+          "startOffset": 22849,
+          "endOffset": 22895,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -19456,8 +17920,8 @@
           "body": "CONFUSING: If this points back to Marcellus suppressing the hidden sentient line since the 2023 / 2024 break, half a century undershoots the elapsed time in a 2155 frame and overshoots it in a 2056 frame.",
           "description": "CONFUSING: If this points back to Marcellus suppressing the hidden sentient line since the 2023 / 2024 break, half a century undershoots the elapsed time in a 2155 frame and overshoots it in a 2056 frame.",
           "selectedText": "managed to keep her at bay for",
-          "startOffset": 14472,
-          "endOffset": 14502,
+          "startOffset": 14436,
+          "endOffset": 14466,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -20301,6 +18765,36 @@
           "sourceDocumentId": "F68DA989-4763-451D-98CF-60089A01AB53",
           "sourcePath": "WorldBuilding / Front Matter / Ebook / Dedication",
           "attachmentConfidence": 0.2
+        },
+        {
+          "id": "inspiration-1778863409325-pejimq",
+          "noteType": "inspiration",
+          "chapterId": "chapter-0003",
+          "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+          "sceneId": "scene-0023",
+          "sceneTitle": "Am I dreaming or am i dead",
+          "selectedText": "All he could see was the emptiness of a white void. Eventually the ringing stopped. There was no taste, smell or feeling of weight. He felt senseless, free of the body, but still had a conscience. He could still feel the pain brought on by memories, all his past trauma, but only in the mind. He had no breath or pulse. He drifted in the minds construct, and in this while he felt in control, he could not help but feel like he was at the complete mercy of whatever this was. He embraced the silence, trusting the process. It was the first peaceful moment he had felt in what seemed like an eternity. Nothing could harm him here other than his thoughts, his very being was that of his own will.",
+          "startOffset": 578,
+          "endOffset": 659,
+          "body": "John at this point has entered into the nautilus mind frame. It is here he is forced to confront all of his trauma that he holds onto. He will process his life, to let go of any hate and anger he might harbor. They say that dreams are a product of our subconscious processing all the trauma we have not yet dealt with. The Nautilus uses the time gap between transference of the mind to a body which is currently being grown at the reciprocal gate, to allow the subject to prepare for the new worlds which they will enter. \n\nTex is one of many who saw combat leading up to the wars fallout, he was also the part of the cleanup crew, confronted with cleaning up the aftermath, of what he thought he was fighting to prevent. He lost his family in the counter strike from China while they were still at home in Texas, When he sees them standing on oasis, smiling at him,  He feels they are smiling with him, helping to seal and give him closure that after all he had found peace continuity in a new beginning. It now fell to him to shape this new world he would soon become a part of. This was his world, and he found closure, that they accepted it to be his journey. \n\nAt the time I wrote this vers, I was not dealing very well with my parents relationship. I had just cut ties with my own parents, needing space. I was confronted with the reality that my father had cancer. I had also just resigned recently from my job in the Navy as a Signals and Ranges Engineer. My parents I know to this day could not quite understand my resignation. There was an urge inside me always from a young age, as many children do to make their parents proud, although strangely it was at this point in my life I began to realize what becomes more important as we age. The age we live in today is so different from the day our parents roamed the earth. They may never understand our actions. So we dream of them accepting our path and being along the ride with us. We may never in real life get this from some of our parents. The Nautilus gives this experience to Tex, so he may move forward with peace in his mind. \n\nWhen I write this book, it is kind of like my own oasis. \n\nWe begin to outgrow our need to please our adults as we start to realize that as we age, the world changes. What meant the world to them as they were growing up, no longer has the same cadence in our own world. The world is always changing. \n\nTex starts to realize in this passage that his parents are now merely passengers along for the ride. And while they may not always understand his reasons or actions, in his mind he begins to accept through his vision, that they would be happy alone just knowing that he had made it to bounds unknown to the normal human psyche, that he had outgrown himself, and pushed himself to limits and other realms through loyalty and trust in those he held close. \n\nSo many give up the fight when they become comfortable. For Tex he knew following John was a risk, and still he did, even when initially he questioned John’s integrity after he entered the chamber, It was his ability to trust Shai and her instincts that ultimately led him onto this path of discovery. He realizes that his parents now live on through him. And his journey would not have been made possible without them. Through this he starts to forgive himself, and see that there are so many possibilities that ultimately will live on through him. He only has the power now to shift how he sees the world. And how he will enter this new realm he is about to embark his journey in.",
+          "title": "John at this point has entered into...",
+          "createdAt": "2026-05-15T16:43:29.325Z",
+          "source": "manual"
+        },
+        {
+          "id": "inspiration-1778862939997-5juzrb",
+          "noteType": "inspiration",
+          "chapterId": "draft-chapter-1777528152393",
+          "chapterTitle": "",
+          "sceneId": "draft-scene-1777528152393",
+          "sceneTitle": "This is a test for the save function ",
+          "selectedText": "All he could see was the emptiness of a white void. Eventually the ringing stopped. There was no taste, smell or feeling of weight. He felt senseless, free of the body, but still had a conscience. He could still feel the pain brought on by memories, all his past trauma, but only in the mind. He had no breath or pulse. He drifted in the minds construct, and in this while he felt in control, he could not help but feel like he was at the complete mercy of whatever this was. He embraced the silence, trusting the process. It was the first peaceful moment he had felt in what seemed like an eternity. Nothing could harm him here other than his thoughts, his very being was that of his own will.",
+          "startOffset": 634,
+          "endOffset": 1328,
+          "body": "John at this point has entered into the nautilus mind frame. It is here he is forced to confront all of his trauma that he holds onto. He will process his life, to let go of any hate and anger he might harbor. They say that dreams are a product of our subconscious processing all the trauma we have not yet dealt with. The Nautilus uses the time gap between transference of the mind to a body which is currently being grown at the reciprocal gate, to allow the subject to prepare for the new worlds which they will enter. \n\nTex is one of many who saw combat leading up to the wars fallout, he was also the part of the cleanup crew, confronted with cleaning up the aftermath, of what he thought he was fighting to prevent. He lost his family in the counter strike from China while they were still at home in Texas, When he sees them standing on oasis, smiling at him,  He feels they are smiling with him, helping to seal and give him closure that after all he had found peace continuity in a new beginning. It now fell to him to shape this new world he would soon become a part of. This was his world, and he found closure, that they accepted it to be his journey. \n\nAt the time I wrote this vers, I was not dealing very well with my parents relationship. I had just cut ties with my own parents, needing space. I was confronted with the reality that my father had cancer. I had also just resigned recently from my job in the Navy as a Signals and Ranges Engineer. My parents I know to this day could not quite understand my resignation. There was an urge inside me always from a young age, as many children do to make their parents proud, although strangely it was at this point in my life I began to realize what becomes more important as we age. The age we live in today is so different from the day our parents roamed the earth. They may never understand our actions. So we dream of them accepting our path and being along the ride with us. We may never in real life get this from some of our parents. The Nautilus gives this experience to Tex, so he may move forward with peace in his mind. \n\nWhen I write this book, it is kind of like my own oasis. \n\nWe begin to outgrow our need to please our adults as we start to realize that as we age, the world changes. What meant the world to them as they were growing up, no longer has the same cadence in our own world. The world is always changing. \n\nTex starts to realize in this passage that his parents are now merely passengers along for the ride. And while they may not always understand his reasons or actions, in his mind he begins to accept through his vision, that they would be happy alone just knowing that he had made it to bounds unknown to the normal human psyche, that he had outgrown himself, and pushed himself to limits and other realms through loyalty and trust in those he held close. \n\nSo many give up the fight when they become comfortable. For Tex he knew following John was a risk, and still he did, even when initially he questioned John’s integrity after he entered the chamber, It was his ability to trust Shai and her instincts that ultimately led him onto this path of discovery. He realizes that his parents now live on through him. And his journey would not have been made possible without them. Through this he starts to forgive himself, and see that there are so many possibilities that ultimately will live on through him. He only has the power now to shift how he sees the world. And how he will enter this new realm he is about to embark his journey in.",
+          "title": "John at this point has entered into...",
+          "createdAt": "2026-05-15T16:35:39.997Z",
+          "source": "manual"
         }
       ],
       "sourceArchive": [
@@ -20381,8 +18875,10 @@
         "localAiPrefs": {
           "enabled": true
         },
-        "binderPanelWidth": 362,
-        "consoleDockWidth": 379,
+        "binderPanelWidth": 585,
+        "consoleDockWidth": 856,
+        "userSettingPanelResizerLeftPercent": 20.8,
+        "userSettingPanelResizerRightPercent": 30.4,
         "consoleDockCollapsed": false,
         "collapsedChapterIds": [],
         "collapsedConsoleChapterIds": {
@@ -20395,12 +18891,12 @@
           "inspiration": [],
           "research": []
         },
-        "projectFilePath": "C:\\Users\\ASUS\\Desktop\\Repos\\ABetterNovelAuthoringEnvironment\\SaveTestFile\\project-serva-vitae.abe-project.json",
+        "projectFilePath": "testdoubleup.abe-project.json",
         "projectSourcePath": "",
         "writingTargetState": {
           "targetWords": 150000,
           "releaseDate": "2026-06-20",
-          "sessionTargetWords": 4055,
+          "sessionTargetWords": 4798,
           "sessionsPerDay": 5,
           "sessionTimeoutMinutes": 20,
           "targetCadence": "daily",
@@ -20413,43 +18909,39 @@
             "forecast",
             "sessionTracker"
           ],
-          "sessionBaselineWordCount": 2536,
-          "sessionLastWordCount": 1266,
-          "dailyBaselineDateKey": "2026-05-14",
-          "dailyBaselineWordCount": 71434,
+          "sessionBaselineWordCount": 71383,
+          "sessionLastWordCount": 71383,
+          "dailyBaselineDateKey": "2026-05-20",
+          "dailyBaselineWordCount": 71383,
           "sessionIsActive": false,
-          "sessionStartedAt": "2026-05-14T05:26:31.933Z",
-          "sessionLastActiveAt": "2026-05-14T05:32:07.787Z",
-          "sessionConcludedAt": "2026-05-14T05:52:07.787Z",
-          "sessionConcludedReason": "idle",
+          "sessionStartedAt": "2026-05-15T19:40:40.867Z",
+          "sessionLastActiveAt": "2026-05-15T19:57:33.610Z",
+          "sessionConcludedAt": "2026-05-15T20:17:33.610Z",
+          "sessionConcludedReason": "boot",
           "sessionSamples": [
             {
-              "capturedAt": "2026-05-14T05:26:31.933Z",
-              "wordCount": 2536
+              "capturedAt": "2026-05-15T19:40:40.867Z",
+              "wordCount": 71383
             },
             {
-              "capturedAt": "2026-05-14T05:26:31.972Z",
-              "wordCount": 2536
+              "capturedAt": "2026-05-15T19:40:40.930Z",
+              "wordCount": 71383
             },
             {
-              "capturedAt": "2026-05-14T05:26:40.345Z",
-              "wordCount": 2554
+              "capturedAt": "2026-05-15T19:40:41.854Z",
+              "wordCount": 71383
             },
             {
-              "capturedAt": "2026-05-14T05:27:11.383Z",
-              "wordCount": 2556
+              "capturedAt": "2026-05-15T19:40:52.180Z",
+              "wordCount": 71394
             },
             {
-              "capturedAt": "2026-05-14T05:32:03.386Z",
-              "wordCount": 2532
+              "capturedAt": "2026-05-15T19:50:33.593Z",
+              "wordCount": 71391
             },
             {
-              "capturedAt": "2026-05-14T05:32:06.549Z",
-              "wordCount": 2532
-            },
-            {
-              "capturedAt": "2026-05-14T05:32:07.787Z",
-              "wordCount": 2532
+              "capturedAt": "2026-05-15T19:57:33.610Z",
+              "wordCount": 71390
             }
           ],
           "sessionHistory": [
@@ -20583,6 +19075,138 @@
               "activeMinutes": 25,
               "idleMinutes": 20,
               "sessionTargetWordsPerSession": 804,
+              "goalReached": false
+            },
+            {
+              "startedAt": "2026-05-14T06:30:51.058Z",
+              "endedAt": "2026-05-14T07:05:01.942Z",
+              "endedReason": "idle",
+              "wordCountStart": 71377,
+              "wordCountEnd": 1333,
+              "wordGain": 0,
+              "activeMinutes": 34,
+              "idleMinutes": 20,
+              "sessionTargetWordsPerSession": 804,
+              "goalReached": false
+            },
+            {
+              "startedAt": "2026-05-14T09:56:56.482Z",
+              "endedAt": "2026-05-14T10:37:17.372Z",
+              "endedReason": "idle",
+              "wordCountStart": 1333,
+              "wordCountEnd": 71394,
+              "wordGain": 70061,
+              "activeMinutes": 40,
+              "idleMinutes": 20,
+              "sessionTargetWordsPerSession": 437,
+              "goalReached": true
+            },
+            {
+              "startedAt": "2026-05-15T06:27:19.807Z",
+              "endedAt": "2026-05-15T07:23:30.881Z",
+              "endedReason": "idle",
+              "wordCountStart": 71394,
+              "wordCountEnd": 71377,
+              "wordGain": 0,
+              "activeMinutes": 56,
+              "idleMinutes": 20,
+              "sessionTargetWordsPerSession": 437,
+              "goalReached": false
+            },
+            {
+              "startedAt": "2026-05-15T07:54:51.427Z",
+              "endedAt": "2026-05-15T08:22:20.916Z",
+              "endedReason": "idle",
+              "wordCountStart": 71377,
+              "wordCountEnd": 71391,
+              "wordGain": 14,
+              "activeMinutes": 27,
+              "idleMinutes": 20,
+              "sessionTargetWordsPerSession": 437,
+              "goalReached": false
+            },
+            {
+              "startedAt": "2026-05-15T08:24:36.814Z",
+              "endedAt": "2026-05-15T08:44:56.921Z",
+              "endedReason": "idle",
+              "wordCountStart": 71391,
+              "wordCountEnd": 71389,
+              "wordGain": 0,
+              "activeMinutes": 20,
+              "idleMinutes": 20,
+              "sessionTargetWordsPerSession": 437,
+              "goalReached": false
+            },
+            {
+              "startedAt": "2026-05-15T10:18:33.753Z",
+              "endedAt": "2026-05-15T10:43:31.293Z",
+              "endedReason": "idle",
+              "wordCountStart": 71391,
+              "wordCountEnd": 71379,
+              "wordGain": 0,
+              "activeMinutes": 24,
+              "idleMinutes": 20,
+              "sessionTargetWordsPerSession": 437,
+              "goalReached": false
+            },
+            {
+              "startedAt": "2026-05-15T10:58:37.902Z",
+              "endedAt": "2026-05-15T11:41:01.315Z",
+              "endedReason": "idle",
+              "wordCountStart": 71379,
+              "wordCountEnd": 71382,
+              "wordGain": 3,
+              "activeMinutes": 42,
+              "idleMinutes": 20,
+              "sessionTargetWordsPerSession": 437,
+              "goalReached": false
+            },
+            {
+              "startedAt": "2026-05-15T11:59:59.718Z",
+              "endedAt": "2026-05-15T12:20:24.218Z",
+              "endedReason": "idle",
+              "wordCountStart": 71380,
+              "wordCountEnd": 71404,
+              "wordGain": 24,
+              "activeMinutes": 20,
+              "idleMinutes": 20,
+              "sessionTargetWordsPerSession": 437,
+              "goalReached": false
+            },
+            {
+              "startedAt": "2026-05-15T16:21:47.243Z",
+              "endedAt": "2026-05-15T17:20:30.255Z",
+              "endedReason": "boot",
+              "wordCountStart": 71380,
+              "wordCountEnd": 71383,
+              "wordGain": 3,
+              "activeMinutes": 58,
+              "idleMinutes": 20,
+              "sessionTargetWordsPerSession": 449,
+              "goalReached": false
+            },
+            {
+              "startedAt": "2026-05-15T17:21:14.141Z",
+              "endedAt": "2026-05-15T17:41:18.862Z",
+              "endedReason": "idle",
+              "wordCountStart": 71383,
+              "wordCountEnd": 71383,
+              "wordGain": 0,
+              "activeMinutes": 20,
+              "idleMinutes": 20,
+              "sessionTargetWordsPerSession": 449,
+              "goalReached": false
+            },
+            {
+              "startedAt": "2026-05-15T19:40:40.867Z",
+              "endedAt": "2026-05-15T20:17:33.610Z",
+              "endedReason": "boot",
+              "wordCountStart": 71383,
+              "wordCountEnd": 71383,
+              "wordGain": 0,
+              "activeMinutes": 36,
+              "idleMinutes": 20,
+              "sessionTargetWordsPerSession": 449,
               "goalReached": false
             }
           ],
@@ -21065,9 +19689,9 @@
             },
             {
               "date": "2026-05-14",
-              "wordCount": 71377,
-              "wordDelta": -57,
-              "capturedAt": "2026-05-14T06:09:18.043Z",
+              "wordCount": 1283,
+              "wordDelta": -70151,
+              "capturedAt": "2026-05-14T10:17:19.441Z",
               "chapterId": "chapter-0001",
               "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
               "sceneId": "scene-0001",
@@ -21076,1227 +19700,51 @@
               "issueCount": 0,
               "inspirationCount": 0,
               "noteText": ""
-            }
-          ],
-          "updatedAt": "2026-05-14T06:09:18.043Z"
-        },
-        "writingTargetViewMode": "month",
-        "writingTargetSelectedDateKey": "2026-05-14",
-        "writingTargetCalendarMonthKey": "2026-05",
-        "spellcheck": {
-          "dictionaryWords": [],
-          "exceptionWords": []
-        },
-        "assetRegistry": [],
-        "activeSceneId": "scene-0001"
-      },
-      "editorPrefs": {
-        "fontFamilyId": "story-serif",
-        "fontSize": 18,
-        "lineHeight": 1.7,
-        "editorWidth": 760,
-        "projectFileAutosaveEnabled": true,
-        "grammarCheckEnabled": true,
-        "revisionOverlayEnabled": false,
-        "italicText": false
-      },
-      "localAiPrefs": {
-        "enabled": true
-      },
-      "schemaVersion": 2,
-      "projectIndex": {
-        "schemaVersion": 2,
-        "projectId": "project-serva-vitae",
-        "projectTitle": "Project Serva Vitae",
-        "createdAt": "2026-04-21T05:00:00.000Z",
-        "updatedAt": "2026-05-14T06:10:37.092Z",
-        "chapters": [
-          {
-            "id": "chapter-0001",
-            "title": "Chapter 1: The Winged Whales resting ground (Ceres)",
-            "order": 1,
-            "sceneIds": [
-              "scene-0001",
-              "scene-0002",
-              "scene-0003",
-              "scene-0004",
-              "scene-0005",
-              "scene-0006",
-              "scene-0007",
-              "scene-0008",
-              "scene-0009",
-              "scene-0010"
-            ]
-          },
-          {
-            "id": "chapter-0002",
-            "title": "Chapter 2: The Lost Facility",
-            "order": 11,
-            "sceneIds": [
-              "scene-0011",
-              "scene-0012",
-              "scene-0013",
-              "scene-0014",
-              "scene-0015"
-            ]
-          },
-          {
-            "id": "chapter-0003",
-            "title": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
-            "order": 16,
-            "sceneIds": [
-              "scene-0016",
-              "scene-0017",
-              "scene-0018",
-              "scene-0019",
-              "scene-0020",
-              "scene-0021",
-              "scene-0022",
-              "scene-0023"
-            ]
-          },
-          {
-            "id": "chapter-0004",
-            "title": "Chapter 4: Oasis",
-            "order": 24,
-            "sceneIds": [
-              "scene-0024",
-              "scene-0025",
-              "scene-0026",
-              "scene-0027",
-              "scene-0028",
-              "scene-0029"
-            ]
-          },
-          {
-            "id": "draft-chapter-1777528152393",
-            "title": "Untitled Chapter",
-            "order": 30,
-            "sceneIds": [
-              "draft-scene-1777528152393"
-            ]
-          }
-        ],
-        "scenes": [
-          {
-            "id": "scene-0001",
-            "title": "John's Dream",
-            "chapterId": "chapter-0001",
-            "order": 1,
-            "lineCount": 10,
-            "wordCount": 1266,
-            "synopsis": "",
-            "assetIds": []
-          },
-          {
-            "id": "scene-0002",
-            "title": "(Athos) Mission Brief - The lost facility",
-            "chapterId": "chapter-0001",
-            "order": 2,
-            "lineCount": 16,
-            "wordCount": 0,
-            "synopsis": "",
-            "assetIds": []
-          },
-          {
-            "id": "scene-0003",
-            "title": "(John) The Mess",
-            "chapterId": "chapter-0001",
-            "order": 3,
-            "lineCount": 5,
-            "wordCount": 0,
-            "synopsis": "",
-            "assetIds": []
-          },
-          {
-            "id": "scene-0004",
-            "title": "Deep Space Training",
-            "chapterId": "chapter-0001",
-            "order": 4,
-            "lineCount": 2,
-            "wordCount": 0,
-            "synopsis": "",
-            "assetIds": []
-          },
-          {
-            "id": "scene-0005",
-            "title": "(Instructor) All in a vacuum",
-            "chapterId": "chapter-0001",
-            "order": 5,
-            "lineCount": 8,
-            "wordCount": 0,
-            "synopsis": "",
-            "assetIds": []
-          },
-          {
-            "id": "scene-0006",
-            "title": "(John) Say hello to the Mark IV",
-            "chapterId": "chapter-0001",
-            "order": 6,
-            "lineCount": 48,
-            "wordCount": 0,
-            "synopsis": "",
-            "assetIds": []
-          },
-          {
-            "id": "scene-0007",
-            "title": "(Tau) Storm Rail intro",
-            "chapterId": "chapter-0001",
-            "order": 7,
-            "lineCount": 2,
-            "wordCount": 0,
-            "synopsis": "",
-            "assetIds": []
-          },
-          {
-            "id": "scene-0008",
-            "title": "(Shai) Mark IV life support mesh",
-            "chapterId": "chapter-0001",
-            "order": 8,
-            "lineCount": 17,
-            "wordCount": 0,
-            "synopsis": "",
-            "assetIds": []
-          },
-          {
-            "id": "scene-0009",
-            "title": "(Shai + John) Neural beam demonstration.",
-            "chapterId": "chapter-0001",
-            "order": 9,
-            "lineCount": 67,
-            "wordCount": 0,
-            "synopsis": "",
-            "assetIds": []
-          },
-          {
-            "id": "scene-0010",
-            "title": "(Lady Ava + John)",
-            "chapterId": "chapter-0001",
-            "order": 10,
-            "lineCount": 62,
-            "wordCount": 0,
-            "synopsis": "",
-            "assetIds": []
-          },
-          {
-            "id": "scene-0011",
-            "title": "Boarding the Icarus",
-            "chapterId": "chapter-0002",
-            "order": 11,
-            "lineCount": 57,
-            "wordCount": 0,
-            "synopsis": "",
-            "assetIds": []
-          },
-          {
-            "id": "scene-0012",
-            "title": "The Chamber",
-            "chapterId": "chapter-0002",
-            "order": 12,
-            "lineCount": 26,
-            "wordCount": 0,
-            "synopsis": "",
-            "assetIds": []
-          },
-          {
-            "id": "scene-0013",
-            "title": "Consciounce of Ava",
-            "chapterId": "chapter-0002",
-            "order": 13,
-            "lineCount": 28,
-            "wordCount": 0,
-            "synopsis": "",
-            "assetIds": []
-          },
-          {
-            "id": "scene-0014",
-            "title": "LRM incoming",
-            "chapterId": "chapter-0002",
-            "order": 14,
-            "lineCount": 14,
-            "wordCount": 0,
-            "synopsis": "",
-            "assetIds": []
-          },
-          {
-            "id": "scene-0015",
-            "title": "LRM breakoff missile incoming",
-            "chapterId": "chapter-0002",
-            "order": 15,
-            "lineCount": 34,
-            "wordCount": 0,
-            "synopsis": "",
-            "assetIds": []
-          },
-          {
-            "id": "scene-0016",
-            "title": "The Sentient Graveyard",
-            "chapterId": "chapter-0003",
-            "order": 16,
-            "lineCount": 25,
-            "wordCount": 0,
-            "synopsis": "",
-            "assetIds": []
-          },
-          {
-            "id": "scene-0017",
-            "title": "Into the Vail",
-            "chapterId": "chapter-0003",
-            "order": 17,
-            "lineCount": 23,
-            "wordCount": 0,
-            "synopsis": "",
-            "assetIds": []
-          },
-          {
-            "id": "scene-0018",
-            "title": "Circa 2048 - Ghost’s in the sea of shells.",
-            "chapterId": "chapter-0003",
-            "order": 18,
-            "lineCount": 28,
-            "wordCount": 0,
-            "synopsis": "",
-            "assetIds": []
-          },
-          {
-            "id": "scene-0019",
-            "title": "Tunnel to genesis",
-            "chapterId": "chapter-0003",
-            "order": 19,
-            "lineCount": 35,
-            "wordCount": 0,
-            "synopsis": "",
-            "assetIds": []
-          },
-          {
-            "id": "scene-0020",
-            "title": "(Tebo) CareTaker of Genesis",
-            "chapterId": "chapter-0003",
-            "order": 20,
-            "lineCount": 27,
-            "wordCount": 0,
-            "synopsis": "",
-            "assetIds": []
-          },
-          {
-            "id": "scene-0021",
-            "title": "Checking the saddle",
-            "chapterId": "chapter-0003",
-            "order": 21,
-            "lineCount": 27,
-            "wordCount": 0,
-            "synopsis": "",
-            "assetIds": []
-          },
-          {
-            "id": "scene-0022",
-            "title": "Beverley still bucks",
-            "chapterId": "chapter-0003",
-            "order": 22,
-            "lineCount": 160,
-            "wordCount": 0,
-            "synopsis": "",
-            "assetIds": []
-          },
-          {
-            "id": "scene-0023",
-            "title": "Am I dreaming or am i dead",
-            "chapterId": "chapter-0003",
-            "order": 23,
-            "lineCount": 3,
-            "wordCount": 0,
-            "synopsis": "",
-            "assetIds": []
-          },
-          {
-            "id": "scene-0024",
-            "title": "Awakening",
-            "chapterId": "chapter-0004",
-            "order": 24,
-            "lineCount": 17,
-            "wordCount": 0,
-            "synopsis": "",
-            "assetIds": []
-          },
-          {
-            "id": "scene-0025",
-            "title": "On the bridge of the Docs Sentient flag ship",
-            "chapterId": "chapter-0004",
-            "order": 25,
-            "lineCount": 4,
-            "wordCount": 0,
-            "synopsis": "",
-            "assetIds": []
-          },
-          {
-            "id": "scene-0026",
-            "title": "Ignotius Chai's",
-            "chapterId": "chapter-0004",
-            "order": 26,
-            "lineCount": 22,
-            "wordCount": 0,
-            "synopsis": "",
-            "assetIds": []
-          },
-          {
-            "id": "scene-0027",
-            "title": "Europa",
-            "chapterId": "chapter-0004",
-            "order": 27,
-            "lineCount": 10,
-            "wordCount": 0,
-            "synopsis": "",
-            "assetIds": []
-          },
-          {
-            "id": "scene-0028",
-            "title": "Sentient Homecoming Oasis",
-            "chapterId": "chapter-0004",
-            "order": 28,
-            "lineCount": 13,
-            "wordCount": 0,
-            "synopsis": "",
-            "assetIds": []
-          },
-          {
-            "id": "scene-0029",
-            "title": "Shai Tex",
-            "chapterId": "chapter-0004",
-            "order": 29,
-            "lineCount": 65,
-            "wordCount": 0,
-            "synopsis": "",
-            "assetIds": []
-          },
-          {
-            "id": "draft-scene-1777528152393",
-            "title": "This is a test for the save function",
-            "chapterId": "draft-chapter-1777528152393",
-            "order": 30,
-            "lineCount": 0,
-            "wordCount": 0,
-            "synopsis": "",
-            "assetIds": []
-          }
-        ],
-        "sceneOrder": [
-          "scene-0001",
-          "scene-0002",
-          "scene-0003",
-          "scene-0004",
-          "scene-0005",
-          "scene-0006",
-          "scene-0007",
-          "scene-0008",
-          "scene-0009",
-          "scene-0010",
-          "scene-0011",
-          "scene-0012",
-          "scene-0013",
-          "scene-0014",
-          "scene-0015",
-          "scene-0016",
-          "scene-0017",
-          "scene-0018",
-          "scene-0019",
-          "scene-0020",
-          "scene-0021",
-          "scene-0022",
-          "scene-0023",
-          "scene-0024",
-          "scene-0025",
-          "scene-0026",
-          "scene-0027",
-          "scene-0028",
-          "scene-0029",
-          "draft-scene-1777528152393"
-        ],
-        "assetIds": [],
-        "assets": [],
-        "fileRefs": {
-          "projectFilePath": "C:\\Users\\ASUS\\Desktop\\Repos\\ABetterNovelAuthoringEnvironment\\SaveTestFile\\project-serva-vitae.abe-project.json",
-          "projectSourcePath": ""
-        }
-      },
-      "projectStorage": {
-        "format": "chunked-project-package-v1",
-        "sceneOrder": [
-          "scene-0001",
-          "scene-0002",
-          "scene-0003",
-          "scene-0004",
-          "scene-0005",
-          "scene-0006",
-          "scene-0007",
-          "scene-0008",
-          "scene-0009",
-          "scene-0010",
-          "scene-0011",
-          "scene-0012",
-          "scene-0013",
-          "scene-0014",
-          "scene-0015",
-          "scene-0016",
-          "scene-0017",
-          "scene-0018",
-          "scene-0019",
-          "scene-0020",
-          "scene-0021",
-          "scene-0022",
-          "scene-0023",
-          "scene-0024",
-          "scene-0025",
-          "scene-0026",
-          "scene-0027",
-          "scene-0028",
-          "scene-0029",
-          "draft-scene-1777528152393"
-        ],
-        "sceneFiles": {
-          "scene-0001": "manuscript/scenes/project-serva-vitae/scene_scene-0001.json",
-          "scene-0002": "manuscript/scenes/project-serva-vitae/scene_scene-0002.json",
-          "scene-0003": "manuscript/scenes/project-serva-vitae/scene_scene-0003.json",
-          "scene-0004": "manuscript/scenes/project-serva-vitae/scene_scene-0004.json",
-          "scene-0005": "manuscript/scenes/project-serva-vitae/scene_scene-0005.json",
-          "scene-0006": "manuscript/scenes/project-serva-vitae/scene_scene-0006.json",
-          "scene-0007": "manuscript/scenes/project-serva-vitae/scene_scene-0007.json",
-          "scene-0008": "manuscript/scenes/project-serva-vitae/scene_scene-0008.json",
-          "scene-0009": "manuscript/scenes/project-serva-vitae/scene_scene-0009.json",
-          "scene-0010": "manuscript/scenes/project-serva-vitae/scene_scene-0010.json",
-          "scene-0011": "manuscript/scenes/project-serva-vitae/scene_scene-0011.json",
-          "scene-0012": "manuscript/scenes/project-serva-vitae/scene_scene-0012.json",
-          "scene-0013": "manuscript/scenes/project-serva-vitae/scene_scene-0013.json",
-          "scene-0014": "manuscript/scenes/project-serva-vitae/scene_scene-0014.json",
-          "scene-0015": "manuscript/scenes/project-serva-vitae/scene_scene-0015.json",
-          "scene-0016": "manuscript/scenes/project-serva-vitae/scene_scene-0016.json",
-          "scene-0017": "manuscript/scenes/project-serva-vitae/scene_scene-0017.json",
-          "scene-0018": "manuscript/scenes/project-serva-vitae/scene_scene-0018.json",
-          "scene-0019": "manuscript/scenes/project-serva-vitae/scene_scene-0019.json",
-          "scene-0020": "manuscript/scenes/project-serva-vitae/scene_scene-0020.json",
-          "scene-0021": "manuscript/scenes/project-serva-vitae/scene_scene-0021.json",
-          "scene-0022": "manuscript/scenes/project-serva-vitae/scene_scene-0022.json",
-          "scene-0023": "manuscript/scenes/project-serva-vitae/scene_scene-0023.json",
-          "scene-0024": "manuscript/scenes/project-serva-vitae/scene_scene-0024.json",
-          "scene-0025": "manuscript/scenes/project-serva-vitae/scene_scene-0025.json",
-          "scene-0026": "manuscript/scenes/project-serva-vitae/scene_scene-0026.json",
-          "scene-0027": "manuscript/scenes/project-serva-vitae/scene_scene-0027.json",
-          "scene-0028": "manuscript/scenes/project-serva-vitae/scene_scene-0028.json",
-          "scene-0029": "manuscript/scenes/project-serva-vitae/scene_scene-0029.json",
-          "draft-scene-1777528152393": "manuscript/scenes/project-serva-vitae/scene_draft-scene-1777528152393.json"
-        }
-      }
-    },
-    {
-      "id": "project-20260514T06102",
-      "title": "TestDoubleup",
-      "source": "user-created",
-      "createdAt": "2026-05-14T06:10:28.794Z",
-      "updatedAt": "2026-05-14T06:10:54.965Z",
-      "workspace": {
-        "generatedAt": "2026-05-14T06:10:28.794Z",
-        "workspaceTitle": "ABetterNovelAuthoringEnvironment",
-        "settings": {
-          "executionMode": "local-only",
-          "modelRoot": "C:\\Models\\AuthorSuite",
-          "assetRoot": "C:\\AuthorAssets",
-          "projectRoot": "C:\\Users\\ASUS\\Desktop\\Repos\\ABetterNovelAuthoringEnvironment\\SaveTestFile"
-        },
-        "project": {
-          "id": "project-20260514T06102",
-          "title": "TestDoubleup",
-          "binder": {
-            "id": "project-20260514T06102",
-            "kind": "project",
-            "refId": "project-20260514T06102",
-            "title": "TestDoubleup",
-            "order": 1,
-            "children": [
-              {
-                "id": "binder-chapter-0001",
-                "kind": "chapter",
-                "refId": "chapter-0001",
-                "title": "Chapter 1",
-                "order": 1,
-                "children": [
-                  {
-                    "id": "binder-scene-0001",
-                    "kind": "scene",
-                    "refId": "scene-0001",
-                    "title": "Scene 1",
-                    "order": 1,
-                    "children": []
-                  }
-                ]
-              }
-            ]
-          },
-          "stats": {
-            "chapterCount": 1,
-            "sceneCount": 1,
-            "lineCount": 1,
-            "issueCount": 0,
-            "eventCount": 0,
-            "characterCount": 0
-          },
-          "navigationTargets": {
-            "project-20260514T06102": {
-              "refId": "project-20260514T06102",
-              "kind": "project",
-              "title": "TestDoubleup",
-              "lineId": "block-0001",
-              "lineNumber": 1
             },
-            "chapter-0001": {
-              "refId": "chapter-0001",
-              "kind": "chapter",
-              "title": "Chapter 1",
-              "lineId": "block-0001",
-              "lineNumber": 1
-            },
-            "scene-0001": {
-              "refId": "scene-0001",
-              "kind": "scene",
-              "title": "Scene 1",
-              "lineId": "block-0001",
-              "lineNumber": 1
-            }
-          },
-          "lines": [
             {
-              "id": "block-0001",
-              "blockId": "block-0001",
-              "paragraphId": "paragraph-0001",
-              "lineNumber": 1,
-              "sceneLineNumber": 1,
-              "kind": "narration",
-              "speakerLabel": "",
-              "text": "",
+              "date": "2026-05-15",
+              "wordCount": 71404,
+              "wordDelta": 70121,
+              "capturedAt": "2026-05-15T13:04:08.474Z",
               "chapterId": "chapter-0001",
-              "chapterTitle": "Chapter 1",
+              "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
               "sceneId": "scene-0001",
-              "sceneTitle": "Scene 1",
-              "sceneSynopsis": "",
-              "startsChapter": true,
-              "startsScene": true,
-              "issueIds": [],
-              "eventTagIds": []
-            }
-          ],
-          "issues": [],
-          "eventTags": [],
-          "characters": []
-        },
-        "world": {
-          "id": "world-project-20260514T06102",
-          "title": "TestDoubleup World",
-          "stats": {
-            "templateCount": 0,
-            "entityCount": 0,
-            "spineCount": 0,
-            "nodeCount": 0,
-            "edgeCount": 0
-          },
-          "templates": [],
-          "entities": [],
-          "spines": [],
-          "edges": []
-        },
-        "analysis": {
-          "provider": {
-            "id": "local-rule-analysis",
-            "label": "Local Rule Analysis",
-            "availability": "ready",
-            "executionMode": "local-only"
-          },
-          "lastJob": {
-            "id": "analysis-project-20260514T06102",
-            "type": "analysis",
-            "status": "completed",
-            "createdAt": "2026-05-14T06:10:28.794Z",
-            "updatedAt": "2026-05-14T06:10:28.794Z",
-            "request": {
-              "projectId": "project-20260514T06102",
-              "trigger": "manual"
-            },
-            "result": {
-              "providerId": "local-rule-analysis",
-              "issueCount": 0,
-              "eventCount": 0,
-              "suggestionCount": 0
-            }
-          },
-          "suggestionQueue": []
-        },
-        "narration": {
-          "provider": {
-            "id": "local-alignment-monitor",
-            "label": "Local Alignment Monitor",
-            "availability": "ready",
-            "alignmentStrategy": "anchor-tracked incremental alignment"
-          },
-          "session": {
-            "id": "narration-project-20260514T06102",
-            "projectId": "project-20260514T06102",
-            "providerId": "local-alignment-monitor",
-            "sessionLabel": "TestDoubleup",
-            "status": "paused",
-            "currentAnchor": {
-              "projectId": "project-20260514T06102",
-              "chapterId": "chapter-0001",
-              "sceneId": "scene-0001",
-              "blockId": "block-0001",
-              "paragraphId": "paragraph-0001",
-              "startOffset": 0,
-              "endOffset": 0
-            },
-            "currentLineNumber": 1,
-            "currentText": "",
-            "updatedAt": "2026-05-14T06:10:28.794Z"
-          },
-          "alignmentJobs": []
-        },
-        "voice": {
-          "provider": {
-            "id": "local-voice-suite",
-            "label": "Local Voice Suite",
-            "availability": "ready",
-            "synthesisMode": "local"
-          },
-          "profiles": [
-            {
-              "id": "voice-narrator-lantern",
-              "label": "Lantern Narrator",
-              "providerId": "local-voice-suite",
-              "role": "narrator",
-              "style": "measured documentary warmth"
-            },
-            {
-              "id": "voice-auren-cinder",
-              "label": "Auren Cinder",
-              "providerId": "local-voice-suite",
-              "role": "character",
-              "style": "steady command with restrained pressure"
-            },
-            {
-              "id": "voice-voss-iron",
-              "label": "Voss Iron",
-              "providerId": "local-voice-suite",
-              "role": "character",
-              "style": "hard official diction"
-            },
-            {
-              "id": "voice-mara-glass",
-              "label": "Mara Glass",
-              "providerId": "local-voice-suite",
-              "role": "character",
-              "style": "precise curiosity with clipped urgency"
-            }
-          ],
-          "bindings": [],
-          "renderJobs": [],
-          "recordings": []
-        },
-        "selectionDefaults": {
-          "lineId": "block-0001"
-        }
-      },
-      "sceneDrafts": {
-        "scene-0001": {
-          "sceneId": "scene-0001",
-          "chapterId": "chapter-0001",
-          "chapterTitle": "Chapter 1",
-          "sceneTitle": "Scene 1",
-          "sceneSynopsis": "",
-          "editorText": "",
-          "blocks": [
-            {
-              "blockId": "block-0001",
-              "lineNumber": 1,
-              "kind": "narration",
-              "speakerLabel": "",
-              "text": "",
-              "issueIds": [],
-              "eventTagIds": [],
-              "isDraft": false
-            }
-          ]
-        },
-        "draft-scene-1778739039064": {
-          "sceneId": "draft-scene-1778739039064",
-          "chapterId": "",
-          "chapterTitle": "Untitled Chapter",
-          "sceneTitle": "Untitled Scene",
-          "sceneSynopsis": "",
-          "editorText": "asdfasdfasefasdfaesfsda",
-          "blocks": [],
-          "revisionStats": {
-            "editCount": 23,
-            "lastEditedAt": "2026-05-14T06:10:52.133Z",
-            "lastChangeSummary": "Inserted 1 chars",
-            "history": [
-              {
-                "id": "revision-1778739052133-g6alue",
-                "createdAt": "2026-05-14T06:10:52.133Z",
-                "updatedAt": "2026-05-14T06:10:52.133Z",
-                "summary": "Inserted 1 chars",
-                "previousLength": 22,
-                "nextLength": 23,
-                "deltaCharacters": 1
-              },
-              {
-                "id": "revision-1778739052096-dy24hy",
-                "createdAt": "2026-05-14T06:10:52.096Z",
-                "updatedAt": "2026-05-14T06:10:52.096Z",
-                "summary": "Inserted 1 chars",
-                "previousLength": 21,
-                "nextLength": 22,
-                "deltaCharacters": 1
-              },
-              {
-                "id": "revision-1778739052062-hzqiei",
-                "createdAt": "2026-05-14T06:10:52.062Z",
-                "updatedAt": "2026-05-14T06:10:52.062Z",
-                "summary": "Inserted 1 chars",
-                "previousLength": 20,
-                "nextLength": 21,
-                "deltaCharacters": 1
-              },
-              {
-                "id": "revision-1778739051965-zks84g",
-                "createdAt": "2026-05-14T06:10:51.965Z",
-                "updatedAt": "2026-05-14T06:10:51.965Z",
-                "summary": "Inserted 1 chars",
-                "previousLength": 19,
-                "nextLength": 20,
-                "deltaCharacters": 1
-              },
-              {
-                "id": "revision-1778739051808-jxqo8z",
-                "createdAt": "2026-05-14T06:10:51.808Z",
-                "updatedAt": "2026-05-14T06:10:51.808Z",
-                "summary": "Inserted 1 chars",
-                "previousLength": 18,
-                "nextLength": 19,
-                "deltaCharacters": 1
-              },
-              {
-                "id": "revision-1778739051773-vrnknh",
-                "createdAt": "2026-05-14T06:10:51.773Z",
-                "updatedAt": "2026-05-14T06:10:51.773Z",
-                "summary": "Inserted 1 chars",
-                "previousLength": 17,
-                "nextLength": 18,
-                "deltaCharacters": 1
-              },
-              {
-                "id": "revision-1778739051735-sjt1bk",
-                "createdAt": "2026-05-14T06:10:51.735Z",
-                "updatedAt": "2026-05-14T06:10:51.735Z",
-                "summary": "Inserted 1 chars",
-                "previousLength": 16,
-                "nextLength": 17,
-                "deltaCharacters": 1
-              },
-              {
-                "id": "revision-1778739051564-mbghr4",
-                "createdAt": "2026-05-14T06:10:51.564Z",
-                "updatedAt": "2026-05-14T06:10:51.564Z",
-                "summary": "Inserted 1 chars",
-                "previousLength": 15,
-                "nextLength": 16,
-                "deltaCharacters": 1
-              }
-            ]
-          }
-        },
-        "draft-scene-1778739041506": {
-          "sceneId": "draft-scene-1778739041506",
-          "chapterId": "",
-          "chapterTitle": "Untitled Chapter",
-          "sceneTitle": "Untitled Scene",
-          "sceneSynopsis": "",
-          "editorText": "adfasdf",
-          "blocks": [],
-          "revisionStats": {
-            "editCount": 7,
-            "lastEditedAt": "2026-05-14T06:10:45.782Z",
-            "lastChangeSummary": "Inserted 1 chars",
-            "history": [
-              {
-                "id": "revision-1778739045782-12sp6d",
-                "createdAt": "2026-05-14T06:10:45.782Z",
-                "updatedAt": "2026-05-14T06:10:45.782Z",
-                "summary": "Inserted 1 chars",
-                "previousLength": 6,
-                "nextLength": 7,
-                "deltaCharacters": 1
-              },
-              {
-                "id": "revision-1778739045703-0oardq",
-                "createdAt": "2026-05-14T06:10:45.703Z",
-                "updatedAt": "2026-05-14T06:10:45.703Z",
-                "summary": "Inserted 1 chars",
-                "previousLength": 5,
-                "nextLength": 6,
-                "deltaCharacters": 1
-              },
-              {
-                "id": "revision-1778739045664-mn57m9",
-                "createdAt": "2026-05-14T06:10:45.664Z",
-                "updatedAt": "2026-05-14T06:10:45.664Z",
-                "summary": "Inserted 1 chars",
-                "previousLength": 4,
-                "nextLength": 5,
-                "deltaCharacters": 1
-              },
-              {
-                "id": "revision-1778739045551-1udc51",
-                "createdAt": "2026-05-14T06:10:45.551Z",
-                "updatedAt": "2026-05-14T06:10:45.551Z",
-                "summary": "Inserted 1 chars",
-                "previousLength": 3,
-                "nextLength": 4,
-                "deltaCharacters": 1
-              },
-              {
-                "id": "revision-1778739045366-u1ztyx",
-                "createdAt": "2026-05-14T06:10:45.366Z",
-                "updatedAt": "2026-05-14T06:10:45.366Z",
-                "summary": "Inserted 1 chars",
-                "previousLength": 2,
-                "nextLength": 3,
-                "deltaCharacters": 1
-              },
-              {
-                "id": "revision-1778739045329-evcwzy",
-                "createdAt": "2026-05-14T06:10:45.329Z",
-                "updatedAt": "2026-05-14T06:10:45.329Z",
-                "summary": "Inserted 1 chars",
-                "previousLength": 1,
-                "nextLength": 2,
-                "deltaCharacters": 1
-              },
-              {
-                "id": "revision-1778739045189-rlvyqn",
-                "createdAt": "2026-05-14T06:10:45.189Z",
-                "updatedAt": "2026-05-14T06:10:45.189Z",
-                "summary": "Inserted 1 chars",
-                "previousLength": 0,
-                "nextLength": 1,
-                "deltaCharacters": 1
-              }
-            ]
-          }
-        },
-        "draft-scene-1778739042077": {
-          "sceneId": "draft-scene-1778739042077",
-          "chapterId": "",
-          "chapterTitle": "Untitled Chapter",
-          "sceneTitle": "Untitled Scene",
-          "sceneSynopsis": "",
-          "editorText": "asdfasdf",
-          "blocks": [],
-          "revisionStats": {
-            "editCount": 8,
-            "lastEditedAt": "2026-05-14T06:10:47.508Z",
-            "lastChangeSummary": "Inserted 1 chars",
-            "history": [
-              {
-                "id": "revision-1778739047508-e73c0x",
-                "createdAt": "2026-05-14T06:10:47.508Z",
-                "updatedAt": "2026-05-14T06:10:47.508Z",
-                "summary": "Inserted 1 chars",
-                "previousLength": 7,
-                "nextLength": 8,
-                "deltaCharacters": 1
-              },
-              {
-                "id": "revision-1778739047373-xvx541",
-                "createdAt": "2026-05-14T06:10:47.373Z",
-                "updatedAt": "2026-05-14T06:10:47.373Z",
-                "summary": "Inserted 1 chars",
-                "previousLength": 6,
-                "nextLength": 7,
-                "deltaCharacters": 1
-              },
-              {
-                "id": "revision-1778739047335-avsayf",
-                "createdAt": "2026-05-14T06:10:47.335Z",
-                "updatedAt": "2026-05-14T06:10:47.335Z",
-                "summary": "Inserted 1 chars",
-                "previousLength": 5,
-                "nextLength": 6,
-                "deltaCharacters": 1
-              },
-              {
-                "id": "revision-1778739047280-a39b5w",
-                "createdAt": "2026-05-14T06:10:47.280Z",
-                "updatedAt": "2026-05-14T06:10:47.280Z",
-                "summary": "Inserted 1 chars",
-                "previousLength": 4,
-                "nextLength": 5,
-                "deltaCharacters": 1
-              },
-              {
-                "id": "revision-1778739047099-k3pngi",
-                "createdAt": "2026-05-14T06:10:47.099Z",
-                "updatedAt": "2026-05-14T06:10:47.099Z",
-                "summary": "Inserted 1 chars",
-                "previousLength": 3,
-                "nextLength": 4,
-                "deltaCharacters": 1
-              },
-              {
-                "id": "revision-1778739047040-4veq4s",
-                "createdAt": "2026-05-14T06:10:47.040Z",
-                "updatedAt": "2026-05-14T06:10:47.040Z",
-                "summary": "Inserted 1 chars",
-                "previousLength": 2,
-                "nextLength": 3,
-                "deltaCharacters": 1
-              },
-              {
-                "id": "revision-1778739047001-ibgyo0",
-                "createdAt": "2026-05-14T06:10:47.001Z",
-                "updatedAt": "2026-05-14T06:10:47.001Z",
-                "summary": "Inserted 1 chars",
-                "previousLength": 1,
-                "nextLength": 2,
-                "deltaCharacters": 1
-              },
-              {
-                "id": "revision-1778739046948-1cu8df",
-                "createdAt": "2026-05-14T06:10:46.948Z",
-                "updatedAt": "2026-05-14T06:10:46.948Z",
-                "summary": "Inserted 1 chars",
-                "previousLength": 0,
-                "nextLength": 1,
-                "deltaCharacters": 1
-              }
-            ]
-          }
-        },
-        "draft-scene-1778739042512": {
-          "sceneId": "draft-scene-1778739042512",
-          "chapterId": "",
-          "chapterTitle": "Untitled Chapter",
-          "sceneTitle": "Untitled Scene",
-          "sceneSynopsis": "",
-          "editorText": "asefasdf",
-          "blocks": [],
-          "revisionStats": {
-            "editCount": 8,
-            "lastEditedAt": "2026-05-14T06:10:49.103Z",
-            "lastChangeSummary": "Inserted 1 chars",
-            "history": [
-              {
-                "id": "revision-1778739049103-74vlv6",
-                "createdAt": "2026-05-14T06:10:49.103Z",
-                "updatedAt": "2026-05-14T06:10:49.103Z",
-                "summary": "Inserted 1 chars",
-                "previousLength": 7,
-                "nextLength": 8,
-                "deltaCharacters": 1
-              },
-              {
-                "id": "revision-1778739048926-usdt0p",
-                "createdAt": "2026-05-14T06:10:48.926Z",
-                "updatedAt": "2026-05-14T06:10:48.926Z",
-                "summary": "Inserted 1 chars",
-                "previousLength": 6,
-                "nextLength": 7,
-                "deltaCharacters": 1
-              },
-              {
-                "id": "revision-1778739048887-0js737",
-                "createdAt": "2026-05-14T06:10:48.887Z",
-                "updatedAt": "2026-05-14T06:10:48.887Z",
-                "summary": "Inserted 1 chars",
-                "previousLength": 5,
-                "nextLength": 6,
-                "deltaCharacters": 1
-              },
-              {
-                "id": "revision-1778739048821-qun857",
-                "createdAt": "2026-05-14T06:10:48.821Z",
-                "updatedAt": "2026-05-14T06:10:48.821Z",
-                "summary": "Inserted 1 chars",
-                "previousLength": 4,
-                "nextLength": 5,
-                "deltaCharacters": 1
-              },
-              {
-                "id": "revision-1778739048617-c1hyat",
-                "createdAt": "2026-05-14T06:10:48.617Z",
-                "updatedAt": "2026-05-14T06:10:48.617Z",
-                "summary": "Inserted 1 chars",
-                "previousLength": 3,
-                "nextLength": 4,
-                "deltaCharacters": 1
-              },
-              {
-                "id": "revision-1778739048580-y5maz3",
-                "createdAt": "2026-05-14T06:10:48.580Z",
-                "updatedAt": "2026-05-14T06:10:48.580Z",
-                "summary": "Inserted 1 chars",
-                "previousLength": 2,
-                "nextLength": 3,
-                "deltaCharacters": 1
-              },
-              {
-                "id": "revision-1778739048545-cehlqc",
-                "createdAt": "2026-05-14T06:10:48.545Z",
-                "updatedAt": "2026-05-14T06:10:48.545Z",
-                "summary": "Inserted 1 chars",
-                "previousLength": 1,
-                "nextLength": 2,
-                "deltaCharacters": 1
-              },
-              {
-                "id": "revision-1778739048430-b33bcc",
-                "createdAt": "2026-05-14T06:10:48.430Z",
-                "updatedAt": "2026-05-14T06:10:48.430Z",
-                "summary": "Inserted 1 chars",
-                "previousLength": 0,
-                "nextLength": 1,
-                "deltaCharacters": 1
-              }
-            ]
-          }
-        }
-      },
-      "structureDrafts": {
-        "scenes": [
-          {
-            "sceneId": "draft-scene-1778739039064",
-            "chapterId": "draft-chapter-1778739039064",
-            "chapterTitle": "",
-            "sceneTitle": "New Scene",
-            "initialText": ""
-          },
-          {
-            "sceneId": "draft-scene-1778739041506",
-            "chapterId": "draft-chapter-1778739039064",
-            "chapterTitle": "",
-            "sceneTitle": "New Scene 2",
-            "initialText": ""
-          },
-          {
-            "sceneId": "draft-scene-1778739042077",
-            "chapterId": "draft-chapter-1778739039064",
-            "chapterTitle": "",
-            "sceneTitle": "New Scene 3",
-            "initialText": ""
-          },
-          {
-            "sceneId": "draft-scene-1778739042512",
-            "chapterId": "draft-chapter-1778739039064",
-            "chapterTitle": "",
-            "sceneTitle": "New Scene 4",
-            "initialText": ""
-          }
-        ]
-      },
-      "templateDrafts": [],
-      "manuscriptTasks": [],
-      "passageNotes": [],
-      "sourceArchive": [],
-      "importReport": {},
-      "projectSettings": {
-        "editorPrefs": {
-          "fontFamilyId": "story-serif",
-          "fontSize": 18,
-          "lineHeight": 1.7,
-          "editorWidth": 760,
-          "projectFileAutosaveEnabled": true,
-          "grammarCheckEnabled": true,
-          "revisionOverlayEnabled": false,
-          "italicText": false
-        },
-        "localAiPrefs": {
-          "enabled": true
-        },
-        "binderPanelWidth": 320,
-        "consoleDockWidth": 320,
-        "consoleDockCollapsed": false,
-        "collapsedChapterIds": [],
-        "collapsedConsoleChapterIds": {
-          "issueTasks": [],
-          "issues": [],
-          "inspiration": [],
-          "research": []
-        },
-        "projectFilePath": "C:\\Users\\ASUS\\Desktop\\Repos\\ABetterNovelAuthoringEnvironment\\SaveTestFile\\testdoubleup.abe-project.json",
-        "projectSourcePath": "",
-        "writingTargetState": {
-          "targetWords": 150000,
-          "releaseDate": "",
-          "sessionTargetWords": 5000,
-          "sessionsPerDay": 5,
-          "sessionTimeoutMinutes": 20,
-          "targetCadence": "daily",
-          "goalSyncSource": "releaseDate",
-          "lookbackDays": 7,
-          "visibleMetricsVersion": 2,
-          "visibleMetrics": [
-            "wordTarget",
-            "sessionTarget",
-            "forecast",
-            "sessionTracker"
-          ],
-          "sessionBaselineWordCount": 0,
-          "sessionLastWordCount": 4,
-          "dailyBaselineDateKey": "2026-05-14",
-          "dailyBaselineWordCount": 0,
-          "sessionIsActive": true,
-          "sessionStartedAt": "2026-05-14T06:10:45.189Z",
-          "sessionLastActiveAt": "2026-05-14T06:10:52.922Z",
-          "sessionConcludedAt": "",
-          "sessionConcludedReason": "",
-          "sessionSamples": [
-            {
-              "capturedAt": "2026-05-14T06:10:45.189Z",
-              "wordCount": 0
-            },
-            {
-              "capturedAt": "2026-05-14T06:10:45.226Z",
-              "wordCount": 1
-            },
-            {
-              "capturedAt": "2026-05-14T06:10:46.573Z",
-              "wordCount": 1
-            },
-            {
-              "capturedAt": "2026-05-14T06:10:48.301Z",
-              "wordCount": 2
-            },
-            {
-              "capturedAt": "2026-05-14T06:10:49.886Z",
-              "wordCount": 3
-            },
-            {
-              "capturedAt": "2026-05-14T06:10:52.922Z",
-              "wordCount": 4
-            }
-          ],
-          "sessionHistory": [],
-          "history": [
-            {
-              "date": "2026-05-14",
-              "wordCount": 4,
-              "wordDelta": 4,
-              "capturedAt": "2026-05-14T06:10:54.961Z",
-              "chapterId": "draft-chapter-1778739039064",
-              "chapterTitle": "",
-              "sceneId": "draft-scene-1778739039064",
-              "sceneTitle": "Untitled Scene",
-              "passageExcerpt": "asdfasdfasefasdfaesfsda",
+              "sceneTitle": "John's Dream",
+              "passageExcerpt": "Icicles clung to the cavern roof, daring anyone brave enough to trespass below them. Nuancing Radiant beams of…",
               "issueCount": 0,
               "inspirationCount": 0,
               "noteText": ""
+            },
+            {
+              "date": "2026-05-16",
+              "wordCount": 71383,
+              "wordDelta": -21,
+              "capturedAt": "2026-05-15T22:05:44.845Z",
+              "chapterId": "chapter-0001",
+              "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
+              "sceneId": "scene-0001",
+              "sceneTitle": "John's Dream",
+              "passageExcerpt": "Icicles clung to the cavern roof, daring anyone brave enough to trespass below them. Nuancing Radiant beams of…",
+              "issueCount": 0,
+              "inspirationCount": 2,
+              "noteText": ""
+            },
+            {
+              "date": "2026-05-20",
+              "wordCount": 71384,
+              "wordDelta": 1,
+              "capturedAt": "2026-05-20T12:23:25.709Z",
+              "chapterId": "chapter-0001",
+              "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
+              "sceneId": "scene-0001",
+              "sceneTitle": "John's Dream",
+              "passageExcerpt": "Icicles clung to the cavern roof, daring anyone brave enough to trespass below them. Nuancing Radiant beams of…",
+              "issueCount": 0,
+              "inspirationCount": 2,
+              "noteText": ""
             }
           ],
-          "updatedAt": "2026-05-14T06:10:54.961Z"
+          "updatedAt": "2026-05-20T12:23:25.709Z"
         },
         "writingTargetViewMode": "month",
         "writingTargetSelectedDateKey": "2026-05-14",
@@ -22323,94 +19771,525 @@
       "schemaVersion": 2,
       "projectIndex": {
         "schemaVersion": 2,
-        "projectId": "project-20260514T06102",
-        "projectTitle": "TestDoubleup",
-        "createdAt": "2026-05-14T06:10:28.794Z",
-        "updatedAt": "2026-05-14T06:10:54.965Z",
+        "projectId": "project-serva-vitae",
+        "projectTitle": "test2",
+        "createdAt": "2026-04-21T05:00:00.000Z",
+        "updatedAt": "2026-05-20T12:23:25.777Z",
         "chapters": [
           {
             "id": "chapter-0001",
-            "title": "Chapter 1",
+            "title": "Chapter 1: The Winged Whales resting ground (Ceres)",
             "order": 1,
             "sceneIds": [
-              "scene-0001"
-            ]
+              "scene-0001",
+              "scene-0002",
+              "scene-0003",
+              "scene-0004",
+              "scene-0005",
+              "scene-0006",
+              "scene-0007",
+              "scene-0008",
+              "scene-0009",
+              "scene-0010"
+            ],
+            "lineCount": 237,
+            "wordCount": 21508,
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
-            "id": "draft-chapter-1778739039064",
-            "title": "Untitled Chapter",
-            "order": 2,
+            "id": "chapter-0002",
+            "title": "Chapter 2: The Lost Facility",
+            "order": 11,
             "sceneIds": [
-              "draft-scene-1778739039064",
-              "draft-scene-1778739041506",
-              "draft-scene-1778739042077",
-              "draft-scene-1778739042512"
-            ]
+              "scene-0011",
+              "scene-0012",
+              "scene-0013",
+              "scene-0014",
+              "scene-0015"
+            ],
+            "lineCount": 159,
+            "wordCount": 15137,
+            "inspirationCount": 0,
+            "researchCount": 0
+          },
+          {
+            "id": "chapter-0003",
+            "title": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+            "order": 16,
+            "sceneIds": [
+              "scene-0016",
+              "scene-0017",
+              "scene-0018",
+              "scene-0019",
+              "scene-0020",
+              "scene-0021",
+              "scene-0022",
+              "scene-0023"
+            ],
+            "lineCount": 328,
+            "wordCount": 25153,
+            "inspirationCount": 1,
+            "researchCount": 0
+          },
+          {
+            "id": "chapter-0004",
+            "title": "Chapter 4: Oasis",
+            "order": 24,
+            "sceneIds": [
+              "scene-0024",
+              "scene-0025",
+              "scene-0026",
+              "scene-0027",
+              "scene-0028",
+              "scene-0029"
+            ],
+            "lineCount": 131,
+            "wordCount": 9574,
+            "inspirationCount": 0,
+            "researchCount": 0
+          },
+          {
+            "id": "draft-chapter-1777528152393",
+            "title": "Untitled Chapter",
+            "order": 30,
+            "sceneIds": [
+              "draft-scene-1777528152393"
+            ],
+            "lineCount": 0,
+            "wordCount": 12,
+            "inspirationCount": 1,
+            "researchCount": 0
           }
         ],
         "scenes": [
           {
             "id": "scene-0001",
-            "title": "Scene 1",
+            "title": "John's Dream",
             "chapterId": "chapter-0001",
+            "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
             "order": 1,
-            "lineCount": 1,
-            "wordCount": 0,
+            "lineCount": 10,
+            "wordCount": 1266,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
-            "id": "draft-scene-1778739039064",
-            "title": "Untitled Scene",
-            "chapterId": "draft-chapter-1778739039064",
+            "id": "scene-0002",
+            "title": "(Athos) Mission Brief - The lost facility",
+            "chapterId": "chapter-0001",
+            "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
             "order": 2,
-            "lineCount": 0,
-            "wordCount": 1,
+            "lineCount": 16,
+            "wordCount": 2409,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
-            "id": "draft-scene-1778739041506",
-            "title": "Untitled Scene",
-            "chapterId": "draft-chapter-1778739039064",
+            "id": "scene-0003",
+            "title": "(John) The Mess",
+            "chapterId": "chapter-0001",
+            "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
             "order": 3,
-            "lineCount": 0,
-            "wordCount": 1,
+            "lineCount": 5,
+            "wordCount": 1049,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
-            "id": "draft-scene-1778739042077",
-            "title": "Untitled Scene",
-            "chapterId": "draft-chapter-1778739039064",
+            "id": "scene-0004",
+            "title": "Deep Space Training",
+            "chapterId": "chapter-0001",
+            "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
             "order": 4,
-            "lineCount": 0,
-            "wordCount": 1,
+            "lineCount": 2,
+            "wordCount": 711,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
-            "id": "draft-scene-1778739042512",
-            "title": "Untitled Scene",
-            "chapterId": "draft-chapter-1778739039064",
+            "id": "scene-0005",
+            "title": "(Instructor) All in a vacuum",
+            "chapterId": "chapter-0001",
+            "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
             "order": 5,
-            "lineCount": 0,
-            "wordCount": 1,
+            "lineCount": 8,
+            "wordCount": 698,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
+          },
+          {
+            "id": "scene-0006",
+            "title": "(John) Say hello to the Mark IV",
+            "chapterId": "chapter-0001",
+            "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
+            "order": 6,
+            "lineCount": 48,
+            "wordCount": 4996,
+            "synopsis": "",
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
+          },
+          {
+            "id": "scene-0007",
+            "title": "(Tau) Storm Rail intro",
+            "chapterId": "chapter-0001",
+            "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
+            "order": 7,
+            "lineCount": 2,
+            "wordCount": 482,
+            "synopsis": "",
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
+          },
+          {
+            "id": "scene-0008",
+            "title": "(Shai) Mark IV life support mesh",
+            "chapterId": "chapter-0001",
+            "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
+            "order": 8,
+            "lineCount": 17,
+            "wordCount": 1755,
+            "synopsis": "",
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
+          },
+          {
+            "id": "scene-0009",
+            "title": "(Shai + John) Neural beam demonstration.",
+            "chapterId": "chapter-0001",
+            "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
+            "order": 9,
+            "lineCount": 67,
+            "wordCount": 5910,
+            "synopsis": "",
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
+          },
+          {
+            "id": "scene-0010",
+            "title": "(Lady Ava + John)",
+            "chapterId": "chapter-0001",
+            "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
+            "order": 10,
+            "lineCount": 62,
+            "wordCount": 2232,
+            "synopsis": "",
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
+          },
+          {
+            "id": "scene-0011",
+            "title": "Boarding the Icarus",
+            "chapterId": "chapter-0002",
+            "chapterTitle": "Chapter 2: The Lost Facility",
+            "order": 11,
+            "lineCount": 57,
+            "wordCount": 3700,
+            "synopsis": "",
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
+          },
+          {
+            "id": "scene-0012",
+            "title": "The Chamber",
+            "chapterId": "chapter-0002",
+            "chapterTitle": "Chapter 2: The Lost Facility",
+            "order": 12,
+            "lineCount": 26,
+            "wordCount": 1592,
+            "synopsis": "",
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
+          },
+          {
+            "id": "scene-0013",
+            "title": "Consciounce of Ava",
+            "chapterId": "chapter-0002",
+            "chapterTitle": "Chapter 2: The Lost Facility",
+            "order": 13,
+            "lineCount": 28,
+            "wordCount": 3074,
+            "synopsis": "",
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
+          },
+          {
+            "id": "scene-0014",
+            "title": "LRM incoming",
+            "chapterId": "chapter-0002",
+            "chapterTitle": "Chapter 2: The Lost Facility",
+            "order": 14,
+            "lineCount": 14,
+            "wordCount": 1732,
+            "synopsis": "",
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
+          },
+          {
+            "id": "scene-0015",
+            "title": "LRM breakoff missile incoming",
+            "chapterId": "chapter-0002",
+            "chapterTitle": "Chapter 2: The Lost Facility",
+            "order": 15,
+            "lineCount": 34,
+            "wordCount": 5039,
+            "synopsis": "",
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
+          },
+          {
+            "id": "scene-0016",
+            "title": "The Sentient Graveyard",
+            "chapterId": "chapter-0003",
+            "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+            "order": 16,
+            "lineCount": 25,
+            "wordCount": 1884,
+            "synopsis": "",
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
+          },
+          {
+            "id": "scene-0017",
+            "title": "Into the Vail",
+            "chapterId": "chapter-0003",
+            "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+            "order": 17,
+            "lineCount": 23,
+            "wordCount": 882,
+            "synopsis": "",
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
+          },
+          {
+            "id": "scene-0018",
+            "title": "Circa 2048 - Ghost’s in the sea of shells.",
+            "chapterId": "chapter-0003",
+            "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+            "order": 18,
+            "lineCount": 28,
+            "wordCount": 4533,
+            "synopsis": "",
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
+          },
+          {
+            "id": "scene-0019",
+            "title": "Tunnel to genesis",
+            "chapterId": "chapter-0003",
+            "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+            "order": 19,
+            "lineCount": 35,
+            "wordCount": 3893,
+            "synopsis": "",
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
+          },
+          {
+            "id": "scene-0020",
+            "title": "(Tebo) CareTaker of Genesis",
+            "chapterId": "chapter-0003",
+            "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+            "order": 20,
+            "lineCount": 27,
+            "wordCount": 3027,
+            "synopsis": "",
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
+          },
+          {
+            "id": "scene-0021",
+            "title": "Checking the saddle",
+            "chapterId": "chapter-0003",
+            "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+            "order": 21,
+            "lineCount": 27,
+            "wordCount": 1776,
+            "synopsis": "",
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
+          },
+          {
+            "id": "scene-0022",
+            "title": "Beverley still bucks",
+            "chapterId": "chapter-0003",
+            "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+            "order": 22,
+            "lineCount": 160,
+            "wordCount": 8953,
+            "synopsis": "",
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
+          },
+          {
+            "id": "scene-0023",
+            "title": "Am I dreaming or am i dead",
+            "chapterId": "chapter-0003",
+            "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+            "order": 23,
+            "lineCount": 3,
+            "wordCount": 205,
+            "synopsis": "",
+            "assetIds": [],
+            "inspirationCount": 1,
+            "researchCount": 0
+          },
+          {
+            "id": "scene-0024",
+            "title": "Awakening",
+            "chapterId": "chapter-0004",
+            "chapterTitle": "Chapter 4: Oasis",
+            "order": 24,
+            "lineCount": 17,
+            "wordCount": 1813,
+            "synopsis": "",
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
+          },
+          {
+            "id": "scene-0025",
+            "title": "On the bridge of the Docs Sentient flag ship",
+            "chapterId": "chapter-0004",
+            "chapterTitle": "Chapter 4: Oasis",
+            "order": 25,
+            "lineCount": 4,
+            "wordCount": 527,
+            "synopsis": "",
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
+          },
+          {
+            "id": "scene-0026",
+            "title": "Ignotius Chai's",
+            "chapterId": "chapter-0004",
+            "chapterTitle": "Chapter 4: Oasis",
+            "order": 26,
+            "lineCount": 22,
+            "wordCount": 1445,
+            "synopsis": "",
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
+          },
+          {
+            "id": "scene-0027",
+            "title": "Europa",
+            "chapterId": "chapter-0004",
+            "chapterTitle": "Chapter 4: Oasis",
+            "order": 27,
+            "lineCount": 10,
+            "wordCount": 618,
+            "synopsis": "",
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
+          },
+          {
+            "id": "scene-0028",
+            "title": "Sentient Homecoming Oasis",
+            "chapterId": "chapter-0004",
+            "chapterTitle": "Chapter 4: Oasis",
+            "order": 28,
+            "lineCount": 13,
+            "wordCount": 788,
+            "synopsis": "",
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
+          },
+          {
+            "id": "scene-0029",
+            "title": "Shai Tex",
+            "chapterId": "chapter-0004",
+            "chapterTitle": "Chapter 4: Oasis",
+            "order": 29,
+            "lineCount": 65,
+            "wordCount": 4383,
+            "synopsis": "",
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
+          },
+          {
+            "id": "draft-scene-1777528152393",
+            "title": "This is a test for the save function",
+            "chapterId": "draft-chapter-1777528152393",
+            "chapterTitle": "Untitled Chapter",
+            "order": 30,
+            "lineCount": 0,
+            "wordCount": 12,
+            "synopsis": "",
+            "assetIds": [],
+            "inspirationCount": 1,
+            "researchCount": 0
           }
         ],
         "sceneOrder": [
           "scene-0001",
-          "draft-scene-1778739039064",
-          "draft-scene-1778739041506",
-          "draft-scene-1778739042077",
-          "draft-scene-1778739042512"
+          "scene-0002",
+          "scene-0003",
+          "scene-0004",
+          "scene-0005",
+          "scene-0006",
+          "scene-0007",
+          "scene-0008",
+          "scene-0009",
+          "scene-0010",
+          "scene-0011",
+          "scene-0012",
+          "scene-0013",
+          "scene-0014",
+          "scene-0015",
+          "scene-0016",
+          "scene-0017",
+          "scene-0018",
+          "scene-0019",
+          "scene-0020",
+          "scene-0021",
+          "scene-0022",
+          "scene-0023",
+          "scene-0024",
+          "scene-0025",
+          "scene-0026",
+          "scene-0027",
+          "scene-0028",
+          "scene-0029",
+          "draft-scene-1777528152393"
         ],
         "assetIds": [],
         "assets": [],
         "fileRefs": {
-          "projectFilePath": "C:\\Users\\ASUS\\Desktop\\Repos\\ABetterNovelAuthoringEnvironment\\SaveTestFile\\testdoubleup.abe-project.json",
+          "projectFilePath": "testdoubleup.abe-project.json",
           "projectSourcePath": ""
         }
       },
@@ -22422,124 +20301,6 @@
     }
   ],
   "sceneStore": {
-    "project-20260514T05180": {
-      "draft-scene-1778735892118": {
-        "sceneId": "draft-scene-1778735892118",
-        "chapterId": "",
-        "chapterTitle": "Untitled Chapter",
-        "sceneTitle": "Untitled Scene",
-        "sceneSynopsis": "",
-        "editorText": "",
-        "blocks": []
-      },
-      "draft-scene-1778735892379": {
-        "sceneId": "draft-scene-1778735892379",
-        "chapterId": "",
-        "chapterTitle": "Untitled Chapter",
-        "sceneTitle": "Untitled Scene",
-        "sceneSynopsis": "",
-        "editorText": "testse",
-        "blocks": []
-      },
-      "draft-scene-1778735892543": {
-        "sceneId": "draft-scene-1778735892543",
-        "chapterId": "",
-        "chapterTitle": "Untitled Chapter",
-        "sceneTitle": "Untitled Scene",
-        "sceneSynopsis": "",
-        "editorText": "dasfasdfas",
-        "blocks": []
-      },
-      "draft-scene-1778735892709": {
-        "sceneId": "draft-scene-1778735892709",
-        "chapterId": "",
-        "chapterTitle": "Untitled Chapter",
-        "sceneTitle": "Untitled Scene",
-        "sceneSynopsis": "",
-        "editorText": "asdfasdf",
-        "blocks": []
-      },
-      "draft-scene-1778735892847": {
-        "sceneId": "draft-scene-1778735892847",
-        "chapterId": "",
-        "chapterTitle": "Untitled Chapter",
-        "sceneTitle": "Untitled Scene",
-        "sceneSynopsis": "",
-        "editorText": "fasdfas",
-        "blocks": []
-      },
-      "draft-scene-1778735893233": {
-        "sceneId": "draft-scene-1778735893233",
-        "chapterId": "",
-        "chapterTitle": "Untitled Chapter",
-        "sceneTitle": "Untitled Scene",
-        "sceneSynopsis": "",
-        "editorText": "asdfasdf",
-        "blocks": []
-      },
-      "draft-scene-1778735893568": {
-        "sceneId": "draft-scene-1778735893568",
-        "chapterId": "",
-        "chapterTitle": "Untitled Chapter",
-        "sceneTitle": "Untitled Scene",
-        "sceneSynopsis": "",
-        "editorText": "asdfasdfasdf",
-        "blocks": []
-      },
-      "draft-scene-1778735893695": {
-        "sceneId": "draft-scene-1778735893695",
-        "chapterId": "",
-        "chapterTitle": "Untitled Chapter",
-        "sceneTitle": "Untitled Scene",
-        "sceneSynopsis": "",
-        "editorText": "asdfasdfaeaffxcdfas",
-        "blocks": []
-      }
-    },
-    "project-20260514T04310": {
-      "draft-scene-1778733072636": {
-        "sceneId": "draft-scene-1778733072636",
-        "chapterId": "draft-chapter-1778733072636",
-        "chapterTitle": "",
-        "sceneTitle": "New Scene",
-        "sceneSynopsis": "",
-        "editorText": "This is a test to see if the save is working. ",
-        "blocks": [
-          {
-            "blockId": "draft-block-draft-scene-1778733072636-1",
-            "lineNumber": 0,
-            "kind": "narration",
-            "speakerLabel": "",
-            "text": "",
-            "issueIds": [],
-            "eventTagIds": [],
-            "isDraft": true
-          }
-        ]
-      }
-    },
-    "project-20260514T04394": {
-      "scene-0001": {
-        "sceneId": "scene-0001",
-        "chapterId": "chapter-0001",
-        "chapterTitle": "Chapter 1",
-        "sceneTitle": "Scene 1",
-        "sceneSynopsis": "",
-        "editorText": "this is a test",
-        "blocks": [
-          {
-            "blockId": "block-0001",
-            "lineNumber": 1,
-            "kind": "narration",
-            "speakerLabel": "",
-            "text": "",
-            "issueIds": [],
-            "eventTagIds": [],
-            "isDraft": false
-          }
-        ]
-      }
-    },
     "project-serva-vitae": {
       "scene-0001": {
         "sceneId": "scene-0001",
@@ -22547,7 +20308,7 @@
         "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
         "sceneTitle": "John's Dream",
         "sceneSynopsis": "",
-        "editorText": "Icicles clung to the cavern roof, daring anyone brave enough to trespass below them. Nuancing Radiant beams of warm morning light pierced through them, momentarily blinding the Captain – A sensation both agonizing yet strangely enchanting. Stirring like needles into his brain as he awoke from a painful concussion. “I thought you would come to about now!” The cheerful sweet voice of Johns on-board Assistant chimed in, a little too cheery to John’s liking, given the circumstances. “you took one hell of a stack cap, ”. “What the f…” John wheezed helplessly as a chilling air filled his lungs. He coughed and spluttered, his lungs like a wet towel, yet his throat felt dry like razor blades. He mustered up the strength to speak, “Thank you… Kitten, you didn’t think to just..knock!”. “your med capsule is busted, your neural bridge down, it’s all you at the wheel cap, all a girl can do is wait..”.\n\nWaking from what felt like a decade of deep sleep, John rolled over with immense effort “If you say so Kitten”, there was a slight but humble distrust in the captains voice, breaking free from the cavern's icy grip to the sound of cracking ice and crushed dirt beneath him. His vision slowly came into focus, he could make out the silhouette of his Sherpa rifle laying only a few feet away from him deeper into the cavern. He reached to grip it, but it lay stubbornly embedded into the icy floor. On his second attempt he gave up, the rifle laid useless embedded in the ice. John opened his survival suits wrist terminal bringing up the wireless interface to his rifle. An amber icon with the symbol of a snowflake accompanied by the words “Reverse Cooling Cycle” changed to a pulsating red upon John tapping the screen. The rifles center began to glow and hum. Steam billowed from the shroud of the rifle as it’s icy cage rescinded into water beneath it, scurrying away clearing the snow in its path. John re gripped the rifle stock and yanked it once more, finally freeing it’s icy hold.\n\n“How long have I been out?'' John mumbled weakly to himself, struggling to manage his breath with each painful gasp. The cold air felt like a vice inside his chest. His knees ached and tingled as blood slowly began to recirculate through them. His frail body started to rise with agonizing effort, every muscle spasming as he fought his way upright into a shaky stand.\n\nJohn pondered how he was still alive as the sun's kiss pressed against his frame, he stood in awe looking out. Gazing back at him, bright glimmering mountain peaks reflected a reassuring warmth across his face.\n\nThe sunset painted a blossoming red hue in the hanging icicles like the blood stained teeth of a deep-sea beast’s open jaw they hung form the caves arches, alluring with the beauty of refracted colors of broken light.\n\nWalker felt at peace for a moment, until a subtle beeping sound whispered in the back of his ear. Puzzled John began to approach the sound pinging from the rear of the cavern drawn like a weary glow worm to the allure of a soft pulsing amber glow from within icy walls.\n\nSomething was amiss within the ice at the rear of the cavern, John could just make out the beeping sound source now standing only a few meters from the belly of the cave. The Amber glow pulsed “what are you” John thought. It  seemed to be an LED from before the final war. The beeping pulse continued but this time making strides, speeding up, the light turned from Amber to a dark blood red, paused for a moment then lit a solid green with a pleasant chime at the end. “What the fuck” John took a cautious step back from the belly.\n\nA gentle hiss filled the cave with steam as the steady sound of grinding steel erupted into a roar shaking the very ground beneath the captain's heavy knees. Shards fell in disarray, breaking chaotically throughout the cave sending John scrambling for shelter to preserve his fragile shell. John shoved himself to the side of the cave seeking what limited shelter he could find for his frail body. The cave quaked and moaned with steam now bellowing from its belly like a rupture from a blistering ulcer beneath its crusted gut had been waiting for half a century to burst. The sound of a creeping crack stirred in the ceiling above him but it was too late. John felt the wind snatched from his chest a moment later. A large ice section shattered across his shoulders breaking in two, sending him to his knees, his palm splayed out before in a ditched effort to hold himself steady. Through his bones the cavern spoke to him as though it was coming to life. John collected his thoughts, and realized the soft ceiling he was once under had vanished, his stumble had inadvertently exposed him to the teeth of the cave dangling above him. A final screeching roar emitted as the rear belly of the cave began to crumble and crack, spewing broken shards and thick sections of ice from its belly onto the floor before him.\n\nThe cold sting of ice pierced into John’s shoulder like a dagger from the barrage of stray icicles. He watched helplessly as his blood trickled down from his shoulder, slithering through the snow, turning white passages to red veins. A dark surge of adrenaline overwhelmed the captain as he raised his head in shock. The belly of the cave, that had been alluded to by what seemed an age of ice, now gave way to dark winding steel walls receding deep within the mountain. John’s breath stuttered, turning to gasps, as he breathed rapidly and stumbled forward frantically to take shelter within the tunnel from the malevolent icicles crashing around him. the sound of breaking ice rescinded as he wandered deeper into the steel halls until all was quiet, too quiet. Metallic taps of drumming blood kissed floor from John’s wounded shoulder. Exhausted, he fell to his knees calming himself, slowly collecting his breath. he felt his chest began to ease, in the stillness of breath, John raised his head to the sound of something approaching him from within the misty tunnel. Steam vents ahead vomited out a gaseous substance obscuring his vision.\n\nSlowly, intermittently, metallic clangs of steel on steel could be heard, gradually getting louder with each foregoing clap, closer. John desperately hit the side of his helmet, attempting to jog the thermal scan feed on his visor’s HUD “Come onnn work you piece of Junk!”. Nothing but scratchy static could be seen as the fog stirred before him. He held his breath to hone his hearing in one silent moment of stillness; the fog was now dead. One more knock to the side of his helmet and the system began to boot up. He looked down on himself in almost third person. He could see his body; now he saw himself glaring into the fog, hollow with fear and empty breath. Suddenly his thermal feed actuated, illuminating  glowing embers around a steel amalgamation of flesh and machine erupting from the fog right before him, a grotesque arm, neither machine nor human, something in between, fanned out its large drooping countless fingers clasping gently around the entirety of his skull. John saw his own body ripped from his knees into the depths of the tunnel, never to be seen again. He saw nothing but darkness",
+        "editorText": "Icicles clung to the cavern roof, daring anyone brave enough to trespass below them. Nuancing Radiant beams of warm morning light pierced through them, momentarily blinding the Captain – A sensation both agonizing yet strangely enchanting. Stirring like needles into his brain as he awoke from a painful concussion. “I thought you would come to about now!” The cheerful sweet voice of Johns on-board Assistant chimed in, a little too cheery to John’s liking, given the circumstances. “you took one hell of a stack cap, ”. “What the f…” John wheezed helplessly as a chilling air filled his lungs. He coughed and spluttered, his lungs like a wet towel, yet his throat felt dry like razor blades. He mustered up the strength to speak, “Thank you… Kitten, you didn’t think to just..knock!”. “your med capsule is busted, your neural bridge down, it’s all you at the wheel cap, all a girl can do is wait..”.\n\n\n\nWaking from what felt like a decade of deep sleep, John rolled over with immense effort “If you say so Kitten”, there was a slight but humble distrust in the captains voice, breaking free from the cavern's icy grip to the sound of cracking ice and crushed dirt beneath him. His vision slowly came into focus, he could make out the silhouette of his Sherpa rifle laying only a few feet away from him deeper into the cavern. He reached to grip it, but it lay stubbornly embedded into the icy floor. On his second attempt he gave up, the rifle laid useless embedded in the ice. John opened his survival suits wrist terminal bringing up the wireless interface to his rifle. An amber icon with the symbol of a snowflake accompanied by the words “Reverse Cooling Cycle” changed to a pulsating red upon John tapping the screen. The rifles center began to glow and hum. Steam billowed from the shroud of the rifle as it’s icy cage rescinded into water beneath it, scurrying away clearing the snow in its path. John re gripped the rifle stock and yanked it once more, finally freeing it’s icy hold.\n\n“How long have I been out?'' John mumbled weakly to himself, struggling to manage his breath with each painful gasp. The cold air felt like a vice inside his chest. His knees ached and tingled as blood slowly began to recirculate through them. His frail body started to rise with agonizing effort, every muscle spasming as he fought his way upright into a shaky stand.\n\nJohn pondered how he was still alive as the sun's kiss pressed against his frame, he stood in awe looking out. Gazing back at him, bright glimmering mountain peaks reflected a reassuring warmth across his face.\n\nThe sunset painted a blossoming red hue in the hanging icicles like the blood stained teeth of a deep-sea beast’s open jaw they hung form the caves arches, alluring with the beauty of refracted colors of broken light.\n\nWalker felt at peace for a moment, until a subtle beeping sound whispered in the back of his ear. Puzzled John began to approach the sound pinging from the rear of the cavern drawn like a weary glow worm to the allure of a soft pulsing amber glow from within icy walls.\n\nSomething was amiss within the ice at the rear of the cavern, John could just make out the beeping sound source now standing only a few meters from the belly of the cave. The Amber glow pulsed “what are you” John thought. It  seemed to be an LED from before the final war. The beeping pulse continued but this time making strides, speeding up, the light turned from Amber to a dark blood red, paused for a moment then lit a solid green with a pleasant chime at the end. “What the fuck” John took a cautious step back from the belly.\n\nA gentle hiss filled the cave with steam as the steady sound of grinding steel erupted into a roar shaking the very ground beneath the captain's heavy knees. Shards fell in disarray, breaking chaotically throughout the cave sending John scrambling for shelter to preserve his fragile shell. John shoved himself to the side of the cave seeking what limited shelter he could find for his frail body. The cave quaked and moaned with steam now bellowing from its belly like a rupture from a blistering ulcer beneath its crusted gut had been waiting for half a century to burst. The sound of a creeping crack stirred in the ceiling above him but it was too late. John felt the wind snatched from his chest a moment later. A large ice section shattered across his shoulders breaking in two, sending him to his knees, his palm splayed out before in a ditched effort to hold himself steady. Through his bones the cavern spoke to him as though it was coming to life. John collected his thoughts, and realized the soft ceiling he was once under had vanished, his stumble had inadvertently exposed him to the teeth of the cave dangling above him. A final screeching roar emitted as the rear belly of the cave began to crumble and crack, spewing broken shards and thick sections of ice from its belly onto the floor before him.\n\nThe cold sting of ice pierced into John’s shoulder like a dagger from the barrage of stray icicles. He watched helplessly as his blood trickled down from his shoulder, slithering through the snow, turning white passages to red veins. A dark surge of adrenaline overwhelmed the captain as he raised his head in shock. The belly of the cave, that had been alluded to by what seemed an age of ice, now gave way to dark winding steel walls receding deep within the mountain. John’s breath stuttered, turning to gasps, as he breathed rapidly and stumbled forward frantically to take shelter within the tunnel from the malevolent icicles crashing around him. the sound of breaking ice rescinded as he wandered deeper into the steel halls until all was quiet, too quiet. Metallic taps of drumming blood kissed floor from John’s wounded shoulder. Exhausted, he fell to his knees calming himself, slowly collecting his breath. he felt his chest began to ease, in the stillness of breath, John raised his head to the sound of something approaching him from within the misty tunnel. Steam vents ahead vomited out a gaseous substance obscuring his vision.\n\nSlowly, intermittently, metallic clangs of steel on steel could be heard, gradually getting louder with each foregoing clap, closer. John desperately hit the side of his helmet, attempting to jog the thermal scan feed on his visor’s HUD “Come onnn work you piece of Junk!”. Nothing but scratchy static could be seen as the fog stirred before him. He held his breath to hone his hearing in one silent moment of stillness; the fog was now dead. One more knock to the side of his helmet and the system began to boot up. He looked down on himself in almost third person. He could see his body; now he saw himself glaring into the fog, hollow with fear and empty breath. Suddenly his thermal feed actuated, illuminating  glowing embers around a steel amalgamation of flesh and machine erupting from the fog right before him, a grotesque arm, neither machine nor human, something in between, fanned out its large drooping countless fingers clasping gently around the entirety of his skull. John saw his own body ripped from his knees into the depths of the tunnel, never to be seen again. He saw nothing but darkness",
         "blocks": [
           {
             "blockId": "block-0001",
@@ -31387,7 +29148,7 @@
         "chapterTitle": "",
         "sceneTitle": "This is a test for the save function ",
         "sceneSynopsis": "",
-        "editorText": "Testing the save function 5",
+        "editorText": "Mark didn't know how he ended up on this wretched plain. 34OriginFileproject",
         "blocks": [
           {
             "blockId": "draft-block-draft-scene-1777528152393-1",
@@ -31400,64 +29161,6 @@
             "isDraft": true
           }
         ]
-      }
-    },
-    "project-20260514T06102": {
-      "scene-0001": {
-        "sceneId": "scene-0001",
-        "chapterId": "chapter-0001",
-        "chapterTitle": "Chapter 1",
-        "sceneTitle": "Scene 1",
-        "sceneSynopsis": "",
-        "editorText": "",
-        "blocks": [
-          {
-            "blockId": "block-0001",
-            "lineNumber": 1,
-            "kind": "narration",
-            "speakerLabel": "",
-            "text": "",
-            "issueIds": [],
-            "eventTagIds": [],
-            "isDraft": false
-          }
-        ]
-      },
-      "draft-scene-1778739039064": {
-        "sceneId": "draft-scene-1778739039064",
-        "chapterId": "",
-        "chapterTitle": "Untitled Chapter",
-        "sceneTitle": "Untitled Scene",
-        "sceneSynopsis": "",
-        "editorText": "asdfasdfasefasdfaesfsda",
-        "blocks": []
-      },
-      "draft-scene-1778739041506": {
-        "sceneId": "draft-scene-1778739041506",
-        "chapterId": "",
-        "chapterTitle": "Untitled Chapter",
-        "sceneTitle": "Untitled Scene",
-        "sceneSynopsis": "",
-        "editorText": "adfasdf",
-        "blocks": []
-      },
-      "draft-scene-1778739042077": {
-        "sceneId": "draft-scene-1778739042077",
-        "chapterId": "",
-        "chapterTitle": "Untitled Chapter",
-        "sceneTitle": "Untitled Scene",
-        "sceneSynopsis": "",
-        "editorText": "asdfasdf",
-        "blocks": []
-      },
-      "draft-scene-1778739042512": {
-        "sceneId": "draft-scene-1778739042512",
-        "chapterId": "",
-        "chapterTitle": "Untitled Chapter",
-        "sceneTitle": "Untitled Scene",
-        "sceneSynopsis": "",
-        "editorText": "asefasdf",
-        "blocks": []
       }
     }
   }

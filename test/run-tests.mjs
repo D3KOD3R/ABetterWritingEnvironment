@@ -1,5 +1,6 @@
 // Intent: run the repository's focused contract tests as one lightweight Node test harness.
 import { runAnalysisServiceTest } from "./analysis-service.test.mjs";
+import { runAnchoredRecordNavigationControllerTest } from "./anchored-record-navigation-controller.test.mjs";
 import { runAudioServiceTest } from "./audio-service.test.mjs";
 import { runDesktopApplicationTest } from "./desktop-application.test.mjs";
 import { runDeveloperLoggerTest } from "./developer-logger.test.mjs";
@@ -9,7 +10,17 @@ import { runLocalAiRouterContractTest } from "./local-ai-router.test.mjs";
 import { runLocalAiServiceTest } from "./local-ai-service.test.mjs";
 import { runManuscriptSchemaTest } from "./manuscript-schema.test.mjs";
 import { runManuscriptCommandControllerTest } from "./manuscript-command-controller.test.mjs";
+import { runManuscriptEditorHostTest } from "./manuscript-editor-host.test.mjs";
+import { runManuscriptFindControllerTest } from "./manuscript-find-controller.test.mjs";
+import { runManuscriptInputControllerTest } from "./manuscript-input-controller.test.mjs";
+import { runManuscriptProjectionSelectorTest } from "./manuscript-projection-selector.test.mjs";
+import { runManuscriptSelectionControllerTest } from "./manuscript-selection-controller.test.mjs";
 import { runProjectFileStorageAdaptersTest } from "./project-file-storage-adapters.test.mjs";
+import { runProjectActivationControllerTest } from "./project-activation-controller.test.mjs";
+import { runProjectActivationStateTest } from "./project-activation-state.test.mjs";
+import { runProjectLibraryStateTest } from "./project-library-state.test.mjs";
+import { runProjectRecordStateTest } from "./project-record-state.test.mjs";
+import { runProjectRuntimeRecordStateTest } from "./project-runtime-record-state.test.mjs";
 import { runProgressTrackerTest } from "./progress-tracker.test.mjs";
 import { runProjectRefreshPersistenceTest } from "./project-refresh-persistence.test.mjs";
 import { runProjectPersistenceServiceTest } from "./project-persistence-service.test.mjs";
@@ -25,6 +36,10 @@ import { runWritingGoalsStateServiceTest } from "./writing-goals-state-service.t
 import { runWorldSchemaTest } from "./world-schema.test.mjs";
 
 const tests = [
+  {
+    name: "anchored record navigation derives projections without owning browser effects",
+    run: runAnchoredRecordNavigationControllerTest,
+  },
   {
     name: "analysis service returns anchored issue and event suggestions",
     run: runAnalysisServiceTest,
@@ -66,8 +81,48 @@ const tests = [
     run: runManuscriptCommandControllerTest,
   },
   {
+    name: "manuscript editor host keeps textarea projection rendering behind an adapter",
+    run: runManuscriptEditorHostTest,
+  },
+  {
+    name: "manuscript find controller derives matches and replacement plans outside the shell",
+    run: runManuscriptFindControllerTest,
+  },
+  {
+    name: "manuscript input controller routes live text edits outside the shell",
+    run: runManuscriptInputControllerTest,
+  },
+  {
+    name: "manuscript projection selector separates durable marks from runtime visuals",
+    run: runManuscriptProjectionSelectorTest,
+  },
+  {
+    name: "manuscript selection controller keeps selection policy outside the shell",
+    run: runManuscriptSelectionControllerTest,
+  },
+  {
     name: "project file storage adapters isolate save paths and autosave state",
     run: runProjectFileStorageAdaptersTest,
+  },
+  {
+    name: "project activation controller coordinates activation effects outside the shell",
+    run: runProjectActivationControllerTest,
+  },
+  {
+    name: "project activation state hydrates loaded records outside the shell",
+    run: runProjectActivationStateTest,
+  },
+  {
+    name: "project library state isolates activation and seed merge policy",
+    run: runProjectLibraryStateTest,
+  },
+  {
+    name: "project record state isolates durable project record normalization",
+    run: runProjectRecordStateTest,
+  },
+  {
+    name: "project runtime record state assembles save snapshots outside the shell",
+    run: runProjectRuntimeRecordStateTest,
   },
   {
     name: "progress tracker hides inactive session carryover",

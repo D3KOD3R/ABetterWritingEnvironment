@@ -56,6 +56,8 @@ The current repository already contains useful parts of this design:
 - `services/analysis` emits anchor-backed analysis results instead of editing DOM state.
 - `ProjectPersistenceService` owns save/load/autosave workflow boundaries.
 - `apps/editor/public/features/manuscript-editor/manuscript-command-controller.js` models inline formatting as ranges rather than inserting HTML into manuscript text.
+- `apps/editor/public/features/manuscript-editor/editor-host-interface.js` now normalizes scene text and render-only projections before an editor implementation receives them.
+- `apps/editor/public/adapters/editor-host/textarea-editor-host.js` now contains the existing textarea-overlay markup and paints author-mark, active anchored-record preview, spellcheck, search, and narration-follow projections without persisting them.
 
 The interrupted implementation also revealed a gap:
 
@@ -387,7 +389,7 @@ Examples:
 
 ### Slice 4: CodeMirror Experiment
 
-- Introduce an editor-host interface and a CodeMirror-backed implementation for one scene.
+- Extend the established editor-host interface with a CodeMirror-backed implementation for one scene.
 - Map application projections into CodeMirror decoration extensions.
 - Route edits back through manuscript commands and persistence services.
 - Keep the textarea host as fallback until save/load, IME, navigation, spellcheck, and autosave behavior are validated.

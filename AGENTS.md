@@ -254,17 +254,29 @@ When changing `apps/editor`, follow the refactor roadmap in `docs/architecture/e
 ### Refactor checkpoint
 
 Current roadmap phase:
-- Phase 1: stabilize persistence and project-state ownership
+- Phase 2: establish manuscript projection and command boundaries
 
 Completed slice:
 - `apps/editor/public/shell/editor-chrome.js` now owns the top editor chrome, file menu, pane tabs, autosave toggle, local AI toggle, and writing-goal CTA markup.
 - `apps/editor/public/features/writing-targets/writing-target-window.js` now owns the full writing-goals window markup.
 - `apps/editor/public/adapters/storage/project-persistence-service.js` now owns project-file save/load/autosave/import/export orchestration, and `app.js` calls it as the persistence boundary.
+- `apps/editor/public/state/project-library-state.js` now owns project-library snapshot normalization, seeded/cache project merge policy, active-project record lookup, and persisted selection-default normalization.
+- `apps/editor/public/state/project-record-state.js` now owns durable project-record normalization and construction from canonical workspace snapshots.
+- `apps/editor/public/state/project-runtime-record-state.js` now owns runtime-to-project record assembly for save flows, receiving editor selection capture through explicit callbacks rather than owning DOM behavior.
+- `apps/editor/public/state/project-activation-state.js` now owns loaded-record hydration into live project state before activation effects are coordinated.
+- `apps/editor/public/state/project-activation-controller.js` now owns project activation teardown, compatibility writes, and shared refresh/render/snapshot sequencing through injected shell callbacks.
 - `apps/editor/public/features/scene-editor.js` now owns scene editor markup, and `apps/editor/public/features/manuscript-editor/manuscript-command-controller.js` owns the first inline-format command path.
+- `apps/editor/public/features/manuscript-editor/projection-selector.js` now maps author-applied inline-format compatibility ranges, active task/passage-note anchored previews, find matches, narration-follow selection, and runtime spellcheck findings into separate render-only projection channels.
+- `apps/editor/public/features/manuscript-editor/editor-host-interface.js` now defines the render-only scene/projection input contract for manuscript hosts.
+- `apps/editor/public/adapters/editor-host/textarea-editor-host.js` now owns the current textarea-overlay markup, spellcheck, anchored-preview, search, and narration selection painting, and the inline-command textarea bridge.
+- `apps/editor/public/features/manuscript-editor/manuscript-find-controller.js` now owns manuscript find matching, panel modeling, and replacement planning.
+- `apps/editor/public/features/manuscript-editor/manuscript-selection-controller.js` now owns normalized manuscript selection, context-range, bookmark, and saved-selection policy.
+- `apps/editor/public/features/manuscript-editor/manuscript-input-controller.js` now owns live scene text-input sequencing through injected shell effects.
+- `apps/editor/public/features/manuscript-editor/anchored-record-navigation-controller.js` now owns task/note selection matching and preview projection derivation while hover previews remain non-mutating.
 - `apps/editor/public/features/revisions/revision-window.js` now owns the standalone revision comparison window markup.
 
 Next slice:
-- Move remaining project activation/cache-normalization glue out of `apps/editor/public/app.js`, then centralize manuscript projection selection before adding further editor workflows.
+- Continue Phase 2 by adding diagnostic and suggestion projection sources where stable anchors are available, then reduce remaining DOM focus/scroll effects behind the editor host boundary.
 
 Verification for the current slice:
 - `node --check apps/editor/public/app.js`

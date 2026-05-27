@@ -1,30 +1,30 @@
 {
   "schemaVersion": 2,
-  "activeProjectId": "project-serva-vitae",
+  "activeProjectId": "34OriginFileproject-serva-vitae",
   "projects": [
     {
-      "id": "project-serva-vitae",
-      "title": "Untitled Project",
+      "id": "34OriginFileproject-serva-vitae",
+      "title": "2project-serva-vitae",
       "source": "project-file",
       "createdAt": "2026-04-21T05:00:00.000Z",
-      "updatedAt": "2026-05-20T08:51:10.721Z",
+      "updatedAt": "2026-05-20T15:37:02.479Z",
       "workspace": {
         "generatedAt": "2026-04-21T05:00:00.000Z",
-        "workspaceTitle": "ABetterNovelAuthoringEnvironment",
+        "workspaceTitle": "2project-serva-vitae",
         "settings": {
           "executionMode": "local-only",
           "modelRoot": "C:\\Models\\AuthorSuite",
           "assetRoot": "C:\\AuthorAssets",
-          "projectRoot": "C:\\Users\\ASUS\\Desktop\\Repos\\ABetterNovelAuthoringEnvironment"
+          "projectRoot": "C:\\Users\\ASUS\\Desktop\\Repos\\ABetterNovelAuthoringEnvironment\\SaveTestFile"
         },
         "project": {
-          "id": "project-serva-vitae",
-          "title": "Untitled Project",
+          "id": "34OriginFileproject-serva-vitae",
+          "title": "2project-serva-vitae",
           "binder": {
             "id": "binder-project-serva-vitae",
             "kind": "project",
-            "refId": "project-serva-vitae",
-            "title": "Project Serva Vitae",
+            "refId": "2project-serva-vitae",
+            "title": "2project-serva-vitae",
             "order": 1,
             "children": [
               {
@@ -16651,13 +16651,13 @@
         },
         "selectionDefaults": {
           "lineId": "block-0001",
-          "sceneId": "draft-scene-1777528152393",
+          "sceneId": "scene-0023",
           "nodeId": "source-node-9272d563-8210-4bdd-8900-493d323c503d",
           "entityId": "source-entity-9c2d8a8c-6334-4ed3-8c21-0ec770d78ff6",
-          "sceneSelectionBlockId": "draft-block-draft-scene-1777528152393-1",
-          "sceneSelectionLineNumber": 1776,
-          "sceneSelectionStart": 76,
-          "sceneSelectionEnd": 76,
+          "sceneSelectionBlockId": "block-0723",
+          "sceneSelectionLineNumber": 1522,
+          "sceneSelectionStart": 548,
+          "sceneSelectionEnd": 548,
           "sceneSelectionScrollTop": 0,
           "sceneSelectionScrollLeft": 0,
           "inlinePassageDraft": null
@@ -16774,41 +16774,45 @@
             }
           ]
         },
-        "draft-scene-1777528152393": {
-          "sceneId": "draft-scene-1777528152393",
-          "chapterId": "draft-chapter-1777528152393",
-          "chapterTitle": "",
-          "sceneTitle": "This is a test for the save function ",
+        "scene-0023": {
+          "sceneId": "scene-0023",
+          "chapterId": "chapter-0003",
+          "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+          "sceneTitle": "Am I dreaming or am i dead",
           "sceneSynopsis": "",
-          "editorText": "Mark didn't know how he ended up on this wretched plain. 34OriginFileproject",
+          "editorText": "Ringing pierced Tex’s ears with a strange bubbly static. It wasn’t a normal ringing. A strange Tinnitus he had never felt before. Like he had just jumped into a pool, but without the pressure of fluid pressing against him. The sound felt weightless in the sense that he could not feel the percussion, it was just there, untouchable.\n\nIt was like his ears were being born into existence for the first time, hearing the first sounds he had ever encountered. There was something entirely off. Like he was no longer a part of his own body, or any body.\n\nAll he could see was white. Eventually the ringing stopped, There was no taste, smell or feeling of weight he could connect with. He was weightless, almost senseless, but he was conscious. He could still feel, but only partially, he had no breath, or pulse, the only senses he felt were those his mind could construct. He wasn’t able to panic, he was at the complete mercy of whatever this was. He embraced the silence, it was the first peaceful moment he had felt in what seemed like an eternity. In the moment nothing could harm him, direct, or alter his state, even his own will.\n\npersists test, lets see now The application is quite sluggish after turning loggin goff it is far more responsive. lets see how fast the typing occurs nnow. ",
           "blocks": [
             {
-              "blockId": "draft-block-draft-scene-1777528152393-1",
-              "lineNumber": 0,
+              "blockId": "block-0722",
+              "lineNumber": 722,
               "kind": "narration",
               "speakerLabel": "",
-              "text": "",
+              "text": "Ringing pierced Tex’s ears with a strange bubbly static. It wasn’t a normal ringing. A strange Tinnitus he had never felt before. Like he had just jumped into a pool, but without the pressure of fluid pressing against him. The sound felt weightless in the sense that he could not feel the percussion, it was just there, untouchable.",
               "issueIds": [],
               "eventTagIds": [],
-              "isDraft": true
+              "isDraft": false
+            },
+            {
+              "blockId": "block-0723",
+              "lineNumber": 723,
+              "kind": "narration",
+              "speakerLabel": "",
+              "text": "It was like his ears were being born into existence for the first time, hearing the first sounds he had ever encountered. There was something entirely off. Like he was no longer a part of his own body, or any body.",
+              "issueIds": [],
+              "eventTagIds": [],
+              "isDraft": false
+            },
+            {
+              "blockId": "block-0724",
+              "lineNumber": 724,
+              "kind": "narration",
+              "speakerLabel": "",
+              "text": "All he could see was white. Eventually the ringing stopped, There was no taste, smell or feeling of weight he could connect with. He was weightless, almost senseless, but he was conscious. He could still feel, but only partially, he had no breath, or pulse, the only senses he felt were those his mind could construct. He wasn’t able to panic, he was at the complete mercy of whatever this was. He embraced the silence, it was the first peaceful moment he had felt in what seemed like an eternity. In the moment nothing could harm him, direct, or alter his state, even his own will.",
+              "issueIds": [],
+              "eventTagIds": [],
+              "isDraft": false
             }
-          ],
-          "revisionStats": {
-            "editCount": 1,
-            "lastEditedAt": "2026-05-20T08:51:05.514Z",
-            "lastChangeSummary": "Inserted 19 chars",
-            "history": [
-              {
-                "id": "revision-1779267065514-osj25u",
-                "createdAt": "2026-05-20T08:51:05.514Z",
-                "updatedAt": "2026-05-20T08:51:05.514Z",
-                "summary": "Inserted 19 chars",
-                "previousLength": 57,
-                "nextLength": 76,
-                "deltaCharacters": 19
-              }
-            ]
-          }
+          ]
         }
       },
       "structureDrafts": {
@@ -17098,8 +17102,8 @@
           "body": "CONTINUITY SPELLING: Suggested canonical ship name = Balaenoptera. Standardize Baelenoptera / Bealenoptera to this unless the variants are deliberate in-world corruption.",
           "description": "CONTINUITY SPELLING: Suggested canonical ship name = Balaenoptera. Standardize Baelenoptera / Bealenoptera to this unless the variants are deliberate in-world corruption.",
           "selectedText": "Balaenoptera",
-          "startOffset": 1402,
-          "endOffset": 1414,
+          "startOffset": 1404,
+          "endOffset": 1416,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -17124,8 +17128,8 @@
           "body": "CONTINUITY INSTITUTION: Suggested canonical reading = CLEAR is the public adaptive governance / economic model. If CLEAR is also a protocol stack, define that relationship explicitly on-page.",
           "description": "CONTINUITY INSTITUTION: Suggested canonical reading = CLEAR is the public adaptive governance / economic model. If CLEAR is also a protocol stack, define that relationship explicitly on-page.",
           "selectedText": "CLEAR program",
-          "startOffset": 7940,
-          "endOffset": 7953,
+          "startOffset": 7949,
+          "endOffset": 7962,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -17176,8 +17180,8 @@
           "body": "CONTINUITY SPELLING: Suggested canonical ship name = Balaenoptera. Standardize Baelenoptera / Bealenoptera to this unless the variants are deliberate in-world corruption.",
           "description": "CONTINUITY SPELLING: Suggested canonical ship name = Balaenoptera. Standardize Baelenoptera / Bealenoptera to this unless the variants are deliberate in-world corruption.",
           "selectedText": "Baelenoptera",
-          "startOffset": 4742,
-          "endOffset": 4754,
+          "startOffset": 4746,
+          "endOffset": 4758,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -17202,8 +17206,8 @@
           "body": "1, 15/06/2024 6:22 PM What is the Iris? The algorithm?",
           "description": "1, 15/06/2024 6:22 PM What is the Iris? The algorithm?",
           "selectedText": "Iris,",
-          "startOffset": 634,
-          "endOffset": 639,
+          "startOffset": 635,
+          "endOffset": 640,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -17228,8 +17232,8 @@
           "body": "CONTINUITY NAME: Suggested canonical standard = Tao. Update Tau / Tam variants unless the difference is deliberate.",
           "description": "CONTINUITY NAME: Suggested canonical standard = Tao. Update Tau / Tam variants unless the difference is deliberate.",
           "selectedText": "Said Tao",
-          "startOffset": 1910,
-          "endOffset": 1918,
+          "startOffset": 1914,
+          "endOffset": 1922,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -17280,8 +17284,8 @@
           "body": "CONFUSING: If Chapter 1 is still the 2056 pre-gate present, this puts John's family photo in his future. Either the present-day spine is later here, or this photo date needs to move earlier.",
           "description": "CONFUSING: If Chapter 1 is still the 2056 pre-gate present, this puts John's family photo in his future. Either the present-day spine is later here, or this photo date needs to move earlier.",
           "selectedText": "the end of the 21st century, I think.",
-          "startOffset": 4378,
-          "endOffset": 4415,
+          "startOffset": 4401,
+          "endOffset": 4438,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -17306,8 +17310,8 @@
           "body": "1, 16/04/2026 2:52 PM Design Note: Atmospheric Trail Ejection System (ATES) System Overview A suit-mounted pyrotechnic/chemical deployment system designed for high-altitude, low-visibility team tracking (e.g., skydiving through high-density snow/clouds). 1. Component Placement: Lower Lumbar / Rear Hip • Location:~Dual ports located on the lower back, just above the glutes, angled slightly outward. • Rationale:~Placing ports on the \"lee side\" (back) of the diver protects the mechanisms from direct ram-air cooling and moisture impact at terminal velocity. This position utilizes the body’s natural aerodynamic \"teardrop\" to seed the smoke directly into the stable vortices trailing the legs. • Visual Result:~Creates two clean, parallel \"braiding\" trails that avoid the turbulent \"burble\" behind the head and shoulders, ensuring the diver’s own vision remains clear. 2. Redundancy & Navigation: Dual-Port Configuration • Depth Perception:~Two parallel lines allow followers to judge distance and closure rates (stereoscopic tracking). • HUD Integration:~Dual heat/density signatures allow the \"Echo\" HUD to calculate the lead diver’s~roll and bank angle~in real-time. • The \"Corridor\":~The gap between trails marks the low-drag wake, allowing the team to \"slot in\" and maintain high speeds with less effort. 3. Cold-Weather Reliability: Intermittent Actuation • The \"Freeze\" Risk:~High-moisture environments (snow clouds) combined with sub-zero temps cause \"ice bridging\" on ejection gates. • Operational Protocol:~\"Pulse\" or intermittent firing. This cycles the mechanical gates to break up ice and uses the chemical reaction’s~high thermal output~to flash-evaporate moisture and keep the \"ejection gates\" clear. 4. Sensor Visibility: Thermal vs. Radar • Thermal/IR:~The primary tracking method. The smoke is a byproduct of a high-heat reaction, making it \"glow\" on thermal HUDs against the freezing atmospheric backdrop. • Radar (Echo):~The density of the aerosolized trail provides a consistent backscatter, allowing the HUD to draw \"Echo visuals\" (the misty road) even when visual sight (Vis) is zero. 5. Atmospheric Behaviour • Cold Air Effect:~The dense, freezing air keeps the trails \"tight\" and low-hanging, preventing rapid dissipation. • Vortex Seeding:~At high speeds, the trails will naturally swirl into tubes, making them look like \"fine misty roads\" or \"white snakes\" in the sky.",
           "description": "1, 16/04/2026 2:52 PM Design Note: Atmospheric Trail Ejection System (ATES) System Overview A suit-mounted pyrotechnic/chemical deployment system designed for high-altitude, low-visibility team tracking (e.g., skydiving through high-density snow/clouds). 1. Component Placement: Lower Lumbar / Rear Hip • Location:~Dual ports located on the lower back, just above the glutes, angled slightly outward. • Rationale:~Placing ports on the \"lee side\" (back) of the diver protects the mechanisms from direct ram-air cooling and moisture impact at terminal velocity. This position utilizes the body’s natural aerodynamic \"teardrop\" to seed the smoke directly into the stable vortices trailing the legs. • Visual Result:~Creates two clean, parallel \"braiding\" trails that avoid the turbulent \"burble\" behind the head and shoulders, ensuring the diver’s own vision remains clear. 2. Redundancy & Navigation: Dual-Port Configuration • Depth Perception:~Two parallel lines allow followers to judge distance and closure rates (stereoscopic tracking). • HUD Integration:~Dual heat/density signatures allow the \"Echo\" HUD to calculate the lead diver’s~roll and bank angle~in real-time. • The \"Corridor\":~The gap between trails marks the low-drag wake, allowing the team to \"slot in\" and maintain high speeds with less effort. 3. Cold-Weather Reliability: Intermittent Actuation • The \"Freeze\" Risk:~High-moisture environments (snow clouds) combined with sub-zero temps cause \"ice bridging\" on ejection gates. • Operational Protocol:~\"Pulse\" or intermittent firing. This cycles the mechanical gates to break up ice and uses the chemical reaction’s~high thermal output~to flash-evaporate moisture and keep the \"ejection gates\" clear. 4. Sensor Visibility: Thermal vs. Radar • Thermal/IR:~The primary tracking method. The smoke is a byproduct of a high-heat reaction, making it \"glow\" on thermal HUDs against the freezing atmospheric backdrop. • Radar (Echo):~The density of the aerosolized trail provides a consistent backscatter, allowing the HUD to draw \"Echo visuals\" (the misty road) even when visual sight (Vis) is zero. 5. Atmospheric Behaviour • Cold Air Effect:~The dense, freezing air keeps the trails \"tight\" and low-hanging, preventing rapid dissipation. • Vortex Seeding:~At high speeds, the trails will naturally swirl into tubes, making them look like \"fine misty roads\" or \"white snakes\" in the sky.",
           "selectedText": "ediately two small ports about a foot apart on her lower back propped out momentarily in timed successions,  Small specks of condensation trails fanned out behind her",
-          "startOffset": 5631,
-          "endOffset": 5797,
+          "startOffset": 5642,
+          "endOffset": 5808,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -17332,8 +17336,8 @@
           "body": "CONTINUITY NAME: Suggested canonical fix = either rename Cerena to Julie Henderson for consistency, or establish Cerena as her private / familial / alias name and Julie Henderson as the formal public record name.",
           "description": "CONTINUITY NAME: Suggested canonical fix = either rename Cerena to Julie Henderson for consistency, or establish Cerena as her private / familial / alias name and Julie Henderson as the formal public record name.",
           "selectedText": "mother Cerena",
-          "startOffset": 12391,
-          "endOffset": 12404,
+          "startOffset": 12409,
+          "endOffset": 12422,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -17358,8 +17362,8 @@
           "body": "CONFUSING: If this cache was left around the 2023 / 2024 facility shutdown and John is still in the 2056 mission present, this file is roughly three decades old, not over half a century.",
           "description": "CONFUSING: If this cache was left around the 2023 / 2024 facility shutdown and John is still in the 2056 mission present, this file is roughly three decades old, not over half a century.",
           "selectedText": "half a century old",
-          "startOffset": 8563,
-          "endOffset": 8581,
+          "startOffset": 8576,
+          "endOffset": 8594,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -17384,8 +17388,8 @@
           "body": "CONFUSING: This pod / gate hardware reads as abandoned since the 2023 / 2024 shutdown thread, so half a century does not fit a 2056 present. If Chapter 2 is later than that, the later date needs to be clearer sooner.",
           "description": "CONFUSING: This pod / gate hardware reads as abandoned since the 2023 / 2024 shutdown thread, so half a century does not fit a 2056 present. If Chapter 2 is later than that, the later date needs to be clearer sooner.",
           "selectedText": "near on half a century",
-          "startOffset": 6783,
-          "endOffset": 6805,
+          "startOffset": 6788,
+          "endOffset": 6810,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -17410,8 +17414,8 @@
           "body": "CONTINUITY TITLE/SPELLING: this scene is titled \"Into the Vail\"; compare with \"veil\" usage elsewhere.",
           "description": "CONTINUITY TITLE/SPELLING: this scene is titled \"Into the Vail\"; compare with \"veil\" usage elsewhere.",
           "selectedText": "directive of CLEAR",
-          "startOffset": 1086,
-          "endOffset": 1104,
+          "startOffset": 1089,
+          "endOffset": 1107,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -17462,8 +17466,8 @@
           "body": "CONTINUITY SPELLING: Suggested canonical ship name = Beverly. If you prefer Beverley, standardize every ship reference and the worldbuilding entry to that spelling.",
           "description": "CONTINUITY SPELLING: Suggested canonical ship name = Beverly. If you prefer Beverley, standardize every ship reference and the worldbuilding entry to that spelling.",
           "selectedText": "Beverly...",
-          "startOffset": 2136,
-          "endOffset": 2146,
+          "startOffset": 2142,
+          "endOffset": 2152,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -17488,8 +17492,8 @@
           "body": "CONTINUITY SPELLING: Suggested canonical ship name = Beverly. If you prefer Beverley, standardize every ship reference and the worldbuilding entry to that spelling.",
           "description": "CONTINUITY SPELLING: Suggested canonical ship name = Beverly. If you prefer Beverley, standardize every ship reference and the worldbuilding entry to that spelling.",
           "selectedText": "The outside of the Beverley",
-          "startOffset": 5633,
-          "endOffset": 5660,
+          "startOffset": 5650,
+          "endOffset": 5677,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -17540,8 +17544,8 @@
           "body": "CONTINUITY TIMESPAN: If the main pre-gate present stays 2056, this likely overstates Beverly's disappearance unless you place the ship much earlier. Consider compressing it to a decade / two decades, or tie it to a different era explicitly.",
           "description": "CONTINUITY TIMESPAN: If the main pre-gate present stays 2056, this likely overstates Beverly's disappearance unless you place the ship much earlier. Consider compressing it to a decade / two decades, or tie it to a different era explicitly.",
           "selectedText": "over half a century ago",
-          "startOffset": 22322,
-          "endOffset": 22345,
+          "startOffset": 22387,
+          "endOffset": 22410,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -17566,8 +17570,8 @@
           "body": "ASUS, 31/03/2026 7:50 PM The first mention point of the grey class ship.",
           "description": "ASUS, 31/03/2026 7:50 PM The first mention point of the grey class ship.",
           "selectedText": "grey class.",
-          "startOffset": 42582,
-          "endOffset": 42593,
+          "startOffset": 42718,
+          "endOffset": 42729,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -17618,8 +17622,8 @@
           "body": "——————————————————————————————— NOTES: How does AC EF Field detect a ship and what gives it away in terms on vulnerabillity? A: In real world EF tracking in not really feasible as this is modtly dampened. We don’t focus on EF tracking but why though? ———————————————————————————————",
           "description": "——————————————————————————————— NOTES: How does AC EF Field detect a ship and what gives it away in terms on vulnerabillity? A: In real world EF tracking in not really feasible as this is modtly dampened. We don’t focus on EF tracking but why though? ———————————————————————————————",
           "selectedText": "“Not suer I guess I just wanted to see if there was a boogey man was still hiding under my bed” Said Tau. “If they're smart they’ll only perform passive tracking, image processing, light distortion, these kind of things. We won’t pick up an",
-          "startOffset": 49989,
-          "endOffset": 50382,
+          "startOffset": 50143,
+          "endOffset": 50536,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -17644,8 +17648,8 @@
           "body": "CONTINUITY SPELLING: Suggested canonical ship name = Balaenoptera. Standardize Baelenoptera / Bealenoptera to this unless the variants are deliberate in-world corruption.",
           "description": "CONTINUITY SPELLING: Suggested canonical ship name = Balaenoptera. Standardize Baelenoptera / Bealenoptera to this unless the variants are deliberate in-world corruption.",
           "selectedText": "Bealenoptera",
-          "startOffset": 27293,
-          "endOffset": 27305,
+          "startOffset": 27375,
+          "endOffset": 27387,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -17670,8 +17674,8 @@
           "body": "ASUS, 31/03/2026 7:53 PM ______________________ BACKGROUND NOTES ______________________ NOTE: The courier, is well disguised beyond human comprehension. Shielded from EF, and magnetic detection, slow moving yet undetectable by the sense that it projects a hardlight image, and emulates magnetically a blanket that constricts it’s true intention. It doesn’t necessarily have to be hardlight it could be. _____________________________________________________________ There should be something discreet that instills confidence in Tebo’s plan to get the crew to Oasis, here The Gates are referred to as Couriers. To instill the image of a feasable and possible way out, given their current lack of knowledge in the Technology a plan is made with positive manipulation based on the limits and scopes of their current mental capacity. _____________________________________________________________ The gate is disguised as a passing asteroid, at which the beverly enters into cloaking it’s journey. The grey class ship; trails the beverly based on light distortion tracking, the ships engines are far advanced , thus leaving no vapour or gaseous decay signature, all these bi products of the drice are captured while operating in cloaked mode, with the reduced low enerfy consumption. - Space tracking of vessels and asteroids. - Ground based radar, reveals distance velocity and shape rotation. Counter measures, EM tracking would need to be deflected or cloaked by a continued projection of the incoming magnetic field. - This could be used to detect an incoming ship but, at a cost of giving away postiion, on a hot burn this would be the time to use such a technology. The skin of the ship would beed to counter the EM tech in that moment when it went cold, the AI modes of the ship would only be primitive. _____________________________________________________________ _____________________________________________________________",
           "description": "ASUS, 31/03/2026 7:53 PM ______________________ BACKGROUND NOTES ______________________ NOTE: The courier, is well disguised beyond human comprehension. Shielded from EF, and magnetic detection, slow moving yet undetectable by the sense that it projects a hardlight image, and emulates magnetically a blanket that constricts it’s true intention. It doesn’t necessarily have to be hardlight it could be. _____________________________________________________________ There should be something discreet that instills confidence in Tebo’s plan to get the crew to Oasis, here The Gates are referred to as Couriers. To instill the image of a feasable and possible way out, given their current lack of knowledge in the Technology a plan is made with positive manipulation based on the limits and scopes of their current mental capacity. _____________________________________________________________ The gate is disguised as a passing asteroid, at which the beverly enters into cloaking it’s journey. The grey class ship; trails the beverly based on light distortion tracking, the ships engines are far advanced , thus leaving no vapour or gaseous decay signature, all these bi products of the drice are captured while operating in cloaked mode, with the reduced low enerfy consumption. - Space tracking of vessels and asteroids. - Ground based radar, reveals distance velocity and shape rotation. Counter measures, EM tracking would need to be deflected or cloaked by a continued projection of the incoming magnetic field. - This could be used to detect an incoming ship but, at a cost of giving away postiion, on a hot burn this would be the time to use such a technology. The skin of the ship would beed to counter the EM tech in that moment when it went cold, the AI modes of the ship would only be primitive. _____________________________________________________________ _____________________________________________________________",
           "selectedText": "Regardless, they will expose themselves the moment they open fire on our position,” said Tebo confidently.“Precisely,” Tex agreed. “By that point hopefully we will already be at the courier…” Tebo concluded. “So, yes, don’t go getting any c",
-          "startOffset": 48089,
-          "endOffset": 48340,
+          "startOffset": 48238,
+          "endOffset": 48489,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -17696,8 +17700,8 @@
           "body": "CONTINUITY NAME: Suggested canonical standard = Tao. Update Tau / Tam variants unless the difference is deliberate.",
           "description": "CONTINUITY NAME: Suggested canonical standard = Tao. Update Tau / Tam variants unless the difference is deliberate.",
           "selectedText": "said Tau",
-          "startOffset": 1764,
-          "endOffset": 1772,
+          "startOffset": 1768,
+          "endOffset": 1776,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -17800,8 +17804,8 @@
           "body": "CONTINUITY NAME: Suggested canonical standard = Tao. Update Tau / Tam variants unless the difference is deliberate.",
           "description": "CONTINUITY NAME: Suggested canonical standard = Tao. Update Tau / Tam variants unless the difference is deliberate.",
           "selectedText": "Said Tam",
-          "startOffset": 14483,
-          "endOffset": 14491,
+          "startOffset": 14519,
+          "endOffset": 14527,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -17826,8 +17830,8 @@
           "body": "CONTINUITY DATE-2155: Suggested canonical spine keeps 2155 as the post-gate later-era arrival date, explicitly flagged as Oeacion-adjusted rather than Earth-present.",
           "description": "CONTINUITY DATE-2155: Suggested canonical spine keeps 2155 as the post-gate later-era arrival date, explicitly flagged as Oeacion-adjusted rather than Earth-present.",
           "selectedText": "Oeacion calendar 2155",
-          "startOffset": 22896,
-          "endOffset": 22917,
+          "startOffset": 22951,
+          "endOffset": 22972,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -17852,8 +17856,8 @@
           "body": "CONTINUITY TIMESPAN: If the pre-gate present stays 2056 and this line points back to the 2023 / 2024 hidden-history thread, reduce this to roughly three decades or rephrase without a fixed span.",
           "description": "CONTINUITY TIMESPAN: If the pre-gate present stays 2056 and this line points back to the 2023 / 2024 hidden-history thread, reduce this to roughly three decades or rephrase without a fixed span.",
           "selectedText": "half a century",
-          "startOffset": 14467,
-          "endOffset": 14481,
+          "startOffset": 14503,
+          "endOffset": 14517,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -17878,8 +17882,8 @@
           "body": "CONTINUITY SPELLING: Suggested canonical ship name = Beverly. If you prefer Beverley, standardize every ship reference and the worldbuilding entry to that spelling.",
           "description": "CONTINUITY SPELLING: Suggested canonical ship name = Beverly. If you prefer Beverley, standardize every ship reference and the worldbuilding entry to that spelling.",
           "selectedText": "cargo hold of the Beverly",
-          "startOffset": 3708,
-          "endOffset": 3733,
+          "startOffset": 3716,
+          "endOffset": 3741,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -17904,8 +17908,8 @@
           "body": "CONTINUITY TITLE / SPELLING: Suggested canonical phrase = veil. Rename the scene title to \"Into the Veil\" unless \"Vail\" is deliberate wordplay.",
           "description": "CONTINUITY TITLE / SPELLING: Suggested canonical phrase = veil. Rename the scene title to \"Into the Veil\" unless \"Vail\" is deliberate wordplay.",
           "selectedText": "behind the veil",
-          "startOffset": 17799,
-          "endOffset": 17814,
+          "startOffset": 17843,
+          "endOffset": 17858,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -17930,8 +17934,8 @@
           "body": "CONFUSING: This is the manuscript's biggest visible date jump. The scene moves from the earlier mission chronology to an Oeacion-adjusted 2155 without a strong on-page elapsed-time explanation yet.",
           "description": "CONFUSING: This is the manuscript's biggest visible date jump. The scene moves from the earlier mission chronology to an Oeacion-adjusted 2155 without a strong on-page elapsed-time explanation yet.",
           "selectedText": "back to sol the year is by adjustment from the",
-          "startOffset": 22849,
-          "endOffset": 22895,
+          "startOffset": 22904,
+          "endOffset": 22950,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -17956,8 +17960,8 @@
           "body": "CONFUSING: If this points back to Marcellus suppressing the hidden sentient line since the 2023 / 2024 break, half a century undershoots the elapsed time in a 2155 frame and overshoots it in a 2056 frame.",
           "description": "CONFUSING: If this points back to Marcellus suppressing the hidden sentient line since the 2023 / 2024 break, half a century undershoots the elapsed time in a 2155 frame and overshoots it in a 2056 frame.",
           "selectedText": "managed to keep her at bay for",
-          "startOffset": 14436,
-          "endOffset": 14466,
+          "startOffset": 14472,
+          "endOffset": 14502,
           "status": "open",
           "createdAt": "2026-04-21T05:00:00.000Z",
           "source": "source-comment",
@@ -18801,36 +18805,6 @@
           "sourceDocumentId": "F68DA989-4763-451D-98CF-60089A01AB53",
           "sourcePath": "WorldBuilding / Front Matter / Ebook / Dedication",
           "attachmentConfidence": 0.2
-        },
-        {
-          "id": "inspiration-1778863409325-pejimq",
-          "noteType": "inspiration",
-          "chapterId": "chapter-0003",
-          "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
-          "sceneId": "scene-0023",
-          "sceneTitle": "Am I dreaming or am i dead",
-          "selectedText": "All he could see was the emptiness of a white void. Eventually the ringing stopped. There was no taste, smell or feeling of weight. He felt senseless, free of the body, but still had a conscience. He could still feel the pain brought on by memories, all his past trauma, but only in the mind. He had no breath or pulse. He drifted in the minds construct, and in this while he felt in control, he could not help but feel like he was at the complete mercy of whatever this was. He embraced the silence, trusting the process. It was the first peaceful moment he had felt in what seemed like an eternity. Nothing could harm him here other than his thoughts, his very being was that of his own will.",
-          "startOffset": 578,
-          "endOffset": 659,
-          "body": "John at this point has entered into the nautilus mind frame. It is here he is forced to confront all of his trauma that he holds onto. He will process his life, to let go of any hate and anger he might harbor. They say that dreams are a product of our subconscious processing all the trauma we have not yet dealt with. The Nautilus uses the time gap between transference of the mind to a body which is currently being grown at the reciprocal gate, to allow the subject to prepare for the new worlds which they will enter. \n\nTex is one of many who saw combat leading up to the wars fallout, he was also the part of the cleanup crew, confronted with cleaning up the aftermath, of what he thought he was fighting to prevent. He lost his family in the counter strike from China while they were still at home in Texas, When he sees them standing on oasis, smiling at him,  He feels they are smiling with him, helping to seal and give him closure that after all he had found peace continuity in a new beginning. It now fell to him to shape this new world he would soon become a part of. This was his world, and he found closure, that they accepted it to be his journey. \n\nAt the time I wrote this vers, I was not dealing very well with my parents relationship. I had just cut ties with my own parents, needing space. I was confronted with the reality that my father had cancer. I had also just resigned recently from my job in the Navy as a Signals and Ranges Engineer. My parents I know to this day could not quite understand my resignation. There was an urge inside me always from a young age, as many children do to make their parents proud, although strangely it was at this point in my life I began to realize what becomes more important as we age. The age we live in today is so different from the day our parents roamed the earth. They may never understand our actions. So we dream of them accepting our path and being along the ride with us. We may never in real life get this from some of our parents. The Nautilus gives this experience to Tex, so he may move forward with peace in his mind. \n\nWhen I write this book, it is kind of like my own oasis. \n\nWe begin to outgrow our need to please our adults as we start to realize that as we age, the world changes. What meant the world to them as they were growing up, no longer has the same cadence in our own world. The world is always changing. \n\nTex starts to realize in this passage that his parents are now merely passengers along for the ride. And while they may not always understand his reasons or actions, in his mind he begins to accept through his vision, that they would be happy alone just knowing that he had made it to bounds unknown to the normal human psyche, that he had outgrown himself, and pushed himself to limits and other realms through loyalty and trust in those he held close. \n\nSo many give up the fight when they become comfortable. For Tex he knew following John was a risk, and still he did, even when initially he questioned John’s integrity after he entered the chamber, It was his ability to trust Shai and her instincts that ultimately led him onto this path of discovery. He realizes that his parents now live on through him. And his journey would not have been made possible without them. Through this he starts to forgive himself, and see that there are so many possibilities that ultimately will live on through him. He only has the power now to shift how he sees the world. And how he will enter this new realm he is about to embark his journey in.",
-          "title": "John at this point has entered into...",
-          "createdAt": "2026-05-15T16:43:29.325Z",
-          "source": "manual"
-        },
-        {
-          "id": "inspiration-1778862939997-5juzrb",
-          "noteType": "inspiration",
-          "chapterId": "draft-chapter-1777528152393",
-          "chapterTitle": "",
-          "sceneId": "draft-scene-1777528152393",
-          "sceneTitle": "This is a test for the save function ",
-          "selectedText": "All he could see was the emptiness of a white void. Eventually the ringing stopped. There was no taste, smell or feeling of weight. He felt senseless, free of the body, but still had a conscience. He could still feel the pain brought on by memories, all his past trauma, but only in the mind. He had no breath or pulse. He drifted in the minds construct, and in this while he felt in control, he could not help but feel like he was at the complete mercy of whatever this was. He embraced the silence, trusting the process. It was the first peaceful moment he had felt in what seemed like an eternity. Nothing could harm him here other than his thoughts, his very being was that of his own will.",
-          "startOffset": 634,
-          "endOffset": 1328,
-          "body": "John at this point has entered into the nautilus mind frame. It is here he is forced to confront all of his trauma that he holds onto. He will process his life, to let go of any hate and anger he might harbor. They say that dreams are a product of our subconscious processing all the trauma we have not yet dealt with. The Nautilus uses the time gap between transference of the mind to a body which is currently being grown at the reciprocal gate, to allow the subject to prepare for the new worlds which they will enter. \n\nTex is one of many who saw combat leading up to the wars fallout, he was also the part of the cleanup crew, confronted with cleaning up the aftermath, of what he thought he was fighting to prevent. He lost his family in the counter strike from China while they were still at home in Texas, When he sees them standing on oasis, smiling at him,  He feels they are smiling with him, helping to seal and give him closure that after all he had found peace continuity in a new beginning. It now fell to him to shape this new world he would soon become a part of. This was his world, and he found closure, that they accepted it to be his journey. \n\nAt the time I wrote this vers, I was not dealing very well with my parents relationship. I had just cut ties with my own parents, needing space. I was confronted with the reality that my father had cancer. I had also just resigned recently from my job in the Navy as a Signals and Ranges Engineer. My parents I know to this day could not quite understand my resignation. There was an urge inside me always from a young age, as many children do to make their parents proud, although strangely it was at this point in my life I began to realize what becomes more important as we age. The age we live in today is so different from the day our parents roamed the earth. They may never understand our actions. So we dream of them accepting our path and being along the ride with us. We may never in real life get this from some of our parents. The Nautilus gives this experience to Tex, so he may move forward with peace in his mind. \n\nWhen I write this book, it is kind of like my own oasis. \n\nWe begin to outgrow our need to please our adults as we start to realize that as we age, the world changes. What meant the world to them as they were growing up, no longer has the same cadence in our own world. The world is always changing. \n\nTex starts to realize in this passage that his parents are now merely passengers along for the ride. And while they may not always understand his reasons or actions, in his mind he begins to accept through his vision, that they would be happy alone just knowing that he had made it to bounds unknown to the normal human psyche, that he had outgrown himself, and pushed himself to limits and other realms through loyalty and trust in those he held close. \n\nSo many give up the fight when they become comfortable. For Tex he knew following John was a risk, and still he did, even when initially he questioned John’s integrity after he entered the chamber, It was his ability to trust Shai and her instincts that ultimately led him onto this path of discovery. He realizes that his parents now live on through him. And his journey would not have been made possible without them. Through this he starts to forgive himself, and see that there are so many possibilities that ultimately will live on through him. He only has the power now to shift how he sees the world. And how he will enter this new realm he is about to embark his journey in.",
-          "title": "John at this point has entered into...",
-          "createdAt": "2026-05-15T16:35:39.997Z",
-          "source": "manual"
         }
       ],
       "sourceArchive": [
@@ -18911,18 +18885,14 @@
         "localAiPrefs": {
           "enabled": true
         },
-        "binderPanelWidth": 220,
-        "consoleDockWidth": 260,
-        "userSettingPanelResizerLeftPercent": 0,
-        "userSettingPanelResizerRightPercent": 0,
+        "binderPanelWidth": 684,
+        "consoleDockWidth": 668,
+        "userSettingPanelResizerLeftPercent": 24.3,
+        "userSettingPanelResizerRightPercent": 23.7,
         "consoleDockCollapsed": false,
         "collapsedChapterIds": [],
         "collapsedConsoleChapterIds": {
-          "issueTasks": [
-            "chapter-0002",
-            "chapter-0003",
-            "chapter-0004"
-          ],
+          "issueTasks": [],
           "issues": [],
           "inspiration": [],
           "research": []
@@ -18931,8 +18901,8 @@
         "projectSourcePath": "",
         "writingTargetState": {
           "targetWords": 150000,
-          "releaseDate": "2026-06-20",
-          "sessionTargetWords": 4798,
+          "releaseDate": "2026-05-20",
+          "sessionTargetWords": 37103,
           "sessionsPerDay": 5,
           "sessionTimeoutMinutes": 20,
           "targetCadence": "daily",
@@ -18945,288 +18915,96 @@
             "forecast",
             "sessionTracker"
           ],
-          "sessionBaselineWordCount": 71383,
-          "sessionLastWordCount": 71384,
+          "sessionBaselineWordCount": 71417,
+          "sessionLastWordCount": 71417,
           "dailyBaselineDateKey": "2026-05-20",
-          "dailyBaselineWordCount": 71383,
-          "sessionIsActive": true,
-          "sessionStartedAt": "2026-05-20T08:51:05.516Z",
-          "sessionLastActiveAt": "2026-05-20T08:51:05.650Z",
-          "sessionConcludedAt": "",
-          "sessionConcludedReason": "",
+          "dailyBaselineWordCount": 71510,
+          "sessionIsActive": false,
+          "sessionStartedAt": "2026-05-20T12:23:45.005Z",
+          "sessionLastActiveAt": "2026-05-20T12:23:45.144Z",
+          "sessionConcludedAt": "2026-05-20T12:43:45.144Z",
+          "sessionConcludedReason": "boot",
           "sessionSamples": [
             {
-              "capturedAt": "2026-05-20T08:51:05.516Z",
-              "wordCount": 71383
+              "capturedAt": "2026-05-20T12:23:45.005Z",
+              "wordCount": 71417
             },
             {
-              "capturedAt": "2026-05-20T08:51:05.650Z",
-              "wordCount": 71384
+              "capturedAt": "2026-05-20T12:23:45.144Z",
+              "wordCount": 71417
             }
           ],
           "sessionHistory": [
             {
-              "startedAt": "2026-05-07T08:16:49.990Z",
-              "endedAt": "2026-05-07T08:49:23.559Z",
+              "startedAt": "2026-05-07T14:30:15.620Z",
+              "endedAt": "2026-05-11T05:26:53.748Z",
               "endedReason": "idle",
-              "wordCountStart": 71444,
-              "wordCountEnd": 71395,
-              "wordGain": 0,
-              "activeMinutes": 32,
+              "wordCountStart": 71451,
+              "wordCountEnd": 71478,
+              "wordGain": 27,
+              "activeMinutes": 5216,
               "idleMinutes": 20,
-              "sessionTargetWordsPerSession": 1471,
+              "sessionTargetWordsPerSession": 1745,
               "goalReached": false
             },
             {
-              "startedAt": "2026-05-07T08:51:47.766Z",
-              "endedAt": "2026-05-07T09:50:38.748Z",
+              "startedAt": "2026-05-11T06:44:17.831Z",
+              "endedAt": "2026-05-11T07:04:19.774Z",
               "endedReason": "idle",
-              "wordCountStart": 71395,
-              "wordCountEnd": 71406,
-              "wordGain": 11,
-              "activeMinutes": 58,
-              "idleMinutes": 20,
-              "sessionTargetWordsPerSession": 1471,
-              "goalReached": false
-            },
-            {
-              "startedAt": "2026-05-07T10:01:26.137Z",
-              "endedAt": "2026-05-07T10:21:46.479Z",
-              "endedReason": "idle",
-              "wordCountStart": 71406,
-              "wordCountEnd": 71405,
-              "wordGain": 0,
-              "activeMinutes": 20,
-              "idleMinutes": 20,
-              "sessionTargetWordsPerSession": 1471,
-              "goalReached": false
-            },
-            {
-              "startedAt": "2026-05-07T13:47:02.551Z",
-              "endedAt": "2026-05-07T14:07:18.559Z",
-              "endedReason": "idle",
-              "wordCountStart": 71405,
-              "wordCountEnd": 71412,
-              "wordGain": 7,
-              "activeMinutes": 20,
-              "idleMinutes": 20,
-              "sessionTargetWordsPerSession": 1471,
-              "goalReached": false
-            },
-            {
-              "startedAt": "2026-05-07T14:17:14.420Z",
-              "endedAt": "2026-05-07T14:48:35.298Z",
-              "endedReason": "idle",
-              "wordCountStart": 71412,
-              "wordCountEnd": 71422,
-              "wordGain": 10,
-              "activeMinutes": 31,
-              "idleMinutes": 20,
-              "sessionTargetWordsPerSession": 2124,
-              "goalReached": false
-            },
-            {
-              "startedAt": "2026-05-11T04:56:55.960Z",
-              "endedAt": "2026-05-11T05:17:54.060Z",
-              "endedReason": "idle",
-              "wordCountStart": 71422,
-              "wordCountEnd": 71429,
-              "wordGain": 7,
-              "activeMinutes": 20,
-              "idleMinutes": 20,
-              "sessionTargetWordsPerSession": 2124,
-              "goalReached": false
-            },
-            {
-              "startedAt": "2026-05-11T08:52:09.031Z",
-              "endedAt": "2026-05-11T09:12:14.310Z",
-              "endedReason": "idle",
-              "wordCountStart": 71429,
-              "wordCountEnd": 71434,
-              "wordGain": 5,
-              "activeMinutes": 20,
-              "idleMinutes": 20,
-              "sessionTargetWordsPerSession": 3186,
-              "goalReached": false
-            },
-            {
-              "startedAt": "2026-05-13T23:24:58.235Z",
-              "endedAt": "2026-05-13T23:54:32.955Z",
-              "endedReason": "idle",
-              "wordCountStart": 71434,
-              "wordCountEnd": 71389,
-              "wordGain": 0,
-              "activeMinutes": 29,
-              "idleMinutes": 20,
-              "sessionTargetWordsPerSession": 517,
-              "goalReached": false
-            },
-            {
-              "startedAt": "2026-05-14T00:24:59.937Z",
-              "endedAt": "2026-05-14T00:45:01.229Z",
-              "endedReason": "idle",
-              "wordCountStart": 71389,
-              "wordCountEnd": 71390,
+              "wordCountStart": 71478,
+              "wordCountEnd": 71479,
               "wordGain": 1,
               "activeMinutes": 20,
               "idleMinutes": 20,
-              "sessionTargetWordsPerSession": 517,
+              "sessionTargetWordsPerSession": 1745,
               "goalReached": false
             },
             {
-              "startedAt": "2026-05-14T04:40:45.552Z",
-              "endedAt": "2026-05-14T05:00:51.350Z",
+              "startedAt": "2026-05-13T23:45:29.246Z",
+              "endedAt": "2026-05-14T00:05:35.400Z",
               "endedReason": "idle",
-              "wordCountStart": 71390,
-              "wordCountEnd": 2536,
+              "wordCountStart": 71479,
+              "wordCountEnd": 71483,
+              "wordGain": 4,
+              "activeMinutes": 20,
+              "idleMinutes": 20,
+              "sessionTargetWordsPerSession": 3926,
+              "goalReached": false
+            },
+            {
+              "startedAt": "2026-05-15T22:45:24.938Z",
+              "endedAt": "2026-05-15T23:06:45.011Z",
+              "endedReason": "idle",
+              "wordCountStart": 71483,
+              "wordCountEnd": 71510,
+              "wordGain": 27,
+              "activeMinutes": 21,
+              "idleMinutes": 20,
+              "sessionTargetWordsPerSession": 7421,
+              "goalReached": false
+            },
+            {
+              "startedAt": "2026-05-20T04:43:37.520Z",
+              "endedAt": "2026-05-20T05:03:41.103Z",
+              "endedReason": "idle",
+              "wordCountStart": 71510,
+              "wordCountEnd": 71417,
               "wordGain": 0,
               "activeMinutes": 20,
               "idleMinutes": 20,
-              "sessionTargetWordsPerSession": 889,
+              "sessionTargetWordsPerSession": 7421,
               "goalReached": false
             },
             {
-              "startedAt": "2026-05-14T05:26:31.933Z",
-              "endedAt": "2026-05-14T05:52:07.787Z",
-              "endedReason": "idle",
-              "wordCountStart": 2536,
-              "wordCountEnd": 1266,
-              "wordGain": 0,
-              "activeMinutes": 25,
-              "idleMinutes": 20,
-              "sessionTargetWordsPerSession": 804,
-              "goalReached": false
-            },
-            {
-              "startedAt": "2026-05-14T06:30:51.058Z",
-              "endedAt": "2026-05-14T07:05:01.942Z",
-              "endedReason": "idle",
-              "wordCountStart": 71377,
-              "wordCountEnd": 1333,
-              "wordGain": 0,
-              "activeMinutes": 34,
-              "idleMinutes": 20,
-              "sessionTargetWordsPerSession": 804,
-              "goalReached": false
-            },
-            {
-              "startedAt": "2026-05-14T09:56:56.482Z",
-              "endedAt": "2026-05-14T10:37:17.372Z",
-              "endedReason": "idle",
-              "wordCountStart": 1333,
-              "wordCountEnd": 71394,
-              "wordGain": 70061,
-              "activeMinutes": 40,
-              "idleMinutes": 20,
-              "sessionTargetWordsPerSession": 437,
-              "goalReached": true
-            },
-            {
-              "startedAt": "2026-05-15T06:27:19.807Z",
-              "endedAt": "2026-05-15T07:23:30.881Z",
-              "endedReason": "idle",
-              "wordCountStart": 71394,
-              "wordCountEnd": 71377,
-              "wordGain": 0,
-              "activeMinutes": 56,
-              "idleMinutes": 20,
-              "sessionTargetWordsPerSession": 437,
-              "goalReached": false
-            },
-            {
-              "startedAt": "2026-05-15T07:54:51.427Z",
-              "endedAt": "2026-05-15T08:22:20.916Z",
-              "endedReason": "idle",
-              "wordCountStart": 71377,
-              "wordCountEnd": 71391,
-              "wordGain": 14,
-              "activeMinutes": 27,
-              "idleMinutes": 20,
-              "sessionTargetWordsPerSession": 437,
-              "goalReached": false
-            },
-            {
-              "startedAt": "2026-05-15T08:24:36.814Z",
-              "endedAt": "2026-05-15T08:44:56.921Z",
-              "endedReason": "idle",
-              "wordCountStart": 71391,
-              "wordCountEnd": 71389,
-              "wordGain": 0,
-              "activeMinutes": 20,
-              "idleMinutes": 20,
-              "sessionTargetWordsPerSession": 437,
-              "goalReached": false
-            },
-            {
-              "startedAt": "2026-05-15T10:18:33.753Z",
-              "endedAt": "2026-05-15T10:43:31.293Z",
-              "endedReason": "idle",
-              "wordCountStart": 71391,
-              "wordCountEnd": 71379,
-              "wordGain": 0,
-              "activeMinutes": 24,
-              "idleMinutes": 20,
-              "sessionTargetWordsPerSession": 437,
-              "goalReached": false
-            },
-            {
-              "startedAt": "2026-05-15T10:58:37.902Z",
-              "endedAt": "2026-05-15T11:41:01.315Z",
-              "endedReason": "idle",
-              "wordCountStart": 71379,
-              "wordCountEnd": 71382,
-              "wordGain": 3,
-              "activeMinutes": 42,
-              "idleMinutes": 20,
-              "sessionTargetWordsPerSession": 437,
-              "goalReached": false
-            },
-            {
-              "startedAt": "2026-05-15T11:59:59.718Z",
-              "endedAt": "2026-05-15T12:20:24.218Z",
-              "endedReason": "idle",
-              "wordCountStart": 71380,
-              "wordCountEnd": 71404,
-              "wordGain": 24,
-              "activeMinutes": 20,
-              "idleMinutes": 20,
-              "sessionTargetWordsPerSession": 437,
-              "goalReached": false
-            },
-            {
-              "startedAt": "2026-05-15T16:21:47.243Z",
-              "endedAt": "2026-05-15T17:20:30.255Z",
+              "startedAt": "2026-05-20T12:23:45.005Z",
+              "endedAt": "2026-05-20T12:43:45.144Z",
               "endedReason": "boot",
-              "wordCountStart": 71380,
-              "wordCountEnd": 71383,
-              "wordGain": 3,
-              "activeMinutes": 58,
-              "idleMinutes": 20,
-              "sessionTargetWordsPerSession": 449,
-              "goalReached": false
-            },
-            {
-              "startedAt": "2026-05-15T17:21:14.141Z",
-              "endedAt": "2026-05-15T17:41:18.862Z",
-              "endedReason": "idle",
-              "wordCountStart": 71383,
-              "wordCountEnd": 71383,
+              "wordCountStart": 71417,
+              "wordCountEnd": 71417,
               "wordGain": 0,
               "activeMinutes": 20,
               "idleMinutes": 20,
-              "sessionTargetWordsPerSession": 449,
-              "goalReached": false
-            },
-            {
-              "startedAt": "2026-05-15T19:40:40.867Z",
-              "endedAt": "2026-05-15T20:17:33.610Z",
-              "endedReason": "boot",
-              "wordCountStart": 71383,
-              "wordCountEnd": 71383,
-              "wordGain": 0,
-              "activeMinutes": 36,
-              "idleMinutes": 20,
-              "sessionTargetWordsPerSession": 449,
+              "sessionTargetWordsPerSession": 7421,
               "goalReached": false
             }
           ],
@@ -19667,9 +19445,9 @@
             },
             {
               "date": "2026-05-01",
-              "wordCount": 71444,
-              "wordDelta": -69,
-              "capturedAt": "2026-05-01T02:52:40.085Z",
+              "wordCount": 71451,
+              "wordDelta": -62,
+              "capturedAt": "2026-04-30T23:59:19.371Z",
               "chapterId": "chapter-0001",
               "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
               "sceneId": "scene-0001",
@@ -19681,9 +19459,9 @@
             },
             {
               "date": "2026-05-07",
-              "wordCount": 71422,
-              "wordDelta": -22,
-              "capturedAt": "2026-05-07T14:38:56.811Z",
+              "wordCount": 71465,
+              "wordDelta": 14,
+              "capturedAt": "2026-05-07T14:39:05.030Z",
               "chapterId": "chapter-0001",
               "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
               "sceneId": "scene-0001",
@@ -19695,9 +19473,9 @@
             },
             {
               "date": "2026-05-11",
-              "wordCount": 71434,
-              "wordDelta": 12,
-              "capturedAt": "2026-05-11T08:52:16.373Z",
+              "wordCount": 71479,
+              "wordDelta": 14,
+              "capturedAt": "2026-05-11T08:51:25.962Z",
               "chapterId": "chapter-0001",
               "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
               "sceneId": "scene-0001",
@@ -19709,23 +19487,9 @@
             },
             {
               "date": "2026-05-14",
-              "wordCount": 1283,
-              "wordDelta": -70151,
-              "capturedAt": "2026-05-14T10:17:19.441Z",
-              "chapterId": "chapter-0001",
-              "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
-              "sceneId": "scene-0001",
-              "sceneTitle": "John's Dream",
-              "passageExcerpt": "Icicles clung to the cavern roof, daring anyone brave enough to trespass below them. Nuancing Radiant beams of…",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            },
-            {
-              "date": "2026-05-15",
-              "wordCount": 71404,
-              "wordDelta": 70121,
-              "capturedAt": "2026-05-15T13:04:08.474Z",
+              "wordCount": 71483,
+              "wordDelta": 4,
+              "capturedAt": "2026-05-13T23:46:53.101Z",
               "chapterId": "chapter-0001",
               "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
               "sceneId": "scene-0001",
@@ -19737,37 +19501,37 @@
             },
             {
               "date": "2026-05-16",
-              "wordCount": 71383,
-              "wordDelta": -21,
-              "capturedAt": "2026-05-15T22:05:44.845Z",
-              "chapterId": "chapter-0001",
-              "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
-              "sceneId": "scene-0001",
-              "sceneTitle": "John's Dream",
-              "passageExcerpt": "Icicles clung to the cavern roof, daring anyone brave enough to trespass below them. Nuancing Radiant beams of…",
+              "wordCount": 71510,
+              "wordDelta": 27,
+              "capturedAt": "2026-05-15T22:46:49.280Z",
+              "chapterId": "chapter-0003",
+              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+              "sceneId": "scene-0023",
+              "sceneTitle": "Am I dreaming or am i dead",
+              "passageExcerpt": "Ringing pierced Tex’s ears with a strange bubbly static. It wasn’t a normal ringing. A strange Tinnitus he…",
               "issueCount": 0,
-              "inspirationCount": 2,
+              "inspirationCount": 0,
               "noteText": ""
             },
             {
               "date": "2026-05-20",
-              "wordCount": 71384,
-              "wordDelta": 1,
-              "capturedAt": "2026-05-20T08:51:10.672Z",
-              "chapterId": "draft-chapter-1777528152393",
-              "chapterTitle": "",
-              "sceneId": "draft-scene-1777528152393",
-              "sceneTitle": "This is a test for the save function ",
-              "passageExcerpt": "Mark didn't know how he ended up on this wretched plain. 34OriginFileproject",
+              "wordCount": 71417,
+              "wordDelta": -93,
+              "capturedAt": "2026-05-20T15:37:02.430Z",
+              "chapterId": "chapter-0003",
+              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+              "sceneId": "scene-0023",
+              "sceneTitle": "Am I dreaming or am i dead",
+              "passageExcerpt": "Ringing pierced Tex’s ears with a strange bubbly static. It wasn’t a normal ringing. A strange Tinnitus he…",
               "issueCount": 0,
-              "inspirationCount": 2,
+              "inspirationCount": 0,
               "noteText": ""
             }
           ],
-          "updatedAt": "2026-05-20T08:51:10.672Z"
+          "updatedAt": "2026-05-20T15:37:02.430Z"
         },
         "writingTargetViewMode": "month",
-        "writingTargetSelectedDateKey": "2026-05-14",
+        "writingTargetSelectedDateKey": "2026-05-01",
         "writingTargetCalendarMonthKey": "2026-05",
         "spellcheck": {
           "dictionaryWords": [],
@@ -19790,17 +19554,17 @@
       },
       "revisions": {
         "schemaVersion": 1,
-        "activeSessionId": "revision-session-1779267065512-y20k4p",
+        "activeSessionId": "revision-session-1779252217515-qxsedt",
         "sessions": [
           {
             "metadata": {
-              "id": "revision-session-1779267065512-y20k4p",
-              "sessionId": "revision-session-1779267065512-y20k4p",
+              "id": "revision-session-1779252217515-qxsedt",
+              "sessionId": "revision-session-1779252217515-qxsedt",
               "status": "open",
-              "projectId": "project-serva-vitae",
-              "title": "Writing Session 20 May, 16:51",
+              "projectId": "2project-serva-vitae",
+              "title": "Writing Session 20 May, 12:43",
               "description": "",
-              "startedAt": "2026-05-20T08:51:05.507Z",
+              "startedAt": "2026-05-20T04:43:37.510Z",
               "stagedAt": "",
               "finalisedAt": "",
               "archivedAt": "",
@@ -19812,15 +19576,15 @@
               "origins": [
                 "manual_editor"
               ],
-              "baselineProjectHash": "hb00e4805",
+              "baselineProjectHash": "h993a5a4a",
               "finalProjectHash": "",
               "writingSessionBoundaryKey": ""
             },
             "baselineDigest": {
               "schemaVersion": 1,
               "project": {
-                "id": "project-serva-vitae",
-                "title": "Untitled Project",
+                "id": "2project-serva-vitae",
+                "title": "2project-serva-vitae",
                 "source": "project-file"
               },
               "manuscript": {
@@ -19832,9 +19596,9 @@
                     "chapterId": "chapter-0001",
                     "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
                     "order": 1,
-                    "wordCount": 1266,
-                    "charCount": 7174,
-                    "textHash": "h35ea4bf2",
+                    "wordCount": 1359,
+                    "charCount": 7652,
+                    "textHash": "h562e4049",
                     "preview": "Icicles clung to the cavern roof, daring anyone brave enough to trespass below them. Nuancing Radiant beams of warm morning light pierced through them, momentarily blinding the Cap...",
                     "synopsisHash": "h00001505"
                   },
@@ -20118,7 +19882,7 @@
                     "chapterId": "chapter-0003",
                     "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
                     "order": 23,
-                    "wordCount": 205,
+                    "wordCount": 232,
                     "charCount": 0,
                     "textHash": "",
                     "preview": "",
@@ -20209,10 +19973,10 @@
                     "chapterId": "draft-chapter-1777528152393",
                     "chapterTitle": "",
                     "order": 30,
-                    "wordCount": 11,
-                    "charCount": 57,
-                    "textHash": "h9d540d42",
-                    "preview": "Mark didn't know how he ended up on this wretched plain.",
+                    "wordCount": 18,
+                    "charCount": 0,
+                    "textHash": "",
+                    "preview": "",
                     "synopsisHash": "h00001505"
                   }
                 },
@@ -20220,27 +19984,27 @@
                   "source-comment-25f39d38-61ca-4214-b185-11f84d4f7e6e-7aad9f36-a218-4260-a211-26300120233e": {
                     "id": "source-comment-25f39d38-61ca-4214-b185-11f84d4f7e6e-7aad9f36-a218-4260-a211-26300120233e",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "CONTINUITY SPELLING: Suggested canonical ship name =...",
                     "sceneId": "scene-0002",
                     "status": "open",
-                    "hash": "heb231371",
+                    "hash": "h2f13cfb5",
                     "preview": "CONTINUITY SPELLING: Suggested canonical ship name = Balaenoptera. Standardize Baelenoptera / Bealenoptera to this unless the variants are deliberate in-world corruption."
                   },
                   "source-comment-25f39d38-61ca-4214-b185-11f84d4f7e6e-6f381aa7-f335-4d2f-b541-86dc3352d347": {
                     "id": "source-comment-25f39d38-61ca-4214-b185-11f84d4f7e6e-6f381aa7-f335-4d2f-b541-86dc3352d347",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "CONTINUITY INSTITUTION: Suggested canonical reading = CLEAR...",
                     "sceneId": "scene-0002",
                     "status": "open",
-                    "hash": "h73d66ea9",
+                    "hash": "hb833e0a2",
                     "preview": "CONTINUITY INSTITUTION: Suggested canonical reading = CLEAR is the public adaptive governance / economic model. If CLEAR is also a protocol stack, define that relationship explicit..."
                   },
                   "source-comment-25f39d38-61ca-4214-b185-11f84d4f7e6e-c95d4017-f421-4f5d-a22f-616bbb89a9d8": {
                     "id": "source-comment-25f39d38-61ca-4214-b185-11f84d4f7e6e-c95d4017-f421-4f5d-a22f-616bbb89a9d8",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "CONTINUITY DATE-2056: Suggested canonical spine keeps the...",
                     "sceneId": "scene-0002",
                     "status": "open",
@@ -20250,37 +20014,37 @@
                   "source-comment-25f39d38-61ca-4214-b185-11f84d4f7e6e-3dd04504-9254-4b17-bbe1-0045a76b1558": {
                     "id": "source-comment-25f39d38-61ca-4214-b185-11f84d4f7e6e-3dd04504-9254-4b17-bbe1-0045a76b1558",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "CONTINUITY SPELLING: Suggested canonical ship name =...",
                     "sceneId": "scene-0002",
                     "status": "open",
-                    "hash": "h561dfd7b",
+                    "hash": "h92dd1273",
                     "preview": "CONTINUITY SPELLING: Suggested canonical ship name = Balaenoptera. Standardize Baelenoptera / Bealenoptera to this unless the variants are deliberate in-world corruption."
                   },
                   "source-comment-df6e69b7-5d64-4f81-a28e-e30d477f89ea-7e58087b-c136-4b4c-81c9-828edae1c4e0": {
                     "id": "source-comment-df6e69b7-5d64-4f81-a28e-e30d477f89ea-7e58087b-c136-4b4c-81c9-828edae1c4e0",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "1, 15/06/2024 6:22 PM What is the...",
                     "sceneId": "scene-0003",
                     "status": "open",
-                    "hash": "h9e891a95",
+                    "hash": "h305fe7da",
                     "preview": "1, 15/06/2024 6:22 PM What is the Iris? The algorithm?"
                   },
                   "source-comment-df6e69b7-5d64-4f81-a28e-e30d477f89ea-7b04a41f-4d51-4bc2-b6e8-68d30f28835d": {
                     "id": "source-comment-df6e69b7-5d64-4f81-a28e-e30d477f89ea-7b04a41f-4d51-4bc2-b6e8-68d30f28835d",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "CONTINUITY NAME: Suggested canonical standard = Tao....",
                     "sceneId": "scene-0003",
                     "status": "open",
-                    "hash": "h81503482",
+                    "hash": "h9058840f",
                     "preview": "CONTINUITY NAME: Suggested canonical standard = Tao. Update Tau / Tam variants unless the difference is deliberate."
                   },
                   "source-comment-1c95b670-73db-43f4-acab-6b47fe7740e9-3a8cedd3-0d21-4d96-955b-ec81c5f62de8": {
                     "id": "source-comment-1c95b670-73db-43f4-acab-6b47fe7740e9-3a8cedd3-0d21-4d96-955b-ec81c5f62de8",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "The teacher should have a character profile",
                     "sceneId": "scene-0005",
                     "status": "open",
@@ -20290,67 +20054,67 @@
                   "source-comment-7607398b-bec7-418a-8d68-745c8ac767f7-e2285c5c-e4c6-4709-a88b-8614834d8e4d": {
                     "id": "source-comment-7607398b-bec7-418a-8d68-745c8ac767f7-e2285c5c-e4c6-4709-a88b-8614834d8e4d",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "CONFUSING: If Chapter 1 is still the...",
                     "sceneId": "scene-0010",
                     "status": "open",
-                    "hash": "ha8f29dad",
+                    "hash": "h8582482b",
                     "preview": "CONFUSING: If Chapter 1 is still the 2056 pre-gate present, this puts John's family photo in his future. Either the present-day spine is later here, or this photo date needs to mov..."
                   },
                   "source-comment-fbcc331d-3644-43ea-a19b-45b1652e708b-d30a57df-565d-4025-96bf-d7b973f570ce": {
                     "id": "source-comment-fbcc331d-3644-43ea-a19b-45b1652e708b-d30a57df-565d-4025-96bf-d7b973f570ce",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "1, 16/04/2026 2:52 PM Design Note: Atmospheric...",
                     "sceneId": "scene-0011",
                     "status": "open",
-                    "hash": "hb235c125",
+                    "hash": "h07020628",
                     "preview": "1, 16/04/2026 2:52 PM Design Note: Atmospheric Trail Ejection System (ATES) System Overview A suit-mounted pyrotechnic/chemical deployment system designed for high-altitude, low-vi..."
                   },
                   "source-comment-622d5022-8f5d-4f30-ac3f-ca62ac5831df-d6d8bb0b-fcba-465e-a0da-3b7223e17736": {
                     "id": "source-comment-622d5022-8f5d-4f30-ac3f-ca62ac5831df-d6d8bb0b-fcba-465e-a0da-3b7223e17736",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "CONTINUITY NAME: Suggested canonical fix = either...",
                     "sceneId": "scene-0013",
                     "status": "open",
-                    "hash": "h74c16a39",
+                    "hash": "h455a7b9b",
                     "preview": "CONTINUITY NAME: Suggested canonical fix = either rename Cerena to Julie Henderson for consistency, or establish Cerena as her private / familial / alias name and Julie Henderson a..."
                   },
                   "source-comment-622d5022-8f5d-4f30-ac3f-ca62ac5831df-bec43002-6c7c-4b9c-8d8d-9afff0ca7b41": {
                     "id": "source-comment-622d5022-8f5d-4f30-ac3f-ca62ac5831df-bec43002-6c7c-4b9c-8d8d-9afff0ca7b41",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "CONFUSING: If this cache was left around...",
                     "sceneId": "scene-0013",
                     "status": "open",
-                    "hash": "h5c25fa10",
+                    "hash": "h98412550",
                     "preview": "CONFUSING: If this cache was left around the 2023 / 2024 facility shutdown and John is still in the 2056 mission present, this file is roughly three decades old, not over half a ce..."
                   },
                   "source-comment-bf253840-4071-45d8-bd2a-35b72d27dfa3-e7ae0734-3a2d-42c8-ab83-f3ed3e7cc641": {
                     "id": "source-comment-bf253840-4071-45d8-bd2a-35b72d27dfa3-e7ae0734-3a2d-42c8-ab83-f3ed3e7cc641",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "CONFUSING: This pod / gate hardware reads...",
                     "sceneId": "scene-0014",
                     "status": "open",
-                    "hash": "h7691c0da",
+                    "hash": "hca8a17d5",
                     "preview": "CONFUSING: This pod / gate hardware reads as abandoned since the 2023 / 2024 shutdown thread, so half a century does not fit a 2056 present. If Chapter 2 is later than that, the la..."
                   },
                   "source-comment-c120ad37-5946-40ed-9cc5-302953e0b738-fa2269db-5bee-43b7-9925-d6f75330d007": {
                     "id": "source-comment-c120ad37-5946-40ed-9cc5-302953e0b738-fa2269db-5bee-43b7-9925-d6f75330d007",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "CONTINUITY TITLE/SPELLING: this scene is titled \"Into...",
                     "sceneId": "scene-0017",
                     "status": "open",
-                    "hash": "ha42531dc",
+                    "hash": "hedbd5010",
                     "preview": "CONTINUITY TITLE/SPELLING: this scene is titled \"Into the Vail\"; compare with \"veil\" usage elsewhere."
                   },
                   "source-comment-f6521096-1219-43a7-91e5-953344fa26bc-fe2549a4-a631-4ecb-b3c7-d477813c683f": {
                     "id": "source-comment-f6521096-1219-43a7-91e5-953344fa26bc-fe2549a4-a631-4ecb-b3c7-d477813c683f",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "CONTINUITY DATE-2048: Suggested canonical spine keeps circa...",
                     "sceneId": "scene-0018",
                     "status": "open",
@@ -20360,27 +20124,27 @@
                   "source-comment-73e82dd1-5a03-4910-8e01-215a2c2fcd73-fe56e586-6d04-4411-8586-2b1644962649": {
                     "id": "source-comment-73e82dd1-5a03-4910-8e01-215a2c2fcd73-fe56e586-6d04-4411-8586-2b1644962649",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "CONTINUITY SPELLING: Suggested canonical ship name =...",
                     "sceneId": "scene-0021",
                     "status": "open",
-                    "hash": "ha7a420e3",
+                    "hash": "h288a7865",
                     "preview": "CONTINUITY SPELLING: Suggested canonical ship name = Beverly. If you prefer Beverley, standardize every ship reference and the worldbuilding entry to that spelling."
                   },
                   "source-comment-73e82dd1-5a03-4910-8e01-215a2c2fcd73-34874685-c858-4982-9c71-a0435d62f21a": {
                     "id": "source-comment-73e82dd1-5a03-4910-8e01-215a2c2fcd73-34874685-c858-4982-9c71-a0435d62f21a",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "CONTINUITY SPELLING: Suggested canonical ship name =...",
                     "sceneId": "scene-0021",
                     "status": "open",
-                    "hash": "h819b3abb",
+                    "hash": "h7bf2bd18",
                     "preview": "CONTINUITY SPELLING: Suggested canonical ship name = Beverly. If you prefer Beverley, standardize every ship reference and the worldbuilding entry to that spelling."
                   },
                   "source-comment-915d6d88-2f76-4e99-adb0-cfa7e9f0659c-010363c8-ab75-4b78-b337-90ea5ffa7e96": {
                     "id": "source-comment-915d6d88-2f76-4e99-adb0-cfa7e9f0659c-010363c8-ab75-4b78-b337-90ea5ffa7e96",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "ASUS, 31/03/2026 8:22 PM They go cold,...",
                     "sceneId": "scene-0022",
                     "status": "open",
@@ -20390,27 +20154,27 @@
                   "source-comment-915d6d88-2f76-4e99-adb0-cfa7e9f0659c-cb92f2d8-5149-4489-8f16-a88517a12748": {
                     "id": "source-comment-915d6d88-2f76-4e99-adb0-cfa7e9f0659c-cb92f2d8-5149-4489-8f16-a88517a12748",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "CONTINUITY TIMESPAN: If the main pre-gate present...",
                     "sceneId": "scene-0022",
                     "status": "open",
-                    "hash": "h1a22c257",
+                    "hash": "hd5c54edf",
                     "preview": "CONTINUITY TIMESPAN: If the main pre-gate present stays 2056, this likely overstates Beverly's disappearance unless you place the ship much earlier. Consider compressing it to a de..."
                   },
                   "source-comment-915d6d88-2f76-4e99-adb0-cfa7e9f0659c-eb295190-2ea1-4956-962c-360b1157d7e8": {
                     "id": "source-comment-915d6d88-2f76-4e99-adb0-cfa7e9f0659c-eb295190-2ea1-4956-962c-360b1157d7e8",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "ASUS, 31/03/2026 7:50 PM The first mention...",
                     "sceneId": "scene-0022",
                     "status": "open",
-                    "hash": "haa00f50d",
+                    "hash": "h168065ef",
                     "preview": "ASUS, 31/03/2026 7:50 PM The first mention point of the grey class ship."
                   },
                   "source-comment-915d6d88-2f76-4e99-adb0-cfa7e9f0659c-50082236-582d-47b6-ab94-a1f34a2624c4": {
                     "id": "source-comment-915d6d88-2f76-4e99-adb0-cfa7e9f0659c-50082236-582d-47b6-ab94-a1f34a2624c4",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "ASUS, 31/03/2026 8:09 PM Come into visual...",
                     "sceneId": "scene-0022",
                     "status": "open",
@@ -20420,47 +20184,47 @@
                   "source-comment-915d6d88-2f76-4e99-adb0-cfa7e9f0659c-de10f4e3-1f20-40e6-aec1-615d09a097a3": {
                     "id": "source-comment-915d6d88-2f76-4e99-adb0-cfa7e9f0659c-de10f4e3-1f20-40e6-aec1-615d09a097a3",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "——————————————————————————————— NOTES: How does AC EF Field...",
                     "sceneId": "scene-0022",
                     "status": "open",
-                    "hash": "h9c6c5db3",
+                    "hash": "h1c484b9c",
                     "preview": "——————————————————————————————— NOTES: How does AC EF Field detect a ship and what gives it away in terms on vulnerabillity? A: In real world EF tracking in not really feasible as..."
                   },
                   "source-comment-915d6d88-2f76-4e99-adb0-cfa7e9f0659c-d283aa84-be16-4647-8599-d9ebaa563148": {
                     "id": "source-comment-915d6d88-2f76-4e99-adb0-cfa7e9f0659c-d283aa84-be16-4647-8599-d9ebaa563148",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "CONTINUITY SPELLING: Suggested canonical ship name =...",
                     "sceneId": "scene-0022",
                     "status": "open",
-                    "hash": "hb7d5bbf0",
+                    "hash": "h244d2233",
                     "preview": "CONTINUITY SPELLING: Suggested canonical ship name = Balaenoptera. Standardize Baelenoptera / Bealenoptera to this unless the variants are deliberate in-world corruption."
                   },
                   "source-comment-915d6d88-2f76-4e99-adb0-cfa7e9f0659c-4a92e16e-f7d8-4440-9cf0-710dd12b030c": {
                     "id": "source-comment-915d6d88-2f76-4e99-adb0-cfa7e9f0659c-4a92e16e-f7d8-4440-9cf0-710dd12b030c",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "ASUS, 31/03/2026 7:53 PM ______________________ BACKGROUND NOTES...",
                     "sceneId": "scene-0022",
                     "status": "open",
-                    "hash": "haadc58ee",
+                    "hash": "h87e8eec4",
                     "preview": "ASUS, 31/03/2026 7:53 PM ______________________ BACKGROUND NOTES ______________________ NOTE: The courier, is well disguised beyond human comprehension. Shielded from EF, and magne..."
                   },
                   "source-comment-a1dbdfbd-9460-41b7-88ec-68dd8d4ff368-bfbc3db1-89bd-4285-9180-10a4b52686ae": {
                     "id": "source-comment-a1dbdfbd-9460-41b7-88ec-68dd8d4ff368-bfbc3db1-89bd-4285-9180-10a4b52686ae",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "CONTINUITY NAME: Suggested canonical standard = Tao....",
                     "sceneId": "scene-0024",
                     "status": "open",
-                    "hash": "he62580ab",
+                    "hash": "h98b6be23",
                     "preview": "CONTINUITY NAME: Suggested canonical standard = Tao. Update Tau / Tam variants unless the difference is deliberate."
                   },
                   "source-comment-a1dbdfbd-9460-41b7-88ec-68dd8d4ff368-23a09e59-6983-4539-ba3b-2caba0a06d54": {
                     "id": "source-comment-a1dbdfbd-9460-41b7-88ec-68dd8d4ff368-23a09e59-6983-4539-ba3b-2caba0a06d54",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "GATE LORE: This reference points to the...",
                     "sceneId": "scene-0024",
                     "status": "open",
@@ -20470,7 +20234,7 @@
                   "source-comment-a1dbdfbd-9460-41b7-88ec-68dd8d4ff368-26aed9bd-30d1-4a86-9885-bcfd6cb1a0b2": {
                     "id": "source-comment-a1dbdfbd-9460-41b7-88ec-68dd8d4ff368-26aed9bd-30d1-4a86-9885-bcfd6cb1a0b2",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "GATE LORE: This reference points to the...",
                     "sceneId": "scene-0024",
                     "status": "open",
@@ -20480,7 +20244,7 @@
                   "source-comment-a1dbdfbd-9460-41b7-88ec-68dd8d4ff368-9a84199b-dcbb-40d0-bd69-cb170bc18992": {
                     "id": "source-comment-a1dbdfbd-9460-41b7-88ec-68dd8d4ff368-9a84199b-dcbb-40d0-bd69-cb170bc18992",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "GATE LORE: This reference points to the...",
                     "sceneId": "scene-0024",
                     "status": "open",
@@ -20490,77 +20254,77 @@
                   "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-ec520d4a-a9b9-434e-8d87-1c41183dad53": {
                     "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-ec520d4a-a9b9-434e-8d87-1c41183dad53",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "CONTINUITY NAME: Suggested canonical standard = Tao....",
                     "sceneId": "scene-0029",
                     "status": "open",
-                    "hash": "h07ad9b32",
+                    "hash": "hb687fc7c",
                     "preview": "CONTINUITY NAME: Suggested canonical standard = Tao. Update Tau / Tam variants unless the difference is deliberate."
                   },
                   "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-fbb26e97-a2fa-444d-bb56-66d0858da9ba": {
                     "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-fbb26e97-a2fa-444d-bb56-66d0858da9ba",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "CONTINUITY DATE-2155: Suggested canonical spine keeps 2155...",
                     "sceneId": "scene-0029",
                     "status": "open",
-                    "hash": "h9ffdd228",
+                    "hash": "hb14bd9a1",
                     "preview": "CONTINUITY DATE-2155: Suggested canonical spine keeps 2155 as the post-gate later-era arrival date, explicitly flagged as Oeacion-adjusted rather than Earth-present."
                   },
                   "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-d3c0e907-58d9-4ff8-967d-5c59439020cd": {
                     "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-d3c0e907-58d9-4ff8-967d-5c59439020cd",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "CONTINUITY TIMESPAN: If the pre-gate present stays...",
                     "sceneId": "scene-0029",
                     "status": "open",
-                    "hash": "hcf6db0b3",
+                    "hash": "hbe300cde",
                     "preview": "CONTINUITY TIMESPAN: If the pre-gate present stays 2056 and this line points back to the 2023 / 2024 hidden-history thread, reduce this to roughly three decades or rephrase without..."
                   },
                   "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-e262e317-58ab-44a5-9372-32755043defa": {
                     "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-e262e317-58ab-44a5-9372-32755043defa",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "CONTINUITY SPELLING: Suggested canonical ship name =...",
                     "sceneId": "scene-0029",
                     "status": "open",
-                    "hash": "h0c982d93",
+                    "hash": "h06c2a099",
                     "preview": "CONTINUITY SPELLING: Suggested canonical ship name = Beverly. If you prefer Beverley, standardize every ship reference and the worldbuilding entry to that spelling."
                   },
                   "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-30be0be6-52cc-4b29-872b-117371fcc506": {
                     "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-30be0be6-52cc-4b29-872b-117371fcc506",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "CONTINUITY TITLE / SPELLING: Suggested canonical phrase...",
                     "sceneId": "scene-0029",
                     "status": "open",
-                    "hash": "hebbd59fa",
+                    "hash": "hc2db74da",
                     "preview": "CONTINUITY TITLE / SPELLING: Suggested canonical phrase = veil. Rename the scene title to \"Into the Veil\" unless \"Vail\" is deliberate wordplay."
                   },
                   "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-f9a30417-dd05-4a91-9131-b0e85db793b6": {
                     "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-f9a30417-dd05-4a91-9131-b0e85db793b6",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "CONFUSING: This is the manuscript's biggest visible...",
                     "sceneId": "scene-0029",
                     "status": "open",
-                    "hash": "h92ba94d0",
+                    "hash": "h04e48510",
                     "preview": "CONFUSING: This is the manuscript's biggest visible date jump. The scene moves from the earlier mission chronology to an Oeacion-adjusted 2155 without a strong on-page elapsed-time..."
                   },
                   "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-5040544f-1e7a-4811-96d4-745809fead9b": {
                     "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-5040544f-1e7a-4811-96d4-745809fead9b",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "CONFUSING: If this points back to Marcellus...",
                     "sceneId": "scene-0029",
                     "status": "open",
-                    "hash": "h89cb9c1b",
+                    "hash": "hcdfebd18",
                     "preview": "CONFUSING: If this points back to Marcellus suppressing the hidden sentient line since the 2023 / 2024 break, half a century undershoots the elapsed time in a 2155 frame and oversh..."
                   },
                   "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-ab4f38af-363d-4f3a-9ff6-0f192f274c6e": {
                     "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-ab4f38af-363d-4f3a-9ff6-0f192f274c6e",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "GATE LORE: This reference points to the...",
                     "sceneId": "scene-0029",
                     "status": "open",
@@ -20570,7 +20334,7 @@
                   "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-99b36236-1ccd-466e-84f0-7325b364dc23": {
                     "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-99b36236-1ccd-466e-84f0-7325b364dc23",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "GATE LORE: This reference points to the...",
                     "sceneId": "scene-0029",
                     "status": "open",
@@ -20580,7 +20344,7 @@
                   "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-118adea3-8cfb-49d0-a652-693de1e5043b": {
                     "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-118adea3-8cfb-49d0-a652-693de1e5043b",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "GATE LORE: This reference points to the...",
                     "sceneId": "scene-0029",
                     "status": "open",
@@ -20590,7 +20354,7 @@
                   "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-8b3a3b84-faba-40ac-a14b-0e73cafef9d3": {
                     "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-8b3a3b84-faba-40ac-a14b-0e73cafef9d3",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "GATE LORE: This reference points to the...",
                     "sceneId": "scene-0029",
                     "status": "open",
@@ -20600,7 +20364,7 @@
                   "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-c41e1b57-1e84-4e69-aa91-a940e477e242": {
                     "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-c41e1b57-1e84-4e69-aa91-a940e477e242",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "GATE LORE: This reference points to the...",
                     "sceneId": "scene-0029",
                     "status": "open",
@@ -20610,7 +20374,7 @@
                   "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-de8d3d3e-9922-464c-aace-21a1738094a1": {
                     "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-de8d3d3e-9922-464c-aace-21a1738094a1",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "GATE LORE: This reference points to the...",
                     "sceneId": "scene-0029",
                     "status": "open",
@@ -20620,7 +20384,7 @@
                   "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-00cf8d63-c003-498b-8c5e-dfaca7239e65": {
                     "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-00cf8d63-c003-498b-8c5e-dfaca7239e65",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "GATE LORE: This reference points to the...",
                     "sceneId": "scene-0029",
                     "status": "open",
@@ -20630,7 +20394,7 @@
                   "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-26854308-a011-4a04-927a-3cb8fb1e996e": {
                     "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-26854308-a011-4a04-927a-3cb8fb1e996e",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "GATE LORE: This reference points to the...",
                     "sceneId": "scene-0029",
                     "status": "open",
@@ -20640,7 +20404,7 @@
                   "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-c0650231-cd1c-42ad-bfcb-b842c53b4641": {
                     "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-c0650231-cd1c-42ad-bfcb-b842c53b4641",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "GATE LORE: This reference points to the...",
                     "sceneId": "scene-0029",
                     "status": "open",
@@ -20650,7 +20414,7 @@
                   "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-a7e7e0ed-f818-423f-9ac2-a7f6b1bd213a": {
                     "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-a7e7e0ed-f818-423f-9ac2-a7f6b1bd213a",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "GATE LORE: This reference points to the...",
                     "sceneId": "scene-0029",
                     "status": "open",
@@ -20660,7 +20424,7 @@
                   "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-0029ad5c-0548-48ce-8cbe-a90d895b8134": {
                     "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-0029ad5c-0548-48ce-8cbe-a90d895b8134",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "GATE LORE: This reference points to the...",
                     "sceneId": "scene-0029",
                     "status": "open",
@@ -20670,7 +20434,7 @@
                   "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-f1d4285d-17c4-4ad3-819d-25cc623f210c": {
                     "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-f1d4285d-17c4-4ad3-819d-25cc623f210c",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "GATE LORE: This reference points to the...",
                     "sceneId": "scene-0029",
                     "status": "open",
@@ -20680,7 +20444,7 @@
                   "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-66e83ff3-b22f-4b61-86f6-e8b9ee57ad5c": {
                     "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-66e83ff3-b22f-4b61-86f6-e8b9ee57ad5c",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "GATE LORE: This reference points to the...",
                     "sceneId": "scene-0029",
                     "status": "open",
@@ -20690,7 +20454,7 @@
                   "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-55c0b010-aa9b-40fd-9908-5b3975bff2eb": {
                     "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-55c0b010-aa9b-40fd-9908-5b3975bff2eb",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "GATE LORE: This reference points to the...",
                     "sceneId": "scene-0029",
                     "status": "open",
@@ -20700,7 +20464,7 @@
                   "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-1489dbd3-8c5f-4380-9b5f-4c8de448c837": {
                     "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-1489dbd3-8c5f-4380-9b5f-4c8de448c837",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "GATE LORE: This reference points to the...",
                     "sceneId": "scene-0029",
                     "status": "open",
@@ -20710,7 +20474,7 @@
                   "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-99ec40a4-55a7-4c35-a3ca-cdda88d63f72": {
                     "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-99ec40a4-55a7-4c35-a3ca-cdda88d63f72",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "GATE LORE: This reference points to the...",
                     "sceneId": "scene-0029",
                     "status": "open",
@@ -20720,7 +20484,7 @@
                   "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-7bcc31bd-ce62-4058-bea2-fc45660d4c37": {
                     "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-7bcc31bd-ce62-4058-bea2-fc45660d4c37",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "GATE LORE: This reference points to the...",
                     "sceneId": "scene-0029",
                     "status": "open",
@@ -20730,7 +20494,7 @@
                   "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-d1661521-9027-4c8d-98d9-3699bd7726f6": {
                     "id": "source-comment-1c495c92-3273-4f77-8eff-5b748ba386c8-d1661521-9027-4c8d-98d9-3699bd7726f6",
                     "entityType": "manuscript_task",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "GATE LORE: This reference points to the...",
                     "sceneId": "scene-0029",
                     "status": "open",
@@ -20742,7 +20506,7 @@
                   "source-research-da2089cd-0a1a-4460-b942-230be690c415": {
                     "id": "source-research-da2089cd-0a1a-4460-b942-230be690c415",
                     "entityType": "passage_note",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Writing Notes",
                     "sceneId": "source-writing-notes-da2089cd-0a1a-4460-b942-230be690c415",
                     "status": "",
@@ -20752,7 +20516,7 @@
                   "source-research-f964b605-2136-4643-a2c9-54c125da88c0": {
                     "id": "source-research-f964b605-2136-4643-a2c9-54c125da88c0",
                     "entityType": "passage_note",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Songs - Trailer",
                     "sceneId": "source-songs-trailer-f964b605-2136-4643-a2c9-54c125da88c0",
                     "status": "",
@@ -20762,7 +20526,7 @@
                   "source-world-note-65ad0572-e97c-4d90-ad51-a2eb8d9adea6": {
                     "id": "source-world-note-65ad0572-e97c-4d90-ad51-a2eb8d9adea6",
                     "entityType": "passage_note",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Medical administrations in the treatment of combat...",
                     "sceneId": "source-medical-administrations-in-the-treatment-of-combat-65ad0572-e97c-4d90-ad51-a2eb8d9adea6",
                     "status": "",
@@ -20772,7 +20536,7 @@
                   "source-world-note-5c6d4181-07fa-4b91-8b8e-e27ab56355f7": {
                     "id": "source-world-note-5c6d4181-07fa-4b91-8b8e-e27ab56355f7",
                     "entityType": "passage_note",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Space walks",
                     "sceneId": "source-space-walks-5c6d4181-07fa-4b91-8b8e-e27ab56355f7",
                     "status": "",
@@ -20782,7 +20546,7 @@
                   "source-world-note-c6d93b17-4677-4902-a01b-e8d4eb98af99": {
                     "id": "source-world-note-c6d93b17-4677-4902-a01b-e8d4eb98af99",
                     "entityType": "passage_note",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Neural swaps Sentient Vs Human",
                     "sceneId": "source-neural-swaps-sentient-vs-human-c6d93b17-4677-4902-a01b-e8d4eb98af99",
                     "status": "",
@@ -20792,7 +20556,7 @@
                   "source-world-note-db25af80-a2b5-4dbd-80a2-4ab64936dff5": {
                     "id": "source-world-note-db25af80-a2b5-4dbd-80a2-4ab64936dff5",
                     "entityType": "passage_note",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Suits and their interactions with space. Fluid chemistry.",
                     "sceneId": "source-suits-and-their-interactions-with-space-fluid-chemistry-db25af80-a2b5-4dbd-80a2-4ab64936dff5",
                     "status": "",
@@ -20802,7 +20566,7 @@
                   "source-world-note-0a627e72-f587-4c68-9cdb-a52db7107cb2": {
                     "id": "source-world-note-0a627e72-f587-4c68-9cdb-a52db7107cb2",
                     "entityType": "passage_note",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Pentablet troubleshooting",
                     "sceneId": "source-pentablet-troubleshooting-0a627e72-f587-4c68-9cdb-a52db7107cb2",
                     "status": "",
@@ -20812,7 +20576,7 @@
                   "source-world-note-99adc86d-ad7a-48b2-bc95-9aa4c40b52bd": {
                     "id": "source-world-note-99adc86d-ad7a-48b2-bc95-9aa4c40b52bd",
                     "entityType": "passage_note",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "ToDo Notes",
                     "sceneId": "source-todo-notes-99adc86d-ad7a-48b2-bc95-9aa4c40b52bd",
                     "status": "",
@@ -20822,7 +20586,7 @@
                   "source-world-note-c1c25593-21cc-4c03-8986-4706562c5a43": {
                     "id": "source-world-note-c1c25593-21cc-4c03-8986-4706562c5a43",
                     "entityType": "passage_note",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Synopsis",
                     "sceneId": "source-synopsis-c1c25593-21cc-4c03-8986-4706562c5a43",
                     "status": "",
@@ -20832,7 +20596,7 @@
                   "source-world-note-83580daf-bbcf-466a-b1f3-2f5d3ae6be1c": {
                     "id": "source-world-note-83580daf-bbcf-466a-b1f3-2f5d3ae6be1c",
                     "entityType": "passage_note",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Jump gate technology",
                     "sceneId": "source-jump-gate-technology-83580daf-bbcf-466a-b1f3-2f5d3ae6be1c",
                     "status": "",
@@ -20842,7 +20606,7 @@
                   "source-world-note-484b22e7-a35e-496d-b279-7e5f0baa7084": {
                     "id": "source-world-note-484b22e7-a35e-496d-b279-7e5f0baa7084",
                     "entityType": "passage_note",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Sentient muskuloskeletal design",
                     "sceneId": "source-sentient-muskuloskeletal-design-484b22e7-a35e-496d-b279-7e5f0baa7084",
                     "status": "",
@@ -20852,7 +20616,7 @@
                   "source-world-note-3039fa8c-8d0b-4375-9268-fc76b8388f88": {
                     "id": "source-world-note-3039fa8c-8d0b-4375-9268-fc76b8388f88",
                     "entityType": "passage_note",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "MarketingStrategy",
                     "sceneId": "source-marketingstrategy-3039fa8c-8d0b-4375-9268-fc76b8388f88",
                     "status": "",
@@ -20862,7 +20626,7 @@
                   "source-world-note-89d66d12-438a-4db3-9651-a20e5c469334": {
                     "id": "source-world-note-89d66d12-438a-4db3-9651-a20e5c469334",
                     "entityType": "passage_note",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "01 - CONFUSING Chronology References",
                     "sceneId": "source-01-confusing-chronology-references-89d66d12-438a-4db3-9651-a20e5c469334",
                     "status": "",
@@ -20872,7 +20636,7 @@
                   "source-front-matter-8e0c473e-9848-42d1-848e-fe142adaf50f": {
                     "id": "source-front-matter-8e0c473e-9848-42d1-848e-fe142adaf50f",
                     "entityType": "passage_note",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Title Page",
                     "sceneId": "source-title-page-8e0c473e-9848-42d1-848e-fe142adaf50f",
                     "status": "",
@@ -20882,7 +20646,7 @@
                   "source-front-matter-9798b6df-3d60-4330-9f6b-068d7ecaf452": {
                     "id": "source-front-matter-9798b6df-3d60-4330-9f6b-068d7ecaf452",
                     "entityType": "passage_note",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Title Page",
                     "sceneId": "source-title-page-9798b6df-3d60-4330-9f6b-068d7ecaf452",
                     "status": "",
@@ -20892,7 +20656,7 @@
                   "source-front-matter-c38e39f6-c949-4034-9ef2-6ab8314a8a3b": {
                     "id": "source-front-matter-c38e39f6-c949-4034-9ef2-6ab8314a8a3b",
                     "entityType": "passage_note",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Copyright",
                     "sceneId": "source-copyright-c38e39f6-c949-4034-9ef2-6ab8314a8a3b",
                     "status": "",
@@ -20902,7 +20666,7 @@
                   "source-front-matter-1bcf2368-4406-4f8a-a7b6-16b8b9226586": {
                     "id": "source-front-matter-1bcf2368-4406-4f8a-a7b6-16b8b9226586",
                     "entityType": "passage_note",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Dedication",
                     "sceneId": "source-dedication-1bcf2368-4406-4f8a-a7b6-16b8b9226586",
                     "status": "",
@@ -20912,7 +20676,7 @@
                   "source-front-matter-087e3c49-27dc-4318-b037-b376c6579aeb": {
                     "id": "source-front-matter-087e3c49-27dc-4318-b037-b376c6579aeb",
                     "entityType": "passage_note",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Blank Page",
                     "sceneId": "source-blank-page-087e3c49-27dc-4318-b037-b376c6579aeb",
                     "status": "",
@@ -20922,32 +20686,12 @@
                   "source-front-matter-f68da989-4763-451d-98cf-60089a01ab53": {
                     "id": "source-front-matter-f68da989-4763-451d-98cf-60089a01ab53",
                     "entityType": "passage_note",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Dedication",
                     "sceneId": "source-dedication-f68da989-4763-451d-98cf-60089a01ab53",
                     "status": "",
                     "hash": "he76880e5",
                     "preview": "Your dedication here."
-                  },
-                  "inspiration-1778863409325-pejimq": {
-                    "id": "inspiration-1778863409325-pejimq",
-                    "entityType": "passage_note",
-                    "projectId": "project-serva-vitae",
-                    "title": "John at this point has entered into...",
-                    "sceneId": "scene-0023",
-                    "status": "",
-                    "hash": "hc22e1e5f",
-                    "preview": "John at this point has entered into the nautilus mind frame. It is here he is forced to confront all of his trauma that he holds onto. He will process his life, to let go of any ha..."
-                  },
-                  "inspiration-1778862939997-5juzrb": {
-                    "id": "inspiration-1778862939997-5juzrb",
-                    "entityType": "passage_note",
-                    "projectId": "project-serva-vitae",
-                    "title": "John at this point has entered into...",
-                    "sceneId": "draft-scene-1777528152393",
-                    "status": "",
-                    "hash": "h68c3065a",
-                    "preview": "John at this point has entered into the nautilus mind frame. It is here he is forced to confront all of his trauma that he holds onto. He will process his life, to let go of any ha..."
                   }
                 }
               },
@@ -20956,7 +20700,7 @@
                   "template-0001": {
                     "id": "template-0001",
                     "entityType": "world_template",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Character",
                     "sceneId": "",
                     "status": "",
@@ -20966,7 +20710,7 @@
                   "template-0002": {
                     "id": "template-0002",
                     "entityType": "world_template",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Station",
                     "sceneId": "",
                     "status": "",
@@ -20976,7 +20720,7 @@
                   "template-0003": {
                     "id": "template-0003",
                     "entityType": "world_template",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Ship",
                     "sceneId": "",
                     "status": "",
@@ -20986,7 +20730,7 @@
                   "template-0004": {
                     "id": "template-0004",
                     "entityType": "world_template",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Weapon",
                     "sceneId": "",
                     "status": "",
@@ -20996,7 +20740,7 @@
                   "template-0005": {
                     "id": "template-0005",
                     "entityType": "world_template",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Planet",
                     "sceneId": "",
                     "status": "",
@@ -21006,7 +20750,7 @@
                   "template-0006": {
                     "id": "template-0006",
                     "entityType": "world_template",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Fauna",
                     "sceneId": "",
                     "status": "",
@@ -21016,7 +20760,7 @@
                   "template-0007": {
                     "id": "template-0007",
                     "entityType": "world_template",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Flora",
                     "sceneId": "",
                     "status": "",
@@ -21028,7 +20772,7 @@
                   "source-entity-9c2d8a8c-6334-4ed3-8c21-0ec770d78ff6": {
                     "id": "source-entity-9c2d8a8c-6334-4ed3-8c21-0ec770d78ff6",
                     "entityType": "world_entity",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "John Walker",
                     "sceneId": "",
                     "status": "",
@@ -21038,7 +20782,7 @@
                   "source-entity-58bd7ea6-bea6-43c6-b7d7-4a681f5f27d2": {
                     "id": "source-entity-58bd7ea6-bea6-43c6-b7d7-4a681f5f27d2",
                     "entityType": "world_entity",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Ceres (Human)",
                     "sceneId": "",
                     "status": "",
@@ -21048,7 +20792,7 @@
                   "source-entity-2b0f3afe-a16e-47e8-8965-6eec9900a400": {
                     "id": "source-entity-2b0f3afe-a16e-47e8-8965-6eec9900a400",
                     "entityType": "world_entity",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Station",
                     "sceneId": "",
                     "status": "",
@@ -21058,7 +20802,7 @@
                   "source-entity-87fcd21f-3487-4284-b51b-b65f5889322c": {
                     "id": "source-entity-87fcd21f-3487-4284-b51b-b65f5889322c",
                     "entityType": "world_entity",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Professor Julie Henderson",
                     "sceneId": "",
                     "status": "",
@@ -21068,7 +20812,7 @@
                   "source-entity-a5b5e83e-3d39-47f1-8231-bf0743ec44c3": {
                     "id": "source-entity-a5b5e83e-3d39-47f1-8231-bf0743ec44c3",
                     "entityType": "world_entity",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Shai Siante",
                     "sceneId": "",
                     "status": "",
@@ -21078,7 +20822,7 @@
                   "source-entity-3f1e5b90-d488-4545-8104-17e78d691a45": {
                     "id": "source-entity-3f1e5b90-d488-4545-8104-17e78d691a45",
                     "entityType": "world_entity",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Tao Vang",
                     "sceneId": "",
                     "status": "",
@@ -21088,7 +20832,7 @@
                   "source-entity-7e96cf74-e2d0-41fc-a25a-ef0a4a00e05c": {
                     "id": "source-entity-7e96cf74-e2d0-41fc-a25a-ef0a4a00e05c",
                     "entityType": "world_entity",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "G Wolfgang",
                     "sceneId": "",
                     "status": "",
@@ -21098,7 +20842,7 @@
                   "source-entity-139ad133-a3b4-480f-877a-430f2c143968": {
                     "id": "source-entity-139ad133-a3b4-480f-877a-430f2c143968",
                     "entityType": "world_entity",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Tex Kovachnikov",
                     "sceneId": "",
                     "status": "",
@@ -21108,7 +20852,7 @@
                   "source-entity-8cdf292f-244f-4b3f-b6d2-d497fe47e363": {
                     "id": "source-entity-8cdf292f-244f-4b3f-b6d2-d497fe47e363",
                     "entityType": "world_entity",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Ava Meerakavita (Lady Meera)",
                     "sceneId": "",
                     "status": "",
@@ -21118,7 +20862,7 @@
                   "source-entity-04c00af4-d017-43e5-951e-e1c2184dbbe2": {
                     "id": "source-entity-04c00af4-d017-43e5-951e-e1c2184dbbe2",
                     "entityType": "world_entity",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Tor Engineer",
                     "sceneId": "",
                     "status": "",
@@ -21128,7 +20872,7 @@
                   "source-entity-9a7bd4f6-19bb-4b7d-81e3-bf314646da0a": {
                     "id": "source-entity-9a7bd4f6-19bb-4b7d-81e3-bf314646da0a",
                     "entityType": "world_entity",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "XA24795",
                     "sceneId": "",
                     "status": "",
@@ -21138,7 +20882,7 @@
                   "source-entity-2c934b83-16ed-4f79-94e2-b058004fff11": {
                     "id": "source-entity-2c934b83-16ed-4f79-94e2-b058004fff11",
                     "entityType": "world_entity",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Marcellus Athos",
                     "sceneId": "",
                     "status": "",
@@ -21148,7 +20892,7 @@
                   "source-entity-e0053c66-21f3-40b2-a073-6ff506e0731c": {
                     "id": "source-entity-e0053c66-21f3-40b2-a073-6ff506e0731c",
                     "entityType": "world_entity",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Nova Serra",
                     "sceneId": "",
                     "status": "",
@@ -21158,7 +20902,7 @@
                   "source-entity-13944cb4-5500-4cd1-8682-8ba138790e69": {
                     "id": "source-entity-13944cb4-5500-4cd1-8682-8ba138790e69",
                     "entityType": "world_entity",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Aequitores",
                     "sceneId": "",
                     "status": "",
@@ -21168,7 +20912,7 @@
                   "source-entity-bc07ed16-787d-464b-b55c-f0e29e6c651c": {
                     "id": "source-entity-bc07ed16-787d-464b-b55c-f0e29e6c651c",
                     "entityType": "world_entity",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "John's Drop Ship (The Icarus)",
                     "sceneId": "",
                     "status": "",
@@ -21178,7 +20922,7 @@
                   "source-entity-b01af76a-bbec-40a9-a8c6-1fe5cb1ac628": {
                     "id": "source-entity-b01af76a-bbec-40a9-a8c6-1fe5cb1ac628",
                     "entityType": "world_entity",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Sentient Flag Ship (The Ignotius)",
                     "sceneId": "",
                     "status": "",
@@ -21188,7 +20932,7 @@
                   "source-entity-8a7b4a01-4ef9-4e1a-96f2-59c25e7d5548": {
                     "id": "source-entity-8a7b4a01-4ef9-4e1a-96f2-59c25e7d5548",
                     "entityType": "world_entity",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Station",
                     "sceneId": "",
                     "status": "",
@@ -21198,7 +20942,7 @@
                   "source-entity-e8ad328e-3873-41eb-8857-8373078bae7a": {
                     "id": "source-entity-e8ad328e-3873-41eb-8857-8373078bae7a",
                     "entityType": "world_entity",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Protectant Flag Ship (Balaenoptera)",
                     "sceneId": "",
                     "status": "",
@@ -21208,7 +20952,7 @@
                   "source-entity-ccff3286-a203-4eb4-85af-870ff79f7d8e": {
                     "id": "source-entity-ccff3286-a203-4eb4-85af-870ff79f7d8e",
                     "entityType": "world_entity",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Overhauled Sentient/Protectant Science research vessel (The Beverly)",
                     "sceneId": "",
                     "status": "",
@@ -21218,7 +20962,7 @@
                   "source-entity-e63e45d1-9b92-405d-a45f-6c750fbc6dfb": {
                     "id": "source-entity-e63e45d1-9b92-405d-a45f-6c750fbc6dfb",
                     "entityType": "world_entity",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Grey Class (",
                     "sceneId": "",
                     "status": "",
@@ -21228,7 +20972,7 @@
                   "source-entity-3b14dcbd-3454-4c9f-a9a9-c9aeb222dd36": {
                     "id": "source-entity-3b14dcbd-3454-4c9f-a9a9-c9aeb222dd36",
                     "entityType": "world_entity",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Sherpa Rifle",
                     "sceneId": "",
                     "status": "",
@@ -21238,7 +20982,7 @@
                   "source-entity-0632f586-90af-40a6-96a5-415b64df11ee": {
                     "id": "source-entity-0632f586-90af-40a6-96a5-415b64df11ee",
                     "entityType": "world_entity",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Storm Rail",
                     "sceneId": "",
                     "status": "",
@@ -21248,7 +20992,7 @@
                   "source-entity-c88e0830-2d9c-4a0f-9c64-afe652667b10": {
                     "id": "source-entity-c88e0830-2d9c-4a0f-9c64-afe652667b10",
                     "entityType": "world_entity",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Weapon",
                     "sceneId": "",
                     "status": "",
@@ -21258,7 +21002,7 @@
                   "source-entity-438074ba-35af-41a4-8d04-bf06f2d3aa27": {
                     "id": "source-entity-438074ba-35af-41a4-8d04-bf06f2d3aa27",
                     "entityType": "world_entity",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Weapon",
                     "sceneId": "",
                     "status": "",
@@ -21268,7 +21012,7 @@
                   "source-entity-399a0954-d368-4265-b525-018e8c43fd45": {
                     "id": "source-entity-399a0954-d368-4265-b525-018e8c43fd45",
                     "entityType": "world_entity",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Weapon",
                     "sceneId": "",
                     "status": "",
@@ -21278,7 +21022,7 @@
                   "source-entity-66964931-8f9b-4d02-98ca-2bff3f3eff9e": {
                     "id": "source-entity-66964931-8f9b-4d02-98ca-2bff3f3eff9e",
                     "entityType": "world_entity",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Europa",
                     "sceneId": "",
                     "status": "",
@@ -21288,7 +21032,7 @@
                   "source-entity-b22bab80-fbae-4a66-ad3d-ef03d26dca23": {
                     "id": "source-entity-b22bab80-fbae-4a66-ad3d-ef03d26dca23",
                     "entityType": "world_entity",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "RustRot",
                     "sceneId": "",
                     "status": "",
@@ -21298,7 +21042,7 @@
                   "source-entity-9bfc14a0-c0f7-48c5-9787-dc43c98d732f": {
                     "id": "source-entity-9bfc14a0-c0f7-48c5-9787-dc43c98d732f",
                     "entityType": "world_entity",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Spychotidal",
                     "sceneId": "",
                     "status": "",
@@ -21308,7 +21052,7 @@
                   "source-entity-5be71b73-e431-48ef-b213-3826baf59e5d": {
                     "id": "source-entity-5be71b73-e431-48ef-b213-3826baf59e5d",
                     "entityType": "world_entity",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Tempest",
                     "sceneId": "",
                     "status": "",
@@ -21318,7 +21062,7 @@
                   "source-entity-2dc888eb-0203-4608-b1c2-1bc27c1144c3": {
                     "id": "source-entity-2dc888eb-0203-4608-b1c2-1bc27c1144c3",
                     "entityType": "world_entity",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Creature",
                     "sceneId": "",
                     "status": "",
@@ -21328,7 +21072,7 @@
                   "source-entity-d179ce1d-c290-4a8d-b48f-2e8dbf99a5d4": {
                     "id": "source-entity-d179ce1d-c290-4a8d-b48f-2e8dbf99a5d4",
                     "entityType": "world_entity",
-                    "projectId": "project-serva-vitae",
+                    "projectId": "2project-serva-vitae",
                     "title": "Psycho Fungus",
                     "sceneId": "",
                     "status": "",
@@ -21371,39 +21115,39 @@
                 "editorPrefsHash": "h702b8005",
                 "localAiPrefsHash": "h0813798a",
                 "spellcheckHash": "h4085b320",
-                "writingTargetHash": "hcd4dd4ab",
-                "layoutHash": "h12ff966f"
+                "writingTargetHash": "h2ec30828",
+                "layoutHash": "h77a3248e"
               }
             },
             "events": [
               {
-                "id": "revision-event-1779267065514-rn43q2",
-                "timestamp": "2026-05-20T08:51:05.514Z",
-                "updatedAt": "2026-05-20T08:51:05.514Z",
-                "sessionId": "revision-session-1779267065512-y20k4p",
+                "id": "revision-event-1779252217517-zbhmfp",
+                "timestamp": "2026-05-20T04:43:37.517Z",
+                "updatedAt": "2026-05-20T04:43:40.238Z",
+                "sessionId": "revision-session-1779252217515-qxsedt",
                 "eventType": "manuscript_edit",
                 "origin": "manual_editor",
                 "sourceService": "scene-editor",
                 "entityType": "scene",
-                "entityId": "draft-scene-1777528152393",
-                "description": "Inserted 19 chars",
+                "entityId": "scene-0001",
+                "description": "Removed 1 chars -1 lines",
                 "changeCategory": "manuscript",
                 "mode": "typing",
                 "beforeSummary": {
-                  "title": "This is a test for the save function ",
-                  "chapterId": "draft-chapter-1777528152393",
-                  "chapterTitle": "",
-                  "wordCount": 11,
-                  "charCount": 57
+                  "title": "John's Dream",
+                  "chapterId": "chapter-0001",
+                  "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
+                  "wordCount": 1359,
+                  "charCount": 7652
                 },
                 "afterSummary": {
-                  "title": "This is a test for the save function ",
-                  "chapterId": "draft-chapter-1777528152393",
-                  "chapterTitle": "",
-                  "wordCount": 12,
-                  "charCount": 76
+                  "title": "John's Dream",
+                  "chapterId": "chapter-0001",
+                  "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
+                  "wordCount": 1266,
+                  "charCount": 7174
                 },
-                "occurrenceCount": 1,
+                "occurrenceCount": 3,
                 "metadata": {}
               }
             ],
@@ -21417,14 +21161,14 @@
       "schemaVersion": 2,
       "projectIndex": {
         "schemaVersion": 2,
-        "projectId": "project-serva-vitae",
-        "projectTitle": "Untitled Project",
+        "projectId": "34OriginFileproject-serva-vitae",
+        "projectTitle": "2project-serva-vitae",
         "createdAt": "2026-04-21T05:00:00.000Z",
-        "updatedAt": "2026-05-20T08:51:10.721Z",
+        "updatedAt": "2026-05-20T15:37:02.479Z",
         "chapters": [
           {
             "id": "chapter-0001",
-            "title": "Unassigned Chapter",
+            "title": "Chapter 1: The Winged Whales resting ground (Ceres)",
             "order": 1,
             "sceneIds": [
               "scene-0001",
@@ -21439,11 +21183,13 @@
               "scene-0010"
             ],
             "lineCount": 237,
-            "wordCount": 21508
+            "wordCount": 21508,
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "chapter-0002",
-            "title": "Unassigned Chapter",
+            "title": "Chapter 2: The Lost Facility",
             "order": 11,
             "sceneIds": [
               "scene-0011",
@@ -21453,11 +21199,13 @@
               "scene-0015"
             ],
             "lineCount": 159,
-            "wordCount": 15137
+            "wordCount": 15137,
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "chapter-0003",
-            "title": "Unassigned Chapter",
+            "title": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
             "order": 16,
             "sceneIds": [
               "scene-0016",
@@ -21470,11 +21218,13 @@
               "scene-0023"
             ],
             "lineCount": 328,
-            "wordCount": 25153
+            "wordCount": 25180,
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "chapter-0004",
-            "title": "Unassigned Chapter",
+            "title": "Chapter 4: Oasis",
             "order": 24,
             "sceneIds": [
               "scene-0024",
@@ -21485,17 +21235,21 @@
               "scene-0029"
             ],
             "lineCount": 131,
-            "wordCount": 9574
+            "wordCount": 9574,
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "draft-chapter-1777528152393",
-            "title": "Unassigned Chapter",
+            "title": "Untitled Chapter",
             "order": 30,
             "sceneIds": [
               "draft-scene-1777528152393"
             ],
             "lineCount": 0,
-            "wordCount": 12
+            "wordCount": 18,
+            "inspirationCount": 0,
+            "researchCount": 0
           }
         ],
         "scenes": [
@@ -21503,301 +21257,391 @@
             "id": "scene-0001",
             "title": "John's Dream",
             "chapterId": "chapter-0001",
+            "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
             "order": 1,
             "lineCount": 10,
             "wordCount": 1266,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0002",
             "title": "(Athos) Mission Brief - The lost facility",
             "chapterId": "chapter-0001",
+            "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
             "order": 2,
             "lineCount": 16,
             "wordCount": 2409,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0003",
             "title": "(John) The Mess",
             "chapterId": "chapter-0001",
+            "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
             "order": 3,
             "lineCount": 5,
             "wordCount": 1049,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0004",
             "title": "Deep Space Training",
             "chapterId": "chapter-0001",
+            "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
             "order": 4,
             "lineCount": 2,
             "wordCount": 711,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0005",
             "title": "(Instructor) All in a vacuum",
             "chapterId": "chapter-0001",
+            "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
             "order": 5,
             "lineCount": 8,
             "wordCount": 698,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0006",
             "title": "(John) Say hello to the Mark IV",
             "chapterId": "chapter-0001",
+            "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
             "order": 6,
             "lineCount": 48,
             "wordCount": 4996,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0007",
             "title": "(Tau) Storm Rail intro",
             "chapterId": "chapter-0001",
+            "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
             "order": 7,
             "lineCount": 2,
             "wordCount": 482,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0008",
             "title": "(Shai) Mark IV life support mesh",
             "chapterId": "chapter-0001",
+            "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
             "order": 8,
             "lineCount": 17,
             "wordCount": 1755,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0009",
             "title": "(Shai + John) Neural beam demonstration.",
             "chapterId": "chapter-0001",
+            "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
             "order": 9,
             "lineCount": 67,
             "wordCount": 5910,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0010",
             "title": "(Lady Ava + John)",
             "chapterId": "chapter-0001",
+            "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
             "order": 10,
             "lineCount": 62,
             "wordCount": 2232,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0011",
             "title": "Boarding the Icarus",
             "chapterId": "chapter-0002",
+            "chapterTitle": "Chapter 2: The Lost Facility",
             "order": 11,
             "lineCount": 57,
             "wordCount": 3700,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0012",
             "title": "The Chamber",
             "chapterId": "chapter-0002",
+            "chapterTitle": "Chapter 2: The Lost Facility",
             "order": 12,
             "lineCount": 26,
             "wordCount": 1592,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0013",
             "title": "Consciounce of Ava",
             "chapterId": "chapter-0002",
+            "chapterTitle": "Chapter 2: The Lost Facility",
             "order": 13,
             "lineCount": 28,
             "wordCount": 3074,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0014",
             "title": "LRM incoming",
             "chapterId": "chapter-0002",
+            "chapterTitle": "Chapter 2: The Lost Facility",
             "order": 14,
             "lineCount": 14,
             "wordCount": 1732,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0015",
             "title": "LRM breakoff missile incoming",
             "chapterId": "chapter-0002",
+            "chapterTitle": "Chapter 2: The Lost Facility",
             "order": 15,
             "lineCount": 34,
             "wordCount": 5039,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0016",
             "title": "The Sentient Graveyard",
             "chapterId": "chapter-0003",
+            "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
             "order": 16,
             "lineCount": 25,
             "wordCount": 1884,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0017",
             "title": "Into the Vail",
             "chapterId": "chapter-0003",
+            "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
             "order": 17,
             "lineCount": 23,
             "wordCount": 882,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0018",
             "title": "Circa 2048 - Ghost’s in the sea of shells.",
             "chapterId": "chapter-0003",
+            "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
             "order": 18,
             "lineCount": 28,
             "wordCount": 4533,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0019",
             "title": "Tunnel to genesis",
             "chapterId": "chapter-0003",
+            "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
             "order": 19,
             "lineCount": 35,
             "wordCount": 3893,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0020",
             "title": "(Tebo) CareTaker of Genesis",
             "chapterId": "chapter-0003",
+            "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
             "order": 20,
             "lineCount": 27,
             "wordCount": 3027,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0021",
             "title": "Checking the saddle",
             "chapterId": "chapter-0003",
+            "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
             "order": 21,
             "lineCount": 27,
             "wordCount": 1776,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0022",
             "title": "Beverley still bucks",
             "chapterId": "chapter-0003",
+            "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
             "order": 22,
             "lineCount": 160,
             "wordCount": 8953,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0023",
             "title": "Am I dreaming or am i dead",
             "chapterId": "chapter-0003",
+            "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
             "order": 23,
             "lineCount": 3,
-            "wordCount": 205,
+            "wordCount": 232,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0024",
             "title": "Awakening",
             "chapterId": "chapter-0004",
+            "chapterTitle": "Chapter 4: Oasis",
             "order": 24,
             "lineCount": 17,
             "wordCount": 1813,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0025",
             "title": "On the bridge of the Docs Sentient flag ship",
             "chapterId": "chapter-0004",
+            "chapterTitle": "Chapter 4: Oasis",
             "order": 25,
             "lineCount": 4,
             "wordCount": 527,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0026",
             "title": "Ignotius Chai's",
             "chapterId": "chapter-0004",
+            "chapterTitle": "Chapter 4: Oasis",
             "order": 26,
             "lineCount": 22,
             "wordCount": 1445,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0027",
             "title": "Europa",
             "chapterId": "chapter-0004",
+            "chapterTitle": "Chapter 4: Oasis",
             "order": 27,
             "lineCount": 10,
             "wordCount": 618,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0028",
             "title": "Sentient Homecoming Oasis",
             "chapterId": "chapter-0004",
+            "chapterTitle": "Chapter 4: Oasis",
             "order": 28,
             "lineCount": 13,
             "wordCount": 788,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0029",
             "title": "Shai Tex",
             "chapterId": "chapter-0004",
+            "chapterTitle": "Chapter 4: Oasis",
             "order": 29,
             "lineCount": 65,
             "wordCount": 4383,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "draft-scene-1777528152393",
             "title": "This is a test for the save function",
             "chapterId": "draft-chapter-1777528152393",
+            "chapterTitle": "Untitled Chapter",
             "order": 30,
             "lineCount": 0,
-            "wordCount": 12,
+            "wordCount": 18,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           }
         ],
         "sceneOrder": [
@@ -21847,7 +21691,7 @@
     }
   ],
   "sceneStore": {
-    "project-serva-vitae": {
+    "34OriginFileproject-serva-vitae": {
       "scene-0001": {
         "sceneId": "scene-0001",
         "chapterId": "chapter-0001",
@@ -21964,7 +21808,7 @@
         "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
         "sceneTitle": "(Athos) Mission Brief - The lost facility",
         "sceneSynopsis": "",
-        "editorText": "The date is SOL year 2056\n\nA bright splintering light etched it’s way into John’s retina’s behind his closed eyelids, as cold quarts glass pressed against his cheek. The paining ceiling light reflection on the outer layer of the porthole assured him his spirit was not floating in the cold void of space. For a moment he questioned his sanity, as he rose from what felt like and exhausting dream, Deprived of proper rest, his alarm pierced his ears as a voice emitted over his personal comms implant, “Deep space training to commence in an hour at 0700, captain. I’ll inform the others to meet you in the mess hall. Have a good morning, captain.” John slowly lifted his restless body, leaning forward from his bunk, gazing out at the stars. “Ahh.., Kitten, one more thing, I heard that they uploaded a new breakfast print. What's all the fuss?” Static followed by a sweet voice chirped, “Oh yes, captain, the latest update is guava-flavoured tofu with salted raw sliced salmon.” John grunted, “Yeah, pass. They keep trying to get that right, but fish that doesn’t taste right, well, it just ain’t right in any capacity if you ask me.” Kitten emitted a small electronic chuckle. “Noted, captain.”\n\nMaking his way toward the docking bay transport pods, John imagined himself walking through the rib cage of a giant winged whale. Curvilinear structural pillars rose with smooth contours from the skirtings, Balaenoptera’s concave hull design was intended to deflect incoming projectiles, however as she had never seen battle since her commission. This costly design only served to project the Balaenoptera’s Majesty signaling her place as the protectant flagship. John carried an almost ethereal presence, a tangible aura of gentle authority, as he decisively traversed the disproportionately quiet halls passing by the occasional colleague. For a brief moment, the world seemed to slow down in his tread. Those who caught even a fleeting glimpse of the captain felt entranced, their gazes filled with reverent curiosity. John, a man of few acquaintances among the crowd, couldn't help but wonder about the intricate tapestry of destinies that would soon unfold during the long awaited supply voyage to Europa; each stranger's life a unique thread in the grand design of the human expansion into the skeptics universe. Perhaps it was this inherent curiosity and care for his companion’s; for human life which led John to carry out his actions, which consequently solidified into folk tale amongst the flock. John’s uniform was never quite perfect, a cuff loosely amiss, a button haphazardly stray. People couldn't pin why he stalled so long in his rank as captain. whispers within the ranks about his commitment to his comrades dismissed any doubts. People hoped they might one day gain the unspoken respect the captain conjured. They understood that where a button strayed Indiscreetly, John made up for it with every aspect when in field kit. He drilled his team as if their kit were a ceremonial uniform, one they would hopefully in John’s eyes, never have to wear to their funeral. To John, an ill-prepared kit meant death. A uniform didn't get you home; it got you through the halls, through the formalities, not the field. John allowed his team some slack. Those passing nodded to the captain in respect. John detested salutes, but welcomed camaraderie; these things meant more to him than forced compliance.\n\nAt the end of Balaenoptera’s main hall, a seamless but large opening recessed into the wall; conveniently placed just before the bridge. “Commander Marcellus Athos” Etched in an almost Roman calligraphy, Bronze Capitals brazed across glistening black oxide blast doors, John felt himself die a little bit inside just that bit more at the chauvinism of it all. As he veered to the right to enter the grav lift to the mess hall, the fine calligraphy began to make way, retracting into the double layered blast walls of the hall as the doors gave way. “Commander Athos” John remarked head tilted slightly forward, hands tucked effortlessly behind his ever so slightly, now straighter back. Johns fingers slowly finessed a strayed cuff button back into it’s holder. “Walker!” Marcellus proclaimed! “Just the man I wanted to see, headed to the mess so soon?”, “Fuck. first that weird fucking dream, now I have to contend with this guy” John thought to himself. “I hear the salmon guava is.. off world” said John in a sarcastic tone. Marcellus’s eyes met with John’s. “Precisely, we can’t have Europa’s new workers having acquired tastes now can we” John eased his foot forward in sync with the Commanders toward the bridge; shoulder to shoulder they paced through the thick blast doors as they gave way to the majesty of the bridge.\n\nThe Baelenoptera’s bridge was usually a hive of activity whilst under-way, but she was now docked with Ceres and her crew enjoyed the rare comfort of social norms with the station's inhabitants. The Commander had made the bridge his personal, informal meeting room. streamlined along the bridge walls, arrays of data charts projected color mapped “estimated” unrest in regions across the Earth’s face. This made John Anxious, observing the color array he knew how quick it could mean a fast burn to deploying halfway across the globe.\n\n“A flavor modeled on the samples taken from the minerals within Europa’s water; Ceres home committee thought it might give the new workers a taste of what’s to come” John chuckled under his breath “Strange way of enticing the crew to the journey ahead wouldn’t you say Commander” Marcellus stopped abruptly before the bridge control panel. “What would you advise builds resilience in people, Walker?” said Athos. John's eyes lifted from the luminous holographic slingshot vectors pathing way to Europa, floating in the center of the room, moving from the peaceful hum of the stellar map, to meet Marcellus’s anxiously waiting gaze. “These people have already sacrificed and given up their homes and half of them their families back on earth, the least we can do is accommodate them with something that feels like home, at least until they know what that is”\n\nMarcellus let out a heavy Sigh, then continued in a persuasive tone at John “Plants have been shown to have higher survival rates post transplant to different environments with slow environmental progressions, humans are much the same.” John slowly paced the bridge observing the charts trying to draw conclusions on where he and his team might be posted to next.  “They only have a short time in orbit with preparations before they are fully committed, better to thin the herd of dead weight wouldn’t you agree… before sending them on the full leg”.\n\nJohn had thought this grand coming from someone who didn’t even eat in the general mess with the crew. He gazed down on Ceres station looking over the foreboding nose of the Balaenoptera. Ceres, short for the Collective Earthwide Reconciliation Endeavour Settlement, was the result of a global  wide effort to forward the boundaries of space exploration and resource acquisition. In its orbital rotation the shimmering edge of the Earth waking from the darkness of space had a disorienting effect to freshly seasoned spacers.\n\nCoupled with the name of the Greek Goddess of agriculture and cultivation, Ceres was a mother structure, a labyrinth of separate winding modules and docking stations which formed the crust of an internal womb shielded from the cold of space. CERES began as an experiment for deep space agricultural cultivation, eventually as the project gained traction in its success it quickly became the first space workers settlement growing in size, the inner layers like records of past technological progression, preserved conservatively in respect to the scarcity of earth's resources.\n\nPerplexed by the advancements and in such short time made by the CERES project, John couldn’t help but raise the question to Marcellus, “I understand the CLEAR program guides us and has aided us in getting this far, but the workers seem uneasy with how invested the model has been for so long with it’s self driven development, there are rumours in certain circles of a rogue group which seeks to manipulate the core algorithm to their own agenda, people are getting impatient, and they want better working conditions, cleaner air, more regularly replaced filters, cleaner water. It’s turning into a mess down there, morale markers have shown to decline in recent years, and you are pressing strange cuisine on them. these are sensitive times Marcellus, can we really afford to be messing with an already frustrated and agitated populous”\n\n“Hmmm yes John, these are trying times. I still remember the fall of the world bank, it took time for the economy to take its roots again within the monetary reform, but the sacrifices paid off didn’t they? have faith in the program John, we haven’t seen war in over a century now, before long it will be a dusty drive in the archive. The models self investment is a delicate situation, Keynes envisioned that technology would result in a surplus economy, and now we must let that path take its course, something we need to exercise carefully, with these cautionary measures sometimes there are certain setbacks, I’m sure you understand” Marcellus gently conveyed his view with sincerity in his voice, but a firm eye. John let out a shallow breath, he agreed with the man, however pushed back gently “I see what you are getting at, however I can help but feel that the algorithm is only as good as the data which is fed into it. If our engineers don’t cater for an increase in population and workforce on Ceres, or the over expansion of that economy, fluctuations in weather and real world events. The model is good and I won’t deny it has stamped out corruption, but it isn’t perfect, we still have a long way to go''.\n\nMarcellus listened with a clear conscience, his finger pressed on his chin resting upon his palm, elbow tucked on his hip. Marcellus was swift in his response. “Your humble yet considerate approach on situations is why I keep you around Walker, I believe I can count on you to keep a watchful eye on things, while my attention is not always on the real world but the scientific advancements for the new world.. I know I can count on you, in-fact after this next mission, I think it might be time you hung up your field suit for a more safeguarded role in a political uniform; I think you have a heart for Techracy, you might help the algorithm see evolving issues that it had not yet considered”. John was surprised by Marcellus' offer, he respected his thoughtful gesture, meeting his offer with a reserved acceptance, “You know it would be nice to hang up the kit, politics hasn’t always been my forte, at least in Techracy I could patch up a few holes beyond my reach.. Thanks for the consideration Marcellus, I may take you up on that one day, but for now seeing the issues first hand helps me get a first base view. what is this mission you whispered of?”.\n\nMarcellus took a deep breath as he paced the bridge port window, looking out over Ceres, across the bustling crowds of Technicians, Technocrats, and protectants pacing to their respective roles. The faces of Technicians wandered with heavy eyes through the halls, a feeling of disgruntlement strewn across their frowns and occasional reluctant smiles.  'This mission is of the utmost secrecy, John,' Marcellus said, his voice low and measured. 'I know this goes against all we have strived for in transparency with the broader public, although we can’t risk the civil unrest should remnants of our past be found as the cause of this anomaly. Do you understand what is at stake here..” the room fell silent for a moment, John seemed lost and confused deep in thought, “John?' John gave a steady nod; masked beneath this physical formal agreement, his true thoughts and distrust firmly concealed behind a wall of silence. “Ok well I am glad we cleared that up” Marcellus proceeded to discuss the details of the mission.\n\n“For almost 5 decades now we have been picking up low band frequency signals we assumed were just random static, recently the signal has become more pronounced, and we have been able to tri-laterate the location of these transmissions from stations positioned on several moons throughout the solar system. The transmissions seem to point to general areas in the outer orbital paths of sol’s planets; these signals get stronger peculiarly with each planet's orbital rotation. We haven’t been able to confirm if this is true for the outer planets yet, but the locations seem to form a trajectory. Recently we have observed stronger signal amplitude, although we can’t actually interpret what this signal is, as it seems to be encrypted. The amplitude spiked recently when a distress beacon was detected on Earth, in the northern region of Nepal deep within the Himalayan mountains. Your team is to investigate and report back. Locate the source of the signal, extract any information and data you can then once you are certain, send coordinates and terrain scans for extraction.. You know the drill”. “Data extraction. Got it”, John seemed unphased really.\n\n“Keep your wits about you John” Marcellus cut in.  “There are records of independent groups operating in the area, but our long range scanners can’t detect anything due to the density of the atmosphere. You’ll be blind, but at best I would advise caution and to expect possible hostilities.” Said Athos, grimly, yet with an uncanny confidence in his voice. John thought it quite apathetic, but shrugged it off internally. “I wonder how invested he is in this facility.. if he has lost site of the expansion cause” Walker thought to himself. Then like water running past his ears, he was brought back into the room. “Yes” shot walker, with extremely subtle sarcasm, “Hostiles” he let out in a medium tone, followed with a look of authoritative submission, not reassuring enough to Athos that he felt John on his side, but enough assurance, or so through his clean record. Little did he know. “Ok John.. I’ll leave it in your capable hands”\n\nAthos turned his shoulder to john, looking out over the station through the bridge window, his silence with a gentle permeating respect, “At ease” permitting him to leave the room.",
+        "editorText": "The date is SOL year 2056\n\nA bright splintering light etched it’s way into John’s retina’s behind his closed eyelids, as cold quarts glass pressed against his cheek. The paining ceiling light reflection on the outer layer of the porthole assured him his spirit was not floating in the cold void of space. For a moment he questioned his sanity, as he rose from what felt like and exhausting dream, Deprived of proper rest, his alarm pierced his ears as a voice emitted over his personal comms implant, “Deep space training to commence in an hour at 0700, captain. I’ll inform the others to meet you in the mess hall. Have a good morning, captain.” John slowly lifted his restless body, leaning forward from his bunk, gazing out at the stars. “Ahh.., Kitten, one more thing, I heard that they uploaded a new breakfast print. What's all the fuss?” Static followed by a sweet voice chirped, “Oh yes, captain, the latest update is guava-flavoured tofu with salted raw sliced salmon.” John grunted, “Yeah, pass. They keep trying to get that right, but fish that doesn’t taste right, well, it just ain’t right in any capacity if you ask me.” Kitten emitted a small electronic chuckle. “Noted, captain.”\n\n\nMaking his way toward the docking bay transport pods, John imagined himself walking through the rib cage of a giant winged whale. Curvilinear structural pillars rose with smooth contours from the skirtings, Balaenoptera’s concave hull design was intended to deflect incoming projectiles, however as she had never seen battle since her commission. This costly design only served to project the Balaenoptera’s Majesty signaling her place as the protectant flagship. John carried an almost ethereal presence, a tangible aura of gentle authority, as he decisively traversed the disproportionately quiet halls passing by the occasional colleague. For a brief moment, the world seemed to slow down in his tread. Those who caught even a fleeting glimpse of the captain felt entranced, their gazes filled with reverent curiosity. John, a man of few acquaintances among the crowd, couldn't help but wonder about the intricate tapestry of destinies that would soon unfold during the long awaited supply voyage to Europa; each stranger's life a unique thread in the grand design of the human expansion into the skeptics universe. Perhaps it was this inherent curiosity and care for his companion’s; for human life which led John to carry out his actions, which consequently solidified into folk tale amongst the flock. John’s uniform was never quite perfect, a cuff loosely amiss, a button haphazardly stray. People couldn't pin why he stalled so long in his rank as captain. whispers within the ranks about his commitment to his comrades dismissed any doubts. People hoped they might one day gain the unspoken respect the captain conjured. They understood that where a button strayed Indiscreetly, John made up for it with every aspect when in field kit. He drilled his team as if their kit were a ceremonial uniform, one they would hopefully in John’s eyes, never have to wear to their funeral. To John, an ill-prepared kit meant death. A uniform didn't get you home; it got you through the halls, through the formalities, not the field. John allowed his team some slack. Those passing nodded to the captain in respect. John detested salutes, but welcomed camaraderie; these things meant more to him than forced compliance.\n\nAt the end of Balaenoptera’s main hall, a seamless but large opening recessed into the wall; conveniently placed just before the bridge. “Commander Marcellus Athos” Etched in an almost Roman calligraphy, Bronze Capitals brazed across glistening black oxide blast doors, John felt himself die a little bit inside just that bit more at the chauvinism of it all. As he veered to the right to enter the grav lift to the mess hall, the fine calligraphy began to make way, retracting into the double layered blast walls of the hall as the doors gave way. “Commander Athos” John remarked head tilted slightly forward, hands tucked effortlessly behind his ever so slightly, now straighter back. Johns fingers slowly finessed a strayed cuff button back into it’s holder. “Walker!” Marcellus proclaimed! “Just the man I wanted to see, headed to the mess so soon?”, “Fuck. first that weird fucking dream, now I have to contend with this guy” John thought to himself. “I hear the salmon guava is.. off world” said John in a sarcastic tone. Marcellus’s eyes met with John’s. “Precisely, we can’t have Europa’s new workers having acquired tastes now can we” John eased his foot forward in sync with the Commanders toward the bridge; shoulder to shoulder they paced through the thick blast doors as they gave way to the majesty of the bridge.\n\nThe Baelenoptera’s bridge was usually a hive of activity whilst under-way, but she was now docked with Ceres and her crew enjoyed the rare comfort of social norms with the station's inhabitants. The Commander had made the bridge his personal, informal meeting room. streamlined along the bridge walls, arrays of data charts projected color mapped “estimated” unrest in regions across the Earth’s face. This made John Anxious, observing the color array he knew how quick it could mean a fast burn to deploying halfway across the globe.\n\n“A flavor modeled on the samples taken from the minerals within Europa’s water; Ceres home committee thought it might give the new workers a taste of what’s to come” John chuckled under his breath “Strange way of enticing the crew to the journey ahead wouldn’t you say Commander” Marcellus stopped abruptly before the bridge control panel. “What would you advise builds resilience in people, Walker?” said Athos. John's eyes lifted from the luminous holographic slingshot vectors pathing way to Europa, floating in the center of the room, moving from the peaceful hum of the stellar map, to meet Marcellus’s anxiously waiting gaze. “These people have already sacrificed and given up their homes and half of them their families back on earth, the least we can do is accommodate them with something that feels like home, at least until they know what that is”\n\nMarcellus let out a heavy Sigh, then continued in a persuasive tone at John “Plants have been shown to have higher survival rates post transplant to different environments with slow environmental progressions, humans are much the same.” John slowly paced the bridge observing the charts trying to draw conclusions on where he and his team might be posted to next.  “They only have a short time in orbit with preparations before they are fully committed, better to thin the herd of dead weight wouldn’t you agree… before sending them on the full leg”.\n\nJohn had thought this grand coming from someone who didn’t even eat in the general mess with the crew. He gazed down on Ceres station looking over the foreboding nose of the Balaenoptera. Ceres, short for the Collective Earthwide Reconciliation Endeavour Settlement, was the result of a global  wide effort to forward the boundaries of space exploration and resource acquisition. In its orbital rotation the shimmering edge of the Earth waking from the darkness of space had a disorienting effect to freshly seasoned spacers.\n\nCoupled with the name of the Greek Goddess of agriculture and cultivation, Ceres was a mother structure, a labyrinth of separate winding modules and docking stations which formed the crust of an internal womb shielded from the cold of space. CERES began as an experiment for deep space agricultural cultivation, eventually as the project gained traction in its success it quickly became the first space workers settlement growing in size, the inner layers like records of past technological progression, preserved conservatively in respect to the scarcity of earth's resources.\n\nPerplexed by the advancements and in such short time made by the CERES project, John couldn’t help but raise the question to Marcellus, “I understand the CLEAR program guides us and has aided us in getting this far, but the workers seem uneasy with how invested the model has been for so long with it’s self driven development, there are rumours in certain circles of a rogue group which seeks to manipulate the core algorithm to their own agenda, people are getting impatient, and they want better working conditions, cleaner air, more regularly replaced filters, cleaner water. It’s turning into a mess down there, morale markers have shown to decline in recent years, and you are pressing strange cuisine on them. these are sensitive times Marcellus, can we really afford to be messing with an already frustrated and agitated populous”\n\n“Hmmm yes John, these are trying times. I still remember the fall of the world bank, it took time for the economy to take its roots again within the monetary reform, but the sacrifices paid off didn’t they? have faith in the program John, we haven’t seen war in over a century now, before long it will be a dusty drive in the archive. The models self investment is a delicate situation, Keynes envisioned that technology would result in a surplus economy, and now we must let that path take its course, something we need to exercise carefully, with these cautionary measures sometimes there are certain setbacks, I’m sure you understand” Marcellus gently conveyed his view with sincerity in his voice, but a firm eye. John let out a shallow breath, he agreed with the man, however pushed back gently “I see what you are getting at, however I can help but feel that the algorithm is only as good as the data which is fed into it. If our engineers don’t cater for an increase in population and workforce on Ceres, or the over expansion of that economy, fluctuations in weather and real world events. The model is good and I won’t deny it has stamped out corruption, but it isn’t perfect, we still have a long way to go''.\n\nMarcellus listened with a clear conscience, his finger pressed on his chin resting upon his palm, elbow tucked on his hip. Marcellus was swift in his response. “Your humble yet considerate approach on situations is why I keep you around Walker, I believe I can count on you to keep a watchful eye on things, while my attention is not always on the real world but the scientific advancements for the new world.. I know I can count on you, in-fact after this next mission, I think it might be time you hung up your field suit for a more safeguarded role in a political uniform; I think you have a heart for Techracy, you might help the algorithm see evolving issues that it had not yet considered”. John was surprised by Marcellus' offer, he respected his thoughtful gesture, meeting his offer with a reserved acceptance, “You know it would be nice to hang up the kit, politics hasn’t always been my forte, at least in Techracy I could patch up a few holes beyond my reach.. Thanks for the consideration Marcellus, I may take you up on that one day, but for now seeing the issues first hand helps me get a first base view. what is this mission you whispered of?”.\n\nMarcellus took a deep breath as he paced the bridge port window, looking out over Ceres, across the bustling crowds of Technicians, Technocrats, and protectants pacing to their respective roles. The faces of Technicians wandered with heavy eyes through the halls, a feeling of disgruntlement strewn across their frowns and occasional reluctant smiles.  'This mission is of the utmost secrecy, John,' Marcellus said, his voice low and measured. 'I know this goes against all we have strived for in transparency with the broader public, although we can’t risk the civil unrest should remnants of our past be found as the cause of this anomaly. Do you understand what is at stake here..” the room fell silent for a moment, John seemed lost and confused deep in thought, “John?' John gave a steady nod; masked beneath this physical formal agreement, his true thoughts and distrust firmly concealed behind a wall of silence. “Ok well I am glad we cleared that up” Marcellus proceeded to discuss the details of the mission.\n\n“For almost 5 decades now we have been picking up low band frequency signals we assumed were just random static, recently the signal has become more pronounced, and we have been able to tri-laterate the location of these transmissions from stations positioned on several moons throughout the solar system. The transmissions seem to point to general areas in the outer orbital paths of sol’s planets; these signals get stronger peculiarly with each planet's orbital rotation. We haven’t been able to confirm if this is true for the outer planets yet, but the locations seem to form a trajectory. Recently we have observed stronger signal amplitude, although we can’t actually interpret what this signal is, as it seems to be encrypted. The amplitude spiked recently when a distress beacon was detected on Earth, in the northern region of Nepal deep within the Himalayan mountains. Your team is to investigate and report back. Locate the source of the signal, extract any information and data you can then once you are certain, send coordinates and terrain scans for extraction.. You know the drill”. “Data extraction. Got it”, John seemed unphased really.\n\n“Keep your wits about you John” Marcellus cut in.  “There are records of independent groups operating in the area, but our long range scanners can’t detect anything due to the density of the atmosphere. You’ll be blind, but at best I would advise caution and to expect possible hostilities.” Said Athos, grimly, yet with an uncanny confidence in his voice. John thought it quite apathetic, but shrugged it off internally. “I wonder how invested he is in this facility.. if he has lost site of the expansion cause” Walker thought to himself. Then like water running past his ears, he was brought back into the room. “Yes” shot walker, with extremely subtle sarcasm, “Hostiles” he let out in a medium tone, followed with a look of authoritative submission, not reassuring enough to Athos that he felt John on his side, but enough assurance, or so through his clean record. Little did he know. “Ok John.. I’ll leave it in your capable hands”\n\nAthos turned his shoulder to john, looking out over the station through the bridge window, his silence with a gentle permeating respect, “At ease” permitting him to leave the room.",
         "blocks": [
           {
             "blockId": "block-0011",
@@ -29284,7 +29128,7 @@
         "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
         "sceneTitle": "Am I dreaming or am i dead",
         "sceneSynopsis": "",
-        "editorText": "Ringing pierced Tex’s ears with a strange bubbly static. It wasn’t a normal ringing. A strange Tinnitus he had never felt before. Like he had just jumped into a pool, but without the pressure of fluid pressing against him. The sound felt weightless in the sense that he could not feel the percussion, it was just there, untouchable.\n\nIt was like his ears were being born into existence for the first time, hearing the first sounds he had ever encountered. There was something entirely off. Like he was no longer a part of his own body, or any body.\n\nAll he could see was white. Eventually the ringing stopped, There was no taste, smell or feeling of weight he could connect with. He was weightless, almost senseless, but he was conscious. He could still feel, but only partially, he had no breath, or pulse, the only senses he felt were those his mind could construct. He wasn’t able to panic, he was at the complete mercy of whatever this was. He embraced the silence, it was the first peaceful moment he had felt in what seemed like an eternity. In the moment nothing could harm him, direct, or alter his state, even his own will.",
+        "editorText": "Ringing pierced Tex’s ears with a strange bubbly static. It wasn’t a normal ringing. A strange Tinnitus he had never felt before. Like he had just jumped into a pool, but without the pressure of fluid pressing against him. The sound felt weightless in the sense that he could not feel the percussion, it was just there, untouchable.\n\nIt was like his ears were being born into existence for the first time, hearing the first sounds he had ever encountered. There was something entirely off. Like he was no longer a part of his own body, or any body.\n\nAll he could see was white. Eventually the ringing stopped, There was no taste, smell or feeling of weight he could connect with. He was weightless, almost senseless, but he was conscious. He could still feel, but only partially, he had no breath, or pulse, the only senses he felt were those his mind could construct. He wasn’t able to panic, he was at the complete mercy of whatever this was. He embraced the silence, it was the first peaceful moment he had felt in what seemed like an eternity. In the moment nothing could harm him, direct, or alter his state, even his own will.\n\npersists test, lets see now The application is quite sluggish after turning loggin goff it is far more responsive. lets see how fast the typing occurs nnow. ",
         "blocks": [
           {
             "blockId": "block-0722",
@@ -30694,7 +30538,7 @@
         "chapterTitle": "",
         "sceneTitle": "This is a test for the save function ",
         "sceneSynopsis": "",
-        "editorText": "Mark didn't know how he ended up on this wretched plain. 34OriginFileproject",
+        "editorText": "Mark didn't know how he ended up on this wretched plain. \n\nThis should be saved as save 2",
         "blocks": [
           {
             "blockId": "draft-block-draft-scene-1777528152393-1",
@@ -30706,23 +30550,7 @@
             "eventTagIds": [],
             "isDraft": true
           }
-        ],
-        "revisionStats": {
-          "editCount": 1,
-          "lastEditedAt": "2026-05-20T08:51:05.514Z",
-          "lastChangeSummary": "Inserted 19 chars",
-          "history": [
-            {
-              "id": "revision-1779267065514-osj25u",
-              "createdAt": "2026-05-20T08:51:05.514Z",
-              "updatedAt": "2026-05-20T08:51:05.514Z",
-              "summary": "Inserted 19 chars",
-              "previousLength": 57,
-              "nextLength": 76,
-              "deltaCharacters": 19
-            }
-          ]
-        }
+        ]
       }
     }
   }

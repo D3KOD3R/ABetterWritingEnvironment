@@ -44,16 +44,21 @@ import {
   renderManuscriptPanelHTML,
 } from "./features/scene-editor.js";
 import {
-  applyTextareaTextMutation,
   createDefaultManuscriptInlineFormattingState,
   createManuscriptCommandController,
   INLINE_FORMATS,
   isInlineFormatActiveAtOffset,
   normalizeInlineFormatRanges,
   normalizeManuscriptInlineFormattingState,
-  resolveTextareaManuscriptSelection,
-  updateInlineFormatRangesForTextEdit,
 } from "./features/manuscript-editor/manuscript-command-controller.js";
+import {
+  MANUSCRIPT_PROJECTION_CHANNELS,
+  selectManuscriptProjections,
+} from "./features/manuscript-editor/projection-selector.js";
+import { createManuscriptFindController } from "./features/manuscript-editor/manuscript-find-controller.js";
+import { createManuscriptInputController } from "./features/manuscript-editor/manuscript-input-controller.js";
+import { createManuscriptSelectionController } from "./features/manuscript-editor/manuscript-selection-controller.js";
+import { createAnchoredRecordNavigationController } from "./features/manuscript-editor/anchored-record-navigation-controller.js";
 import {
   resolveLiveSpellcheckWordRange,
   validateLiveSpellcheckMenuRange,
@@ -94,6 +99,25 @@ import { createPreferencesRepository } from "./adapters/storage/preferences-repo
 import { createProjectService } from "./adapters/storage/project-service.js";
 import { PROJECT_SCHEMA_VERSION } from "./adapters/storage/project-migrations.js";
 import { createProjectPersistenceService } from "./adapters/storage/project-persistence-service.js";
+import {
+  createProjectLibraryStateService,
+  mergeProjectLibraryItemsById,
+  normalizeProjectSelectionDefaults,
+} from "./state/project-library-state.js";
+import { createProjectRecordStateService } from "./state/project-record-state.js";
+import { createProjectRuntimeRecordStateService } from "./state/project-runtime-record-state.js";
+import { createProjectActivationStateService } from "./state/project-activation-state.js";
+import { createProjectActivationController } from "./state/project-activation-controller.js";
+import {
+  clearTextareaAnchoredRecordPreview,
+  clearTextareaProjectionLayer,
+  clearTextareaRuntimeSelectionPreview,
+  renderTextareaSpellcheckLayer,
+  resolveTextareaEditorHost,
+  showTextareaAnchoredRecordPreview,
+  showTextareaRuntimeSelectionPreview,
+  syncTextareaSpellcheckTypingState,
+} from "./adapters/editor-host/textarea-editor-host.js";
 import {
   createEmptyRevisionProjectState,
   createRevisionStorageService,
@@ -326,6 +350,57 @@ let voiceRecordingPreviewAudio = null;
 let voiceRecordingPreviewUrl = null;
 let lastDesktopLogBridgeWarningAt = 0;
 
+// Intent: keep pure find derivation and replacement planning outside browser shell effects.
+const manuscriptFindController = createManuscriptFindController({
+  getScenes: () => state.scenes,
+});
+
+// Intent: keep selection derivation separate from DOM focus, scrolling, and persistence orchestration.
+const manuscriptSelectionController = createManuscriptSelectionController({
+  findSceneBlockAtOffset,
+});
+
+// Intent: dispatch live manuscript typing through feature-owned mutation planning with shell effects injected.
+const manuscriptInputController = createManuscriptInputController({
+  markEditorAsCurrent: (editorSurface) => markSceneEditorAsCurrent(editorSurface),
+  updateSelectionSnapshot: (editorSurface) => updateSceneEditorSelectionSnapshotFromTextarea(editorSurface),
+  updateInlineFormatToolbar: (editorSurface) => updateInlineFormatToolbarState(editorSurface),
+  clearAnchoredPreview: (options) => clearTaskAnchorPreview(options),
+  getSceneText: (sceneId) => getScene(sceneId)?.editorText ?? "",
+  getSceneInlineFormatRanges,
+  getInlineFormattingState: () => state.manuscriptInlineFormatting,
+  recordRevisionTextEdit: (sceneId, previousText, nextText) => recordRevisionSceneTextEdit(sceneId, previousText, nextText),
+  trackInlinePassageTyping: (sceneId, previousText, editorSurface) => trackInlinePassageDraftTyping(sceneId, previousText, editorSurface),
+  getTypingSpellcheckRange: (editorSurface) => getEditorTypingSpellcheckRange(editorSurface),
+  commitSceneTextEdit: ({
+    sceneId,
+    previousText,
+    nextText,
+    inlineFormatRanges,
+  }) => {
+    updateSceneDraft(sceneId, (draft) => {
+      draft.editorText = nextText;
+      draft.inlineFormatRanges = inlineFormatRanges;
+      draft.revisionStats = updateSceneRevisionStats(draft.revisionStats, previousText, nextText);
+    });
+  },
+  scheduleTypingRefresh: (sceneId, text, options) => scheduleSceneEditorTypingRefresh(sceneId, text, options),
+  isGrammarCheckEnabled: () => state.editorPrefs.grammarCheckEnabled !== false,
+  scheduleSpellcheckRefresh: (sceneId) => scheduleSceneEditorSpellcheckRefresh(sceneId),
+});
+
+// Intent: centralize anchor-aware task/note resolution while the shell retains browser navigation effects.
+const anchoredRecordNavigationController = createAnchoredRecordNavigationController({
+  resolveRecordRange: (record, text) => resolveManuscriptTaskRange(record, text),
+  repairResolvedRange: (recordType, record, resolvedRange) => {
+    if (recordType === "task") {
+      syncResolvedTaskRange(record, resolvedRange);
+      return;
+    }
+    syncResolvedPassageNoteRange(record, resolvedRange);
+  },
+});
+
 // Intent: central developer observability service for cross-module diagnostics and separate log-window streaming.
 const developerLogger = createDeveloperLogger({
   windowRef: window,
@@ -361,6 +436,45 @@ const writingGoalsStateLogHooks = {
     lastEventLabel: "",
   }),
 };
+
+// Intent: keep durable record construction and normalization outside the shell orchestration file.
+const projectRecordStateService = createProjectRecordStateService({
+  clone: cloneValue,
+  createStructureDrafts,
+  createTemplateDrafts,
+  createDefaultEditorPrefs,
+  createDefaultLocalAiPrefs,
+  normalizeManuscriptTasks,
+  normalizePassageNotes,
+  normalizeProjectSelectionDefaults,
+  normalizeProjectSettingsSnapshot,
+  buildProjectSettingsCandidate,
+  getProjectRecordWordCountForSettings,
+  getPersistableRevisionProjectState,
+  buildProjectIndexForRecord,
+  buildWorkspaceStatsFromProjectIndex,
+  projectSchemaVersion: PROJECT_SCHEMA_VERSION,
+});
+const {
+  normalizeProjectRecord,
+  createProjectRecordFromWorkspace: createProjectLibraryRecordFromWorkspace,
+} = projectRecordStateService;
+
+// Intent: keep project-library normalization and active-record selection outside the shell orchestration file.
+const projectLibraryStateService = createProjectLibraryStateService({
+  state,
+  normalizeProjectRecord,
+  mergeProjectRecords,
+  createProjectRecordFromWorkspace: createProjectLibraryRecordFromWorkspace,
+  clone: cloneValue,
+});
+const {
+  normalizeProjectLibrarySnapshot,
+  mergeProjectLibrarySnapshots,
+  resolveActiveProjectId,
+  getActiveProjectRecord,
+  getProjectRecordById,
+} = projectLibraryStateService;
 
 const writingGoalsStateService = createWritingGoalsStateService({
   state,
@@ -492,6 +606,17 @@ const {
   clampPositiveNumber,
 } = writingGoalsStateService;
 
+// Intent: assemble save-time project records outside shell orchestration while retaining UI capture callbacks here.
+const projectRuntimeRecordStateService = createProjectRuntimeRecordStateService({
+  state,
+  clone: cloneValue,
+  getCurrentManuscriptWordCount,
+  createProjectSettingsSnapshotFromState,
+  captureSceneSelectionDefaultsForSave,
+  captureInlinePassageDraftDefaultsForSave,
+  createProjectRecordFromWorkspace: createProjectLibraryRecordFromWorkspace,
+});
+
 const projectPersistenceService = createProjectPersistenceService({
   state,
   windowRef: window,
@@ -518,13 +643,12 @@ const projectPersistenceService = createProjectPersistenceService({
     projectRecord,
     reason,
   }) => {
-    applyProjectRecord(projectRecord);
-    refreshScenes();
-    restoreSelectionFromWorkspaceDefaults();
-    syncWritingTargetState({ forceReload: true });
-    logWritingTargetLoadCheckpoint(reason ?? "load-project-file");
-    render();
-    recordWritingTargetSnapshot({ immediate: true, reason: reason ?? "load-project-file", skipProjectFileAutosave: true });
+    activateProjectRecord(projectRecord, {
+      reason: reason ?? "load-project-file",
+      logLoadCheckpoint: true,
+      renderAfter: true,
+      recordSnapshot: true,
+    });
   },
   prepareProjectSnapshotForSave: ({ reason }) => {
     logWritingTargetDebugEvent("info", "project.save", "Saving current project snapshot.", {
@@ -572,6 +696,21 @@ const projectPersistenceService = createProjectPersistenceService({
 
 const revisionStorageService = createRevisionStorageService({
   logger: revisionServiceLog,
+});
+// Intent: keep project-record hydration assignments outside activation effect orchestration.
+const projectActivationStateService = createProjectActivationStateService({
+  state,
+  clone: cloneValue,
+  createStructureDrafts,
+  createTemplateDrafts,
+  normalizeManuscriptTasks,
+  normalizePassageNotes,
+  readRevisionState: (record) => revisionStorageService.readRevisionState(record),
+  createRevisionPanelStateForProject,
+  normalizeProjectSettingsSnapshot,
+  buildProjectSettingsCandidate,
+  getProjectRecordWordCountForSettings,
+  normalizeSpellcheckProjectSettings,
 });
 const revisionPanelController = createRevisionPanelController();
 const revisionService = createRevisionService({
@@ -676,6 +815,54 @@ const {
 writingGoalsStateLogHooks.logWritingTargetDebugEvent = logWritingTargetDebugEvent;
 writingGoalsStateLogHooks.logWritingTargetMetricCheckpoint = logWritingTargetMetricCheckpoint;
 writingGoalsStateLogHooks.buildWritingTargetDebugTerminalSummary = buildWritingTargetDebugTerminalSummary;
+
+// Intent: centralize activation effects while the shell continues to compose browser and feature callbacks.
+const projectActivationController = createProjectActivationController({
+  state,
+  clone: cloneValue,
+  applyProjectRecordToState: (record) => projectActivationStateService.applyProjectRecordToState(record),
+  persistActiveProjectId: (projectId) => projectPersistenceService.persistActiveProjectId(projectId),
+  saveWritingTargetState,
+  clearWritingTargetDraft,
+  clearWritingTargetSnapshotTimer,
+  clearProjectAutosaveState: () => clearProjectFileAutosaveState(),
+  getNarrationRecordingRuntime: () => narrationRecordingRuntime,
+  setNarrationRecordingRuntime: (runtime) => {
+    narrationRecordingRuntime = runtime;
+  },
+  clearIntervalFn: (timerId) => window.clearInterval(timerId),
+  getVoiceRecordingPreviewAudio: () => voiceRecordingPreviewAudio,
+  setVoiceRecordingPreviewAudio: (audio) => {
+    voiceRecordingPreviewAudio = audio;
+  },
+  getVoiceRecordingPreviewUrl: () => voiceRecordingPreviewUrl,
+  setVoiceRecordingPreviewUrl: (url) => {
+    voiceRecordingPreviewUrl = url;
+  },
+  revokeObjectUrl: (url) => URL.revokeObjectURL(url),
+  clearBinderTitleClickState: () => {
+    binderTitleClickState = null;
+  },
+  writeProjectSourcePath: (value) => writeStoredJsonRaw(EDITOR_PROJECT_SOURCE_PATH_KEY, value),
+  writeBinderWidth: (value) => writeStoredJsonRaw(EDITOR_BINDER_WIDTH_KEY, value),
+  writeConsoleWidth: (value) => writeStoredJsonRaw(EDITOR_CONSOLE_WIDTH_KEY, value),
+  persistConsoleDockCollapsedState,
+  persistCollapsedChapterState,
+  persistCollapsedConsoleChapterState,
+  readWritingTargetStore,
+  writeWritingTargetStore: (value) => writeStoredJsonRaw(EDITOR_WRITING_TARGETS_KEY, value),
+  syncLegacyProjectStorageFromState,
+  logWritingTargetDebugEvent,
+  projectLoadGateLog,
+  manuscriptStateLog,
+  refreshScenes,
+  restoreSelectionFromWorkspaceDefaults,
+  syncWritingTargetState,
+  refreshWritingTargetSessionLifecycle,
+  logWritingTargetLoadCheckpoint,
+  render,
+  recordWritingTargetSnapshot,
+});
 
 registerRuntimeLogging();
 
@@ -1937,35 +2124,10 @@ function wireEvents() {
     }
 
     if (editField === "editor-text") {
-      markSceneEditorAsCurrent(target);
-      updateSceneEditorSelectionSnapshotFromTextarea(target);
-      updateInlineFormatToolbarState(target);
-      clearTaskAnchorPreview({ restoreSelection: false });
-      const previousText = getScene(sceneId)?.editorText ?? "";
-      const previousInlineFormatRanges = getSceneInlineFormatRanges(sceneId, previousText.length);
-      const pendingFormats = normalizeManuscriptInlineFormattingState(state.manuscriptInlineFormatting).pendingFormats;
-      recordRevisionSceneTextEdit(sceneId, previousText, target.value);
-      trackInlinePassageDraftTyping(sceneId, previousText, target);
-      const activeTypingWordRange = getEditorTypingSpellcheckRange(target);
-      updateSceneDraft(sceneId, (draft) => {
-        draft.editorText = target.value;
-        draft.inlineFormatRanges = updateInlineFormatRangesForTextEdit({
-          ranges: previousInlineFormatRanges,
-          previousText,
-          nextText: target.value,
-          pendingFormats,
-        });
-        draft.revisionStats = updateSceneRevisionStats(draft.revisionStats, previousText, target.value);
+      manuscriptInputController.handleEditorTextInput({
+        sceneId,
+        editorSurface: target,
       });
-      scheduleSceneEditorTypingRefresh(sceneId, target.value, {
-        revisionPanel: true,
-        consoleCard: true,
-        inlinePassageStatus: true,
-        activeTypingWordRange,
-      });
-      if (state.editorPrefs.grammarCheckEnabled !== false) {
-        scheduleSceneEditorSpellcheckRefresh(sceneId);
-      }
     }
   });
 
@@ -2201,6 +2363,9 @@ function render() {
   renderPaneVisibility();
   if (state.activePane === "manuscript" || state.activePane === "narration") {
     syncSceneDocumentLayout();
+  }
+  if (state.activePane === "narration") {
+    syncNarrationTakeSelectionPreview();
   }
 }
 
@@ -3069,12 +3234,7 @@ function renderManuscriptFindPanel() {
     return;
   }
 
-  const query = String(findState.query ?? "");
-  const replaceText = String(findState.replaceText ?? "");
-  const matches = query.trim() ? getManuscriptFindMatches(query) : [];
-  const activeIndex = matches.length
-    ? clampNumber(Number(findState.activeIndex ?? 0), 0, matches.length - 1)
-    : 0;
+  const panelModel = manuscriptFindController.buildPanelModel(findState);
   const focusedFindField =
     document.activeElement instanceof HTMLInputElement &&
     document.activeElement.closest("#find-slot")
@@ -3085,22 +3245,15 @@ function renderManuscriptFindPanel() {
         }
       : null;
 
-  if (state.manuscriptFind.activeIndex !== activeIndex) {
+  if (state.manuscriptFind.activeIndex !== panelModel.activeIndex) {
     state.manuscriptFind = {
       ...state.manuscriptFind,
-      activeIndex,
+      activeIndex: panelModel.activeIndex,
     };
   }
 
-  const activeMatch = matches[activeIndex] ?? null;
   syncManuscriptFindSlotPosition(slot, findState.position);
-  slot.innerHTML = renderManuscriptFindPanelHTML({
-    query,
-    replaceText,
-    matches,
-    activeIndex,
-    activeMatch,
-  });
+  slot.innerHTML = manuscriptFindController.renderPanelHTML(panelModel);
 
   if (focusedFindField?.field) {
     const field = slot.querySelector(`[data-find-field="${CSS.escape(focusedFindField.field)}"]`);
@@ -3231,80 +3384,6 @@ function handleManuscriptFindPointerEnd(event) {
   }
 
   manuscriptFindDragState = null;
-}
-
-function renderManuscriptFindPanelHTML({
-  query,
-  replaceText,
-  matches,
-  activeIndex,
-  activeMatch,
-}) {
-  const hasQuery = Boolean(String(query ?? "").trim());
-  const matchCount = matches.length;
-  const canNavigate = hasQuery && matchCount > 0;
-  const activeLabel = activeMatch
-    ? `${activeMatch.chapterTitle || "Chapter"} · ${activeMatch.sceneTitle || "Scene"}`
-    : "Search the manuscript";
-
-  return `
-    <section class="manuscript-find-panel ${hasQuery ? "has-query" : ""}" data-manuscript-find-panel>
-      <button
-        class="manuscript-find-panel__close"
-        type="button"
-        data-action="close-manuscript-find"
-        aria-label="Close find window"
-        title="Close find window"
-      >×</button>
-      <div class="manuscript-find-panel__dragbar">
-        <div class="manuscript-find-panel__drag-handle" data-manuscript-find-drag-handle aria-label="Drag find window">
-          <span>Find in manuscript</span>
-          <strong>Drag to move</strong>
-        </div>
-      </div>
-      <div class="manuscript-find-panel__header">
-        <div class="manuscript-find-panel__fields">
-          <label class="manuscript-find-field">
-            <span>Find</span>
-            <input
-              type="search"
-              value="${escapeHtml(query)}"
-              data-find-field="manuscript-find-query"
-              placeholder="Search the manuscript"
-              aria-label="Find in manuscript"
-            />
-          </label>
-          <label class="manuscript-find-field">
-            <span>Replace</span>
-            <input
-              type="text"
-              value="${escapeHtml(replaceText)}"
-              data-find-field="manuscript-find-replace"
-              placeholder="Replace with"
-              aria-label="Replace in manuscript"
-            />
-          </label>
-        </div>
-        <div class="manuscript-find-panel__actions">
-          <button class="tag-button editor-action-button" type="button" data-action="find-prev" ${canNavigate ? "" : "disabled"}>Prev</button>
-          <button class="tag-button editor-action-button" type="button" data-action="find-next" ${canNavigate ? "" : "disabled"}>Next</button>
-          <button class="tag-button editor-action-button" type="button" data-action="replace-find-current" ${canNavigate ? "" : "disabled"}>Replace</button>
-          <button class="tag-button editor-action-button" type="button" data-action="replace-find-all" ${canNavigate ? "" : "disabled"}>Replace all</button>
-        </div>
-      </div>
-      <div class="manuscript-find-panel__status">
-        <strong>${escapeHtml(hasQuery ? `${matchCount} match${matchCount === 1 ? "" : "es"}` : "Find in manuscript")}</strong>
-        <span>${escapeHtml(activeLabel)}</span>
-      </div>
-      <div class="manuscript-find-results" data-manuscript-find-results>
-        ${hasQuery
-          ? (matchCount
-            ? matches.map((match, index) => renderManuscriptFindResult(match, index, index === activeIndex)).join("")
-            : `<p class="manuscript-find-empty">No matches found.</p>`)
-          : `<p class="manuscript-find-empty">Search the manuscript to jump between matches and replace them in place.</p>`}
-      </div>
-    </section>
-  `;
 }
 
 function renderGrammarCheckPanel(options = {}) {
@@ -3763,81 +3842,11 @@ function focusGrammarCheckEntry(entry) {
   takeToSceneRange(targetSceneId, startOffset, endOffset, { behavior: "smooth" });
 }
 
-function renderManuscriptFindResult(match, index, isActive) {
-  return `
-    <button
-      class="manuscript-find-result ${isActive ? "is-active" : ""}"
-      type="button"
-      data-action="find-match"
-      data-find-match-index="${index}"
-      aria-current="${isActive ? "true" : "false"}"
-    >
-      <span class="manuscript-find-result__meta">${escapeHtml(match.chapterTitle || "Chapter")} · ${escapeHtml(match.sceneTitle || "Scene")}</span>
-      <strong>${escapeHtml(match.matchText || "Match")}</strong>
-      <p>${match.snippetHtml}</p>
-    </button>
-  `;
-}
-
-function getManuscriptFindMatches(query) {
-  const needle = String(query ?? "").trim().toLocaleLowerCase();
-  if (!needle) {
-    return [];
-  }
-
-  const matches = [];
-
-  for (const scene of state.scenes) {
-    const sceneText = String(scene.editorText ?? "");
-    const haystack = sceneText.toLocaleLowerCase();
-    let searchFrom = 0;
-
-    while (searchFrom <= haystack.length) {
-      const startOffset = haystack.indexOf(needle, searchFrom);
-      if (startOffset === -1) {
-        break;
-      }
-
-      const endOffset = startOffset + needle.length;
-      matches.push({
-        sceneId: scene.sceneId,
-        chapterTitle: scene.chapterTitle,
-        sceneTitle: scene.sceneTitle,
-        startOffset,
-        endOffset,
-        matchText: sceneText.slice(startOffset, endOffset),
-        snippetHtml: buildManuscriptFindSnippetHtml(sceneText, startOffset, endOffset),
-      });
-
-      searchFrom = startOffset + Math.max(1, needle.length);
-    }
-  }
-
-  return matches;
-}
-
-function buildManuscriptFindSnippetHtml(text, startOffset, endOffset) {
-  const source = String(text ?? "");
-  const snippetStart = Math.max(0, startOffset - 40);
-  const snippetEnd = Math.min(source.length, endOffset + 40);
-  const normalizeSnippet = (value) => escapeHtml(String(value ?? "")).replace(/\s+/g, " ");
-  const before = normalizeSnippet(source.slice(snippetStart, startOffset));
-  const match = normalizeSnippet(source.slice(startOffset, endOffset));
-  const after = normalizeSnippet(source.slice(endOffset, snippetEnd));
-
-  return `${before}<mark>${match}</mark>${after}`;
-}
-
 function openManuscriptFind() {
   const editorBookmark = captureManuscriptEditorBookmark();
   const selectionText = getCurrentManuscriptSelectionText();
   state.activePane = "manuscript";
-  state.manuscriptFind = {
-    ...state.manuscriptFind,
-    open: true,
-    query: selectionText || state.manuscriptFind.query,
-    activeIndex: 0,
-  };
+  state.manuscriptFind = manuscriptFindController.open(state.manuscriptFind, selectionText);
   render();
   renderManuscriptFindPanel();
   window.requestAnimationFrame(() => {
@@ -3855,10 +3864,8 @@ function closeManuscriptFind() {
     return;
   }
 
-  state.manuscriptFind = {
-    ...state.manuscriptFind,
-    open: false,
-  };
+  state.manuscriptFind = manuscriptFindController.close(state.manuscriptFind);
+  clearTextareaRuntimeSelectionPreview(resolveTextareaEditorHost(getEditorTextareaForScene(state.selectedSceneId)));
   renderManuscriptFindPanel();
   window.requestAnimationFrame(() => {
     const textarea = getEditorTextareaForScene(state.selectedSceneId);
@@ -3880,15 +3887,15 @@ function captureManuscriptEditorBookmark() {
   }
 
   const codeframe = textarea.closest(".scene-editor-codeframe");
-  return {
+  return manuscriptSelectionController.createBookmark({
     sceneId: String(textarea.dataset.sceneId ?? ""),
-    selectionStart: Number.isInteger(textarea.selectionStart) ? textarea.selectionStart : 0,
-    selectionEnd: Number.isInteger(textarea.selectionEnd) ? textarea.selectionEnd : Number.isInteger(textarea.selectionStart)
+    startOffset: Number.isInteger(textarea.selectionStart) ? textarea.selectionStart : 0,
+    endOffset: Number.isInteger(textarea.selectionEnd) ? textarea.selectionEnd : Number.isInteger(textarea.selectionStart)
       ? textarea.selectionStart
       : 0,
-    codeframeScrollTop: codeframe instanceof HTMLElement ? codeframe.scrollTop : 0,
-    codeframeScrollLeft: codeframe instanceof HTMLElement ? codeframe.scrollLeft : 0,
-  };
+    scrollTop: codeframe instanceof HTMLElement ? codeframe.scrollTop : 0,
+    scrollLeft: codeframe instanceof HTMLElement ? codeframe.scrollLeft : 0,
+  });
 }
 
 function restoreManuscriptEditorBookmark(bookmark) {
@@ -3920,155 +3927,127 @@ function updateManuscriptFindField(findField, value) {
     return;
   }
 
-  if (normalizedField === "manuscript-find-query") {
-    state.manuscriptFind = {
-      ...state.manuscriptFind,
-      query: String(value ?? ""),
-      activeIndex: 0,
-    };
-  }
-
-  if (normalizedField === "manuscript-find-replace") {
-    state.manuscriptFind = {
-      ...state.manuscriptFind,
-      replaceText: String(value ?? ""),
-    };
-  }
-
+  state.manuscriptFind = manuscriptFindController.updateField(state.manuscriptFind, normalizedField, value);
   renderManuscriptFindPanel();
 }
 
 function moveManuscriptFindMatch(delta) {
-  const matches = getManuscriptFindMatches(state.manuscriptFind.query);
-  if (!matches.length) {
+  const result = manuscriptFindController.moveMatch(state.manuscriptFind, delta);
+  if (!result.match) {
     renderManuscriptFindPanel();
     return;
   }
 
-  const currentIndex = clampNumber(Number(state.manuscriptFind.activeIndex ?? 0), 0, matches.length - 1);
-  const nextIndex = (currentIndex + delta + matches.length) % matches.length;
-  navigateManuscriptFindMatch(nextIndex);
+  state.manuscriptFind = result.state;
+  renderManuscriptFindPanel();
+  focusManuscriptFindMatchProjection(result.match, { behavior: "smooth" });
 }
 
 function navigateManuscriptFindMatch(index) {
-  const matches = getManuscriptFindMatches(state.manuscriptFind.query);
-  if (!matches.length) {
+  const result = manuscriptFindController.selectMatch(state.manuscriptFind, index);
+  if (!result.match) {
     renderManuscriptFindPanel();
     return;
   }
 
-  const nextIndex = clampNumber(Number(index ?? 0), 0, matches.length - 1);
-  const match = matches[nextIndex];
-  if (!match) {
-    renderManuscriptFindPanel();
-    return;
-  }
-
-  state.manuscriptFind = {
-    ...state.manuscriptFind,
-    open: true,
-    activeIndex: nextIndex,
-  };
+  state.manuscriptFind = result.state;
   renderManuscriptFindPanel();
-  takeToSceneRange(match.sceneId, match.startOffset, match.endOffset, {
+  focusManuscriptFindMatchProjection(result.match, {
     behavior: "smooth",
   });
 }
 
-function replaceManuscriptFindCurrent() {
-  const query = String(state.manuscriptFind.query ?? "").trim();
-  if (!query) {
-    return;
+// Intent: render the active find result as a disposable search projection without changing manuscript data.
+function focusManuscriptFindMatchProjection(match, options = {}) {
+  const scene = getScene(match?.sceneId);
+  if (!scene) {
+    return false;
   }
 
-  const matches = getManuscriptFindMatches(query);
-  if (!matches.length) {
+  if (state.selectedSceneId !== scene.sceneId) {
+    selectSceneById(scene.sceneId);
+    window.requestAnimationFrame(() => {
+      focusManuscriptFindMatchProjection(match, options);
+    });
+    return true;
+  }
+
+  const textarea = getEditorTextareaForScene(scene.sceneId);
+  const editorHost = resolveTextareaEditorHost(textarea);
+  if (!(textarea instanceof HTMLTextAreaElement) || !editorHost) {
+    return false;
+  }
+
+  const projection = selectManuscriptProjections({
+    sceneId: scene.sceneId,
+    text: textarea.value,
+    searchPreviews: [{
+      id: `${state.manuscriptFind.query}:${match.startOffset}:${match.endOffset}`,
+      sceneId: scene.sceneId,
+      startOffset: match.startOffset,
+      endOffset: match.endOffset,
+    }],
+    includeAuthorMarks: false,
+    includeAnchoredRecords: false,
+    includeSpellcheck: false,
+  }).find((candidate) => candidate.channel === MANUSCRIPT_PROJECTION_CHANNELS.SEARCH) ?? null;
+  if (!showTextareaRuntimeSelectionPreview(editorHost, projection)) {
+    return false;
+  }
+
+  takeToEditorOffset(textarea, match.startOffset, options);
+  return true;
+}
+
+function replaceManuscriptFindCurrent() {
+  const replacementPlan = manuscriptFindController.buildCurrentReplacement(state.manuscriptFind);
+  if (!replacementPlan) {
     renderManuscriptFindPanel();
     return;
   }
 
-  const activeIndex = clampNumber(Number(state.manuscriptFind.activeIndex ?? 0), 0, matches.length - 1);
-  const match = matches[activeIndex];
-  if (!match) {
-    return;
-  }
-
-  const scene = getScene(match.sceneId);
-  if (!scene) {
-    return;
-  }
-
-  const sceneText = String(scene.editorText ?? "");
-  const replacement = String(state.manuscriptFind.replaceText ?? "");
-  const nextText = `${sceneText.slice(0, match.startOffset)}${replacement}${sceneText.slice(match.endOffset)}`;
-  if (nextText === sceneText) {
+  if (!replacementPlan.changed) {
     moveManuscriptFindMatch(1);
     return;
   }
 
-  updateSceneDraft(match.sceneId, (draft) => {
-    draft.editorText = nextText;
-    draft.revisionStats = updateSceneRevisionStats(draft.revisionStats, sceneText, nextText);
+  updateSceneDraft(replacementPlan.sceneId, (draft) => {
+    draft.editorText = replacementPlan.nextText;
+    draft.revisionStats = updateSceneRevisionStats(draft.revisionStats, replacementPlan.previousText, replacementPlan.nextText);
   }, {
     reason: "manuscript-find-replace",
     immediate: true,
   });
-  const textarea = getEditorTextareaForScene(match.sceneId);
+  const textarea = getEditorTextareaForScene(replacementPlan.sceneId);
   if (textarea instanceof HTMLTextAreaElement) {
-    textarea.value = nextText;
+    textarea.value = replacementPlan.nextText;
   }
-  syncRevisionPanel(match.sceneId);
+  syncRevisionPanel(replacementPlan.sceneId);
   syncSceneDocumentLayout();
   renderManuscriptFindPanel();
   moveManuscriptFindMatch(1);
 }
 
 function replaceManuscriptFindAll() {
-  const query = String(state.manuscriptFind.query ?? "").trim();
-  if (!query) {
-    return;
-  }
-
-  const matches = getManuscriptFindMatches(query);
-  if (!matches.length) {
+  const replacementPlans = manuscriptFindController.buildAllReplacements(state.manuscriptFind);
+  if (!replacementPlans.length) {
     renderManuscriptFindPanel();
     return;
   }
 
-  const replacement = String(state.manuscriptFind.replaceText ?? "");
-  const matchesByScene = new Map();
-  for (const match of matches) {
-    const sceneMatches = matchesByScene.get(match.sceneId) ?? [];
-    sceneMatches.push(match);
-    matchesByScene.set(match.sceneId, sceneMatches);
-  }
-
-  for (const scene of state.scenes) {
-    const sceneMatches = matchesByScene.get(scene.sceneId);
-    if (!sceneMatches?.length) {
-      continue;
+  for (const replacementPlan of replacementPlans) {
+    updateSceneDraft(replacementPlan.sceneId, (draft) => {
+      draft.editorText = replacementPlan.nextText;
+      draft.revisionStats = updateSceneRevisionStats(draft.revisionStats, replacementPlan.previousText, replacementPlan.nextText);
+    }, {
+      reason: "manuscript-find-replace-all",
+      immediate: true,
+    });
+    const textarea = getEditorTextareaForScene(replacementPlan.sceneId);
+    if (textarea instanceof HTMLTextAreaElement) {
+      textarea.value = replacementPlan.nextText;
     }
-
-    let nextText = String(scene.editorText ?? "");
-    const sceneText = nextText;
-    for (const match of [...sceneMatches].sort((left, right) => right.startOffset - left.startOffset)) {
-      nextText = `${nextText.slice(0, match.startOffset)}${replacement}${nextText.slice(match.endOffset)}`;
-    }
-
-    if (nextText !== sceneText) {
-      updateSceneDraft(scene.sceneId, (draft) => {
-        draft.editorText = nextText;
-        draft.revisionStats = updateSceneRevisionStats(draft.revisionStats, sceneText, nextText);
-      }, {
-        reason: "manuscript-find-replace-all",
-        immediate: true,
-      });
-      const textarea = getEditorTextareaForScene(scene.sceneId);
-      if (textarea instanceof HTMLTextAreaElement) {
-        textarea.value = nextText;
-      }
-      syncRevisionPanel(scene.sceneId);
-    }
+    syncRevisionPanel(replacementPlan.sceneId);
   }
 
   syncSceneDocumentLayout();
@@ -4089,7 +4068,7 @@ function handleManuscriptFindWheel(event) {
     return;
   }
 
-  const matches = getManuscriptFindMatches(state.manuscriptFind.query);
+  const matches = manuscriptFindController.getMatches(state.manuscriptFind.query);
   if (matches.length <= 1) {
     return;
   }
@@ -4108,13 +4087,11 @@ function getCurrentManuscriptSelectionText() {
     return "";
   }
 
-  const startOffset = Number.isInteger(activeElement.selectionStart) ? activeElement.selectionStart : 0;
-  const endOffset = Number.isInteger(activeElement.selectionEnd) ? activeElement.selectionEnd : startOffset;
-  if (endOffset <= startOffset) {
-    return "";
-  }
-
-  return activeElement.value.slice(startOffset, endOffset).trim();
+  return manuscriptSelectionController.getSelectedText({
+    text: activeElement.value,
+    startOffset: activeElement.selectionStart,
+    endOffset: activeElement.selectionEnd,
+  });
 }
 
 // Intent: reflect the shared inline command state without re-rendering the whole manuscript panel on caret moves.
@@ -5280,6 +5257,8 @@ function updateNarrationTakeSelectionFromTextarea(textarea, inlinePosition = nul
 
   if (currentSelectionKey !== nextSelectionKey) {
     renderManuscriptPanel();
+    syncSceneDocumentLayout();
+    syncNarrationTakeSelectionPreview();
   }
 
   return selection;
@@ -5288,11 +5267,43 @@ function updateNarrationTakeSelectionFromTextarea(textarea, inlinePosition = nul
 function clearNarrationTakeSelection() {
   state.narrationTakeSelection = null;
   renderManuscriptPanel();
+  syncSceneDocumentLayout();
 }
 
 function setNarrationTakeSession(session) {
   state.narrationTakeSession = session;
   renderManuscriptPanel();
+  syncSceneDocumentLayout();
+  syncNarrationTakeSelectionPreview();
+}
+
+// Intent: keep the armed narration verse visible as a runtime-only projection after scene rerenders.
+function syncNarrationTakeSelectionPreview() {
+  if (state.activePane !== "narration") {
+    return;
+  }
+
+  const selection = state.narrationTakeSelection;
+  const textarea = getEditorTextareaForScene(selection?.sceneId ?? state.selectedSceneId);
+  const editorHost = resolveTextareaEditorHost(textarea);
+  if (!(textarea instanceof HTMLTextAreaElement) || !editorHost) {
+    return;
+  }
+
+  if (!selection || selection.sceneId !== editorHost.sceneId) {
+    clearTextareaRuntimeSelectionPreview(editorHost);
+    return;
+  }
+
+  const projection = selectManuscriptProjections({
+    sceneId: editorHost.sceneId,
+    text: textarea.value,
+    narrationSelection: selection,
+    includeAuthorMarks: false,
+    includeAnchoredRecords: false,
+    includeSpellcheck: false,
+  }).find((candidate) => candidate.channel === MANUSCRIPT_PROJECTION_CHANNELS.NARRATION_FOLLOW) ?? null;
+  showTextareaRuntimeSelectionPreview(editorHost, projection, { focus: false });
 }
 
 function resolveNarrationTakeSelectionFromTextarea(textarea, inlinePosition = null) {
@@ -6547,15 +6558,13 @@ function syncSceneDocumentLayout(options = {}) {
     return;
   }
 
-  const textarea = editor.querySelector(".editor-document-input");
+  const editorHost = resolveTextareaEditorHost(editor);
+  const textarea = editorHost?.textarea;
   const gutter = editor.querySelector("[data-editor-gutter]");
-  const spellcheckLayer = editor.querySelector("[data-spellcheck-layer]");
-  const inlineFormatLayer = editor.querySelector("[data-inline-format-layer]");
   if (
     !(textarea instanceof HTMLTextAreaElement) ||
     !(gutter instanceof HTMLElement) ||
-    !(spellcheckLayer instanceof HTMLElement) ||
-    !(inlineFormatLayer instanceof HTMLElement)
+    !editorHost
   ) {
     return;
   }
@@ -6590,54 +6599,21 @@ function syncSceneDocumentLayout(options = {}) {
   gutter.innerHTML = Array.from({ length: visualLineCount }, (_, index) => `
     <span class="editor-gutter-line">${lineStartNumber + index}</span>
   `).join("");
-  syncInlineFormatLayer(inlineFormatLayer, textarea, selectedSceneId);
+  syncInlineFormatLayer(editorHost);
   if (state.editorPrefs.grammarCheckEnabled === false) {
-    spellcheckLayer.innerHTML = "";
+    clearTextareaProjectionLayer(editorHost, MANUSCRIPT_PROJECTION_CHANNELS.SPELLCHECK);
   } else if (options.skipSpellcheck === true) {
-    syncSpellcheckLayerTypingState(spellcheckLayer, options.activeTypingWordRange);
+    syncTextareaSpellcheckTypingState(editorHost, options.activeTypingWordRange);
   } else {
-    syncSpellcheckLayer(spellcheckLayer, textarea, selectedSceneId, options);
+    syncSpellcheckLayer(editorHost, selectedSceneId, options);
   }
   syncInlinePassageDraftLayout();
 }
 
-// Intent: mirror the textarea text in a non-editable layer so inline styling can render without becoming manuscript text.
-function syncInlineFormatLayer(layer, textarea, sceneId) {
-  if (!(layer instanceof HTMLElement) || !(textarea instanceof HTMLTextAreaElement)) {
-    return;
-  }
-
+// Intent: defer the current overlay limitation to the textarea host while richer hosts remain possible.
+function syncInlineFormatLayer(editorHost) {
   // Intent: keep the editor usable while the visual inline-format overlay is reworked for exact textarea metrics.
-  layer.innerHTML = "";
-}
-
-function renderInlineFormattedTextHTML(text, ranges) {
-  const normalizedText = String(text ?? "");
-  const normalizedRanges = normalizeInlineFormatRanges(ranges, normalizedText.length);
-  const boundaries = new Set([0, normalizedText.length]);
-  for (const range of normalizedRanges) {
-    boundaries.add(range.startOffset);
-    boundaries.add(range.endOffset);
-  }
-
-  const offsets = [...boundaries].sort((left, right) => left - right);
-  const parts = [];
-  for (let index = 0; index < offsets.length - 1; index += 1) {
-    const startOffset = offsets[index];
-    const endOffset = offsets[index + 1];
-    const segment = normalizedText.slice(startOffset, endOffset);
-    if (!segment) {
-      continue;
-    }
-
-    const classNames = normalizedRanges
-      .filter((range) => range.startOffset <= startOffset && range.endOffset >= endOffset)
-      .map((range) => `editor-inline-format-${range.formatId}`);
-    const classAttribute = classNames.length ? ` class="${escapeHtml(classNames.join(" "))}"` : "";
-    parts.push(`<span${classAttribute}>${escapeHtml(segment)}</span>`);
-  }
-
-  return parts.join("");
+  clearTextareaProjectionLayer(editorHost, MANUSCRIPT_PROJECTION_CHANNELS.AUTHOR_MARK);
 }
 
 const sceneEditorTypingRefreshState = {
@@ -6988,86 +6964,6 @@ function loadLegacyProjectState(projectId = null) {
   };
 }
 
-function normalizeProjectLibrarySnapshot(candidate) {
-  const projects = Array.isArray(candidate?.projects)
-    ? candidate.projects.map((project) => normalizeProjectRecord(project)).filter(Boolean)
-    : [];
-
-  return {
-    activeProjectId:
-      typeof candidate?.activeProjectId === "string" && candidate.activeProjectId.trim()
-        ? candidate.activeProjectId
-        : null,
-    projects,
-    sceneStore: candidate?.sceneStore && typeof candidate.sceneStore === "object" && !Array.isArray(candidate.sceneStore)
-      ? cloneValue(candidate.sceneStore)
-      : {},
-  };
-}
-
-function mergeProjectLibrarySnapshots(storedLibrary, seedLibrary, legacyState = null) {
-  const projectsById = new Map();
-  const mergedProjects = [];
-  const seedProjects = seedLibrary.projects
-    .map((project) => normalizeProjectRecord(project, legacyState))
-    .filter(Boolean);
-
-  for (const project of storedLibrary.projects) {
-    const normalized = normalizeProjectRecord(project);
-    if (!normalized || projectsById.has(normalized.id)) {
-      continue;
-    }
-    projectsById.set(normalized.id, normalized);
-    mergedProjects.push(normalized);
-  }
-
-  for (const normalized of seedProjects) {
-    const existing = projectsById.get(normalized.id) ?? findStaleSeedProjectMatch(mergedProjects, normalized);
-    if (!existing) {
-      projectsById.set(normalized.id, normalized);
-      mergedProjects.push(normalized);
-      continue;
-    }
-
-    const merged = mergeProjectRecords(existing, normalized, legacyState);
-    const index = mergedProjects.findIndex((candidate) => candidate.id === existing.id);
-    if (index !== -1) {
-      mergedProjects[index] = merged;
-    } else {
-      mergedProjects.push(merged);
-    }
-
-    projectsById.delete(existing.id);
-    projectsById.set(merged.id, merged);
-  }
-
-  const canonicalSeedProject = seedProjects.find((project) => project.source === "project-file") ?? seedProjects[0] ?? null;
-  if (canonicalSeedProject) {
-    const staleDuplicate = findStaleSeedProjectMatch(
-      mergedProjects.filter((project) => project.id !== canonicalSeedProject.id),
-      canonicalSeedProject,
-    );
-    if (staleDuplicate) {
-      const staleIndex = mergedProjects.findIndex((candidate) => candidate.id === staleDuplicate.id);
-      if (staleIndex !== -1) {
-        mergedProjects.splice(staleIndex, 1);
-        projectsById.delete(staleDuplicate.id);
-      }
-    }
-  }
-
-  if (!mergedProjects.length && legacyState) {
-    const fallbackProject = createProjectLibraryRecordFromWorkspace(seedLibrary.projects[0]?.workspace ?? state.workspace, legacyState);
-    projectsById.set(fallbackProject.id, fallbackProject);
-    mergedProjects.push(fallbackProject);
-  }
-
-  return {
-    activeProjectId: storedLibrary.activeProjectId ?? seedLibrary.activeProjectId ?? mergedProjects[0]?.id ?? null,
-    projects: mergedProjects,
-  };
-}
-
 function mergeProjectRecords(storedRecord, seedRecord, legacyState = null) {
   const storedProjectSettings = storedRecord?.projectSettings && typeof storedRecord.projectSettings === "object" && !Array.isArray(storedRecord.projectSettings)
     ? storedRecord.projectSettings
@@ -7111,8 +7007,8 @@ function mergeProjectRecords(storedRecord, seedRecord, legacyState = null) {
     sceneDrafts: storedRecord.sceneDrafts ?? seedRecord.sceneDrafts ?? legacyState?.sceneDrafts ?? {},
     structureDrafts: storedRecord.structureDrafts ?? seedRecord.structureDrafts ?? legacyState?.structureDrafts ?? createStructureDrafts(),
     templateDrafts: storedRecord.templateDrafts ?? seedRecord.templateDrafts ?? legacyState?.templateDrafts ?? createTemplateDrafts(),
-    manuscriptTasks: mergeItemsById(storedRecord.manuscriptTasks, seedRecord.manuscriptTasks),
-    passageNotes: mergeItemsById(storedRecord.passageNotes, seedRecord.passageNotes),
+    manuscriptTasks: mergeProjectLibraryItemsById(storedRecord.manuscriptTasks, seedRecord.manuscriptTasks, { clone: cloneValue }),
+    passageNotes: mergeProjectLibraryItemsById(storedRecord.passageNotes, seedRecord.passageNotes, { clone: cloneValue }),
     sourceArchive: cloneValue(seedRecord.sourceArchive ?? storedRecord.sourceArchive ?? []),
     importReport: cloneValue(seedRecord.importReport ?? storedRecord.importReport ?? {}),
     editorPrefs: normalizeEditorPrefs(storedRecord.editorPrefs ?? seedRecord.editorPrefs ?? legacyState?.editorPrefs),
@@ -7161,113 +7057,6 @@ function mergeProjectRecords(storedRecord, seedRecord, legacyState = null) {
 
 async function reconnectProjectFileDestinationOnBoot(desktopSettings = null) {
   await projectPersistenceService.restoreLastOpenedProject(desktopSettings);
-}
-
-function findStaleSeedProjectMatch(projects, seedProject) {
-  const seedTitle = typeof seedProject.title === "string" ? seedProject.title.trim() : "";
-  const seedChapterCount = Number(seedProject.workspace?.project?.stats?.chapterCount ?? 0);
-  const seedSceneCount = Number(seedProject.workspace?.project?.stats?.sceneCount ?? 0);
-
-  if (!seedTitle) {
-    return null;
-  }
-
-  return (
-    projects.find((project) => {
-      if (!project || project.id === seedProject.id) {
-        return false;
-      }
-
-      if (project.source === "project-file") {
-        return false;
-      }
-
-      const projectTitle = typeof project.title === "string" ? project.title.trim() : "";
-      if (projectTitle !== seedTitle) {
-        return false;
-      }
-
-      const chapterCount = Number(project.workspace?.project?.stats?.chapterCount ?? 0);
-      const sceneCount = Number(project.workspace?.project?.stats?.sceneCount ?? 0);
-      return chapterCount < seedChapterCount || sceneCount < seedSceneCount;
-    }) ?? null
-  );
-}
-
-function mergeItemsById(storedItems, seedItems) {
-  const merged = [];
-  const storedById = new Map();
-
-  for (const item of Array.isArray(storedItems) ? storedItems : []) {
-    if (!item || typeof item !== "object" || typeof item.id !== "string") {
-      continue;
-    }
-    if (storedById.has(item.id)) {
-      continue;
-    }
-    storedById.set(item.id, cloneValue(item));
-  }
-
-  for (const item of Array.isArray(seedItems) ? seedItems : []) {
-    if (!item || typeof item !== "object" || typeof item.id !== "string") {
-      continue;
-    }
-    const storedItem = storedById.get(item.id);
-    if (storedItem) {
-      merged.push(mergeImportedRecord(storedItem, item));
-      storedById.delete(item.id);
-      continue;
-    }
-    merged.push(cloneValue(item));
-  }
-
-  for (const item of storedById.values()) {
-    merged.push(item);
-  }
-
-  return merged;
-}
-
-function mergeImportedRecord(storedItem, seedItem) {
-  const seedSource = typeof seedItem.source === "string" ? seedItem.source : "";
-  const storedSource = typeof storedItem.source === "string" ? storedItem.source : "";
-  const isImported = seedSource.startsWith("source-") || storedSource.startsWith("source-");
-
-  if (!isImported) {
-    return cloneValue(storedItem);
-  }
-
-  const merged = cloneValue(seedItem);
-  const userEditableFields = [
-    "title",
-    "body",
-    "description",
-    "status",
-    "completedAt",
-    "updatedAt",
-    "assetIds",
-    "attachmentConfidence",
-  ];
-
-  for (const field of userEditableFields) {
-    if (Object.prototype.hasOwnProperty.call(storedItem, field) && storedItem[field] !== undefined) {
-      merged[field] = cloneValue(storedItem[field]);
-    }
-  }
-
-  return merged;
-}
-
-function resolveActiveProjectId(candidate, library) {
-  if (typeof candidate === "string" && library.projects.some((project) => project.id === candidate)) {
-    return candidate;
-  }
-
-  if (typeof library.activeProjectId === "string" && library.projects.some((project) => project.id === library.activeProjectId)) {
-    return library.activeProjectId;
-  }
-
-  return library.projects[0]?.id ?? null;
 }
 
 function getWorkspaceManuscriptWordCount(workspace) {
@@ -7471,349 +7260,8 @@ function createProjectSettingsSnapshotFromState({
   );
 }
 
-// Intent: normalize loaded project records into the app-native save-file contract before use.
-function normalizeProjectRecord(candidate, legacyState = null) {
-  if (!candidate || typeof candidate !== "object") {
-    return null;
-  }
-
-  const workspace = cloneValue(candidate.workspace ?? {});
-  const workspaceProject = workspace?.project && typeof workspace.project === "object" ? workspace.project : null;
-  if (!workspaceProject) {
-    return null;
-  }
-
-  const id =
-    typeof candidate.id === "string" && candidate.id.trim()
-      ? candidate.id
-      : typeof workspaceProject.id === "string" && workspaceProject.id.trim()
-        ? workspaceProject.id
-        : `project-${Date.now()}`;
-  const title =
-    typeof legacyState?.projectTitle === "string" && legacyState.projectTitle.trim()
-      ? legacyState.projectTitle
-      : typeof candidate.title === "string" && candidate.title.trim()
-      ? candidate.title
-      : typeof workspaceProject.title === "string" && workspaceProject.title.trim()
-        ? workspaceProject.title
-        : "Untitled Project";
-  const now = new Date().toISOString();
-
-  workspace.project = {
-    ...workspaceProject,
-    id,
-    title,
-  };
-  workspace.workspaceTitle =
-    typeof workspace.workspaceTitle === "string" && workspace.workspaceTitle.trim()
-      ? workspace.workspaceTitle
-      : "ABetterNovelAuthoringEnvironment";
-  workspace.selectionDefaults = normalizeSelectionDefaults(workspace.selectionDefaults, workspace.project);
-  const projectSettings = normalizeProjectSettingsSnapshot(
-    buildProjectSettingsCandidate({
-      ...cloneValue(candidate),
-      editorPrefs: candidate.editorPrefs ?? legacyState?.editorPrefs,
-      localAiPrefs: candidate.localAiPrefs ?? legacyState?.localAiPrefs,
-      projectFilePath: candidate.projectSettings?.projectFilePath ?? candidate.projectFilePath ?? legacyState?.projectFilePath,
-      projectSourcePath: candidate.projectSourcePath ?? legacyState?.projectSourcePath,
-    }),
-    id,
-    getProjectRecordWordCountForSettings({
-      workspace,
-      sceneDrafts:
-        candidate.sceneDrafts && typeof candidate.sceneDrafts === "object"
-          ? candidate.sceneDrafts
-          : legacyState?.sceneDrafts ?? {},
-      projectIndex: candidate.projectIndex ?? null,
-    }),
-    new Date(now),
-  );
-
-  const normalizedRecord = {
-    id,
-    title,
-    source: typeof candidate.source === "string" ? candidate.source : "user",
-    createdAt:
-      typeof candidate.createdAt === "string" && candidate.createdAt.trim()
-        ? candidate.createdAt
-        : workspace.generatedAt ?? now,
-    updatedAt:
-      typeof candidate.updatedAt === "string" && candidate.updatedAt.trim()
-        ? candidate.updatedAt
-        : candidate.createdAt ?? workspace.generatedAt ?? now,
-    workspace,
-    sceneDrafts:
-      candidate.sceneDrafts && typeof candidate.sceneDrafts === "object"
-        ? cloneValue(candidate.sceneDrafts)
-        : legacyState?.sceneDrafts ?? {},
-    structureDrafts:
-      candidate.structureDrafts && typeof candidate.structureDrafts === "object"
-        ? cloneValue(candidate.structureDrafts)
-        : legacyState?.structureDrafts ?? createStructureDrafts(),
-    templateDrafts: Array.isArray(candidate.templateDrafts)
-      ? cloneValue(candidate.templateDrafts)
-      : legacyState?.templateDrafts ?? createTemplateDrafts(),
-    manuscriptTasks: normalizeManuscriptTasks(candidate.manuscriptTasks ?? legacyState?.manuscriptTasks),
-    passageNotes: normalizePassageNotes(candidate.passageNotes ?? legacyState?.passageNotes),
-    sourceArchive: Array.isArray(candidate.sourceArchive) ? cloneValue(candidate.sourceArchive) : [],
-    importReport: candidate.importReport && typeof candidate.importReport === "object"
-      ? cloneValue(candidate.importReport)
-      : {},
-    projectSettings,
-    editorPrefs: cloneValue(projectSettings.editorPrefs),
-    localAiPrefs: cloneValue(projectSettings.localAiPrefs),
-  };
-  const revisionState = getPersistableRevisionProjectState(candidate.revisions);
-  if (revisionState) {
-    normalizedRecord.revisions = revisionState;
-  }
-  normalizedRecord.schemaVersion = Number(candidate.schemaVersion) || PROJECT_SCHEMA_VERSION;
-  normalizedRecord.projectIndex = buildProjectIndexForRecord(normalizedRecord, candidate.projectIndex);
-  normalizedRecord.workspace.project.stats = buildWorkspaceStatsFromProjectIndex(
-    normalizedRecord.projectIndex,
-    normalizedRecord.workspace.project.stats,
-  );
-  return normalizedRecord;
-}
-
-function normalizeSelectionDefaults(candidate, project) {
-  const sceneIdFromLine =
-    typeof candidate?.lineId === "string" && candidate.lineId.trim()
-      ? project?.lines?.find((line) => line?.blockId === candidate.lineId)?.sceneId ?? ""
-      : "";
-  const normalizedSceneSelectionStart = Number.isInteger(candidate?.sceneSelectionStart)
-    ? candidate.sceneSelectionStart
-    : null;
-  const normalizedSceneSelectionEnd = Number.isInteger(candidate?.sceneSelectionEnd)
-    ? candidate.sceneSelectionEnd
-    : null;
-  return {
-    lineId:
-      typeof candidate?.lineId === "string" && candidate.lineId.trim()
-        ? candidate.lineId
-        : project?.lines?.[0]?.blockId ?? "",
-    sceneId:
-      typeof candidate?.sceneId === "string" && candidate.sceneId.trim()
-        ? candidate.sceneId
-        : (sceneIdFromLine || project?.lines?.[0]?.sceneId) ?? "",
-    issueId:
-      typeof candidate?.issueId === "string" && candidate.issueId.trim()
-        ? candidate.issueId
-        : undefined,
-    nodeId:
-      typeof candidate?.nodeId === "string" && candidate.nodeId.trim()
-        ? candidate.nodeId
-        : undefined,
-    entityId:
-      typeof candidate?.entityId === "string" && candidate.entityId.trim()
-        ? candidate.entityId
-        : undefined,
-    sceneSelectionBlockId:
-      typeof candidate?.sceneSelectionBlockId === "string" && candidate.sceneSelectionBlockId.trim()
-        ? candidate.sceneSelectionBlockId
-        : "",
-    sceneSelectionLineNumber: Number.isInteger(candidate?.sceneSelectionLineNumber)
-      ? candidate.sceneSelectionLineNumber
-      : null,
-    sceneSelectionStart: normalizedSceneSelectionStart,
-    sceneSelectionEnd: normalizedSceneSelectionEnd,
-    sceneSelectionScrollTop: Number.isFinite(candidate?.sceneSelectionScrollTop)
-      ? candidate.sceneSelectionScrollTop
-      : null,
-    sceneSelectionScrollLeft: Number.isFinite(candidate?.sceneSelectionScrollLeft)
-      ? candidate.sceneSelectionScrollLeft
-      : null,
-    inlinePassageDraft: normalizeInlinePassageDraftSelectionDefaults(candidate?.inlinePassageDraft),
-  };
-}
-
-function normalizeInlinePassageDraftSelectionDefaults(candidate) {
-  if (!candidate || typeof candidate !== "object") {
-    return null;
-  }
-
-  const noteType = candidate.noteType === "research" ? "research" : candidate.noteType === "inspiration" ? "inspiration" : "";
-  const sceneId = typeof candidate.sceneId === "string" && candidate.sceneId.trim()
-    ? candidate.sceneId.trim()
-    : "";
-  if (!noteType || !sceneId) {
-    return null;
-  }
-
-  return {
-    sceneId,
-    noteType,
-    selectedText: String(candidate.selectedText ?? ""),
-    startOffset: Number.isInteger(candidate.startOffset) ? candidate.startOffset : null,
-    endOffset: Number.isInteger(candidate.endOffset) ? candidate.endOffset : null,
-    anchorStartOffset: Number.isInteger(candidate.anchorStartOffset) ? candidate.anchorStartOffset : null,
-    seededSelection: Boolean(candidate.seededSelection),
-    typedStartOffset: Number.isInteger(candidate.typedStartOffset) ? candidate.typedStartOffset : null,
-    typedEndOffset: Number.isInteger(candidate.typedEndOffset) ? candidate.typedEndOffset : null,
-    body: String(candidate.body ?? ""),
-    typedText: String(candidate.typedText ?? ""),
-    editingNoteId: typeof candidate.editingNoteId === "string" ? candidate.editingNoteId : "",
-    x: Number.isFinite(candidate.x) ? candidate.x : 110,
-    y: Number.isFinite(candidate.y) ? candidate.y : 40,
-  };
-}
-
-function createProjectLibraryRecordFromWorkspace(workspace, options = {}) {
-  const normalizedWorkspace = cloneValue(workspace);
-  const project = normalizedWorkspace?.project && typeof normalizedWorkspace.project === "object"
-    ? normalizedWorkspace.project
-    : {
-        id: typeof options.id === "string" && options.id.trim() ? options.id : `project-${Date.now()}`,
-        title: typeof options.title === "string" && options.title.trim() ? options.title : "Untitled Project",
-        lines: [],
-      };
-  const id =
-    typeof options.id === "string" && options.id.trim()
-      ? options.id
-      : typeof project.id === "string" && project.id.trim()
-        ? project.id
-        : `project-${Date.now()}`;
-  const title =
-    typeof options.title === "string" && options.title.trim()
-      ? options.title
-      : typeof project.title === "string" && project.title.trim()
-        ? project.title
-        : "Untitled Project";
-  const workspaceTitle =
-    typeof normalizedWorkspace?.workspaceTitle === "string" && normalizedWorkspace.workspaceTitle.trim()
-      ? normalizedWorkspace.workspaceTitle
-      : "ABetterNovelAuthoringEnvironment";
-  const now = options.updatedAt ?? options.createdAt ?? normalizedWorkspace.generatedAt ?? new Date().toISOString();
-
-  normalizedWorkspace.project = {
-    ...project,
-    id,
-    title,
-  };
-  normalizedWorkspace.workspaceTitle = workspaceTitle;
-  normalizedWorkspace.selectionDefaults = normalizeSelectionDefaults(
-    normalizedWorkspace.selectionDefaults,
-    normalizedWorkspace.project,
-  );
-  const currentWordCount = getProjectRecordWordCountForSettings({
-    workspace: normalizedWorkspace,
-    sceneDrafts: options.sceneDrafts ?? {},
-    projectIndex: options.persistedProjectIndex ?? null,
-  });
-  const projectSettings = normalizeProjectSettingsSnapshot(
-    buildProjectSettingsCandidate({
-      ...cloneValue(options),
-      editorPrefs: options.editorPrefs ?? createDefaultEditorPrefs(),
-      localAiPrefs: options.localAiPrefs ?? createDefaultLocalAiPrefs(),
-      projectFilePath: options.projectFilePath ?? options.projectSettings?.projectFilePath ?? "",
-    }),
-    id,
-    currentWordCount,
-    new Date(now),
-  );
-
-  const record = {
-    id,
-    title,
-    source: typeof options.source === "string" ? options.source : "user",
-    createdAt: typeof options.createdAt === "string" ? options.createdAt : now,
-    updatedAt: typeof options.updatedAt === "string" ? options.updatedAt : now,
-    workspace: normalizedWorkspace,
-    sceneDrafts: cloneValue(options.sceneDrafts ?? {}),
-    structureDrafts: cloneValue(options.structureDrafts ?? createStructureDrafts()),
-    templateDrafts: cloneValue(options.templateDrafts ?? createTemplateDrafts()),
-    manuscriptTasks: normalizeManuscriptTasks(options.manuscriptTasks),
-    passageNotes: normalizePassageNotes(options.passageNotes),
-    sourceArchive: Array.isArray(options.sourceArchive) ? cloneValue(options.sourceArchive) : [],
-    importReport: options.importReport && typeof options.importReport === "object"
-      ? cloneValue(options.importReport)
-      : {},
-    projectSettings,
-    editorPrefs: cloneValue(projectSettings.editorPrefs),
-    localAiPrefs: cloneValue(projectSettings.localAiPrefs),
-  };
-  const revisionState = getPersistableRevisionProjectState(options.revisions);
-  if (revisionState) {
-    record.revisions = revisionState;
-  }
-  record.schemaVersion = Number(options.schemaVersion) || PROJECT_SCHEMA_VERSION;
-  record.projectIndex = buildProjectIndexForRecord(record, options.persistedProjectIndex ?? null);
-  record.workspace.project.stats = buildWorkspaceStatsFromProjectIndex(
-    record.projectIndex,
-    record.workspace.project.stats,
-  );
-  return record;
-}
-
 function createProjectLibraryRecordFromState(options = {}) {
-  if (!state.workspace) {
-    return null;
-  }
-
-  const activeProjectRecord =
-    state.projectLibrary.find((project) => project.id === state.workspace?.project?.id)
-    ?? state.projectLibrary.find((project) => project.id === state.activeProjectId)
-    ?? null;
-  const projectSettings = createProjectSettingsSnapshotFromState({
-    currentWordCount: getCurrentManuscriptWordCount(),
-    now: options.updatedAt ? new Date(options.updatedAt) : new Date(),
-  });
-  const sceneSelection = captureSceneSelectionDefaultsForSave();
-  const workspaceSnapshot = cloneValue(state.workspace);
-  workspaceSnapshot.selectionDefaults = {
-    ...(workspaceSnapshot.selectionDefaults && typeof workspaceSnapshot.selectionDefaults === "object"
-      ? workspaceSnapshot.selectionDefaults
-      : {}),
-    sceneId: state.selectedSceneId ?? "",
-    sceneSelectionBlockId: sceneSelection.blockId ?? "",
-    sceneSelectionLineNumber: sceneSelection.lineNumber ?? null,
-    sceneSelectionStart: sceneSelection.startOffset ?? null,
-    sceneSelectionEnd: sceneSelection.endOffset ?? null,
-    sceneSelectionScrollTop: sceneSelection.scrollTop ?? null,
-    sceneSelectionScrollLeft: sceneSelection.scrollLeft ?? null,
-    inlinePassageDraft: captureInlinePassageDraftDefaultsForSave(),
-  };
-
-  return createProjectLibraryRecordFromWorkspace(workspaceSnapshot, {
-    ...options,
-    id: state.workspace.project.id,
-    title: state.projectTitle || state.workspace.project.title,
-    source: options.source ?? state.projectLibrary.find((project) => project.id === state.workspace.project.id)?.source ?? "user",
-    createdAt:
-      options.createdAt ??
-      state.projectLibrary.find((project) => project.id === state.workspace.project.id)?.createdAt ??
-      state.workspace.generatedAt,
-    updatedAt: options.updatedAt ?? new Date().toISOString(),
-    sceneDrafts: state.sceneDrafts,
-    structureDrafts: state.structureDrafts,
-    templateDrafts: state.templateDrafts,
-    persistedProjectIndex: activeProjectRecord?.projectIndex ?? null,
-    manuscriptTasks: state.manuscriptTasks,
-    passageNotes: state.passageNotes,
-    revisions: state.revisionState,
-    sourceArchive: state.projectLibrary.find((project) => project.id === state.workspace.project.id)?.sourceArchive ?? [],
-    importReport: state.projectLibrary.find((project) => project.id === state.workspace.project.id)?.importReport ?? {},
-    projectSettings,
-    editorPrefs: state.editorPrefs,
-    localAiPrefs: state.localAiPrefs,
-  });
-}
-
-function getActiveProjectRecord() {
-  const projectId = state.activeProjectId ?? state.projectLibrarySelectionId;
-  if (!projectId) {
-    return state.projectLibrary[0] ?? null;
-  }
-
-  return state.projectLibrary.find((project) => project.id === projectId) ?? state.projectLibrary[0] ?? null;
-}
-
-function getProjectRecordById(projectId) {
-  if (typeof projectId !== "string" || !projectId.trim()) {
-    return null;
-  }
-
-  return state.projectLibrary.find((project) => project.id === projectId) ?? null;
+  return projectRuntimeRecordStateService.createProjectRecordFromRuntimeState(options);
 }
 
 function createRevisionPanelStateForProject(revisionState) {
@@ -7829,144 +7277,11 @@ function createRevisionPanelStateForProject(revisionState) {
 }
 
 function applyProjectRecord(record) {
-  if (!record) {
-    throw new Error("Unable to load a saved project.");
-  }
-  projectLoadGateLog.info("lifecycle", "project.apply.begin", "Applying project record into runtime state.", {
-    projectId: record.id,
-    title: record.title,
-  });
+  projectActivationController.applyProjectRecord(record);
+}
 
-  saveWritingTargetState({
-    skipProjectFileAutosave: true,
-  });
-  clearWritingTargetDraft();
-  clearWritingTargetSnapshotTimer();
-  clearProjectFileAutosaveState();
-  if (narrationRecordingRuntime?.timerId) {
-    clearInterval(narrationRecordingRuntime.timerId);
-  }
-  if (narrationRecordingRuntime?.speechRecognition) {
-    try {
-      narrationRecordingRuntime.speechRecognition.stop();
-    } catch {
-      // Ignore cleanup failures.
-    }
-  }
-  if (narrationRecordingRuntime?.stream) {
-    narrationRecordingRuntime.stream.getTracks().forEach((track) => track.stop());
-  }
-  narrationRecordingRuntime = null;
-  state.narrationTakeSelection = null;
-  state.narrationTakeSession = null;
-  if (voiceRecordingPreviewAudio) {
-    try {
-      voiceRecordingPreviewAudio.pause();
-    } catch {
-      // Ignore cleanup failures.
-    }
-    voiceRecordingPreviewAudio = null;
-  }
-  if (voiceRecordingPreviewUrl) {
-    URL.revokeObjectURL(voiceRecordingPreviewUrl);
-    voiceRecordingPreviewUrl = null;
-  }
-  state.activeProjectId = record.id;
-  state.projectLibrarySelectionId = record.id;
-  projectPersistenceService.persistActiveProjectId(record.id);
-  state.workspace = cloneValue(record.workspace);
-  if (!state.workspace.voice || typeof state.workspace.voice !== "object") {
-    state.workspace.voice = {
-      provider: {
-        id: "local-voice-service",
-        label: "Local Voice",
-        availability: "ready",
-        synthesisMode: "local",
-      },
-      profiles: [],
-      bindings: [],
-      renderJobs: [],
-      recordings: [],
-    };
-  } else if (!Array.isArray(state.workspace.voice.recordings)) {
-    state.workspace.voice.recordings = [];
-  }
-  state.projectTitle = record.title ?? state.workspace.project.title;
-  state.workspace.project.title = state.projectTitle;
-  state.sceneDrafts = cloneValue(record.sceneDrafts ?? {});
-  state.structureDrafts = cloneValue(record.structureDrafts ?? createStructureDrafts());
-  state.templateDrafts = cloneValue(record.templateDrafts ?? createTemplateDrafts());
-  state.manuscriptTasks = normalizeManuscriptTasks(record.manuscriptTasks);
-  state.passageNotes = normalizePassageNotes(record.passageNotes);
-  state.revisionState = revisionStorageService.readRevisionState(record);
-  state.revisionPanelState = createRevisionPanelStateForProject(state.revisionState);
-  state.binderSceneMoveHistory = {
-    undoStack: [],
-    redoStack: [],
-  };
-  state.sceneEditorSelectionSnapshot = null;
-  state.activeEditorSceneId = null;
-  // Project file destination is owned by ProjectPersistenceService and must survive record application.
-  state.selectedTaskId = null;
-  state.selectedPassageNoteId = null;
-  state.editingChapterTitleId = null;
-  state.editingSceneTitleId = null;
-  binderTitleClickState = null;
-  state.inlinePassageDraft = null;
-  state.taskContextMenu = null;
-  state.binderContextMenu = null;
-  state.spellcheckContextMenu = null;
-  state.deleteConfirmationDialog = null;
-  state.taskComposer = null;
-  state.taskPreview = null;
-  state.localAiTitleStatus = {};
-  const projectSettings = normalizeProjectSettingsSnapshot(
-    buildProjectSettingsCandidate(record),
-    record.id,
-    getProjectRecordWordCountForSettings(record),
-    new Date(),
-  );
-  state.editorPrefs = cloneValue(projectSettings.editorPrefs);
-  state.localAiPrefs = cloneValue(projectSettings.localAiPrefs);
-  state.binderPanelWidth = projectSettings.binderPanelWidth;
-  state.consoleDockWidth = projectSettings.consoleDockWidth;
-  state.userSettingPanelResizerLeftPercent = projectSettings.userSettingPanelResizerLeftPercent;
-  state.userSettingPanelResizerRightPercent = projectSettings.userSettingPanelResizerRightPercent;
-  state.consoleDockCollapsed = projectSettings.consoleDockCollapsed;
-  state.collapsedChapterIds = projectSettings.collapsedChapterIds;
-  state.collapsedConsoleChapterIds = projectSettings.collapsedConsoleChapterIds;
-  state.projectSourcePath = projectSettings.projectSourcePath;
-  state.spellcheckProjectSettings = normalizeSpellcheckProjectSettings(projectSettings.spellcheck);
-  state.writingTargetViewMode = projectSettings.writingTargetViewMode;
-  state.writingTargetSelectedDateKey = projectSettings.writingTargetSelectedDateKey;
-  state.writingTargetCalendarMonthKey = projectSettings.writingTargetCalendarMonthKey;
-  state.writingTargetProjectId = record.id;
-  state.writingTargetState = cloneValue(projectSettings.writingTargetState);
-  writeStoredJsonRaw(EDITOR_PROJECT_SOURCE_PATH_KEY, state.projectSourcePath);
-  writeStoredJsonRaw(EDITOR_BINDER_WIDTH_KEY, state.binderPanelWidth);
-  writeStoredJsonRaw(EDITOR_CONSOLE_WIDTH_KEY, state.consoleDockWidth);
-  persistConsoleDockCollapsedState(state.consoleDockCollapsed);
-  persistCollapsedChapterState(record.id, state.collapsedChapterIds);
-  persistCollapsedConsoleChapterState(record.id, state.collapsedConsoleChapterIds);
-  const writingTargetStore = readWritingTargetStore();
-  writingTargetStore[record.id] = cloneValue(state.writingTargetState);
-  writeStoredJsonRaw(EDITOR_WRITING_TARGETS_KEY, writingTargetStore);
-  syncLegacyProjectStorageFromState();
-  logWritingTargetDebugEvent("info", "project.apply", "Applied project record into editor state.", {
-    projectId: record.id,
-    title: record.title,
-    sceneDraftCount: Object.keys(state.sceneDrafts ?? {}).length,
-    writingTargetHistoryEntries: Array.isArray(state.writingTargetState?.history) ? state.writingTargetState.history.length : 0,
-    writingTargetDailyBaselineWordCount: state.writingTargetState?.dailyBaselineWordCount ?? 0,
-    writingTargetDailyBaselineDateKey: state.writingTargetState?.dailyBaselineDateKey ?? "",
-  }, {
-    skipUpload: true,
-  });
-  manuscriptStateLog.info("state-change", "state.hydration.completed", "State hydration completed from active project record.", {
-    projectId: record.id,
-    sceneDraftCount: Object.keys(state.sceneDrafts ?? {}).length,
-    selectedSceneId: state.selectedSceneId ?? "",
-  });
+function activateProjectRecord(record, options = {}) {
+  projectActivationController.activateProjectRecord(record, options);
 }
 
 function createBinderSceneMoveHistoryState() {
@@ -7998,39 +7313,14 @@ function captureSceneSelectionDefaultsForSave() {
       ? state.sceneEditorSelectionSnapshot
       : null;
 
-  if (!scene) {
-    return {
-      blockId: state.selectedBlockId ?? "",
-      startOffset: null,
-      endOffset: null,
-      scrollTop: null,
-      scrollLeft: null,
-    };
-  }
-
-  const resolvedSelection = liveSelection ?? snapshot;
-  const startOffset = Number.isInteger(resolvedSelection?.startOffset)
-    ? resolvedSelection.startOffset
-    : Number.isInteger(textarea?.selectionStart)
-      ? textarea.selectionStart
-      : 0;
-  const endOffset = Number.isInteger(resolvedSelection?.endOffset)
-    ? resolvedSelection.endOffset
-    : Number.isInteger(textarea?.selectionEnd)
-      ? textarea.selectionEnd
-      : startOffset;
-  const block = findSceneBlockAtOffset(scene, startOffset) ?? scene.blocks.find((candidate) => candidate.blockId === state.selectedBlockId) ?? scene.blocks[0] ?? null;
-
-  return {
-    blockId: block?.blockId ?? state.selectedBlockId ?? "",
-    lineNumber: Number.isInteger(resolvedSelection?.lineNumber)
-      ? resolvedSelection.lineNumber
-      : block?.lineNumber ?? null,
-    startOffset,
-    endOffset,
-    scrollTop: Number.isFinite(resolvedSelection?.scrollTop) ? resolvedSelection.scrollTop : null,
-    scrollLeft: Number.isFinite(resolvedSelection?.scrollLeft) ? resolvedSelection.scrollLeft : null,
-  };
+  return manuscriptSelectionController.resolveSelectionDefaultsForSave({
+    selectedBlockId: state.selectedBlockId ?? "",
+    scene,
+    liveSelection,
+    cachedSelection: snapshot,
+    fallbackStartOffset: Number.isInteger(textarea?.selectionStart) ? textarea.selectionStart : 0,
+    fallbackEndOffset: Number.isInteger(textarea?.selectionEnd) ? textarea.selectionEnd : textarea?.selectionStart,
+  });
 }
 
 // Intent: persist the current inline passage composer so a reload can reopen the same note draft.
@@ -8059,34 +7349,7 @@ function captureInlinePassageDraftDefaultsForSave() {
 }
 
 function normalizeSceneSelectionDefaults(candidate, scene) {
-  const normalizedSelectionStart = Number.isInteger(candidate?.sceneSelectionStart)
-    ? clampEditorOffset(candidate.sceneSelectionStart, scene?.editorText?.length ?? 0)
-    : null;
-  const normalizedSelectionEnd = Number.isInteger(candidate?.sceneSelectionEnd)
-    ? clampEditorOffset(candidate.sceneSelectionEnd, scene?.editorText?.length ?? 0)
-    : normalizedSelectionStart;
-  const normalizedScrollTop = Number.isFinite(candidate?.sceneSelectionScrollTop)
-    ? Math.max(0, candidate.sceneSelectionScrollTop)
-    : null;
-  const normalizedScrollLeft = Number.isFinite(candidate?.sceneSelectionScrollLeft)
-    ? Math.max(0, candidate.sceneSelectionScrollLeft)
-    : null;
-  const normalizedLineNumber = Number.isInteger(candidate?.sceneSelectionLineNumber)
-    ? Math.max(1, candidate.sceneSelectionLineNumber)
-    : null;
-  const fallbackBlockId =
-    typeof candidate?.sceneSelectionBlockId === "string" && candidate.sceneSelectionBlockId.trim()
-      ? candidate.sceneSelectionBlockId
-      : scene?.blocks?.[0]?.blockId ?? "";
-
-  return {
-    blockId: fallbackBlockId,
-    lineNumber: normalizedLineNumber,
-    startOffset: normalizedSelectionStart,
-    endOffset: normalizedSelectionEnd,
-    scrollTop: normalizedScrollTop,
-    scrollLeft: normalizedScrollLeft,
-  };
+  return manuscriptSelectionController.normalizeSavedSceneSelection(candidate, scene);
 }
 
 // Intent: restore the inline passage composer only when the project explicitly saved one.
@@ -8257,18 +7520,18 @@ function captureSceneEditorSelectionSnapshotFromTextarea(textarea) {
   const codeframe = textarea.closest(".scene-editor-codeframe");
   const startOffset = Number.isInteger(textarea.selectionStart) ? textarea.selectionStart : 0;
   const endOffset = Number.isInteger(textarea.selectionEnd) ? textarea.selectionEnd : startOffset;
-  const block = findSceneBlockAtOffset(scene, startOffset) ?? scene.blocks[0] ?? null;
   const lineNumber = getSceneEditorSelectionLineNumber(textarea, scene, startOffset);
 
-  return {
+  return manuscriptSelectionController.createSelectionSnapshot({
+    scene,
     sceneId,
-    blockId: block?.blockId ?? "",
+    text: textarea.value,
     lineNumber,
     startOffset,
     endOffset,
     scrollTop: codeframe instanceof HTMLElement ? codeframe.scrollTop : null,
     scrollLeft: codeframe instanceof HTMLElement ? codeframe.scrollLeft : null,
-  };
+  });
 }
 
 function updateSceneEditorSelectionSnapshotFromTextarea(textarea) {
@@ -8540,19 +7803,20 @@ function loadSelectedProject() {
     projectId: record.id,
     title: record.title,
   });
-  applyProjectRecord(record);
-  refreshScenes();
-  restoreSelectionFromWorkspaceDefaults();
-  syncWritingTargetState({ forceReload: true });
-  refreshWritingTargetSessionLifecycle({ reason: "load-project" });
-  logWritingTargetLoadCheckpoint("load-project");
-  projectPersistenceService.syncActiveProjectFileDestinationFromRecord({
-    persistDesktopProjectFilePath: true,
-    source: "loadSelectedProject",
+  activateProjectRecord(record, {
+    reason: "load-project",
+    refreshSessionLifecycle: true,
+    logLoadCheckpoint: true,
+    beforeRender: () => {
+      projectPersistenceService.syncActiveProjectFileDestinationFromRecord({
+        persistDesktopProjectFilePath: true,
+        source: "loadSelectedProject",
+      });
+    },
+    renderAfter: true,
+    afterRender: () => primeProjectFileAutosave(),
+    recordSnapshot: true,
   });
-  render();
-  primeProjectFileAutosave();
-  recordWritingTargetSnapshot({ immediate: true, reason: "load-project", skipProjectFileAutosave: true });
   projectLoadGateLog.info("lifecycle", "project.load.completed", "Selected project loaded into editor.", {
     projectId: record.id,
     selectedSceneId: state.selectedSceneId ?? "",
@@ -8754,14 +8018,15 @@ function createProject() {
     projectId: record.id,
     title: record.title,
   });
-  applyProjectRecord(record);
-  refreshScenes();
-  restoreSelectionFromWorkspaceDefaults();
-  syncWritingTargetState({ forceReload: true });
-  setProjectFilePath(getSuggestedProjectFilePath(), null, { skipProjectFileAutosave: true });
-  persistCurrentProjectRecord({ skipProjectFileAutosave: true });
-  render();
-  recordWritingTargetSnapshot({ immediate: true, reason: "create-project", skipProjectFileAutosave: true });
+  activateProjectRecord(record, {
+    reason: "create-project",
+    beforeRender: () => {
+      setProjectFilePath(getSuggestedProjectFilePath(), null, { skipProjectFileAutosave: true });
+      persistCurrentProjectRecord({ skipProjectFileAutosave: true });
+    },
+    renderAfter: true,
+    recordSnapshot: true,
+  });
   if (state.workspace?.project?.stats) {
     reportBrowserLog("info", "project-library", "Created a new project.", {
       projectId: record.id,
@@ -8825,15 +8090,16 @@ async function loadProjectSource() {
       throw new Error("Unable to activate the loaded project source.");
     }
 
-    applyProjectRecord(record);
-    refreshScenes();
-    restoreSelectionFromWorkspaceDefaults();
-    syncWritingTargetState({ forceReload: true });
-    if (state.workspace?.project?.stats) {
-      state.projectSourceStatus = `Loaded ${record.title} · ${state.workspace.project.stats.chapterCount} chapters, ${state.workspace.project.stats.sceneCount} scenes`;
-    }
-    render();
-    recordWritingTargetSnapshot({ immediate: true, reason: "load-project-source", skipProjectFileAutosave: true });
+    activateProjectRecord(record, {
+      reason: "load-project-source",
+      beforeRender: () => {
+        if (state.workspace?.project?.stats) {
+          state.projectSourceStatus = `Loaded ${record.title} · ${state.workspace.project.stats.chapterCount} chapters, ${state.workspace.project.stats.sceneCount} scenes`;
+        }
+      },
+      renderAfter: true,
+      recordSnapshot: true,
+    });
     projectLoadGateLog.info("lifecycle", "project-source.load.completed", "Project source loaded and applied.", {
       projectPath,
       projectId: record.id,
@@ -9655,47 +8921,11 @@ function getInlinePassagePosition(codeframe, event) {
 }
 
 function getEditorContextRange(textarea) {
-  const value = textarea.value;
-  const explicitStart = textarea.selectionStart;
-  const explicitEnd = textarea.selectionEnd;
-
-  if (explicitEnd > explicitStart && value.slice(explicitStart, explicitEnd).trim()) {
-    return trimTextRange(value, explicitStart, explicitEnd, true);
-  }
-
-  const lineStart = value.lastIndexOf("\n", Math.max(0, explicitStart - 1)) + 1;
-  const nextBreak = value.indexOf("\n", explicitStart);
-  const lineEnd = nextBreak === -1 ? value.length : nextBreak;
-
-  if (lineEnd <= lineStart || !value.slice(lineStart, lineEnd).trim()) {
-    return null;
-  }
-
-  return trimTextRange(value, lineStart, lineEnd, false);
-}
-
-function trimTextRange(value, startOffset, endOffset, hasExplicitSelection) {
-  let nextStart = startOffset;
-  let nextEnd = endOffset;
-
-  while (nextStart < nextEnd && /\s/.test(value[nextStart])) {
-    nextStart += 1;
-  }
-
-  while (nextEnd > nextStart && /\s/.test(value[nextEnd - 1])) {
-    nextEnd -= 1;
-  }
-
-  if (nextEnd <= nextStart) {
-    return null;
-  }
-
-  return {
-    selectedText: value.slice(nextStart, nextEnd),
-    startOffset: nextStart,
-    endOffset: nextEnd,
-    hasExplicitSelection,
-  };
+  return manuscriptSelectionController.getContextRange({
+    text: textarea.value,
+    startOffset: textarea.selectionStart,
+    endOffset: textarea.selectionEnd,
+  });
 }
 
 // Intent: switch high-level workspaces while preserving editor-focused layout and selection state.
@@ -9707,10 +8937,7 @@ function selectWorkspacePane(paneId) {
   }
 
   if (normalizedPaneId !== "manuscript" && state.manuscriptFind.open) {
-    state.manuscriptFind = {
-      ...state.manuscriptFind,
-      open: false,
-    };
+    state.manuscriptFind = manuscriptFindController.close(state.manuscriptFind);
   }
 
   if (normalizedPaneId !== "manuscript" && state.grammarCheckPanel?.open) {
@@ -10045,28 +9272,25 @@ function focusTaskRange(task, options = {}) {
     return;
   }
 
-  const resolvedRange = resolveManuscriptTaskRange(task, textarea.value);
-  syncResolvedTaskRange(task, resolvedRange);
-  const startOffset = resolvedRange.startOffset;
-  const endOffset = resolvedRange.endOffset;
-  const codeframe = textarea.closest(".scene-editor-codeframe");
+  const preview = anchoredRecordNavigationController.buildPreview({
+    record: task,
+    recordType: "task",
+    text: textarea.value,
+  });
+  if (!preview) {
+    return;
+  }
+
+  const { startOffset, endOffset } = preview.resolvedRange;
+  const editorHost = resolveTextareaEditorHost(textarea);
 
   state.taskPreview = {
-    taskId: task.id,
-    sceneId: task.sceneId,
-    selectionStart: startOffset,
-    selectionEnd: endOffset,
+    ...preview.previewSelection,
     wasFocused: true,
     pinned: true,
   };
 
-  textarea.classList.add("has-task-preview");
-  if (codeframe instanceof HTMLElement) {
-    codeframe.classList.add("is-task-previewing");
-  }
-
-  textarea.focus({ preventScroll: true });
-  textarea.setSelectionRange(startOffset, endOffset, "forward");
+  showTextareaAnchoredRecordPreview(editorHost, preview.projection);
   takeToEditorOffset(textarea, startOffset, options);
 }
 
@@ -10087,10 +9311,17 @@ function previewTaskAnchor(taskId) {
 
   clearTaskAnchorPreview({ restoreSelection: true });
 
-  const resolvedRange = resolveManuscriptTaskRange(task, textarea.value);
-  const startOffset = resolvedRange.startOffset;
-  const endOffset = resolvedRange.endOffset;
-  const codeframe = textarea.closest(".scene-editor-codeframe");
+  const preview = anchoredRecordNavigationController.buildPreview({
+    record: task,
+    recordType: "task",
+    text: textarea.value,
+    repair: false,
+  });
+  if (!preview) {
+    return;
+  }
+
+  const editorHost = resolveTextareaEditorHost(textarea);
   const taskElement = document.querySelector(`[data-task-preview-id="${CSS.escape(task.id)}"]`);
 
   state.taskPreview = {
@@ -10102,16 +9333,10 @@ function previewTaskAnchor(taskId) {
     pinned: false,
   };
 
-  textarea.classList.add("has-task-preview");
-  if (codeframe instanceof HTMLElement) {
-    codeframe.classList.add("is-task-previewing");
-  }
+  showTextareaAnchoredRecordPreview(editorHost, preview.projection);
   if (taskElement instanceof HTMLElement) {
     taskElement.classList.add("is-previewing");
   }
-
-  textarea.focus({ preventScroll: true });
-  textarea.setSelectionRange(startOffset, endOffset, "forward");
 }
 
 function getEditorTextareaForScene(sceneId) {
@@ -10305,18 +9530,7 @@ function clearTaskAnchorPreview(options = {}) {
   );
 
   if (textarea instanceof HTMLTextAreaElement) {
-    textarea.classList.remove(
-      "has-task-preview",
-      "has-passage-note-preview",
-      "has-inspiration-preview",
-      "has-research-preview",
-    );
-    textarea.closest(".scene-editor-codeframe")?.classList.remove(
-      "is-task-previewing",
-      "is-passage-note-previewing",
-      "is-inspiration-previewing",
-      "is-research-previewing",
-    );
+    clearTextareaAnchoredRecordPreview(resolveTextareaEditorHost(textarea));
 
     if (restoreSelection) {
       if (preview.wasFocused) {
@@ -10674,7 +9888,7 @@ function insertInlinePassageVerse(draft, verseText, editorText) {
   const replacementEndOffset = existingRange?.endOffset ?? replacementStartOffset;
   const nextEditorText = `${content.slice(0, replacementStartOffset)}${rawVerseText}${content.slice(replacementEndOffset)}`;
   const insertedEndOffset = replacementStartOffset + rawVerseText.length;
-  const anchor = trimTextRange(nextEditorText, replacementStartOffset, insertedEndOffset, true);
+  const anchor = manuscriptSelectionController.trimTextRange(nextEditorText, replacementStartOffset, insertedEndOffset, true);
 
   if (!anchor || !anchor.selectedText.trim()) {
     return null;
@@ -10726,7 +9940,7 @@ function getInlinePassageDraftPendingVerse(draft) {
     return null;
   }
 
-  const range = trimTextRange(rawVerseText, 0, rawVerseText.length, true);
+  const range = manuscriptSelectionController.trimTextRange(rawVerseText, 0, rawVerseText.length, true);
   if (!range || !range.selectedText.trim()) {
     return null;
   }
@@ -10761,7 +9975,7 @@ function getInlinePassageDraftAnchor(draft, editorText, options = {}) {
     return null;
   }
 
-  const range = trimTextRange(content, startOffset, endOffset, true);
+  const range = manuscriptSelectionController.trimTextRange(content, startOffset, endOffset, true);
   if (!range || !range.selectedText.trim()) {
     return null;
   }
@@ -10877,13 +10091,14 @@ function selectPassageNoteFromEditorClick(clickTarget) {
     return false;
   }
 
-  const note = findPassageNoteAtEditorSelection(
-    state.sidePanelMode,
+  const note = anchoredRecordNavigationController.findRecordAtSelection({
+    records: state.passageNotes.filter((candidate) => candidate.noteType === state.sidePanelMode),
+    recordType: "passageNote",
     sceneId,
-    textarea.selectionStart,
-    textarea.selectionEnd,
-    textarea.value,
-  );
+    selectionStart: textarea.selectionStart,
+    selectionEnd: textarea.selectionEnd,
+    text: textarea.value,
+  });
   if (!note) {
     return false;
   }
@@ -10906,12 +10121,14 @@ function selectTaskFromEditorClick(clickTarget) {
     return false;
   }
 
-  const task = findTaskAtEditorSelection(
+  const task = anchoredRecordNavigationController.findRecordAtSelection({
+    records: state.manuscriptTasks.filter((candidate) => candidate.status === "open"),
+    recordType: "task",
     sceneId,
-    clickTarget.selectionStart,
-    clickTarget.selectionEnd,
-    clickTarget.value,
-  );
+    selectionStart: clickTarget.selectionStart,
+    selectionEnd: clickTarget.selectionEnd,
+    text: clickTarget.value,
+  });
   if (!task) {
     return false;
   }
@@ -10939,70 +10156,6 @@ function toggleTaskPreview(taskId) {
   focusTaskRange(task, { behavior: "smooth" });
   renderConsolePanel();
   return true;
-}
-
-function findPassageNoteAtEditorSelection(noteType, sceneId, selectionStart, selectionEnd, editorText) {
-  const startOffset = Math.min(selectionStart, selectionEnd);
-  const endOffset = Math.max(selectionStart, selectionEnd);
-  const hasSelection = endOffset > startOffset;
-
-  const candidates = state.passageNotes
-    .filter((note) => note.noteType === noteType && note.sceneId === sceneId)
-    .map((note) => ({
-      note,
-      range: resolveManuscriptTaskRange(note, editorText),
-    }))
-    .filter(({ range }) => range.endOffset > range.startOffset)
-    .filter(({ range }) =>
-      hasSelection
-        ? range.startOffset < endOffset && range.endOffset > startOffset
-        : startOffset >= range.startOffset && startOffset <= range.endOffset,
-    )
-    .sort((left, right) => {
-      const leftLength = left.range.endOffset - left.range.startOffset;
-      const rightLength = right.range.endOffset - right.range.startOffset;
-      return leftLength - rightLength;
-    });
-
-  const match = candidates[0];
-  if (!match) {
-    return null;
-  }
-
-  syncResolvedPassageNoteRange(match.note, match.range);
-  return match.note;
-}
-
-function findTaskAtEditorSelection(sceneId, selectionStart, selectionEnd, editorText) {
-  const startOffset = Math.min(selectionStart, selectionEnd);
-  const endOffset = Math.max(selectionStart, selectionEnd);
-  const hasSelection = endOffset > startOffset;
-
-  const candidates = state.manuscriptTasks
-    .filter((task) => task.status === "open" && task.sceneId === sceneId)
-    .map((task) => ({
-      task,
-      range: resolveManuscriptTaskRange(task, editorText),
-    }))
-    .filter(({ range }) => range.endOffset > range.startOffset)
-    .filter(({ range }) =>
-      hasSelection
-        ? range.startOffset < endOffset && range.endOffset > startOffset
-        : startOffset >= range.startOffset && startOffset <= range.endOffset,
-    )
-    .sort((left, right) => {
-      const leftLength = left.range.endOffset - left.range.startOffset;
-      const rightLength = right.range.endOffset - right.range.startOffset;
-      return leftLength - rightLength;
-    });
-
-  const match = candidates[0];
-  if (!match) {
-    return null;
-  }
-
-  syncResolvedTaskRange(match.task, match.range);
-  return match.task;
 }
 
 function scrollSelectedPassageNoteIntoView(noteId) {
@@ -11035,31 +10188,29 @@ function focusPassageNoteRangeInCurrentScene(note, options = {}) {
     return;
   }
 
-  const resolvedRange = resolveManuscriptTaskRange(note, textarea.value);
-  syncResolvedPassageNoteRange(note, resolvedRange);
-  const startOffset = resolvedRange.startOffset;
-  const endOffset = resolvedRange.endOffset;
-  const codeframe = textarea.closest(".scene-editor-codeframe");
+  const preview = anchoredRecordNavigationController.buildPreview({
+    record: note,
+    recordType: "passageNote",
+    text: textarea.value,
+  });
+  if (!preview) {
+    return;
+  }
+
+  const { startOffset } = preview.resolvedRange;
+  const editorHost = resolveTextareaEditorHost(textarea);
 
   clearTaskAnchorPreview({ restoreSelection: false });
 
   state.taskPreview = {
-    taskId: note.id,
-    sceneId: note.sceneId,
-    selectionStart: startOffset,
-    selectionEnd: endOffset,
+    ...preview.previewSelection,
     wasFocused: true,
     pinned: true,
   };
 
-  textarea.classList.add("has-task-preview");
-  textarea.classList.add("has-passage-note-preview", `has-${note.noteType}-preview`);
-  if (codeframe instanceof HTMLElement) {
-    codeframe.classList.add("is-task-previewing");
-    codeframe.classList.add("is-passage-note-previewing", `is-${note.noteType}-previewing`);
+  if (showTextareaAnchoredRecordPreview(editorHost, preview.projection)) {
+    takeToEditorOffset(textarea, startOffset, options);
   }
-
-  takeToSceneRange(note.sceneId, startOffset, endOffset, options);
 }
 
 function syncResolvedPassageNoteRange(note, resolvedRange) {
@@ -11869,16 +11020,16 @@ function toggleManuscriptInlineFormat(formatId) {
   const textarea = activeElement instanceof HTMLTextAreaElement && activeElement.classList.contains("editor-document-input")
     ? activeElement
     : document.querySelector(".editor-document-input");
+  const editorHost = resolveTextareaEditorHost(textarea);
   const controller = createManuscriptCommandController({
     getInlineFormattingState: () => state.manuscriptInlineFormatting,
     setInlineFormattingState: (nextInlineFormattingState) => {
       state.manuscriptInlineFormatting = normalizeManuscriptInlineFormattingState(nextInlineFormattingState);
     },
-    resolveSelection: () => resolveTextareaManuscriptSelection(
-      textarea,
+    resolveSelection: () => editorHost?.readSelection(
       getSceneInlineFormatRanges(String(textarea?.dataset?.sceneId ?? ""), String(textarea?.value ?? "").length),
     ),
-    applyTextMutation: (mutation) => applyTextareaTextMutation(textarea, mutation),
+    applyTextMutation: (mutation) => editorHost?.applyTextMutation(mutation),
     applyRangeMutation: (ranges) => {
       const sceneId = String(textarea?.dataset?.sceneId ?? "");
       if (!sceneId) {
@@ -12477,162 +11628,34 @@ function getEditorTypingSpellcheckRange(textarea) {
   return range;
 }
 
-function syncSpellcheckLayer(layer, textarea, sceneId, options = {}) {
-  if (!(layer instanceof HTMLElement) || !(textarea instanceof HTMLTextAreaElement)) {
+function syncSpellcheckLayer(editorHost, sceneId, options = {}) {
+  if (!editorHost || !(editorHost.textarea instanceof HTMLTextAreaElement)) {
     return;
   }
 
   if (!spellcheckBaseLexicon?.wordList?.length) {
-    layer.innerHTML = "";
+    clearTextareaProjectionLayer(editorHost, MANUSCRIPT_PROJECTION_CHANNELS.SPELLCHECK);
     return;
   }
 
   const projectLexicon = buildCurrentProjectSpellcheckLexicon();
-  layer.innerHTML = `
-    <div class="editor-spellcheck-layer__content">
-      ${renderSpellcheckUnderlineHTML(textarea.value, {
+  const snapshot = {
+    sceneId,
+    text: editorHost.textarea.value,
+    projections: selectManuscriptProjections({
+      sceneId,
+      text: editorHost.textarea.value,
+      spellcheckMisspellings: collectSpellcheckMisspellings(editorHost.textarea.value, {
         baseLexicon: spellcheckBaseLexicon,
         projectLexicon,
         referenceLexicon: spellcheckReferenceLexicon,
-        sceneId,
-      }, options)}
-    </div>
-  `;
-
-  const content = layer.querySelector(".editor-spellcheck-layer__content");
-  if (content instanceof HTMLElement) {
-    syncSpellcheckLayerStyle(content, textarea);
-  }
-}
-
-function renderSpellcheckUnderlineHTML(text, lexicons = {}, options = {}) {
-  const source = String(text ?? "");
-  if (!source.length) {
-    return "";
-  }
-
-  const activeTypingWordRange = options.activeTypingWordRange ?? options.excludeRange ?? null;
-  const baseLexicon = lexicons.baseLexicon ?? null;
-  const projectLexicon = lexicons.projectLexicon ?? null;
-  const referenceLexicon = lexicons.referenceLexicon ?? null;
-  const pattern = /[A-Za-z][A-Za-z'’-]*/g;
-  let lastIndex = 0;
-  let output = "";
-
-  for (const match of source.matchAll(pattern)) {
-    const token = String(match[0] ?? "");
-    const index = Number(match.index);
-    if (!Number.isInteger(index) || index < lastIndex) {
-      continue;
-    }
-
-    output += escapeHtml(source.slice(lastIndex, index));
-
-    const isMisspelled = isSpellcheckMisspelledWord(token, {
-      baseLexicon,
-      projectLexicon,
-      referenceLexicon,
-    });
-    if (
-      activeTypingWordRange &&
-      index === Number(activeTypingWordRange.startOffset) &&
-      index + token.length === Number(activeTypingWordRange.endOffset)
-    ) {
-      output += escapeHtml(token);
-      lastIndex = index + token.length;
-      continue;
-    }
-    const tokenHtml = escapeHtml(token);
-    output += isMisspelled
-      ? `<span class="editor-spellcheck-word is-misspelled" data-spellcheck-start="${index}" data-spellcheck-end="${index + token.length}">${tokenHtml}</span>`
-      : `<span class="editor-spellcheck-word" data-spellcheck-start="${index}" data-spellcheck-end="${index + token.length}">${tokenHtml}</span>`;
-
-    lastIndex = index + token.length;
-  }
-
-  output += escapeHtml(source.slice(lastIndex));
-  return output;
-}
-
-function syncSpellcheckLayerTypingState(layer, activeTypingWordRange) {
-  if (!(layer instanceof HTMLElement)) {
-    return;
-  }
-
-  const content = layer.querySelector(".editor-spellcheck-layer__content");
-  if (!(content instanceof HTMLElement)) {
-    return;
-  }
-
-  content.querySelectorAll(".editor-spellcheck-word.is-typing-active").forEach((word) => {
-    word.classList.remove("is-typing-active");
-  });
-
-  const startOffset = Number(activeTypingWordRange?.startOffset);
-  const endOffset = Number(activeTypingWordRange?.endOffset);
-  if (!Number.isInteger(startOffset) || !Number.isInteger(endOffset)) {
-    return;
-  }
-
-  const activeWord = content.querySelector(
-    `.editor-spellcheck-word[data-spellcheck-start="${startOffset}"][data-spellcheck-end="${endOffset}"]`,
-  );
-  if (activeWord instanceof HTMLElement) {
-    activeWord.classList.add("is-typing-active");
-  }
-}
-
-function syncSpellcheckLayerStyle(content, textarea) {
-  if (!(content instanceof HTMLElement) || !(textarea instanceof HTMLTextAreaElement)) {
-    return;
-  }
-
-  const style = window.getComputedStyle(textarea);
-  const mirroredProperties = [
-    "boxSizing",
-    "direction",
-    "font",
-    "fontFamily",
-    "fontSize",
-    "fontStyle",
-    "fontVariant",
-    "fontVariantLigatures",
-    "fontWeight",
-    "fontStretch",
-    "fontKerning",
-    "fontFeatureSettings",
-    "fontVariationSettings",
-    "letterSpacing",
-    "lineHeight",
-    "textAlign",
-    "textIndent",
-    "textRendering",
-    "textTransform",
-    "unicodeBidi",
-    "whiteSpace",
-    "wordBreak",
-    "wordSpacing",
-    "overflowWrap",
-    "hyphens",
-    "tabSize",
-    "paddingTop",
-    "paddingRight",
-    "paddingBottom",
-    "paddingLeft",
-  ];
-
-  for (const property of mirroredProperties) {
-    try {
-      content.style[property] = style[property] || "";
-    } catch {
-      // Ignore unsupported style properties in older browsers.
-    }
-  }
-
-  content.style.width = `${Math.round(textarea.clientWidth)}px`;
-  content.style.minHeight = `${Math.round(textarea.scrollHeight)}px`;
-  content.style.color = "rgba(31, 36, 48, 0.02)";
-  content.style.margin = "0";
+      }, {
+        excludeRange: options.activeTypingWordRange ?? options.excludeRange ?? null,
+      }),
+      includeAuthorMarks: false,
+    }),
+  };
+  renderTextareaSpellcheckLayer(editorHost, snapshot);
 }
 
 function updateSceneEditorTitle(sceneId, title) {

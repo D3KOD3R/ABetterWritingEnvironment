@@ -7,7 +7,7 @@
       "title": "2project-serva-vitae",
       "source": "project-file",
       "createdAt": "2026-04-21T05:00:00.000Z",
-      "updatedAt": "2026-05-20T04:43:45.424Z",
+      "updatedAt": "2026-05-22T05:35:26.845Z",
       "workspace": {
         "generatedAt": "2026-04-21T05:00:00.000Z",
         "workspaceTitle": "2project-serva-vitae",
@@ -16651,14 +16651,14 @@
         },
         "selectionDefaults": {
           "lineId": "block-0001",
-          "sceneId": "scene-0001",
+          "sceneId": "scene-0023",
           "nodeId": "source-node-9272d563-8210-4bdd-8900-493d323c503d",
           "entityId": "source-entity-9c2d8a8c-6334-4ed3-8c21-0ec770d78ff6",
-          "sceneSelectionBlockId": "block-0002",
-          "sceneSelectionLineNumber": 15,
-          "sceneSelectionStart": 903,
-          "sceneSelectionEnd": 903,
-          "sceneSelectionScrollTop": 111.11111450195312,
+          "sceneSelectionBlockId": "block-0722",
+          "sceneSelectionLineNumber": 1517,
+          "sceneSelectionStart": 225,
+          "sceneSelectionEnd": 225,
+          "sceneSelectionScrollTop": 0,
           "sceneSelectionScrollLeft": 0,
           "inlinePassageDraft": null
         }
@@ -16772,41 +16772,47 @@
               "eventTagIds": [],
               "isDraft": false
             }
-          ],
-          "revisionStats": {
-            "editCount": 3,
-            "lastEditedAt": "2026-05-20T04:43:40.239Z",
-            "lastChangeSummary": "Removed 1 chars -1 lines",
-            "history": [
-              {
-                "id": "revision-1779252220239-mnqqbh",
-                "createdAt": "2026-05-20T04:43:40.239Z",
-                "updatedAt": "2026-05-20T04:43:40.239Z",
-                "summary": "Removed 1 chars -1 lines",
-                "previousLength": 7175,
-                "nextLength": 7174,
-                "deltaCharacters": -1
-              },
-              {
-                "id": "revision-1779252219025-km7z9v",
-                "createdAt": "2026-05-20T04:43:39.025Z",
-                "updatedAt": "2026-05-20T04:43:39.025Z",
-                "summary": "Inserted 1 chars +1 lines",
-                "previousLength": 7174,
-                "nextLength": 7175,
-                "deltaCharacters": 1
-              },
-              {
-                "id": "revision-1779252217518-manueg",
-                "createdAt": "2026-05-20T04:43:37.518Z",
-                "updatedAt": "2026-05-20T04:43:37.518Z",
-                "summary": "Removed 478 chars -8 lines",
-                "previousLength": 7652,
-                "nextLength": 7174,
-                "deltaCharacters": -478
-              }
-            ]
-          }
+          ]
+        },
+        "scene-0023": {
+          "sceneId": "scene-0023",
+          "chapterId": "chapter-0003",
+          "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+          "sceneTitle": "Am I dreaming or am i dead",
+          "sceneSynopsis": "",
+          "editorText": "Ringing pierced Tex’s ears with a strange bubbly static. It wasn’t a normal ringing. A strange Tinnitus he had never felt before. Like he had just jumped into a pool, but without the pressure of fluid pressing against him. The sound felt weightless in the sense that he could not feel the percussion, it was just there, untouchable.\n\nIt was like his ears were being born into existence for the first time, hearing the first sounds he had ever encountered. There was something entirely off. Like he was no longer a part of his own body, or any body.\n\nAll he could see was white. Eventually the ringing stopped, There was no taste, smell or feeling of weight he could connect with. He was weightless, almost senseless, but he was conscious. He could still feel, but only partially, he had no breath, or pulse, the only senses he felt were those his mind could construct. He wasn’t able to panic, he was at the complete mercy of whatever this was. He embraced the silence, it was the first peaceful moment he had felt in what seemed like an eternity. In the moment nothing could harm him, direct, or alter his state, even his own will.\n\npersists test, lets see now The application is quite sluggish after turning loggin goff it is far more responsive. lets see how fast the typing occurs nnow. ",
+          "blocks": [
+            {
+              "blockId": "block-0722",
+              "lineNumber": 722,
+              "kind": "narration",
+              "speakerLabel": "",
+              "text": "Ringing pierced Tex’s ears with a strange bubbly static. It wasn’t a normal ringing. A strange Tinnitus he had never felt before. Like he had just jumped into a pool, but without the pressure of fluid pressing against him. The sound felt weightless in the sense that he could not feel the percussion, it was just there, untouchable.",
+              "issueIds": [],
+              "eventTagIds": [],
+              "isDraft": false
+            },
+            {
+              "blockId": "block-0723",
+              "lineNumber": 723,
+              "kind": "narration",
+              "speakerLabel": "",
+              "text": "It was like his ears were being born into existence for the first time, hearing the first sounds he had ever encountered. There was something entirely off. Like he was no longer a part of his own body, or any body.",
+              "issueIds": [],
+              "eventTagIds": [],
+              "isDraft": false
+            },
+            {
+              "blockId": "block-0724",
+              "lineNumber": 724,
+              "kind": "narration",
+              "speakerLabel": "",
+              "text": "All he could see was white. Eventually the ringing stopped, There was no taste, smell or feeling of weight he could connect with. He was weightless, almost senseless, but he was conscious. He could still feel, but only partially, he had no breath, or pulse, the only senses he felt were those his mind could construct. He wasn’t able to panic, he was at the complete mercy of whatever this was. He embraced the silence, it was the first peaceful moment he had felt in what seemed like an eternity. In the moment nothing could harm him, direct, or alter his state, even his own will.",
+              "issueIds": [],
+              "eventTagIds": [],
+              "isDraft": false
+            }
+          ]
         }
       },
       "structureDrafts": {
@@ -18801,6 +18807,761 @@
           "attachmentConfidence": 0.2
         }
       ],
+      "sourceArchive": [
+        {
+          "id": "source-meta-f8f9fdef-fd9f-4a8c-b33d-3434a1220adc",
+          "title": "Novel Format",
+          "kind": "meta",
+          "binderPath": "Novel Format",
+          "sourceDocumentId": "F8F9FDEF-FD9F-4A8C-B33D-3434A1220ADC",
+          "bodyPreview": "<$Proj_Ps::0>NOVEL FORMAT<!$Proj_Ps::0><$Proj_Ps::1>\n\nAbout This Template<!$Proj_Ps::1>\n\nBy default, when compiled (<$Proj_Cs::2>File > Compile…<!$Proj_Cs::2>), this project will generate a document in the "
+        },
+        {
+          "id": "source-asset-3f337436-e66e-48df-a2bc-c3b7fd4ad50a",
+          "title": "Cover",
+          "kind": "image",
+          "binderPath": "WorldBuilding / Front Matter / Ebook / Cover",
+          "sourceDocumentId": "3F337436-E66E-48DF-A2BC-C3B7FD4AD50A",
+          "assetPath": "C:\\Users\\ASUS\\Desktop\\Repos\\ABetterNovelAuthoringEnvironment\\project-media/project-serva-vitae/3f337436-e66e-48df-a2bc-c3b7fd4ad50a/content.png"
+        },
+        {
+          "id": "source-trash-ec99a0a9-6dad-4792-9f03-ac1451190c92",
+          "title": "Untitled trash item",
+          "kind": "trash",
+          "binderPath": "Trash",
+          "sourceDocumentId": "EC99A0A9-6DAD-4792-9F03-AC1451190C92",
+          "bodyPreview": "https://www.google.com/search?q=where+is+the+compile+as+is+function+in+project file+2024&rlz=1C1GCEU_enAU1033AU1033&oq=where+is+the+compile+as+is+function+in+project file+2024&gs_lcrp=EgZjaHJvbWUyBggAEEUYOT"
+        },
+        {
+          "id": "source-trash-asset-c2798527-a845-4ae6-8897-7f64afa60e91",
+          "title": "Standard Manuscript",
+          "kind": "pdf",
+          "binderPath": "Trash / Sample Output / Standard Manuscript",
+          "sourceDocumentId": "C2798527-A845-4AE6-8897-7F64AFA60E91",
+          "assetPath": "C:\\Users\\ASUS\\Desktop\\Repos\\ABetterNovelAuthoringEnvironment\\project-media/project-serva-vitae/c2798527-a845-4ae6-8897-7f64afa60e91/content.pdf"
+        },
+        {
+          "id": "source-trash-asset-b7ee6289-f662-4410-a5ab-f80866e029c9",
+          "title": "Paperback Novel",
+          "kind": "pdf",
+          "binderPath": "Trash / Sample Output / Paperback Novel",
+          "sourceDocumentId": "B7EE6289-F662-4410-A5AB-F80866E029C9",
+          "assetPath": "C:\\Users\\ASUS\\Desktop\\Repos\\ABetterNovelAuthoringEnvironment\\project-media/project-serva-vitae/b7ee6289-f662-4410-a5ab-f80866e029c9/content.pdf"
+        }
+      ],
+      "importReport": {
+        "importedChapters": 4,
+        "importedScenes": 29,
+        "importedBlocks": 855,
+        "importedTextItems": 29,
+        "emptyTextItems": 0,
+        "importedTasks": 52,
+        "taskAnchorCounts": {
+          "active": 30,
+          "recovered": 1,
+          "approximate": 21,
+          "orphaned": 0
+        },
+        "skippedItems": [],
+        "importedResearchNotes": 2,
+        "importedWorldNotes": 11,
+        "importedFrontMatterNotes": 6,
+        "importedAssetNotes": 1,
+        "archivedItems": 5,
+        "skippedTrashItems": 1,
+        "importedNotes": 19
+      },
+      "projectSettings": {
+        "editorPrefs": {
+          "fontFamilyId": "story-serif",
+          "fontSize": 18,
+          "lineHeight": 1.7,
+          "editorWidth": 760,
+          "projectFileAutosaveEnabled": true,
+          "grammarCheckEnabled": true,
+          "revisionOverlayEnabled": false,
+          "italicText": false
+        },
+        "localAiPrefs": {
+          "enabled": true
+        },
+        "binderPanelWidth": 684,
+        "consoleDockWidth": 668,
+        "userSettingPanelResizerLeftPercent": 24.3,
+        "userSettingPanelResizerRightPercent": 23.7,
+        "consoleDockCollapsed": false,
+        "collapsedChapterIds": [],
+        "collapsedConsoleChapterIds": {
+          "issueTasks": [],
+          "issues": [],
+          "inspiration": [],
+          "research": []
+        },
+        "projectFilePath": "2project-serva-vitae.abe-project.json",
+        "projectSourcePath": "",
+        "writingTargetState": {
+          "targetWords": 150000,
+          "releaseDate": "2026-05-20",
+          "sessionTargetWords": 37103,
+          "sessionsPerDay": 5,
+          "sessionTimeoutMinutes": 20,
+          "targetCadence": "daily",
+          "goalSyncSource": "releaseDate",
+          "lookbackDays": 30,
+          "visibleMetricsVersion": 2,
+          "visibleMetrics": [
+            "wordTarget",
+            "sessionTarget",
+            "forecast",
+            "sessionTracker"
+          ],
+          "sessionBaselineWordCount": 71510,
+          "sessionLastWordCount": 71417,
+          "dailyBaselineDateKey": "2026-05-22",
+          "dailyBaselineWordCount": 71417,
+          "sessionIsActive": false,
+          "sessionStartedAt": "2026-05-20T04:43:37.520Z",
+          "sessionLastActiveAt": "2026-05-20T04:43:41.103Z",
+          "sessionConcludedAt": "2026-05-20T05:03:41.103Z",
+          "sessionConcludedReason": "idle",
+          "sessionSamples": [
+            {
+              "capturedAt": "2026-05-20T04:43:37.520Z",
+              "wordCount": 71510
+            },
+            {
+              "capturedAt": "2026-05-20T04:43:37.635Z",
+              "wordCount": 71417
+            },
+            {
+              "capturedAt": "2026-05-20T04:43:39.903Z",
+              "wordCount": 71417
+            },
+            {
+              "capturedAt": "2026-05-20T04:43:41.103Z",
+              "wordCount": 71417
+            }
+          ],
+          "sessionHistory": [
+            {
+              "startedAt": "2026-05-07T14:30:15.620Z",
+              "endedAt": "2026-05-11T05:26:53.748Z",
+              "endedReason": "idle",
+              "wordCountStart": 71451,
+              "wordCountEnd": 71478,
+              "wordGain": 27,
+              "activeMinutes": 5216,
+              "idleMinutes": 20,
+              "sessionTargetWordsPerSession": 1745,
+              "goalReached": false
+            },
+            {
+              "startedAt": "2026-05-11T06:44:17.831Z",
+              "endedAt": "2026-05-11T07:04:19.774Z",
+              "endedReason": "idle",
+              "wordCountStart": 71478,
+              "wordCountEnd": 71479,
+              "wordGain": 1,
+              "activeMinutes": 20,
+              "idleMinutes": 20,
+              "sessionTargetWordsPerSession": 1745,
+              "goalReached": false
+            },
+            {
+              "startedAt": "2026-05-13T23:45:29.246Z",
+              "endedAt": "2026-05-14T00:05:35.400Z",
+              "endedReason": "idle",
+              "wordCountStart": 71479,
+              "wordCountEnd": 71483,
+              "wordGain": 4,
+              "activeMinutes": 20,
+              "idleMinutes": 20,
+              "sessionTargetWordsPerSession": 3926,
+              "goalReached": false
+            },
+            {
+              "startedAt": "2026-05-15T22:45:24.938Z",
+              "endedAt": "2026-05-15T23:06:45.011Z",
+              "endedReason": "idle",
+              "wordCountStart": 71483,
+              "wordCountEnd": 71510,
+              "wordGain": 27,
+              "activeMinutes": 21,
+              "idleMinutes": 20,
+              "sessionTargetWordsPerSession": 7421,
+              "goalReached": false
+            },
+            {
+              "startedAt": "2026-05-20T04:43:37.520Z",
+              "endedAt": "2026-05-20T05:03:41.103Z",
+              "endedReason": "idle",
+              "wordCountStart": 71510,
+              "wordCountEnd": 71417,
+              "wordGain": 0,
+              "activeMinutes": 20,
+              "idleMinutes": 20,
+              "sessionTargetWordsPerSession": 7421,
+              "goalReached": false
+            }
+          ],
+          "history": [
+            {
+              "date": "2026-03-30",
+              "wordCount": 60954,
+              "wordDelta": 363,
+              "capturedAt": "2026-03-30T04:00:00.000Z",
+              "chapterId": "chapter-0003",
+              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+              "sceneId": "scene-0016",
+              "sceneTitle": "The Sentient Graveyard",
+              "passageExcerpt": "",
+              "issueCount": 0,
+              "inspirationCount": 0,
+              "noteText": ""
+            },
+            {
+              "date": "2026-03-31",
+              "wordCount": 61432,
+              "wordDelta": 478,
+              "capturedAt": "2026-03-31T04:00:00.000Z",
+              "chapterId": "chapter-0003",
+              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+              "sceneId": "scene-0016",
+              "sceneTitle": "The Sentient Graveyard",
+              "passageExcerpt": "",
+              "issueCount": 0,
+              "inspirationCount": 0,
+              "noteText": ""
+            },
+            {
+              "date": "2026-04-01",
+              "wordCount": 61865,
+              "wordDelta": 433,
+              "capturedAt": "2026-04-01T04:00:00.000Z",
+              "chapterId": "chapter-0003",
+              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+              "sceneId": "scene-0016",
+              "sceneTitle": "The Sentient Graveyard",
+              "passageExcerpt": "",
+              "issueCount": 0,
+              "inspirationCount": 0,
+              "noteText": ""
+            },
+            {
+              "date": "2026-04-02",
+              "wordCount": 62377,
+              "wordDelta": 512,
+              "capturedAt": "2026-04-02T04:00:00.000Z",
+              "chapterId": "chapter-0003",
+              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+              "sceneId": "scene-0016",
+              "sceneTitle": "The Sentient Graveyard",
+              "passageExcerpt": "",
+              "issueCount": 0,
+              "inspirationCount": 0,
+              "noteText": ""
+            },
+            {
+              "date": "2026-04-03",
+              "wordCount": 62615,
+              "wordDelta": 238,
+              "capturedAt": "2026-04-03T04:00:00.000Z",
+              "chapterId": "chapter-0003",
+              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+              "sceneId": "scene-0016",
+              "sceneTitle": "The Sentient Graveyard",
+              "passageExcerpt": "",
+              "issueCount": 0,
+              "inspirationCount": 0,
+              "noteText": ""
+            },
+            {
+              "date": "2026-04-04",
+              "wordCount": 62780,
+              "wordDelta": 165,
+              "capturedAt": "2026-04-04T04:00:00.000Z",
+              "chapterId": "chapter-0003",
+              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+              "sceneId": "scene-0016",
+              "sceneTitle": "The Sentient Graveyard",
+              "passageExcerpt": "",
+              "issueCount": 0,
+              "inspirationCount": 0,
+              "noteText": ""
+            },
+            {
+              "date": "2026-04-05",
+              "wordCount": 62969,
+              "wordDelta": 189,
+              "capturedAt": "2026-04-05T04:00:00.000Z",
+              "chapterId": "chapter-0003",
+              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+              "sceneId": "scene-0016",
+              "sceneTitle": "The Sentient Graveyard",
+              "passageExcerpt": "",
+              "issueCount": 0,
+              "inspirationCount": 0,
+              "noteText": ""
+            },
+            {
+              "date": "2026-04-06",
+              "wordCount": 63356,
+              "wordDelta": 387,
+              "capturedAt": "2026-04-06T04:00:00.000Z",
+              "chapterId": "chapter-0003",
+              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+              "sceneId": "scene-0016",
+              "sceneTitle": "The Sentient Graveyard",
+              "passageExcerpt": "",
+              "issueCount": 0,
+              "inspirationCount": 0,
+              "noteText": ""
+            },
+            {
+              "date": "2026-04-07",
+              "wordCount": 63858,
+              "wordDelta": 502,
+              "capturedAt": "2026-04-07T04:00:00.000Z",
+              "chapterId": "chapter-0003",
+              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+              "sceneId": "scene-0016",
+              "sceneTitle": "The Sentient Graveyard",
+              "passageExcerpt": "",
+              "issueCount": 0,
+              "inspirationCount": 0,
+              "noteText": ""
+            },
+            {
+              "date": "2026-04-08",
+              "wordCount": 64314,
+              "wordDelta": 456,
+              "capturedAt": "2026-04-08T04:00:00.000Z",
+              "chapterId": "chapter-0003",
+              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+              "sceneId": "scene-0016",
+              "sceneTitle": "The Sentient Graveyard",
+              "passageExcerpt": "",
+              "issueCount": 0,
+              "inspirationCount": 0,
+              "noteText": ""
+            },
+            {
+              "date": "2026-04-09",
+              "wordCount": 64850,
+              "wordDelta": 536,
+              "capturedAt": "2026-04-09T04:00:00.000Z",
+              "chapterId": "chapter-0003",
+              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+              "sceneId": "scene-0016",
+              "sceneTitle": "The Sentient Graveyard",
+              "passageExcerpt": "",
+              "issueCount": 0,
+              "inspirationCount": 0,
+              "noteText": ""
+            },
+            {
+              "date": "2026-04-10",
+              "wordCount": 65111,
+              "wordDelta": 261,
+              "capturedAt": "2026-04-10T04:00:00.000Z",
+              "chapterId": "chapter-0003",
+              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+              "sceneId": "scene-0016",
+              "sceneTitle": "The Sentient Graveyard",
+              "passageExcerpt": "",
+              "issueCount": 0,
+              "inspirationCount": 0,
+              "noteText": ""
+            },
+            {
+              "date": "2026-04-11",
+              "wordCount": 65299,
+              "wordDelta": 188,
+              "capturedAt": "2026-04-11T04:00:00.000Z",
+              "chapterId": "chapter-0003",
+              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+              "sceneId": "scene-0016",
+              "sceneTitle": "The Sentient Graveyard",
+              "passageExcerpt": "",
+              "issueCount": 0,
+              "inspirationCount": 0,
+              "noteText": ""
+            },
+            {
+              "date": "2026-04-12",
+              "wordCount": 65512,
+              "wordDelta": 213,
+              "capturedAt": "2026-04-12T04:00:00.000Z",
+              "chapterId": "chapter-0003",
+              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+              "sceneId": "scene-0016",
+              "sceneTitle": "The Sentient Graveyard",
+              "passageExcerpt": "",
+              "issueCount": 0,
+              "inspirationCount": 0,
+              "noteText": ""
+            },
+            {
+              "date": "2026-04-13",
+              "wordCount": 65923,
+              "wordDelta": 411,
+              "capturedAt": "2026-04-13T04:00:00.000Z",
+              "chapterId": "chapter-0003",
+              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+              "sceneId": "scene-0016",
+              "sceneTitle": "The Sentient Graveyard",
+              "passageExcerpt": "",
+              "issueCount": 0,
+              "inspirationCount": 0,
+              "noteText": ""
+            },
+            {
+              "date": "2026-04-14",
+              "wordCount": 66447,
+              "wordDelta": 524,
+              "capturedAt": "2026-04-14T04:00:00.000Z",
+              "chapterId": "chapter-0003",
+              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+              "sceneId": "scene-0016",
+              "sceneTitle": "The Sentient Graveyard",
+              "passageExcerpt": "",
+              "issueCount": 0,
+              "inspirationCount": 0,
+              "noteText": ""
+            },
+            {
+              "date": "2026-04-15",
+              "wordCount": 66926,
+              "wordDelta": 479,
+              "capturedAt": "2026-04-15T04:00:00.000Z",
+              "chapterId": "chapter-0003",
+              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+              "sceneId": "scene-0016",
+              "sceneTitle": "The Sentient Graveyard",
+              "passageExcerpt": "",
+              "issueCount": 0,
+              "inspirationCount": 0,
+              "noteText": ""
+            },
+            {
+              "date": "2026-04-16",
+              "wordCount": 67485,
+              "wordDelta": 559,
+              "capturedAt": "2026-04-16T04:00:00.000Z",
+              "chapterId": "chapter-0003",
+              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+              "sceneId": "scene-0016",
+              "sceneTitle": "The Sentient Graveyard",
+              "passageExcerpt": "",
+              "issueCount": 0,
+              "inspirationCount": 0,
+              "noteText": ""
+            },
+            {
+              "date": "2026-04-17",
+              "wordCount": 67770,
+              "wordDelta": 285,
+              "capturedAt": "2026-04-17T04:00:00.000Z",
+              "chapterId": "chapter-0003",
+              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+              "sceneId": "scene-0016",
+              "sceneTitle": "The Sentient Graveyard",
+              "passageExcerpt": "",
+              "issueCount": 0,
+              "inspirationCount": 0,
+              "noteText": ""
+            },
+            {
+              "date": "2026-04-18",
+              "wordCount": 67982,
+              "wordDelta": 212,
+              "capturedAt": "2026-04-18T04:00:00.000Z",
+              "chapterId": "chapter-0003",
+              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+              "sceneId": "scene-0016",
+              "sceneTitle": "The Sentient Graveyard",
+              "passageExcerpt": "",
+              "issueCount": 0,
+              "inspirationCount": 0,
+              "noteText": ""
+            },
+            {
+              "date": "2026-04-19",
+              "wordCount": 68218,
+              "wordDelta": 236,
+              "capturedAt": "2026-04-19T04:00:00.000Z",
+              "chapterId": "chapter-0003",
+              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+              "sceneId": "scene-0016",
+              "sceneTitle": "The Sentient Graveyard",
+              "passageExcerpt": "",
+              "issueCount": 0,
+              "inspirationCount": 0,
+              "noteText": ""
+            },
+            {
+              "date": "2026-04-20",
+              "wordCount": 68652,
+              "wordDelta": 434,
+              "capturedAt": "2026-04-20T04:00:00.000Z",
+              "chapterId": "chapter-0003",
+              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+              "sceneId": "scene-0016",
+              "sceneTitle": "The Sentient Graveyard",
+              "passageExcerpt": "",
+              "issueCount": 0,
+              "inspirationCount": 0,
+              "noteText": ""
+            },
+            {
+              "date": "2026-04-21",
+              "wordCount": 69200,
+              "wordDelta": 548,
+              "capturedAt": "2026-04-21T04:00:00.000Z",
+              "chapterId": "chapter-0003",
+              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+              "sceneId": "scene-0016",
+              "sceneTitle": "The Sentient Graveyard",
+              "passageExcerpt": "",
+              "issueCount": 0,
+              "inspirationCount": 0,
+              "noteText": ""
+            },
+            {
+              "date": "2026-04-22",
+              "wordCount": 69703,
+              "wordDelta": 503,
+              "capturedAt": "2026-04-22T04:00:00.000Z",
+              "chapterId": "chapter-0003",
+              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+              "sceneId": "scene-0016",
+              "sceneTitle": "The Sentient Graveyard",
+              "passageExcerpt": "",
+              "issueCount": 0,
+              "inspirationCount": 0,
+              "noteText": ""
+            },
+            {
+              "date": "2026-04-23",
+              "wordCount": 70286,
+              "wordDelta": 583,
+              "capturedAt": "2026-04-23T04:00:00.000Z",
+              "chapterId": "chapter-0003",
+              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+              "sceneId": "scene-0016",
+              "sceneTitle": "The Sentient Graveyard",
+              "passageExcerpt": "",
+              "issueCount": 0,
+              "inspirationCount": 0,
+              "noteText": ""
+            },
+            {
+              "date": "2026-04-24",
+              "wordCount": 70595,
+              "wordDelta": 309,
+              "capturedAt": "2026-04-24T04:00:00.000Z",
+              "chapterId": "chapter-0003",
+              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+              "sceneId": "scene-0016",
+              "sceneTitle": "The Sentient Graveyard",
+              "passageExcerpt": "",
+              "issueCount": 0,
+              "inspirationCount": 0,
+              "noteText": ""
+            },
+            {
+              "date": "2026-04-25",
+              "wordCount": 70831,
+              "wordDelta": 236,
+              "capturedAt": "2026-04-25T04:00:00.000Z",
+              "chapterId": "chapter-0003",
+              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+              "sceneId": "scene-0016",
+              "sceneTitle": "The Sentient Graveyard",
+              "passageExcerpt": "",
+              "issueCount": 0,
+              "inspirationCount": 0,
+              "noteText": ""
+            },
+            {
+              "date": "2026-04-26",
+              "wordCount": 71090,
+              "wordDelta": 259,
+              "capturedAt": "2026-04-26T04:00:00.000Z",
+              "chapterId": "chapter-0003",
+              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+              "sceneId": "scene-0016",
+              "sceneTitle": "The Sentient Graveyard",
+              "passageExcerpt": "",
+              "issueCount": 0,
+              "inspirationCount": 0,
+              "noteText": ""
+            },
+            {
+              "date": "2026-04-27",
+              "wordCount": 71547,
+              "wordDelta": 457,
+              "capturedAt": "2026-04-27T04:00:00.000Z",
+              "chapterId": "chapter-0003",
+              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+              "sceneId": "scene-0016",
+              "sceneTitle": "The Sentient Graveyard",
+              "passageExcerpt": "",
+              "issueCount": 0,
+              "inspirationCount": 0,
+              "noteText": ""
+            },
+            {
+              "date": "2026-04-28",
+              "wordCount": 71408,
+              "wordDelta": -139,
+              "capturedAt": "2026-04-28T15:46:33.671Z",
+              "chapterId": "chapter-0001",
+              "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
+              "sceneId": "scene-0002",
+              "sceneTitle": "(Athos) Mission Brief - The lost facility",
+              "passageExcerpt": "",
+              "issueCount": 0,
+              "inspirationCount": 0,
+              "noteText": ""
+            },
+            {
+              "date": "2026-04-30",
+              "wordCount": 71513,
+              "wordDelta": 105,
+              "capturedAt": "2026-04-30T09:32:33.526Z",
+              "chapterId": "chapter-0001",
+              "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
+              "sceneId": "scene-0001",
+              "sceneTitle": "John's Dream",
+              "passageExcerpt": "Icicles clung to the cavern roof, daring anyone brave enough to trespass below them. Nuancing Radiant beams of…",
+              "issueCount": 0,
+              "inspirationCount": 1,
+              "noteText": ""
+            },
+            {
+              "date": "2026-05-01",
+              "wordCount": 71451,
+              "wordDelta": -62,
+              "capturedAt": "2026-04-30T23:59:19.371Z",
+              "chapterId": "chapter-0001",
+              "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
+              "sceneId": "scene-0001",
+              "sceneTitle": "John's Dream",
+              "passageExcerpt": "Icicles clung to the cavern roof, daring anyone brave enough to trespass below them. Nuancing Radiant beams of…",
+              "issueCount": 0,
+              "inspirationCount": 0,
+              "noteText": ""
+            },
+            {
+              "date": "2026-05-07",
+              "wordCount": 71465,
+              "wordDelta": 14,
+              "capturedAt": "2026-05-07T14:39:05.030Z",
+              "chapterId": "chapter-0001",
+              "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
+              "sceneId": "scene-0001",
+              "sceneTitle": "John's Dream",
+              "passageExcerpt": "Icicles clung to the cavern roof, daring anyone brave enough to trespass below them. Nuancing Radiant beams of…",
+              "issueCount": 0,
+              "inspirationCount": 0,
+              "noteText": ""
+            },
+            {
+              "date": "2026-05-11",
+              "wordCount": 71479,
+              "wordDelta": 14,
+              "capturedAt": "2026-05-11T08:51:25.962Z",
+              "chapterId": "chapter-0001",
+              "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
+              "sceneId": "scene-0001",
+              "sceneTitle": "John's Dream",
+              "passageExcerpt": "Icicles clung to the cavern roof, daring anyone brave enough to trespass below them. Nuancing Radiant beams of…",
+              "issueCount": 0,
+              "inspirationCount": 0,
+              "noteText": ""
+            },
+            {
+              "date": "2026-05-14",
+              "wordCount": 71483,
+              "wordDelta": 4,
+              "capturedAt": "2026-05-13T23:46:53.101Z",
+              "chapterId": "chapter-0001",
+              "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
+              "sceneId": "scene-0001",
+              "sceneTitle": "John's Dream",
+              "passageExcerpt": "Icicles clung to the cavern roof, daring anyone brave enough to trespass below them. Nuancing Radiant beams of…",
+              "issueCount": 0,
+              "inspirationCount": 0,
+              "noteText": ""
+            },
+            {
+              "date": "2026-05-16",
+              "wordCount": 71510,
+              "wordDelta": 27,
+              "capturedAt": "2026-05-15T22:46:49.280Z",
+              "chapterId": "chapter-0003",
+              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+              "sceneId": "scene-0023",
+              "sceneTitle": "Am I dreaming or am i dead",
+              "passageExcerpt": "Ringing pierced Tex’s ears with a strange bubbly static. It wasn’t a normal ringing. A strange Tinnitus he…",
+              "issueCount": 0,
+              "inspirationCount": 0,
+              "noteText": ""
+            },
+            {
+              "date": "2026-05-20",
+              "wordCount": 71417,
+              "wordDelta": -93,
+              "capturedAt": "2026-05-20T12:20:20.332Z",
+              "chapterId": "chapter-0003",
+              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+              "sceneId": "scene-0023",
+              "sceneTitle": "Am I dreaming or am i dead",
+              "passageExcerpt": "Ringing pierced Tex’s ears with a strange bubbly static. It wasn’t a normal ringing. A strange Tinnitus he…",
+              "issueCount": 0,
+              "inspirationCount": 0,
+              "noteText": ""
+            },
+            {
+              "date": "2026-05-22",
+              "wordCount": 71417,
+              "wordDelta": 0,
+              "capturedAt": "2026-05-22T05:35:26.797Z",
+              "chapterId": "chapter-0003",
+              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
+              "sceneId": "scene-0023",
+              "sceneTitle": "Am I dreaming or am i dead",
+              "passageExcerpt": "Ringing pierced Tex’s ears with a strange bubbly static. It wasn’t a normal ringing. A strange Tinnitus he…",
+              "issueCount": 0,
+              "inspirationCount": 0,
+              "noteText": ""
+            }
+          ],
+          "updatedAt": "2026-05-22T05:35:26.797Z"
+        },
+        "writingTargetViewMode": "month",
+        "writingTargetSelectedDateKey": "2026-05-01",
+        "writingTargetCalendarMonthKey": "2026-05",
+        "spellcheck": {
+          "dictionaryWords": [],
+          "exceptionWords": []
+        },
+        "assetRegistry": []
+      },
+      "editorPrefs": {
+        "fontFamilyId": "story-serif",
+        "fontSize": 18,
+        "lineHeight": 1.7,
+        "editorWidth": 760,
+        "projectFileAutosaveEnabled": true,
+        "grammarCheckEnabled": true,
+        "revisionOverlayEnabled": false,
+        "italicText": false
+      },
+      "localAiPrefs": {
+        "enabled": true
+      },
       "revisions": {
         "schemaVersion": 1,
         "activeSessionId": "revision-session-1779252217515-qxsedt",
@@ -20407,746 +21168,17 @@
           }
         ]
       },
-      "sourceArchive": [
-        {
-          "id": "source-meta-f8f9fdef-fd9f-4a8c-b33d-3434a1220adc",
-          "title": "Novel Format",
-          "kind": "meta",
-          "binderPath": "Novel Format",
-          "sourceDocumentId": "F8F9FDEF-FD9F-4A8C-B33D-3434A1220ADC",
-          "bodyPreview": "<$Proj_Ps::0>NOVEL FORMAT<!$Proj_Ps::0><$Proj_Ps::1>\n\nAbout This Template<!$Proj_Ps::1>\n\nBy default, when compiled (<$Proj_Cs::2>File > Compile…<!$Proj_Cs::2>), this project will generate a document in the "
-        },
-        {
-          "id": "source-asset-3f337436-e66e-48df-a2bc-c3b7fd4ad50a",
-          "title": "Cover",
-          "kind": "image",
-          "binderPath": "WorldBuilding / Front Matter / Ebook / Cover",
-          "sourceDocumentId": "3F337436-E66E-48DF-A2BC-C3B7FD4AD50A",
-          "assetPath": "C:\\Users\\ASUS\\Desktop\\Repos\\ABetterNovelAuthoringEnvironment\\project-media/project-serva-vitae/3f337436-e66e-48df-a2bc-c3b7fd4ad50a/content.png"
-        },
-        {
-          "id": "source-trash-ec99a0a9-6dad-4792-9f03-ac1451190c92",
-          "title": "Untitled trash item",
-          "kind": "trash",
-          "binderPath": "Trash",
-          "sourceDocumentId": "EC99A0A9-6DAD-4792-9F03-AC1451190C92",
-          "bodyPreview": "https://www.google.com/search?q=where+is+the+compile+as+is+function+in+project file+2024&rlz=1C1GCEU_enAU1033AU1033&oq=where+is+the+compile+as+is+function+in+project file+2024&gs_lcrp=EgZjaHJvbWUyBggAEEUYOT"
-        },
-        {
-          "id": "source-trash-asset-c2798527-a845-4ae6-8897-7f64afa60e91",
-          "title": "Standard Manuscript",
-          "kind": "pdf",
-          "binderPath": "Trash / Sample Output / Standard Manuscript",
-          "sourceDocumentId": "C2798527-A845-4AE6-8897-7F64AFA60E91",
-          "assetPath": "C:\\Users\\ASUS\\Desktop\\Repos\\ABetterNovelAuthoringEnvironment\\project-media/project-serva-vitae/c2798527-a845-4ae6-8897-7f64afa60e91/content.pdf"
-        },
-        {
-          "id": "source-trash-asset-b7ee6289-f662-4410-a5ab-f80866e029c9",
-          "title": "Paperback Novel",
-          "kind": "pdf",
-          "binderPath": "Trash / Sample Output / Paperback Novel",
-          "sourceDocumentId": "B7EE6289-F662-4410-A5AB-F80866E029C9",
-          "assetPath": "C:\\Users\\ASUS\\Desktop\\Repos\\ABetterNovelAuthoringEnvironment\\project-media/project-serva-vitae/b7ee6289-f662-4410-a5ab-f80866e029c9/content.pdf"
-        }
-      ],
-      "importReport": {
-        "importedChapters": 4,
-        "importedScenes": 29,
-        "importedBlocks": 855,
-        "importedTextItems": 29,
-        "emptyTextItems": 0,
-        "importedTasks": 52,
-        "taskAnchorCounts": {
-          "active": 30,
-          "recovered": 1,
-          "approximate": 21,
-          "orphaned": 0
-        },
-        "skippedItems": [],
-        "importedResearchNotes": 2,
-        "importedWorldNotes": 11,
-        "importedFrontMatterNotes": 6,
-        "importedAssetNotes": 1,
-        "archivedItems": 5,
-        "skippedTrashItems": 1,
-        "importedNotes": 19
-      },
-      "projectSettings": {
-        "editorPrefs": {
-          "fontFamilyId": "story-serif",
-          "fontSize": 18,
-          "lineHeight": 1.7,
-          "editorWidth": 760,
-          "projectFileAutosaveEnabled": true,
-          "grammarCheckEnabled": true,
-          "revisionOverlayEnabled": false,
-          "italicText": false
-        },
-        "localAiPrefs": {
-          "enabled": true
-        },
-        "binderPanelWidth": 683,
-        "consoleDockWidth": 668,
-        "userSettingPanelResizerLeftPercent": 24.3,
-        "userSettingPanelResizerRightPercent": 23.7,
-        "consoleDockCollapsed": false,
-        "collapsedChapterIds": [],
-        "collapsedConsoleChapterIds": {
-          "issueTasks": [],
-          "issues": [],
-          "inspiration": [],
-          "research": []
-        },
-        "projectFilePath": "2project-serva-vitae.abe-project.json",
-        "projectSourcePath": "",
-        "writingTargetState": {
-          "targetWords": 150000,
-          "releaseDate": "2026-05-20",
-          "sessionTargetWords": 37103,
-          "sessionsPerDay": 5,
-          "sessionTimeoutMinutes": 20,
-          "targetCadence": "daily",
-          "goalSyncSource": "releaseDate",
-          "lookbackDays": 30,
-          "visibleMetricsVersion": 2,
-          "visibleMetrics": [
-            "wordTarget",
-            "sessionTarget",
-            "forecast",
-            "sessionTracker"
-          ],
-          "sessionBaselineWordCount": 71510,
-          "sessionLastWordCount": 71417,
-          "dailyBaselineDateKey": "2026-05-20",
-          "dailyBaselineWordCount": 71510,
-          "sessionIsActive": true,
-          "sessionStartedAt": "2026-05-20T04:43:37.520Z",
-          "sessionLastActiveAt": "2026-05-20T04:43:41.103Z",
-          "sessionConcludedAt": "",
-          "sessionConcludedReason": "",
-          "sessionSamples": [
-            {
-              "capturedAt": "2026-05-20T04:43:37.520Z",
-              "wordCount": 71510
-            },
-            {
-              "capturedAt": "2026-05-20T04:43:37.635Z",
-              "wordCount": 71417
-            },
-            {
-              "capturedAt": "2026-05-20T04:43:39.903Z",
-              "wordCount": 71417
-            },
-            {
-              "capturedAt": "2026-05-20T04:43:41.103Z",
-              "wordCount": 71417
-            }
-          ],
-          "sessionHistory": [
-            {
-              "startedAt": "2026-05-07T14:30:15.620Z",
-              "endedAt": "2026-05-11T05:26:53.748Z",
-              "endedReason": "idle",
-              "wordCountStart": 71451,
-              "wordCountEnd": 71478,
-              "wordGain": 27,
-              "activeMinutes": 5216,
-              "idleMinutes": 20,
-              "sessionTargetWordsPerSession": 1745,
-              "goalReached": false
-            },
-            {
-              "startedAt": "2026-05-11T06:44:17.831Z",
-              "endedAt": "2026-05-11T07:04:19.774Z",
-              "endedReason": "idle",
-              "wordCountStart": 71478,
-              "wordCountEnd": 71479,
-              "wordGain": 1,
-              "activeMinutes": 20,
-              "idleMinutes": 20,
-              "sessionTargetWordsPerSession": 1745,
-              "goalReached": false
-            },
-            {
-              "startedAt": "2026-05-13T23:45:29.246Z",
-              "endedAt": "2026-05-14T00:05:35.400Z",
-              "endedReason": "idle",
-              "wordCountStart": 71479,
-              "wordCountEnd": 71483,
-              "wordGain": 4,
-              "activeMinutes": 20,
-              "idleMinutes": 20,
-              "sessionTargetWordsPerSession": 3926,
-              "goalReached": false
-            },
-            {
-              "startedAt": "2026-05-15T22:45:24.938Z",
-              "endedAt": "2026-05-15T23:06:45.011Z",
-              "endedReason": "idle",
-              "wordCountStart": 71483,
-              "wordCountEnd": 71510,
-              "wordGain": 27,
-              "activeMinutes": 21,
-              "idleMinutes": 20,
-              "sessionTargetWordsPerSession": 7421,
-              "goalReached": false
-            }
-          ],
-          "history": [
-            {
-              "date": "2026-03-30",
-              "wordCount": 60954,
-              "wordDelta": 363,
-              "capturedAt": "2026-03-30T04:00:00.000Z",
-              "chapterId": "chapter-0003",
-              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
-              "sceneId": "scene-0016",
-              "sceneTitle": "The Sentient Graveyard",
-              "passageExcerpt": "",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            },
-            {
-              "date": "2026-03-31",
-              "wordCount": 61432,
-              "wordDelta": 478,
-              "capturedAt": "2026-03-31T04:00:00.000Z",
-              "chapterId": "chapter-0003",
-              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
-              "sceneId": "scene-0016",
-              "sceneTitle": "The Sentient Graveyard",
-              "passageExcerpt": "",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            },
-            {
-              "date": "2026-04-01",
-              "wordCount": 61865,
-              "wordDelta": 433,
-              "capturedAt": "2026-04-01T04:00:00.000Z",
-              "chapterId": "chapter-0003",
-              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
-              "sceneId": "scene-0016",
-              "sceneTitle": "The Sentient Graveyard",
-              "passageExcerpt": "",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            },
-            {
-              "date": "2026-04-02",
-              "wordCount": 62377,
-              "wordDelta": 512,
-              "capturedAt": "2026-04-02T04:00:00.000Z",
-              "chapterId": "chapter-0003",
-              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
-              "sceneId": "scene-0016",
-              "sceneTitle": "The Sentient Graveyard",
-              "passageExcerpt": "",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            },
-            {
-              "date": "2026-04-03",
-              "wordCount": 62615,
-              "wordDelta": 238,
-              "capturedAt": "2026-04-03T04:00:00.000Z",
-              "chapterId": "chapter-0003",
-              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
-              "sceneId": "scene-0016",
-              "sceneTitle": "The Sentient Graveyard",
-              "passageExcerpt": "",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            },
-            {
-              "date": "2026-04-04",
-              "wordCount": 62780,
-              "wordDelta": 165,
-              "capturedAt": "2026-04-04T04:00:00.000Z",
-              "chapterId": "chapter-0003",
-              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
-              "sceneId": "scene-0016",
-              "sceneTitle": "The Sentient Graveyard",
-              "passageExcerpt": "",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            },
-            {
-              "date": "2026-04-05",
-              "wordCount": 62969,
-              "wordDelta": 189,
-              "capturedAt": "2026-04-05T04:00:00.000Z",
-              "chapterId": "chapter-0003",
-              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
-              "sceneId": "scene-0016",
-              "sceneTitle": "The Sentient Graveyard",
-              "passageExcerpt": "",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            },
-            {
-              "date": "2026-04-06",
-              "wordCount": 63356,
-              "wordDelta": 387,
-              "capturedAt": "2026-04-06T04:00:00.000Z",
-              "chapterId": "chapter-0003",
-              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
-              "sceneId": "scene-0016",
-              "sceneTitle": "The Sentient Graveyard",
-              "passageExcerpt": "",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            },
-            {
-              "date": "2026-04-07",
-              "wordCount": 63858,
-              "wordDelta": 502,
-              "capturedAt": "2026-04-07T04:00:00.000Z",
-              "chapterId": "chapter-0003",
-              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
-              "sceneId": "scene-0016",
-              "sceneTitle": "The Sentient Graveyard",
-              "passageExcerpt": "",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            },
-            {
-              "date": "2026-04-08",
-              "wordCount": 64314,
-              "wordDelta": 456,
-              "capturedAt": "2026-04-08T04:00:00.000Z",
-              "chapterId": "chapter-0003",
-              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
-              "sceneId": "scene-0016",
-              "sceneTitle": "The Sentient Graveyard",
-              "passageExcerpt": "",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            },
-            {
-              "date": "2026-04-09",
-              "wordCount": 64850,
-              "wordDelta": 536,
-              "capturedAt": "2026-04-09T04:00:00.000Z",
-              "chapterId": "chapter-0003",
-              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
-              "sceneId": "scene-0016",
-              "sceneTitle": "The Sentient Graveyard",
-              "passageExcerpt": "",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            },
-            {
-              "date": "2026-04-10",
-              "wordCount": 65111,
-              "wordDelta": 261,
-              "capturedAt": "2026-04-10T04:00:00.000Z",
-              "chapterId": "chapter-0003",
-              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
-              "sceneId": "scene-0016",
-              "sceneTitle": "The Sentient Graveyard",
-              "passageExcerpt": "",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            },
-            {
-              "date": "2026-04-11",
-              "wordCount": 65299,
-              "wordDelta": 188,
-              "capturedAt": "2026-04-11T04:00:00.000Z",
-              "chapterId": "chapter-0003",
-              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
-              "sceneId": "scene-0016",
-              "sceneTitle": "The Sentient Graveyard",
-              "passageExcerpt": "",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            },
-            {
-              "date": "2026-04-12",
-              "wordCount": 65512,
-              "wordDelta": 213,
-              "capturedAt": "2026-04-12T04:00:00.000Z",
-              "chapterId": "chapter-0003",
-              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
-              "sceneId": "scene-0016",
-              "sceneTitle": "The Sentient Graveyard",
-              "passageExcerpt": "",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            },
-            {
-              "date": "2026-04-13",
-              "wordCount": 65923,
-              "wordDelta": 411,
-              "capturedAt": "2026-04-13T04:00:00.000Z",
-              "chapterId": "chapter-0003",
-              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
-              "sceneId": "scene-0016",
-              "sceneTitle": "The Sentient Graveyard",
-              "passageExcerpt": "",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            },
-            {
-              "date": "2026-04-14",
-              "wordCount": 66447,
-              "wordDelta": 524,
-              "capturedAt": "2026-04-14T04:00:00.000Z",
-              "chapterId": "chapter-0003",
-              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
-              "sceneId": "scene-0016",
-              "sceneTitle": "The Sentient Graveyard",
-              "passageExcerpt": "",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            },
-            {
-              "date": "2026-04-15",
-              "wordCount": 66926,
-              "wordDelta": 479,
-              "capturedAt": "2026-04-15T04:00:00.000Z",
-              "chapterId": "chapter-0003",
-              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
-              "sceneId": "scene-0016",
-              "sceneTitle": "The Sentient Graveyard",
-              "passageExcerpt": "",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            },
-            {
-              "date": "2026-04-16",
-              "wordCount": 67485,
-              "wordDelta": 559,
-              "capturedAt": "2026-04-16T04:00:00.000Z",
-              "chapterId": "chapter-0003",
-              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
-              "sceneId": "scene-0016",
-              "sceneTitle": "The Sentient Graveyard",
-              "passageExcerpt": "",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            },
-            {
-              "date": "2026-04-17",
-              "wordCount": 67770,
-              "wordDelta": 285,
-              "capturedAt": "2026-04-17T04:00:00.000Z",
-              "chapterId": "chapter-0003",
-              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
-              "sceneId": "scene-0016",
-              "sceneTitle": "The Sentient Graveyard",
-              "passageExcerpt": "",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            },
-            {
-              "date": "2026-04-18",
-              "wordCount": 67982,
-              "wordDelta": 212,
-              "capturedAt": "2026-04-18T04:00:00.000Z",
-              "chapterId": "chapter-0003",
-              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
-              "sceneId": "scene-0016",
-              "sceneTitle": "The Sentient Graveyard",
-              "passageExcerpt": "",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            },
-            {
-              "date": "2026-04-19",
-              "wordCount": 68218,
-              "wordDelta": 236,
-              "capturedAt": "2026-04-19T04:00:00.000Z",
-              "chapterId": "chapter-0003",
-              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
-              "sceneId": "scene-0016",
-              "sceneTitle": "The Sentient Graveyard",
-              "passageExcerpt": "",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            },
-            {
-              "date": "2026-04-20",
-              "wordCount": 68652,
-              "wordDelta": 434,
-              "capturedAt": "2026-04-20T04:00:00.000Z",
-              "chapterId": "chapter-0003",
-              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
-              "sceneId": "scene-0016",
-              "sceneTitle": "The Sentient Graveyard",
-              "passageExcerpt": "",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            },
-            {
-              "date": "2026-04-21",
-              "wordCount": 69200,
-              "wordDelta": 548,
-              "capturedAt": "2026-04-21T04:00:00.000Z",
-              "chapterId": "chapter-0003",
-              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
-              "sceneId": "scene-0016",
-              "sceneTitle": "The Sentient Graveyard",
-              "passageExcerpt": "",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            },
-            {
-              "date": "2026-04-22",
-              "wordCount": 69703,
-              "wordDelta": 503,
-              "capturedAt": "2026-04-22T04:00:00.000Z",
-              "chapterId": "chapter-0003",
-              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
-              "sceneId": "scene-0016",
-              "sceneTitle": "The Sentient Graveyard",
-              "passageExcerpt": "",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            },
-            {
-              "date": "2026-04-23",
-              "wordCount": 70286,
-              "wordDelta": 583,
-              "capturedAt": "2026-04-23T04:00:00.000Z",
-              "chapterId": "chapter-0003",
-              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
-              "sceneId": "scene-0016",
-              "sceneTitle": "The Sentient Graveyard",
-              "passageExcerpt": "",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            },
-            {
-              "date": "2026-04-24",
-              "wordCount": 70595,
-              "wordDelta": 309,
-              "capturedAt": "2026-04-24T04:00:00.000Z",
-              "chapterId": "chapter-0003",
-              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
-              "sceneId": "scene-0016",
-              "sceneTitle": "The Sentient Graveyard",
-              "passageExcerpt": "",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            },
-            {
-              "date": "2026-04-25",
-              "wordCount": 70831,
-              "wordDelta": 236,
-              "capturedAt": "2026-04-25T04:00:00.000Z",
-              "chapterId": "chapter-0003",
-              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
-              "sceneId": "scene-0016",
-              "sceneTitle": "The Sentient Graveyard",
-              "passageExcerpt": "",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            },
-            {
-              "date": "2026-04-26",
-              "wordCount": 71090,
-              "wordDelta": 259,
-              "capturedAt": "2026-04-26T04:00:00.000Z",
-              "chapterId": "chapter-0003",
-              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
-              "sceneId": "scene-0016",
-              "sceneTitle": "The Sentient Graveyard",
-              "passageExcerpt": "",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            },
-            {
-              "date": "2026-04-27",
-              "wordCount": 71547,
-              "wordDelta": 457,
-              "capturedAt": "2026-04-27T04:00:00.000Z",
-              "chapterId": "chapter-0003",
-              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
-              "sceneId": "scene-0016",
-              "sceneTitle": "The Sentient Graveyard",
-              "passageExcerpt": "",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            },
-            {
-              "date": "2026-04-28",
-              "wordCount": 71408,
-              "wordDelta": -139,
-              "capturedAt": "2026-04-28T15:46:33.671Z",
-              "chapterId": "chapter-0001",
-              "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
-              "sceneId": "scene-0002",
-              "sceneTitle": "(Athos) Mission Brief - The lost facility",
-              "passageExcerpt": "",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            },
-            {
-              "date": "2026-04-30",
-              "wordCount": 71513,
-              "wordDelta": 105,
-              "capturedAt": "2026-04-30T09:32:33.526Z",
-              "chapterId": "chapter-0001",
-              "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
-              "sceneId": "scene-0001",
-              "sceneTitle": "John's Dream",
-              "passageExcerpt": "Icicles clung to the cavern roof, daring anyone brave enough to trespass below them. Nuancing Radiant beams of…",
-              "issueCount": 0,
-              "inspirationCount": 1,
-              "noteText": ""
-            },
-            {
-              "date": "2026-05-01",
-              "wordCount": 71451,
-              "wordDelta": -62,
-              "capturedAt": "2026-04-30T23:59:19.371Z",
-              "chapterId": "chapter-0001",
-              "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
-              "sceneId": "scene-0001",
-              "sceneTitle": "John's Dream",
-              "passageExcerpt": "Icicles clung to the cavern roof, daring anyone brave enough to trespass below them. Nuancing Radiant beams of…",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            },
-            {
-              "date": "2026-05-07",
-              "wordCount": 71465,
-              "wordDelta": 14,
-              "capturedAt": "2026-05-07T14:39:05.030Z",
-              "chapterId": "chapter-0001",
-              "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
-              "sceneId": "scene-0001",
-              "sceneTitle": "John's Dream",
-              "passageExcerpt": "Icicles clung to the cavern roof, daring anyone brave enough to trespass below them. Nuancing Radiant beams of…",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            },
-            {
-              "date": "2026-05-11",
-              "wordCount": 71479,
-              "wordDelta": 14,
-              "capturedAt": "2026-05-11T08:51:25.962Z",
-              "chapterId": "chapter-0001",
-              "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
-              "sceneId": "scene-0001",
-              "sceneTitle": "John's Dream",
-              "passageExcerpt": "Icicles clung to the cavern roof, daring anyone brave enough to trespass below them. Nuancing Radiant beams of…",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            },
-            {
-              "date": "2026-05-14",
-              "wordCount": 71483,
-              "wordDelta": 4,
-              "capturedAt": "2026-05-13T23:46:53.101Z",
-              "chapterId": "chapter-0001",
-              "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
-              "sceneId": "scene-0001",
-              "sceneTitle": "John's Dream",
-              "passageExcerpt": "Icicles clung to the cavern roof, daring anyone brave enough to trespass below them. Nuancing Radiant beams of…",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            },
-            {
-              "date": "2026-05-16",
-              "wordCount": 71510,
-              "wordDelta": 27,
-              "capturedAt": "2026-05-15T22:46:49.280Z",
-              "chapterId": "chapter-0003",
-              "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
-              "sceneId": "scene-0023",
-              "sceneTitle": "Am I dreaming or am i dead",
-              "passageExcerpt": "Ringing pierced Tex’s ears with a strange bubbly static. It wasn’t a normal ringing. A strange Tinnitus he…",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            },
-            {
-              "date": "2026-05-20",
-              "wordCount": 71417,
-              "wordDelta": -93,
-              "capturedAt": "2026-05-20T04:43:45.375Z",
-              "chapterId": "chapter-0001",
-              "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
-              "sceneId": "scene-0001",
-              "sceneTitle": "John's Dream",
-              "passageExcerpt": "Icicles clung to the cavern roof, daring anyone brave enough to trespass below them. Nuancing Radiant beams of…",
-              "issueCount": 0,
-              "inspirationCount": 0,
-              "noteText": ""
-            }
-          ],
-          "updatedAt": "2026-05-20T04:43:45.375Z"
-        },
-        "writingTargetViewMode": "month",
-        "writingTargetSelectedDateKey": "2026-05-01",
-        "writingTargetCalendarMonthKey": "2026-05",
-        "spellcheck": {
-          "dictionaryWords": [],
-          "exceptionWords": []
-        },
-        "assetRegistry": []
-      },
-      "editorPrefs": {
-        "fontFamilyId": "story-serif",
-        "fontSize": 18,
-        "lineHeight": 1.7,
-        "editorWidth": 760,
-        "projectFileAutosaveEnabled": true,
-        "grammarCheckEnabled": true,
-        "revisionOverlayEnabled": false,
-        "italicText": false
-      },
-      "localAiPrefs": {
-        "enabled": true
-      },
       "schemaVersion": 2,
       "projectIndex": {
         "schemaVersion": 2,
         "projectId": "2project-serva-vitae",
         "projectTitle": "2project-serva-vitae",
         "createdAt": "2026-04-21T05:00:00.000Z",
-        "updatedAt": "2026-05-20T04:43:45.424Z",
+        "updatedAt": "2026-05-22T05:35:26.845Z",
         "chapters": [
           {
             "id": "chapter-0001",
-            "title": "Unassigned Chapter",
+            "title": "Chapter 1: The Winged Whales resting ground (Ceres)",
             "order": 1,
             "sceneIds": [
               "scene-0001",
@@ -21161,11 +21193,13 @@
               "scene-0010"
             ],
             "lineCount": 237,
-            "wordCount": 21508
+            "wordCount": 21508,
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "chapter-0002",
-            "title": "Unassigned Chapter",
+            "title": "Chapter 2: The Lost Facility",
             "order": 11,
             "sceneIds": [
               "scene-0011",
@@ -21175,11 +21209,13 @@
               "scene-0015"
             ],
             "lineCount": 159,
-            "wordCount": 15137
+            "wordCount": 15137,
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "chapter-0003",
-            "title": "Unassigned Chapter",
+            "title": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
             "order": 16,
             "sceneIds": [
               "scene-0016",
@@ -21192,11 +21228,13 @@
               "scene-0023"
             ],
             "lineCount": 328,
-            "wordCount": 25180
+            "wordCount": 25180,
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "chapter-0004",
-            "title": "Unassigned Chapter",
+            "title": "Chapter 4: Oasis",
             "order": 24,
             "sceneIds": [
               "scene-0024",
@@ -21207,17 +21245,21 @@
               "scene-0029"
             ],
             "lineCount": 131,
-            "wordCount": 9574
+            "wordCount": 9574,
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "draft-chapter-1777528152393",
-            "title": "Unassigned Chapter",
+            "title": "Untitled Chapter",
             "order": 30,
             "sceneIds": [
               "draft-scene-1777528152393"
             ],
             "lineCount": 0,
-            "wordCount": 18
+            "wordCount": 18,
+            "inspirationCount": 0,
+            "researchCount": 0
           }
         ],
         "scenes": [
@@ -21225,301 +21267,391 @@
             "id": "scene-0001",
             "title": "John's Dream",
             "chapterId": "chapter-0001",
+            "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
             "order": 1,
             "lineCount": 10,
             "wordCount": 1266,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0002",
             "title": "(Athos) Mission Brief - The lost facility",
             "chapterId": "chapter-0001",
+            "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
             "order": 2,
             "lineCount": 16,
             "wordCount": 2409,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0003",
             "title": "(John) The Mess",
             "chapterId": "chapter-0001",
+            "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
             "order": 3,
             "lineCount": 5,
             "wordCount": 1049,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0004",
             "title": "Deep Space Training",
             "chapterId": "chapter-0001",
+            "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
             "order": 4,
             "lineCount": 2,
             "wordCount": 711,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0005",
             "title": "(Instructor) All in a vacuum",
             "chapterId": "chapter-0001",
+            "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
             "order": 5,
             "lineCount": 8,
             "wordCount": 698,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0006",
             "title": "(John) Say hello to the Mark IV",
             "chapterId": "chapter-0001",
+            "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
             "order": 6,
             "lineCount": 48,
             "wordCount": 4996,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0007",
             "title": "(Tau) Storm Rail intro",
             "chapterId": "chapter-0001",
+            "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
             "order": 7,
             "lineCount": 2,
             "wordCount": 482,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0008",
             "title": "(Shai) Mark IV life support mesh",
             "chapterId": "chapter-0001",
+            "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
             "order": 8,
             "lineCount": 17,
             "wordCount": 1755,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0009",
             "title": "(Shai + John) Neural beam demonstration.",
             "chapterId": "chapter-0001",
+            "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
             "order": 9,
             "lineCount": 67,
             "wordCount": 5910,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0010",
             "title": "(Lady Ava + John)",
             "chapterId": "chapter-0001",
+            "chapterTitle": "Chapter 1: The Winged Whales resting ground (Ceres)",
             "order": 10,
             "lineCount": 62,
             "wordCount": 2232,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0011",
             "title": "Boarding the Icarus",
             "chapterId": "chapter-0002",
+            "chapterTitle": "Chapter 2: The Lost Facility",
             "order": 11,
             "lineCount": 57,
             "wordCount": 3700,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0012",
             "title": "The Chamber",
             "chapterId": "chapter-0002",
+            "chapterTitle": "Chapter 2: The Lost Facility",
             "order": 12,
             "lineCount": 26,
             "wordCount": 1592,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0013",
             "title": "Consciounce of Ava",
             "chapterId": "chapter-0002",
+            "chapterTitle": "Chapter 2: The Lost Facility",
             "order": 13,
             "lineCount": 28,
             "wordCount": 3074,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0014",
             "title": "LRM incoming",
             "chapterId": "chapter-0002",
+            "chapterTitle": "Chapter 2: The Lost Facility",
             "order": 14,
             "lineCount": 14,
             "wordCount": 1732,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0015",
             "title": "LRM breakoff missile incoming",
             "chapterId": "chapter-0002",
+            "chapterTitle": "Chapter 2: The Lost Facility",
             "order": 15,
             "lineCount": 34,
             "wordCount": 5039,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0016",
             "title": "The Sentient Graveyard",
             "chapterId": "chapter-0003",
+            "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
             "order": 16,
             "lineCount": 25,
             "wordCount": 1884,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0017",
             "title": "Into the Vail",
             "chapterId": "chapter-0003",
+            "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
             "order": 17,
             "lineCount": 23,
             "wordCount": 882,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0018",
             "title": "Circa 2048 - Ghost’s in the sea of shells.",
             "chapterId": "chapter-0003",
+            "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
             "order": 18,
             "lineCount": 28,
             "wordCount": 4533,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0019",
             "title": "Tunnel to genesis",
             "chapterId": "chapter-0003",
+            "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
             "order": 19,
             "lineCount": 35,
             "wordCount": 3893,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0020",
             "title": "(Tebo) CareTaker of Genesis",
             "chapterId": "chapter-0003",
+            "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
             "order": 20,
             "lineCount": 27,
             "wordCount": 3027,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0021",
             "title": "Checking the saddle",
             "chapterId": "chapter-0003",
+            "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
             "order": 21,
             "lineCount": 27,
             "wordCount": 1776,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0022",
             "title": "Beverley still bucks",
             "chapterId": "chapter-0003",
+            "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
             "order": 22,
             "lineCount": 160,
             "wordCount": 8953,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0023",
             "title": "Am I dreaming or am i dead",
             "chapterId": "chapter-0003",
+            "chapterTitle": "Chapter 3: Synaptic Memoriam of a steel fossil shell",
             "order": 23,
             "lineCount": 3,
             "wordCount": 232,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0024",
             "title": "Awakening",
             "chapterId": "chapter-0004",
+            "chapterTitle": "Chapter 4: Oasis",
             "order": 24,
             "lineCount": 17,
             "wordCount": 1813,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0025",
             "title": "On the bridge of the Docs Sentient flag ship",
             "chapterId": "chapter-0004",
+            "chapterTitle": "Chapter 4: Oasis",
             "order": 25,
             "lineCount": 4,
             "wordCount": 527,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0026",
             "title": "Ignotius Chai's",
             "chapterId": "chapter-0004",
+            "chapterTitle": "Chapter 4: Oasis",
             "order": 26,
             "lineCount": 22,
             "wordCount": 1445,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0027",
             "title": "Europa",
             "chapterId": "chapter-0004",
+            "chapterTitle": "Chapter 4: Oasis",
             "order": 27,
             "lineCount": 10,
             "wordCount": 618,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0028",
             "title": "Sentient Homecoming Oasis",
             "chapterId": "chapter-0004",
+            "chapterTitle": "Chapter 4: Oasis",
             "order": 28,
             "lineCount": 13,
             "wordCount": 788,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "scene-0029",
             "title": "Shai Tex",
             "chapterId": "chapter-0004",
+            "chapterTitle": "Chapter 4: Oasis",
             "order": 29,
             "lineCount": 65,
             "wordCount": 4383,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           },
           {
             "id": "draft-scene-1777528152393",
             "title": "This is a test for the save function",
             "chapterId": "draft-chapter-1777528152393",
+            "chapterTitle": "Untitled Chapter",
             "order": 30,
             "lineCount": 0,
             "wordCount": 18,
             "synopsis": "",
-            "assetIds": []
+            "assetIds": [],
+            "inspirationCount": 0,
+            "researchCount": 0
           }
         ],
         "sceneOrder": [

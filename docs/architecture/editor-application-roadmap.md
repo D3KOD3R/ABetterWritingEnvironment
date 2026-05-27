@@ -44,6 +44,18 @@ Completed or active slices:
 - `apps/editor/public/features/revisions/revision-window.js` owns the standalone revision comparison window markup.
 - `apps/editor/public/features/scene-editor.js` owns central scene-editor markup.
 - `apps/editor/public/features/manuscript-editor/manuscript-command-controller.js` owns the first selection-aware inline formatting command path.
+- `apps/editor/public/features/manuscript-editor/projection-selector.js` owns the current projection channels, mapping durable-derived inline-format compatibility ranges and active task/passage-note previews plus runtime-only spellcheck, search, and narration-follow findings into render descriptors.
+- `apps/editor/public/features/manuscript-editor/editor-host-interface.js` owns the normalized render-only scene/projection input accepted by manuscript host adapters.
+- `apps/editor/public/features/manuscript-editor/manuscript-find-controller.js` owns manuscript match derivation, find-panel view modeling, and replacement planning while the shell retains DOM focus and durable edit effects.
+- `apps/editor/public/features/manuscript-editor/manuscript-input-controller.js` owns live scene text-input sequencing and inline-format range derivation while shell callbacks retain persistence, revision, and refresh effects.
+- `apps/editor/public/features/manuscript-editor/manuscript-selection-controller.js` owns normalized selection text, context-range derivation, bookmark snapshots, and saved scene-selection policy while the shell retains browser focus and scroll effects.
+- `apps/editor/public/features/manuscript-editor/anchored-record-navigation-controller.js` owns task/note selection matching and projection planning, with anchor-repair persistence kept behind explicit shell callbacks and disabled for hover-only previews.
+- `apps/editor/public/adapters/editor-host/textarea-editor-host.js` owns the active textarea-overlay host markup, spellcheck/author-mark painting, anchored-record/search/narration selection preview styling, mirrored overlay styling, and textarea command bridge.
+- `apps/editor/public/state/project-library-state.js` owns project-library snapshot normalization, cache/seed merge policy, active-record resolution, and persisted selection-default normalization.
+- `apps/editor/public/state/project-record-state.js` owns durable project-record normalization and construction from canonical workspace snapshots.
+- `apps/editor/public/state/project-runtime-record-state.js` owns save-time assembly of the durable project record from live runtime state while receiving DOM selection capture through explicit callbacks.
+- `apps/editor/public/state/project-activation-state.js` owns record-to-runtime state hydration before the activation controller coordinates effects.
+- `apps/editor/public/state/project-activation-controller.js` owns project activation teardown, compatibility persistence, and shared post-activation refresh/render/snapshot orchestration.
 - `apps/editor/public/adapters/storage/project-persistence-service.js` owns project-file save/load/autosave/import/export orchestration.
 - `apps/editor/public/adapters/storage/project-repository.js` preserves the scene-level inline formatting compatibility field through persistence.
 
@@ -140,7 +152,8 @@ Exit criteria:
 - project normalization and cache replacement are no longer embedded across `app.js`
 
 Status:
-- In progress: persistence service and round-trip guardrails exist; project activation/cache glue still remains in `app.js`.
+- Checkpoint complete: persistence service, round-trip guardrails, project-library normalization, seed/cache merge policy, active-record lookup, saved selection-default normalization, durable project-record construction, runtime-to-record save assembly, record-to-runtime state hydration, and shared activation effect orchestration are extracted.
+- Transition note: browser DOM reads remain in the manuscript surface, but save-time scene-selection normalization now routes through the manuscript selection controller rather than persistence ownership.
 
 ### Phase 2: Establish Manuscript Projection And Command Boundaries
 
@@ -160,7 +173,7 @@ Exit criteria:
 - scene editing no longer depends on unrelated shell rerenders
 
 Status:
-- In progress: scene-editor extraction and inline-format command controller are present; centralized projection selection and editor-host interfaces remain.
+- In progress: scene-editor extraction, inline-format command control, find derivation/replacement planning, live scene text-input routing, selection/context snapshot policy, anchor-aware task/note projection routing, the `author-mark`/`task`/`note`/`spellcheck`/`search`/`narration-follow` projection channels, and the textarea compatibility host boundary are present; diagnostic/suggestion sources and remaining DOM focus/scroll effects remain.
 
 ### Phase 3: Extract Grammar And Spellcheck As A Projection Source
 
@@ -248,9 +261,17 @@ apps/editor/public/
   bootstrap/
   shell/
   state/
+    project-activation-controller.js
+    project-activation-state.js
+    project-library-state.js
+    project-record-state.js
+    project-runtime-record-state.js
   features/
     manuscript-editor/
       manuscript-controller.js
+      manuscript-input-controller.js
+      manuscript-selection-controller.js
+      anchored-record-navigation-controller.js
       manuscript-view.js
       projection-selector.js
       editor-host-interface.js
@@ -283,6 +304,11 @@ These are the lowest-risk extractions to start with:
 | Current file | Likely target home | Why |
 | --- | --- | --- |
 | `apps/editor/public/app.js` | `bootstrap/editor-app.js`, `shell/editor-shell.js`, `state/editor-store.js` | split boot, render orchestration, and state ownership |
+| project-library normalization, seed merge, and active-record lookup inside `app.js` | `state/project-library-state.js` | completed first state slice; it keeps cache/seed resolution and durable selection defaults outside shell effects |
+| project record construction/normalization inside `app.js` | `state/project-record-state.js` | completed state slice; it builds persistent records without taking ownership of live editor effects |
+| runtime-to-project save record assembly inside `app.js` | `state/project-runtime-record-state.js` | completed state slice; it projects live state plus explicitly captured selection defaults into the durable record builder |
+| project-record hydration assignments inside `app.js` | `state/project-activation-state.js` | completed state slice; it replaces live durable state on activation while the shell retains cross-service effects |
+| project activation teardown and refresh effects inside `app.js` | `state/project-activation-controller.js` | completed state slice; it coordinates activation callbacks while the shell provides browser and feature dependencies |
 | `apps/editor/public/spellcheck.js` | `features/spellcheck/spellcheck-core.js` | pure grammar logic should stay DOM-free and testable |
 | `apps/editor/public/features/scene-editor.js` | `features/manuscript-editor/manuscript-view.js` | scene editor rendering already has a clear slice boundary |
 | `apps/editor/public/features/progress-tracker.js` | `features/writing-targets/progress-tracker-view.js` | writing-target UI should be isolated from manuscript shell code |
@@ -290,8 +316,14 @@ These are the lowest-risk extractions to start with:
 | `apps/editor/public/serva-vitae-project-library.js` | `adapters/storage/project-library.js` | project library persistence belongs with storage and load/save code |
 | save/load and autosave helpers inside `app.js` | `adapters/storage/project-file.js` and `adapters/storage/autosave.js` | persistence should be moved out of the shell |
 | grammar check panel helpers inside `app.js` | `features/spellcheck/panel.js` | panel rendering and interactions should live with the feature |
-| task/note anchor and navigation handlers inside `app.js` | `features/anchored-records/*` | persisted records and their navigation should have an anchor-aware owner |
+| task/note anchor matching and preview-projection planning inside `app.js` | `features/manuscript-editor/anchored-record-navigation-controller.js` | completed Phase 2 projection/navigation slice; durable anchor repairs are explicit callbacks and hover-only previews remain non-mutating |
 | inline range and visual overlay selection inside `app.js` | `features/manuscript-editor/projection-selector.js` | durable and runtime visual channels need one deterministic render contract |
+| textarea overlay markup, mirrored layer rendering, and command DOM access inside the scene/shell path | `features/manuscript-editor/editor-host-interface.js`, `adapters/editor-host/textarea-editor-host.js` | completed Phase 2 host slice; the active textarea implementation now consumes projections behind a replaceable adapter |
+| active task, inspiration, and research preview classes/range painting inside `app.js` | `features/manuscript-editor/projection-selector.js`, `adapters/editor-host/textarea-editor-host.js` | completed Phase 2 anchored-preview slice; durable anchored records now derive disposable host previews with typed record references |
+| find-result and narration-verse selection styling inside shell flows | `features/manuscript-editor/projection-selector.js`, `adapters/editor-host/textarea-editor-host.js` | completed Phase 2 runtime-preview slice; transient search and narration visuals are explicit runtime-only projections |
+| manuscript match derivation, find-panel modeling, and replacement planning inside `app.js` | `features/manuscript-editor/manuscript-find-controller.js` | completed Phase 2 controller slice; durable edit effects and DOM focus remain shell callbacks until broader input/selection routing is extracted |
+| manuscript selection text, context-range, bookmark, and saved-selection normalization inside `app.js` | `features/manuscript-editor/manuscript-selection-controller.js` | completed Phase 2 policy slice; browser focus/scroll operations and scene mutation effects remain shell-owned until input routing is extracted |
+| live `editor-text` mutation sequencing and inline-format text-edit range derivation inside `app.js` | `features/manuscript-editor/manuscript-input-controller.js` | completed Phase 2 controller slice; revision/persistence/render effects are explicit shell callbacks while browser interaction remains compatible |
 
 Those pieces already have a clear responsibility and are easy to validate without changing the canonical manuscript model.
 

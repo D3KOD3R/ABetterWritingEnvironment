@@ -7,8 +7,13 @@ import {
 } from "../editor-model.js";
 import {
   INLINE_FORMATS,
-  normalizeInlineFormatRanges,
 } from "./manuscript-editor/manuscript-command-controller.js";
+import {
+  MANUSCRIPT_PROJECTION_CHANNELS,
+  selectManuscriptProjections,
+  selectProjectionChannel,
+} from "./manuscript-editor/projection-selector.js";
+import { renderTextareaEditorHostHTML } from "../adapters/editor-host/textarea-editor-host.js";
 import { escapeHtml } from "../shared/ui-utils.js";
 
 const REVISION_DRAFTING_UI_ENABLED = false;
@@ -166,10 +171,12 @@ export function renderSceneEditorHTML(scene, {
     ? state.narrationTakeSelection
     : null;
   const narrationSession = mode === "narration" ? state.narrationTakeSession : null;
-  const inlineFormatRanges = normalizeInlineFormatRanges(
-    state.sceneDrafts?.[scene.sceneId]?.inlineFormatRanges,
-    String(scene.editorText ?? "").length,
-  );
+  const inlineFormatProjections = selectProjectionChannel(selectManuscriptProjections({
+    sceneId: scene.sceneId,
+    text: scene.editorText ?? "",
+    inlineFormatRanges: state.sceneDrafts?.[scene.sceneId]?.inlineFormatRanges,
+    includeSpellcheck: false,
+  }), MANUSCRIPT_PROJECTION_CHANNELS.AUTHOR_MARK);
   const chapterTitle = typeof formatChapterDisplayTitle === "function"
     ? formatChapterDisplayTitle(scene.chapterTitle)
     : String(scene.chapterTitle ?? "").trim() || "Untitled chapter";
@@ -255,18 +262,12 @@ export function renderSceneEditorHTML(scene, {
       >
         <div class="editor-document-gutter" data-editor-gutter aria-hidden="true"></div>
         <div class="editor-document-body">
-          <div class="editor-inline-format-layer" data-inline-format-layer aria-hidden="true">
-            ${renderInlineFormatLayerContent(scene.editorText ?? "", inlineFormatRanges)}
-          </div>
-          <div class="editor-spellcheck-layer" data-spellcheck-layer aria-hidden="true"></div>
-          <textarea
-            class="editor-document-input ${showRevisionHighlight ? "has-revision-preview" : ""}"
-            data-edit-field="editor-text"
-            data-scene-id="${escapeHtml(scene.sceneId)}"
-            spellcheck="false"
-            lang="en-US"
-            autocapitalize="off"
-          >${escapeHtml(scene.editorText ?? "")}</textarea>
+          ${renderTextareaEditorHostHTML({
+            sceneId: scene.sceneId,
+            text: scene.editorText ?? "",
+            projections: inlineFormatProjections,
+            inputClassName: showRevisionHighlight ? "has-revision-preview" : "",
+          })}
         </div>
         ${renderInlinePassageDraftHTML(scene, state, getInlinePassageDraftAnchor)}
       </div>
@@ -460,36 +461,4 @@ function renderInlineFormatButton(formatId, label, state) {
       title="${escapeHtml(title)}"
     >${escapeHtml(label)}</button>
   `;
-}
-
-// Intent: render plain manuscript text with visual styling from range metadata without inserting tags into the manuscript body.
-function renderInlineFormatLayerContent(text, ranges) {
-  const normalizedText = String(text ?? "");
-  const normalizedRanges = normalizeInlineFormatRanges(ranges, normalizedText.length);
-  const boundaries = new Set([0, normalizedText.length]);
-  for (const range of normalizedRanges) {
-    boundaries.add(range.startOffset);
-    boundaries.add(range.endOffset);
-  }
-
-  const offsets = [...boundaries].sort((left, right) => left - right);
-  const parts = [];
-  for (let index = 0; index < offsets.length - 1; index += 1) {
-    const startOffset = offsets[index];
-    const endOffset = offsets[index + 1];
-    const segment = normalizedText.slice(startOffset, endOffset);
-    if (!segment) {
-      continue;
-    }
-
-    const activeFormats = normalizedRanges
-      .filter((range) => range.startOffset <= startOffset && range.endOffset >= endOffset)
-      .map((range) => range.formatId);
-    const className = activeFormats.length
-      ? ` class="${activeFormats.map((formatId) => `editor-inline-format-${escapeHtml(formatId)}`).join(" ")}"`
-      : "";
-    parts.push(`<span${className}>${escapeHtml(segment)}</span>`);
-  }
-
-  return `<div class="editor-inline-format-layer__content">${parts.join("")}</div>`;
 }

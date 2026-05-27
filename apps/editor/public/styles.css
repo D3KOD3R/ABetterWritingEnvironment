@@ -2985,6 +2985,18 @@ aside#binder-slot {
     0 0 12px rgba(31, 110, 120, 0.38);
 }
 
+.editor-document-input.has-search-preview::selection {
+  background: rgba(255, 222, 99, 0.56);
+  color: var(--ink);
+  text-shadow: 0 0 10px rgba(194, 123, 33, 0.32);
+}
+
+.editor-document-input.has-narration-preview::selection {
+  background: rgba(136, 209, 216, 0.52);
+  color: var(--ink);
+  text-shadow: 0 0 12px rgba(31, 110, 120, 0.36);
+}
+
 .scene-editor-shell.has-revision-preview .scene-editor-codeframe,
 .scene-editor-codeframe.has-revision-preview {
   border-color: rgba(184, 92, 56, 0.24);
@@ -3753,6 +3765,18 @@ button.grammar-check-status[aria-pressed="true"] {
   box-shadow:
     inset 0 0 0 1px rgba(31, 110, 120, 0.28),
     0 0 0 4px rgba(221, 248, 242, 0.58);
+}
+
+.scene-editor-codeframe.is-search-previewing {
+  box-shadow:
+    inset 0 0 0 1px rgba(194, 123, 33, 0.2),
+    0 0 0 4px rgba(255, 222, 99, 0.25);
+}
+
+.scene-editor-codeframe.is-narration-previewing {
+  box-shadow:
+    inset 0 0 0 1px rgba(31, 110, 120, 0.24),
+    0 0 0 4px rgba(136, 209, 216, 0.2);
 }
 
 .manuscript-meta,
