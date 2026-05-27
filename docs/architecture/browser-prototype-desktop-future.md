@@ -40,15 +40,22 @@ project/
   exports/
 ```
 
+## Planned Mobile Companion
+
+A mobile-friendly host is planned as a voice-first companion for dictating new prose while away from the desktop, with manuscript context available before recording or when placing the resulting transcript. It must consume the same project and anchor contracts as browser/desktop hosts, and it must route accepted transcript edits through the project persistence boundary rather than keeping a separate mobile manuscript format.
+
+Mobile capture, transcription, offline recovery, and conflict review are specified in [MobileFriendlyArchitecture](./mobile-friendly-architecture.md). Mobile support does not change the desktop-first ownership of full local project packages or permit browser/mobile UI code to call platform storage and microphone APIs outside adapters.
+
 ## Portability Requirements
 
-The following must remain portable across browser prototype and future desktop shells (Avalonia/C#, Electron, Tauri, Qt, or another native shell):
+The following must remain portable across browser prototype, mobile companion, and future desktop shells (Avalonia/C#, Electron, Tauri, Qt, or another native shell):
 
 - manuscript chunking (`manifest` + `scene records`)
 - project save/load orchestration
 - autosave and project lifecycle rules
 - issue/event/world/narration/voice domain logic
 - service contracts and DTO shapes
+- accepted dictated-writing commands, transcript-draft recovery, and conflict evidence
 
 ## Runtime Boundary Labels
 

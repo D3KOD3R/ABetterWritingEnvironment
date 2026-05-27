@@ -255,11 +255,25 @@ Narration follow tracks a live read-through against canonical manuscript spans, 
    4.4b Alignment job metadata is synchronized after manuscript structure changes.
    4.4c Broken or stale references are isolated for later recovery handling.
 
+4.5 Mobile dictated writing companion (planned architecture)
+
+   A phone-oriented companion lets the author speak new prose while away from the desktop, optionally review nearby manuscript context before recording or when placing the transcript, and accept it into an anchor-backed manuscript insertion target. This is classified under the closest audio/manuscript pillar because it relies on phone microphone capture and transcription, but unlike narration follow it creates new author-reviewed text rather than aligning or rendering existing text.
+   4.5a Compact and medium mobile layouts prioritize readable scene context, touch-safe recording controls, and transcript review without requiring desktop side panels.
+   4.5b Dictation sessions save audio/transcript drafts through local-first adapter boundaries and identify whether speech recognition is on-device, desktop-local, or explicitly hosted.
+   4.5c Accepted transcript text becomes a canonical manuscript edit only through an anchored insertion command and persistence/revision path.
+   4.5d Concurrent desktop/mobile edits or unresolved anchors produce reviewable insertion conflicts rather than silent text overwrites.
+   4.5e Existing issue, task, target, narration, voice, and world workflows are adapted for phone screens where usable, with dense production surfaces remaining desktop/tablet-first initially.
+
+### MobileFriendlyArchitecture Process Header (Planned)
+
+The mobile companion is a local-first, voice-first writing surface: the writer captures spoken prose through device capability adapters, optionally uses an addressable scene for context or placement, reviews the transcript as a proposed insertion, and deliberately commits accepted prose back to the canonical manuscript.
+
 ### Progress
 
 - Status: Foundation implemented.
 - Repository coverage: narration session snapshots, alignment jobs, audio service contract, local alignment monitor, manuscript-style narration panel reuse, narration tool chips that arm a verse for recording, voice recording records with project-media pointers, a low-overhead browser capture path with optional speech-tracker state, the first modular extraction of the writing-target/session-tracker view into `apps/editor/public/features/progress-tracker.js` plus shared formatting helpers in `apps/editor/public/shared/ui-utils.js`, and the manuscript scene editor now split into `apps/editor/public/features/scene-editor.js` with the desktop host serving modular editor files generically from `apps/editor/public`.
-- Next work: add pause/recover state transitions, better spoken-word-to-verse tracking, Whisper-based streaming alignment, follow-cursor recovery, and continue splitting the manuscript shell into feature-owned modules so parallel work can happen without editing the same monolith.
+- Process update (2026-05-28): documented `MobileFriendlyArchitecture` as a planned mobile authoring companion. It separates new-prose dictation from narration takes, defines viewport-based phone/tablet layouts and native capability adapters, and requires transcript review, anchored insertion, local-first recovery, and mobile/desktop conflict handling before implementation.
+- Next work: add pause/recover state transitions, better spoken-word-to-verse tracking, Whisper-based streaming alignment, follow-cursor recovery, and continue splitting the manuscript shell into feature-owned modules so parallel work can happen without editing the same monolith. For Feature `4.5`, begin only after dictation contracts and host-neutral manuscript command/persistence boundaries are defined.
 
 ## Feature 05 - Character Voice Narration
 
@@ -578,6 +592,14 @@ Also update this index immediately when the user says `Feature working`; that co
 - Flow-on effects: narration state is separate from editor rendering state, recorded takes remain tied to manuscript anchors, alignment jobs have typed service coverage, and the current implementation supports recording/recovery scaffolding before full live follow mode is added
 - Extraction/port notes: recording runtime still lives in `app.js`; the service boundary exists in `services/audio`, and the UI/runtime orchestration should move into a narration feature slice or desktop bridge as the follow engine matures
 
+- Feature: `Feature 4.5 - Mobile dictated writing companion`
+- Workflow: Phone voice-first authoring with reviewable anchored manuscript insertion
+- Status: `Planned - architecture documented; not implemented`
+- Architecture locations: `docs/architecture/mobile-friendly-architecture.md` (`MobileFriendlyArchitecture` plan), `docs/architecture/editor-application-roadmap.md` (`Parallel Product Track: MobileFriendlyArchitecture`), `docs/product/feature-map.md` (`Mobile Authoring (Planned)`)
+- Planned execution flow: mobile host loads a local project snapshot through a persistence adapter -> writer selects a scene/span insertion target and records speech through a capability adapter -> audio service returns a transcript candidate under an explicit locality policy -> writer edits or accepts the candidate -> accepted prose routes through an anchored manuscript edit and revision/persistence path -> stale revisions or unresolved anchors remain reviewable conflicts for phone or desktop resolution
+- Flow-on effects: mobile can extend the authoring environment without inventing flat phone-only manuscript data, mandatory cloud speech processing, or unsafe synchronization behavior
+- Classification note: this is tracked under Feature 04 because microphone/STT orchestration is audio-service-owned, while its accepted output is a new manuscript edit rather than Narration Follow Mode alignment
+
 - Feature: `Feature 5.1/5.2/5.3/5.4 - Voice profiles, render jobs, storage, and editor controls`
 - Workflow: Voice profile, binding, render-job, and recording foundation
 - Status: `Implemented`
@@ -635,6 +657,7 @@ Use this compact checklist when testing or porting individual feature IDs. The d
 - Feature 4.2 - Anchored narration take recording: `apps/editor/public/app.js:5195-5306`, `apps/editor/public/app.js:5565-5799`.
 - Feature 4.3 - Narration recording tools UI: `apps/editor/public/features/scene-editor.js:159-273`, `apps/editor/public/features/scene-editor.js:387-431`.
 - Feature 4.4 - Narration metadata synchronization: `apps/editor/public/app.js:12107-12163`, `services/audio/src/index.ts:11-86`.
+- Feature 4.5 - Mobile dictated writing companion (planned): `docs/architecture/mobile-friendly-architecture.md`, `docs/architecture/editor-application-roadmap.md`, `docs/product/feature-map.md`.
 - Feature 5.1 - Voice profile and speaker binding model: `services/voice/src/index.ts:50-121`, `services/voice/src/voice-profile.ts:49-193`, `test/voice-service.test.mjs:14-79`.
 - Feature 5.2 - Voice render job lifecycle: `services/voice/src/narration-job.ts:51-214`, `services/voice/src/voice-queue.ts:22-83`, `apps/editor/public/app.js:6137-6532`.
 - Feature 5.3 - Voice narration storage: `services/voice/src/voice-storage.ts:7-128`, `apps/editor/public/app.js:6256-6532`, `apps/editor/public/app.js:12165-12207`.

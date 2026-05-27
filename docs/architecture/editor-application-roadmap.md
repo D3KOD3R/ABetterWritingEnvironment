@@ -295,6 +295,38 @@ Exit criteria:
 - the adapter can be enabled without changing canonical project records or persistence paths
 - the textarea host remains a viable fallback until the experiment satisfies behavior checks
 
+## Parallel Product Track: MobileFriendlyArchitecture
+
+The mobile-friendly version is planned as a voice-first companion surface for an author who needs to speak new prose into a phone, optionally while viewing manuscript context. Its full architecture, adaptive layout rules, native capability boundaries, feature parity limits, and delivery phases are specified in [MobileFriendlyArchitecture](./mobile-friendly-architecture.md).
+
+This track does not require a second manuscript model or mobile-only business logic. It depends on the same anchor-aware manuscript commands, audio service boundaries, and project persistence contract being made stable by the editor refactor.
+
+### Mobile Sequencing Constraints
+
+- Do not implement mobile speech-to-writing as narration-follow state; dictated prose is a reviewable proposed manuscript edit, while narration follows existing text.
+- Establish a host-neutral persistence/command boundary before a phone host writes accepted manuscript content.
+- Route microphone, speech recognition, device storage, lifecycle, safe-area, and transfer APIs through mobile adapters.
+- Preserve Local AI Only behavior by making the locality of speech-to-text providers visible and enforceable.
+- Design compact layouts from viewport constraints, touch input, keyboard visibility, and orientation rather than shrinking the full desktop workspace.
+
+### Mobile Roadmap Summary
+
+| Mobile Phase | Outcome |
+| --- | --- |
+| `0 - Contracts And Separation` | Define dictation sessions, transcript candidates, anchor-backed insertion targets, revision provenance, and provider locality rules. |
+| `1 - Responsive Read And Navigate Surface` | Deliver phone-sized manuscript reading, scene navigation, insertion targeting, and touch/accessibility layout behavior. |
+| `2 - Offline Dictation Capture And Transcript Review` | Capture speech durably, transcribe through an explicit provider, review text, and commit accepted anchored prose. |
+| `3 - Project Transfer And Conflict Review` | Move work between phone and desktop without silent overwrites or unresolved anchor loss. |
+| `4 - Adapted Feature Parity` | Add compact issues/tasks/events/targets and feasible narration, voice, analysis, and world workflows. |
+| `5 - Native Host Evaluation` | Select installable web or native packaging from recording, offline, resume, and transfer evidence. |
+
+### Mobile Exit Criteria
+
+- A phone user can read a scene, dictate additional prose, review it, and accept it at an anchored insertion target.
+- Interrupted and offline capture state is recoverable through persistence adapters.
+- Concurrent phone/desktop changes are surfaced as reviewable conflicts rather than silently merged.
+- Dense desktop-first views are intentionally adapted or deferred, while all mobile data remains compatible with canonical project records.
+
 ## Suggested File Map
 
 This is the first-pass directory plan for the browser app.

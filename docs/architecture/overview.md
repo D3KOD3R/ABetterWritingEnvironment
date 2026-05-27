@@ -8,6 +8,8 @@ The current app runtime is browser-first for workflow prototyping, but the archi
 
 See [Browser Prototype, Desktop Future](./browser-prototype-desktop-future.md) for portability guardrails and API boundaries.
 
+A mobile-friendly companion is also planned for voice-first writing away from the desktop, with optional manuscript context before or after capture. It must use the same canonical manuscript anchors, local-first persistence contract, and service boundaries; it is not a separate flat mobile document model. See [MobileFriendlyArchitecture](./mobile-friendly-architecture.md).
+
 ## Source of Truth
 
 - `packages/manuscript-schema` owns manuscript identity, chapter and scene hierarchy, block structure, binder derivation, and durable manuscript anchors.
@@ -80,3 +82,5 @@ This lets shell-oriented work stay anchored to `main` while still allowing paral
 ## Editor Refactor Roadmap
 
 The editor shell refactor plan is documented in [Editor Application Refactor Roadmap](./editor-application-roadmap.md). Use that document as the migration order for splitting `apps/editor/public/app.js` into maintainable feature, service, and state modules.
+
+The roadmap now includes a parallel mobile product track. Mobile dictation depends on stable manuscript command, projection, audio, and persistence boundaries so spoken prose can become reviewable anchored edits without weakening desktop workflows.

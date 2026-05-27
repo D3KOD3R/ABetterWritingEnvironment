@@ -33,3 +33,11 @@ Feature reference and process tracker: [features.md](../../features.md)
 
 - Narration follow mode backed by alignment services, Whisper-shaped chunked STT, and the manuscript-style narration panel with verse-armed recording controls.
 - Character voice narration backed by speaker assignments and render jobs, plus a local-first voice narration foundation for profiles, queue state, placeholder rendering, right-side voice rail controls, saved take cards, preview/open actions, and local media pointers.
+
+## Mobile Authoring (Planned)
+
+- `MobileFriendlyArchitecture` defines a phone-first, voice-first companion surface for dictating new prose while the writer is away from the desktop, with optional manuscript context before or after capture.
+- Dictated writing is separate from narration recording: speech creates a reviewable transcript and anchor-backed insertion proposal, and only accepted text becomes canonical manuscript content.
+- Compact layouts prioritize a single manuscript/capture surface, touch-sized recording controls, bottom navigation, safe-area and keyboard handling, offline recovery, and explicit project transfer or conflict review.
+- The mobile companion should expose adapted issues, tasks, events, targets, analysis, narration, voice, and world views where practical, while keeping dense production and timeline interactions desktop/tablet-first initially.
+- Architecture source: [MobileFriendlyArchitecture](../architecture/mobile-friendly-architecture.md).
