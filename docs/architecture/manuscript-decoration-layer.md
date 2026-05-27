@@ -2,7 +2,7 @@
 
 ## Decision Status
 
-Status: proposed architecture with one compatibility correction implemented in the browser prototype.
+Status: active staged architecture. Compatibility range persistence, the projection selector, and the textarea-host boundary are implemented; diagnostic and manuscript-suggestion projection inputs remain to be added.
 
 This document defines how manuscript styling, anchored author records, AI suggestions, and runtime editor visuals must integrate without making the editor rendering engine the owner of project data.
 
@@ -93,6 +93,8 @@ It has identity, provenance, lifecycle, and anchor recovery rules. Its editor hi
 ### Suggestion
 
 A proposed change or record returned by local or hosted analysis. A suggestion may carry evidence anchors and a proposed mark/record, but it cannot modify canonical project data until the author accepts it.
+
+Current scope note: the implemented workspace `suggestionQueue` contains world-template/entity/link and Dream Scaping proposals. Those records may carry evidence anchors for review, but they are not manuscript-range suggestion records and must not be sent to a manuscript `suggestion` projection channel. That channel requires a separate anchored manuscript-suggestion contract and lifecycle.
 
 ### Projection
 
@@ -369,11 +371,26 @@ Examples:
 - Add browser refresh and desktop snapshot assertions for that field.
 - Describe it as a compatibility format, not the permanent decorations schema.
 
-### Slice 1: Projection API
+### Slice 1: Projection API - Implemented
 
 - Add a manuscript projection selector/controller in `features/manuscript-editor`.
 - Convert spellcheck and current formatting overlay reads to projection channels.
 - Keep textarea rendering until parity tests pass.
+
+Implemented evidence:
+
+- `apps/editor/public/features/manuscript-editor/projection-selector.js`
+- `apps/editor/public/features/manuscript-editor/editor-host-interface.js`
+- `apps/editor/public/adapters/editor-host/textarea-editor-host.js`
+- `test/manuscript-projection-selector.test.mjs`
+- `test/manuscript-editor-host.test.mjs`
+
+### Slice 1A: Anchored Diagnostic Projection - Next
+
+- Derive `diagnostic` projections from durable `IssueRecord` anchors already accepted into the active project.
+- Retain issue-console records as the navigation and lifecycle owner; the projection selector emits only disposable render descriptors.
+- Do not feed worldbuilding or Dream Scaping proposal records into manuscript projections.
+- Add tests for valid/invalid issue anchors, projection priority, host rendering behavior, and persistence exclusion.
 
 ### Slice 2: Canonical Marks
 

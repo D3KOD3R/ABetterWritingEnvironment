@@ -85,13 +85,29 @@ Completed in the current checkpoint:
 
 Next refactor command:
 
-- Add stable-anchor `diagnostic` and `suggestion` projection sources, keeping acceptance/persistence separate from visual rendering.
+- Add the stable-anchor `diagnostic` projection source first, then define an anchored manuscript-suggestion DTO before adding a `suggestion` projection source.
 
 Still intentionally deferred:
 
 - Canonical `ManuscriptMark` schema migration from compatibility `inlineFormatRanges`.
 - Remaining DOM focus/scroll effects behind the editor-host boundary.
 - CodeMirror adapter evaluation until projection and command contracts are complete.
+
+### Next Slice Contract
+
+The next Phase 2 change must use the following boundary:
+
+- `diagnostic` projections derive from accepted, anchor-backed manuscript `IssueRecord` data already carried by `state.workspace.project.issues`; the projection is visual output only and must reference the durable issue ID.
+- The existing `state.workspace.analysis.suggestionQueue` is currently for world-template/entity/link proposals and Dream Scaping proposals. It is not a manuscript-range suggestion source and must not be painted on manuscript text.
+- A `suggestion` manuscript projection may be added only after an explicit anchored manuscript-suggestion DTO exists with review state, evidence anchor, source identity, and accept/reject lifecycle.
+- The first implementation should add diagnostic projection selection, adapter rendering or selection behavior, and focused tests for anchor filtering, deterministic priority, and exclusion of projection objects from persistence.
+
+Completion evidence for that slice:
+
+- Issue console navigation continues to operate from the same durable issue records.
+- Wrong-scene, invalid-range, or unresolved diagnostics do not render.
+- World and Dream Scaping suggestion queues do not become manuscript highlights.
+- `npm test` includes tests for the new diagnostic projection path.
 
 ## Architecture Principles
 

@@ -28,7 +28,7 @@
 - Browser cache is a disposable compatibility layer. Loading a project snapshot must replace stale cached author data rather than merge old scene content, tasks, notes, revisions, or metrics into the loaded record.
 - Author formatting currently persists as scene-record `inlineFormatRanges` only as a compatibility representation; it must converge on canonical anchor-backed manuscript marks rather than an editor-owned decorations collection.
 - Tasks and passage notes are durable anchored author records. Their visible highlights are projections, not storage records.
-- Diagnostics are overlays on scene documents. They reference scene-local line positions derived from canonical anchors; they do not define editor segmentation or create manuscript structure.
+- Diagnostics must be rendered as overlays on scene documents. They reference scene-local line positions derived from canonical anchors; they do not define editor segmentation or create manuscript structure. The anchored `diagnostic` projection source is the next Phase 2 editor slice.
 
 ## Current Flow
 
@@ -36,9 +36,10 @@
 2. The desktop host serializes that composition into shared workspace DTOs.
 3. The browser fetches `/api/workspace`, activates the current project record, hydrates scene content through the persistence boundary, and computes width-driven visual line gutters for the active scene viewport.
 4. User manuscript commands mutate the active scene/project record, mark relevant persistence domains dirty, and are committed through `ProjectPersistenceService` to cache and the configured project-file destination.
-5. Tasks, notes, formatting compatibility ranges, diagnostics, AI proposals, search state, and narration follow state are converted into distinct visual channels for the active scene; runtime-only channels are discarded and rebuilt rather than stored as project truth.
-6. Diagnostics remain anchored to manuscript content and resolve to scene-local line references in the UI instead of driving manuscript structure.
-7. The narration follow pane centers the current reading line and keeps the voice rail beside it, but the UI only projects the session/alignment state owned by audio and voice services.
+5. Tasks, notes, formatting compatibility ranges, spellcheck findings, search state, and narration follow state currently convert into distinct visual channels for the active scene; runtime-only channels are discarded and rebuilt rather than stored as project truth.
+6. Diagnostics remain anchored to manuscript content and currently resolve through the issue console; Phase 2 next adds their derived manuscript projection without changing `IssueRecord` persistence or navigation ownership.
+7. World and Dream Scaping suggestion queues remain review-panel records, not manuscript projections; a manuscript suggestion channel requires a separate anchored suggestion contract.
+8. The narration follow pane centers the current reading line and keeps the voice rail beside it, but the UI only projects the session/alignment state owned by audio and voice services.
 
 ## Anchored Author Notes
 

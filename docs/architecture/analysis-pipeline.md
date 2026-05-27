@@ -20,6 +20,12 @@ The analysis pipeline consumes canonical manuscript structures and produces revi
 - World template, entity, and cross-spine suggestions remain pending review records until a user accepts them.
 - Dream Scaping suggestions must remain advisory, evidence-linked, and user-reviewed before they create scene drafts, timeline nodes, or entity links.
 
+## Editor Projection Handoff
+
+Current manuscript diagnostic input is `IssueRecord`: accepted issue findings are stored on the canonical project with a `ManuscriptAnchor`, and the editor may derive a `diagnostic` visual projection from that durable record.
+
+The current `suggestions` output is not a manuscript decoration feed. It contains world-template/entity/link proposals and Dream Scaping proposals whose evidence anchors support review panels and later acceptance workflows. Before the editor adds a manuscript `suggestion` projection channel, shared contracts must define a distinct anchored manuscript-suggestion DTO with review state and an explicit accept/reject path.
+
 ## Selected Lightweight Local AI
 
 The first model adapter target is `Qwen/Qwen3-0.6B-GGUF` running through `llama.cpp`.

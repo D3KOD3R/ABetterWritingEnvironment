@@ -276,7 +276,7 @@ Completed slice:
 - `apps/editor/public/features/revisions/revision-window.js` now owns the standalone revision comparison window markup.
 
 Next slice:
-- Continue Phase 2 by adding diagnostic and suggestion projection sources where stable anchors are available, then reduce remaining DOM focus/scroll effects behind the editor host boundary.
+- Continue Phase 2 by deriving a `diagnostic` projection source from accepted anchor-backed `IssueRecord` data, then define an anchored manuscript-suggestion DTO before adding any `suggestion` manuscript projection source. Do not project world or Dream Scaping proposal queues onto manuscript text. After that boundary is stable, reduce remaining DOM focus/scroll effects behind the editor host boundary.
 
 Verification for the current slice:
 - `node --check apps/editor/public/app.js`
