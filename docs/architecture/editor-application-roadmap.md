@@ -35,7 +35,7 @@ It should not be the place where new feature logic is added.
 
 ## Current Checkpoint
 
-The browser shell remains a high-coupling migration surface. `app.js` is still responsible for broad rendering, event routing, project activation glue, manuscript interactions, and several feature workflows even though extraction has begun.
+The browser shell remains a high-coupling migration surface. `app.js` is still responsible for broad rendering, event routing, activation wiring, manuscript browser effects, and several feature workflows even though state hydration and effect coordination have been extracted.
 
 Completed or active slices:
 
@@ -64,6 +64,34 @@ Immediate constraint:
 - Do not expand major editor workflows in `app.js`; extract ownership or add a small compatibility call into an existing boundary.
 - Treat `inlineFormatRanges` as compatibility data while canonical anchor-backed marks and render projections are designed and tested.
 - Treat the active `.abe-project.json` snapshot as durable truth until a desktop folder-backed adapter is implemented.
+
+## Remote Review Checkpoint
+
+Use this as the short status view when reviewing progress from GitHub on a phone.
+
+Checkpoint date: `2026-05-28`
+
+Backed-up implementation commit: `c9c6ce0` (`Refactor editor projection and project state boundaries`)
+
+Current phase: `Phase 2 - Establish Manuscript Projection And Command Boundaries`
+
+Completed in the current checkpoint:
+
+- Phase 1 project persistence and activation state ownership is extracted behind `ProjectPersistenceService` and `apps/editor/public/state/*`.
+- Scene editor compatibility rendering now runs through `editor-host-interface.js` and `textarea-editor-host.js`.
+- Find/replace derivation, scene input sequencing, selection policy, anchored-record preview planning, and projection selection have feature-owned controller modules.
+- Projection channels currently implemented are `author-mark`, `task`, `note`, `spellcheck`, `search`, and `narration-follow`.
+- Targeted tests cover the extracted state modules, manuscript controllers, projection selector, and textarea host adapter; the full test harness passed `35` tests at the checkpoint.
+
+Next refactor command:
+
+- Add stable-anchor `diagnostic` and `suggestion` projection sources, keeping acceptance/persistence separate from visual rendering.
+
+Still intentionally deferred:
+
+- Canonical `ManuscriptMark` schema migration from compatibility `inlineFormatRanges`.
+- Remaining DOM focus/scroll effects behind the editor-host boundary.
+- CodeMirror adapter evaluation until projection and command contracts are complete.
 
 ## Architecture Principles
 
@@ -317,12 +345,12 @@ These are the lowest-risk extractions to start with:
 | save/load and autosave helpers inside `app.js` | `adapters/storage/project-file.js` and `adapters/storage/autosave.js` | persistence should be moved out of the shell |
 | grammar check panel helpers inside `app.js` | `features/spellcheck/panel.js` | panel rendering and interactions should live with the feature |
 | task/note anchor matching and preview-projection planning inside `app.js` | `features/manuscript-editor/anchored-record-navigation-controller.js` | completed Phase 2 projection/navigation slice; durable anchor repairs are explicit callbacks and hover-only previews remain non-mutating |
-| inline range and visual overlay selection inside `app.js` | `features/manuscript-editor/projection-selector.js` | durable and runtime visual channels need one deterministic render contract |
+| inline range and visual overlay selection inside `app.js` | `features/manuscript-editor/projection-selector.js` | completed Phase 2 selector slice; durable-derived and runtime-only visual channels use one deterministic render contract |
 | textarea overlay markup, mirrored layer rendering, and command DOM access inside the scene/shell path | `features/manuscript-editor/editor-host-interface.js`, `adapters/editor-host/textarea-editor-host.js` | completed Phase 2 host slice; the active textarea implementation now consumes projections behind a replaceable adapter |
 | active task, inspiration, and research preview classes/range painting inside `app.js` | `features/manuscript-editor/projection-selector.js`, `adapters/editor-host/textarea-editor-host.js` | completed Phase 2 anchored-preview slice; durable anchored records now derive disposable host previews with typed record references |
 | find-result and narration-verse selection styling inside shell flows | `features/manuscript-editor/projection-selector.js`, `adapters/editor-host/textarea-editor-host.js` | completed Phase 2 runtime-preview slice; transient search and narration visuals are explicit runtime-only projections |
-| manuscript match derivation, find-panel modeling, and replacement planning inside `app.js` | `features/manuscript-editor/manuscript-find-controller.js` | completed Phase 2 controller slice; durable edit effects and DOM focus remain shell callbacks until broader input/selection routing is extracted |
-| manuscript selection text, context-range, bookmark, and saved-selection normalization inside `app.js` | `features/manuscript-editor/manuscript-selection-controller.js` | completed Phase 2 policy slice; browser focus/scroll operations and scene mutation effects remain shell-owned until input routing is extracted |
+| manuscript match derivation, find-panel modeling, and replacement planning inside `app.js` | `features/manuscript-editor/manuscript-find-controller.js` | completed Phase 2 controller slice; durable edit effects and DOM focus remain explicit shell callbacks |
+| manuscript selection text, context-range, bookmark, and saved-selection normalization inside `app.js` | `features/manuscript-editor/manuscript-selection-controller.js` | completed Phase 2 policy slice; browser focus/scroll operations and scene mutation effects remain shell-owned |
 | live `editor-text` mutation sequencing and inline-format text-edit range derivation inside `app.js` | `features/manuscript-editor/manuscript-input-controller.js` | completed Phase 2 controller slice; revision/persistence/render effects are explicit shell callbacks while browser interaction remains compatible |
 
 Those pieces already have a clear responsibility and are easy to validate without changing the canonical manuscript model.
