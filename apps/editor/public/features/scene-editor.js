@@ -9,9 +9,7 @@ import {
   INLINE_FORMATS,
 } from "./manuscript-editor/manuscript-command-controller.js";
 import {
-  MANUSCRIPT_PROJECTION_CHANNELS,
   selectManuscriptProjections,
-  selectProjectionChannel,
 } from "./manuscript-editor/projection-selector.js";
 import { renderTextareaEditorHostHTML } from "../adapters/editor-host/textarea-editor-host.js";
 import { escapeHtml } from "../shared/ui-utils.js";
@@ -171,12 +169,15 @@ export function renderSceneEditorHTML(scene, {
     ? state.narrationTakeSelection
     : null;
   const narrationSession = mode === "narration" ? state.narrationTakeSession : null;
-  const inlineFormatProjections = selectProjectionChannel(selectManuscriptProjections({
+  const manuscriptProjections = selectManuscriptProjections({
+    projectId: state.workspace?.project?.id ?? "",
     sceneId: scene.sceneId,
     text: scene.editorText ?? "",
+    sceneBlocks: scene.blocks,
     inlineFormatRanges: state.sceneDrafts?.[scene.sceneId]?.inlineFormatRanges,
+    diagnosticIssues: state.workspace?.project?.issues,
     includeSpellcheck: false,
-  }), MANUSCRIPT_PROJECTION_CHANNELS.AUTHOR_MARK);
+  });
   const chapterTitle = typeof formatChapterDisplayTitle === "function"
     ? formatChapterDisplayTitle(scene.chapterTitle)
     : String(scene.chapterTitle ?? "").trim() || "Untitled chapter";
@@ -265,7 +266,7 @@ export function renderSceneEditorHTML(scene, {
           ${renderTextareaEditorHostHTML({
             sceneId: scene.sceneId,
             text: scene.editorText ?? "",
-            projections: inlineFormatProjections,
+            projections: manuscriptProjections,
             inputClassName: showRevisionHighlight ? "has-revision-preview" : "",
           })}
         </div>

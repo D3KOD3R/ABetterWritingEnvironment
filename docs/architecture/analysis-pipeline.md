@@ -24,7 +24,7 @@ The analysis pipeline consumes canonical manuscript structures and produces revi
 
 Current manuscript diagnostic input is `IssueRecord`: accepted issue findings are stored on the canonical project with a `ManuscriptAnchor`, and the editor may derive a `diagnostic` visual projection from that durable record.
 
-The current `suggestions` output is not a manuscript decoration feed. It contains world-template/entity/link proposals and Dream Scaping proposals whose evidence anchors support review panels and later acceptance workflows. Before the editor adds a manuscript `suggestion` projection channel, shared contracts must define a distinct anchored manuscript-suggestion DTO with review state and an explicit accept/reject path.
+The current `suggestions` output is not a manuscript decoration feed. It contains world-template/entity/link proposals and Dream Scaping proposals whose evidence anchors support review panels and later acceptance workflows. `packages/shared-types` defines `AnchoredManuscriptSuggestion` for future manuscript-range proposals with review state, source identity, evidence anchor, proposed action, and accepted/rejected lifecycle fields; the editor still must not add a manuscript `suggestion` projection channel until that DTO has a dedicated queue and explicit accept/reject commands.
 
 ## Selected Lightweight Local AI
 

@@ -160,6 +160,81 @@ export interface DreamScapeSuggestion {
   revisionPrompt: string;
 }
 
+// Intent: define manuscript-range AI proposals separately from world and Dream Scaping suggestion queues.
+export type AnchoredManuscriptSuggestionKind =
+  | "issue"
+  | "event"
+  | "task"
+  | "passage-note"
+  | "revision"
+  | "mark";
+
+export type AnchoredManuscriptSuggestionAction =
+  | {
+      actionType: "create-issue";
+      category: IssueCategory;
+      severity: IssueSeverity;
+      summary: string;
+      detail?: string;
+      confidence: number;
+    }
+  | {
+      actionType: "create-event";
+      kind: EventTagKind;
+      label: string;
+      notes?: string;
+    }
+  | {
+      actionType: "create-task";
+      title: string;
+      body: string;
+    }
+  | {
+      actionType: "create-passage-note";
+      noteType: "inspiration" | "research";
+      title: string;
+      body: string;
+    }
+  | {
+      actionType: "replace-text";
+      replacementText: string;
+      rationale?: string;
+    }
+  | {
+      actionType: "apply-mark";
+      markKind: "bold" | "italic" | "underline" | "highlight";
+    };
+
+export interface AnchoredManuscriptSuggestionSourceIdentity {
+  source: IssueSource;
+  providerId: string;
+  jobId?: string;
+  modelId?: string;
+}
+
+export interface AcceptedManuscriptSuggestionReference {
+  recordType: AnchoredManuscriptSuggestionKind;
+  recordId: string;
+  acceptedAt: string;
+}
+
+export interface AnchoredManuscriptSuggestion {
+  id: string;
+  suggestionType: "manuscript";
+  suggestionKind: AnchoredManuscriptSuggestionKind;
+  reviewState: SuggestionReviewState;
+  title: string;
+  rationale: string;
+  anchor: ManuscriptAnchor;
+  evidenceExcerpt: string;
+  sourceIdentity: AnchoredManuscriptSuggestionSourceIdentity;
+  proposedAction: AnchoredManuscriptSuggestionAction;
+  createdAt: string;
+  reviewedAt?: string;
+  acceptedRecordRef?: AcceptedManuscriptSuggestionReference;
+  rejectionReason?: string;
+}
+
 export type AnalysisWorldSuggestion =
   | TemplateCreationSuggestion
   | EntityInstantiationSuggestion
@@ -333,6 +408,8 @@ export interface IssueConsoleRecord {
   detail?: string;
   source: IssueSource;
   confidence: number;
+  lifecycle: "open";
+  anchor: ManuscriptAnchor;
   evidenceExcerpt: string;
   blockId: string;
   lineNumber: number;

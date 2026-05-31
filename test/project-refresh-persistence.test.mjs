@@ -292,6 +292,12 @@ export async function runProjectRefreshPersistenceTest() {
     desktopSnapshot?.sceneStore?.["project-test"]?.["scene-1"]?.inlineFormatRanges?.[0]?.formatId,
     "italic",
   );
+  assert.equal(
+    desktopSnapshot?.projects?.[0]?.workspace?.project?.issues?.[0]?.anchor?.sceneId,
+    "scene-1",
+  );
+  assert.equal(Object.hasOwn(desktopSnapshot?.projects?.[0]?.workspace?.project ?? {}, "projections"), false);
+  assert.equal(Object.hasOwn(desktopSnapshot?.sceneStore?.["project-test"]?.["scene-1"] ?? {}, "projections"), false);
 }
 
 function createProjectRecord(text) {
@@ -319,10 +325,34 @@ function createProjectRecord(text) {
             sceneId: "scene-1",
             sceneTitle: "Scene One",
             sceneSynopsis: "",
-            issueIds: [],
+            issueIds: ["issue-1"],
             eventTagIds: [],
           },
         ],
+        issues: [{
+          id: "issue-1",
+          category: "clarity",
+          severity: "warning",
+          summary: "Resolve this anchored diagnostic.",
+          source: "rule",
+          confidence: 0.9,
+          lifecycle: "open",
+          evidenceExcerpt: "browser",
+          anchor: {
+            projectId: "project-test",
+            chapterId: "chapter-1",
+            sceneId: "scene-1",
+            blockId: "block-1",
+            paragraphId: "paragraph-1",
+            startOffset: 4,
+            endOffset: 11,
+          },
+          blockId: "block-1",
+          lineNumber: 1,
+          sceneLineNumber: 1,
+          chapterTitle: "Chapter One",
+          sceneTitle: "Scene One",
+        }],
         stats: {
           chapterCount: 1,
           sceneCount: 1,

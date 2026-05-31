@@ -3,6 +3,7 @@ import { normalizeInlineFormatRanges } from "./manuscript-command-controller.js"
 
 export const MANUSCRIPT_PROJECTION_CHANNELS = Object.freeze({
   AUTHOR_MARK: "author-mark",
+  DIAGNOSTIC: "diagnostic",
   TASK: "task",
   NOTE: "note",
   SEARCH: "search",
@@ -12,6 +13,7 @@ export const MANUSCRIPT_PROJECTION_CHANNELS = Object.freeze({
 
 const PROJECTION_PRIORITY = Object.freeze({
   [MANUSCRIPT_PROJECTION_CHANNELS.AUTHOR_MARK]: 100,
+  [MANUSCRIPT_PROJECTION_CHANNELS.DIAGNOSTIC]: 90,
   [MANUSCRIPT_PROJECTION_CHANNELS.TASK]: 80,
   [MANUSCRIPT_PROJECTION_CHANNELS.NOTE]: 80,
   [MANUSCRIPT_PROJECTION_CHANNELS.SEARCH]: 70,
@@ -20,19 +22,24 @@ const PROJECTION_PRIORITY = Object.freeze({
 });
 
 export function selectManuscriptProjections({
+  projectId = "",
   sceneId = "",
   text = "",
+  sceneBlocks = [],
   inlineFormatRanges = [],
+  diagnosticIssues = [],
   anchoredRecordPreviews = [],
   searchPreviews = [],
   narrationSelection = null,
   spellcheckMisspellings = [],
   includeAuthorMarks = true,
+  includeDiagnostics = true,
   includeAnchoredRecords = true,
   includeRuntimeSelections = true,
   includeSpellcheck = true,
 } = {}) {
   const normalizedText = String(text ?? "");
+  const normalizedProjectId = typeof projectId === "string" ? projectId : "";
   const normalizedSceneId = typeof sceneId === "string" ? sceneId : "";
   const projections = [];
 
@@ -52,6 +59,21 @@ export function selectManuscriptProjections({
           recordId: range.id,
         },
       });
+    }
+  }
+
+  if (includeDiagnostics) {
+    for (const issue of Array.isArray(diagnosticIssues) ? diagnosticIssues : []) {
+      const projection = createDiagnosticProjection(
+        issue,
+        normalizedProjectId,
+        normalizedSceneId,
+        normalizedText,
+        sceneBlocks,
+      );
+      if (projection) {
+        projections.push(projection);
+      }
     }
   }
 
@@ -134,6 +156,75 @@ function compareManuscriptProjections(left, right) {
     left.channel.localeCompare(right.channel) ||
     left.id.localeCompare(right.id)
   );
+}
+
+// Intent: derive a visual diagnostic only while its durable issue anchor still resolves in current scene text.
+function createDiagnosticProjection(issue, projectId, sceneId, text, sceneBlocks) {
+  const issueId = typeof issue?.id === "string" ? issue.id : "";
+  const anchor = issue?.anchor && typeof issue.anchor === "object" ? issue.anchor : null;
+  const anchorProjectId = typeof anchor?.projectId === "string" ? anchor.projectId : "";
+  const anchorSceneId = typeof anchor?.sceneId === "string" ? anchor.sceneId : "";
+  const anchorBlockId = typeof anchor?.blockId === "string" ? anchor.blockId : "";
+  const startOffset = Number(anchor?.startOffset);
+  const endOffset = Number(anchor?.endOffset);
+  const blocks = Array.isArray(sceneBlocks) ? sceneBlocks : [];
+  if (
+    !issueId ||
+    issue?.lifecycle !== "open" ||
+    !anchorProjectId ||
+    (projectId && anchorProjectId !== projectId) ||
+    anchorSceneId !== sceneId ||
+    !anchorBlockId ||
+    !Number.isInteger(startOffset) ||
+    !Number.isInteger(endOffset) ||
+    startOffset < 0 ||
+    endOffset <= startOffset
+  ) {
+    return null;
+  }
+
+  const blockIndex = blocks.findIndex((block) => block?.blockId === anchorBlockId);
+  const blockText = blockIndex >= 0 ? String(blocks[blockIndex]?.text ?? "") : "";
+  const evidenceExcerpt = typeof issue?.evidenceExcerpt === "string" ? issue.evidenceExcerpt : "";
+  if (
+    blockIndex < 0 ||
+    endOffset > blockText.length ||
+    !evidenceExcerpt ||
+    blockText.slice(startOffset, endOffset) !== evidenceExcerpt
+  ) {
+    return null;
+  }
+
+  const sceneBlockStart = blocks.slice(0, blockIndex).reduce(
+    (offset, block) => offset + String(block?.text ?? "").length + 2,
+    0,
+  );
+  const sceneStartOffset = sceneBlockStart + startOffset;
+  const sceneEndOffset = sceneBlockStart + endOffset;
+  if (
+    sceneEndOffset > text.length ||
+    text.slice(sceneStartOffset, sceneEndOffset) !== evidenceExcerpt
+  ) {
+    return null;
+  }
+
+  const styleToken = ["error", "warning", "info"].includes(issue.severity)
+    ? issue.severity
+    : "warning";
+  return {
+    id: `diagnostic:${issueId}`,
+    sceneId,
+    startOffset: sceneStartOffset,
+    endOffset: sceneEndOffset,
+    channel: MANUSCRIPT_PROJECTION_CHANNELS.DIAGNOSTIC,
+    styleToken,
+    priority: PROJECTION_PRIORITY[MANUSCRIPT_PROJECTION_CHANNELS.DIAGNOSTIC],
+    persistence: "derived-durable",
+    sourceRef: {
+      recordType: "issue",
+      recordId: issueId,
+    },
+  };
 }
 
 function createAnchoredRecordProjection(preview, sceneId, textLength) {

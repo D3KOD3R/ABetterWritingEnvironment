@@ -14,12 +14,10 @@ import {
   FONT_OPTIONS,
   buildSceneRecords,
   buildSceneLineMetrics,
-  completeManuscriptTask,
   countRemainingTasksByChapter,
   createDefaultEditorPrefs,
   createDefaultLocalAiPrefs,
   createDefaultSpellcheckProjectSettings,
-  createManuscriptTask,
   createPassageNote,
   createSceneDraft,
   createStructureDrafts,
@@ -33,9 +31,6 @@ import {
   normalizePassageNotes,
   normalizeSpellcheckProjectSettings,
   resolveManuscriptTaskRange,
-  updateManuscriptTaskTitle,
-  updatePassageNoteBody,
-  updatePassageNoteTitle,
 } from "./editor-model.js";
 import {
   formatSceneEditorSelectionWordCount,
@@ -59,10 +54,56 @@ import { createManuscriptFindController } from "./features/manuscript-editor/man
 import { createManuscriptInputController } from "./features/manuscript-editor/manuscript-input-controller.js";
 import { createManuscriptSelectionController } from "./features/manuscript-editor/manuscript-selection-controller.js";
 import { createAnchoredRecordNavigationController } from "./features/manuscript-editor/anchored-record-navigation-controller.js";
+import { validateLiveSpellcheckMenuRange } from "./features/manuscript-editor/spellcheck-range-guard.js";
 import {
-  resolveLiveSpellcheckWordRange,
-  validateLiveSpellcheckMenuRange,
-} from "./features/manuscript-editor/spellcheck-range-guard.js";
+  buildGrammarCheckEntries,
+  buildGrammarCheckSummary,
+  closeGrammarCheckPanelState,
+  createGrammarCheckPanelDragController,
+  renderGrammarCheckPanelHTML,
+  setGrammarCheckPanelPositionState,
+  toggleGrammarCheckPanelState,
+  toggleGrammarCheckPanelWordSelectionState,
+  updateGrammarCheckPanelSelectionState,
+} from "./features/spellcheck/grammar-check-panel.js";
+import {
+  applySpellcheckProjectListMutation,
+} from "./features/spellcheck/spellcheck-project-settings.js";
+import {
+  buildSpellcheckEditorContextMenu,
+  buildSpellcheckGrammarCheckContextMenu,
+} from "./features/spellcheck/spellcheck-context-controller.js";
+import { renderSpellcheckContextMenuHTML } from "./features/spellcheck/spellcheck-context-menu.js";
+import {
+  DEFAULT_SPELLCHECK_REFRESH_DELAY_MS,
+  createSpellcheckRefreshController,
+} from "./features/spellcheck/spellcheck-refresh-controller.js";
+import {
+  renderAnchoredRecordContextMenuHTML,
+  renderTaskComposerHTML,
+} from "./features/anchored-records/task-context-menu.js";
+import {
+  buildInlinePassageNoteDraftFromContextMenu,
+  buildPassageNoteTitleRequest,
+  buildPassageNotePanelModel,
+  buildPassageNoteFromComposer,
+  buildTaskComposerFromContextMenu,
+  buildTaskFromComposer,
+  buildTaskPanelModel,
+  buildTaskTitleRequest,
+  canApplySuggestedRecordTitle,
+  getInlinePassageDraftAnchor as getInlinePassageDraftAnchorFromController,
+  planInlinePassageVerseInsertion,
+  selectOpenManuscriptTasks,
+  updateInlinePassageDraftTypingState,
+} from "./features/anchored-records/anchored-record-controller.js";
+import { renderPassageNotePanelHTML } from "./features/anchored-records/passage-note-panel.js";
+import { renderTaskPanelHTML } from "./features/anchored-records/task-panel.js";
+import {
+  createDeleteConfirmationPreferences,
+  renderDeleteConfirmationDialogHTML,
+} from "./features/anchored-records/delete-confirmation-dialog.js";
+import { createAnchoredRecordService } from "./features/anchored-records/anchored-record-service.js";
 import { escapeHtml, formatDisplayNumber } from "./shared/ui-utils.js";
 import { createDeveloperLogger } from "./shared/developer-logger.js";
 import {
@@ -77,14 +118,10 @@ import {
 import {
   buildSpellcheckProjectLexicon,
   collectSpellcheckMisspellings,
-  countSpellcheckMisspellings,
   ensureSpellcheckBaseLexicon,
   ensureSpellcheckReferenceLexicon,
-  groupSpellcheckMisspellings,
   getSpellcheckWordRange,
-  isSpellcheckMisspelledWord,
   normalizeSpellcheckWord,
-  suggestSpellcheckAlternatives,
 } from "./spellcheck.js";
 import { renderEditorChrome } from "./shell/editor-chrome.js";
 import { createWritingGoalsService } from "./features/writing-targets/writing-goals-service.js";
@@ -99,6 +136,7 @@ import { createPreferencesRepository } from "./adapters/storage/preferences-repo
 import { createProjectService } from "./adapters/storage/project-service.js";
 import { PROJECT_SCHEMA_VERSION } from "./adapters/storage/project-migrations.js";
 import { createProjectPersistenceService } from "./adapters/storage/project-persistence-service.js";
+import { createProjectSourceService } from "./adapters/storage/project-source-service.js";
 import {
   createProjectLibraryStateService,
   mergeProjectLibraryItemsById,
@@ -109,11 +147,31 @@ import { createProjectRuntimeRecordStateService } from "./state/project-runtime-
 import { createProjectActivationStateService } from "./state/project-activation-state.js";
 import { createProjectActivationController } from "./state/project-activation-controller.js";
 import {
+  createCollapsedConsoleChapterState,
+  normalizeCollapsedChapterIds,
+  pruneCollapsedChapterIds,
+  toggleCollapsedChapterId,
+  toggleCollapsedConsoleChapter,
+} from "./state/editor-ui-state.js";
+import {
+  captureTextareaEditorHostBookmark,
+  captureTextareaEditorHostViewport,
   clearTextareaAnchoredRecordPreview,
   clearTextareaProjectionLayer,
   clearTextareaRuntimeSelectionPreview,
+  estimateTextareaVisualLineBeforeOffset,
+  findTextareaOffsetForVisualLineEnd,
+  focusTextareaEditorHost,
+  getTextareaEditorHostWrapMetrics,
+  readTextareaEditorHostSelection,
+  renderTextareaDiagnosticLayer,
   renderTextareaSpellcheckLayer,
   resolveTextareaEditorHost,
+  restoreTextareaEditorHostBookmark,
+  restoreTextareaEditorHostViewport,
+  scrollTextareaEditorHostToOffset,
+  scrollTextareaEditorHostToSelection,
+  selectTextareaEditorHostRange,
   showTextareaAnchoredRecordPreview,
   showTextareaRuntimeSelectionPreview,
   syncTextareaSpellcheckTypingState,
@@ -127,6 +185,32 @@ import {
 import { createRevisionService } from "./features/revisions/revision-service.js";
 import { createRevisionPanelController } from "./features/revisions/revision-panel-controller.js";
 import { renderRevisionWindowHTML } from "./features/revisions/revision-window.js";
+import { createLocalAiTitleService } from "./features/local-ai/local-ai-title-service.js";
+import { createNarrationMediaService } from "./features/narration/narration-media-service.js";
+import { createNarrationMediaRecorderService } from "./features/narration/narration-media-recorder-service.js";
+import { createNarrationRecordingCommandService } from "./features/narration/narration-recording-command-service.js";
+import { createNarrationRecordingFinalizationService } from "./features/narration/narration-recording-finalization-service.js";
+import { createNarrationRecordingRuntimeService } from "./features/narration/narration-recording-runtime-service.js";
+import {
+  buildNarrationTakeSelection as buildNarrationTakeSelectionRecord,
+  resolveNarrationTakeSelectionFromTextInput,
+  selectNarrationTakeSelectionForScene,
+} from "./features/narration/narration-selection-service.js";
+import {
+  syncNarrationAlignmentJobsMetadata,
+  syncNarrationSessionMetadata,
+  syncVoiceRecordingsMetadata,
+  syncVoiceRenderJobsMetadata,
+} from "./features/narration/narration-metadata-sync-service.js";
+import { createNarrationSpeechRecognitionService } from "./features/narration/narration-speech-recognition-service.js";
+import {
+  createNarrationTakeSession as createNarrationTakeSessionRecord,
+  formatNarrationRecordingElapsedLabel,
+} from "./features/narration/narration-take-service.js";
+import { createVoiceWorkflowService } from "./features/voice/voice-workflow-service.js";
+import { createVoiceRecordingActionService } from "./features/voice/voice-recording-action-service.js";
+import { createVoiceRecordingPreviewController } from "./features/voice/voice-recording-preview-service.js";
+import { createVoiceRecordingService } from "./features/voice/voice-recording-service.js";
 
 // Intent: keep shell-wide constants and state visible until each concern moves into its roadmap owner.
 const appRoot = document.querySelector("#app");
@@ -135,8 +219,6 @@ const EDITOR_BINDER_WIDTH_KEY = "abe-binder-width-v1";
 const EDITOR_CONSOLE_WIDTH_KEY = "abe-console-width-v1";
 const EDITOR_WRITING_TARGETS_KEY = "abe-writing-targets-v1";
 const EDITOR_PROJECT_FILE_PATH_KEY = "abe-project-file-path-v1";
-const VOICE_NARRATION_STORAGE_KEY = "abe-voice-narration-v1";
-const NARRATION_RECORDING_DEFAULT_MIME_TYPE = "audio/webm";
 const DEFAULT_BINDER_PANEL_WIDTH = 320;
 const DEFAULT_CONSOLE_PANEL_WIDTH = 320;
 const DEFAULT_WRITING_TARGET_WORDS = 150000;
@@ -183,7 +265,6 @@ const {
   loadStoredString,
   loadStructureDrafts,
   loadTemplateDrafts,
-  normalizeChapterIdList,
   persistCollapsedChapterState,
   persistCollapsedConsoleChapterState,
   persistConsoleDockCollapsedState,
@@ -208,6 +289,9 @@ const preferencesRepository = createPreferencesRepository({
 const projectService = createProjectService({
   projectRepository,
   preferencesRepository,
+});
+const voiceWorkflowService = createVoiceWorkflowService({
+  projectService,
 });
 const CONSOLE_DOCK_COLLAPSED_WIDTH = 52;
 const BINDER_PANEL_COMPACT_THRESHOLD = 280;
@@ -315,7 +399,7 @@ const state = {
     redoStack: [],
   },
   developerLogsWindowOpen: false,
-  voiceNarration: loadVoiceNarrationState(),
+  voiceNarration: voiceWorkflowService.loadState(),
   scenes: [],
   selectedSceneId: null,
   selectedBlockId: null,
@@ -342,12 +426,9 @@ let writingTargetDebugLastSceneTypingWordCount = null;
 let binderTitleClickState = null;
 let binderSceneDragState = null;
 let manuscriptFindDragState = null;
-let manuscriptGrammarDragState = null;
 let spellcheckBaseLexicon = null;
 let spellcheckReferenceLexicon = null;
 let narrationRecordingRuntime = null;
-let voiceRecordingPreviewAudio = null;
-let voiceRecordingPreviewUrl = null;
 let lastDesktopLogBridgeWarningAt = 0;
 
 // Intent: keep pure find derivation and replacement planning outside browser shell effects.
@@ -387,6 +468,22 @@ const manuscriptInputController = createManuscriptInputController({
   scheduleTypingRefresh: (sceneId, text, options) => scheduleSceneEditorTypingRefresh(sceneId, text, options),
   isGrammarCheckEnabled: () => state.editorPrefs.grammarCheckEnabled !== false,
   scheduleSpellcheckRefresh: (sceneId) => scheduleSceneEditorSpellcheckRefresh(sceneId),
+});
+
+// Intent: keep spellcheck debounce timer ownership outside the browser shell.
+const spellcheckRefreshController = createSpellcheckRefreshController({
+  delayMs: DEFAULT_SPELLCHECK_REFRESH_DELAY_MS,
+  setTimeoutRef: window.setTimeout.bind(window),
+  clearTimeoutRef: window.clearTimeout.bind(window),
+  onFlush: (sceneId) => flushSceneEditorSpellcheckRefresh(sceneId),
+});
+const grammarCheckPanelDragController = createGrammarCheckPanelDragController({
+  isPanelOpen: () => state.grammarCheckPanel?.open === true,
+  getViewport: () => ({
+    width: window.innerWidth,
+    height: window.innerHeight,
+  }),
+  setPosition: (left, top) => setGrammarCheckPanelPosition(left, top),
 });
 
 // Intent: centralize anchor-aware task/note resolution while the shell retains browser navigation effects.
@@ -693,6 +790,123 @@ const projectPersistenceService = createProjectPersistenceService({
     desktopFileSystem: desktopFileSystemLog,
   },
 });
+const projectSourceService = createProjectSourceService({
+  fetchJson: fetchJsonFromDesktopApi,
+  normalizeProjectLibrarySnapshot,
+  mergeProjectLibrarySnapshots,
+  resolveActiveProjectId,
+  saveProjectLibrarySnapshot: (snapshot) => projectService.saveProjectLibrarySnapshot(snapshot),
+});
+const localAiTitleService = createLocalAiTitleService({
+  fetchJson: fetchJsonFromDesktopApi,
+  logger: console,
+});
+const anchoredRecordService = createAnchoredRecordService({
+  getTasks: () => state.manuscriptTasks,
+  setTasks: (tasks) => {
+    state.manuscriptTasks = tasks;
+  },
+  persistTasks: (options) => persistManuscriptTasksState(options),
+  getNotes: () => state.passageNotes,
+  setNotes: (notes) => {
+    state.passageNotes = notes;
+  },
+  persistNotes: (options) => persistPassageNotesState(options),
+});
+const narrationMediaService = createNarrationMediaService({
+  fetchJson: fetchJsonFromDesktopApi,
+});
+const narrationRecordingRuntimeService = createNarrationRecordingRuntimeService({
+  clearIntervalFn: (timerId) => window.clearInterval(timerId),
+});
+const narrationRecordingFinalizationService = createNarrationRecordingFinalizationService({
+  cleanupRuntime: (runtime) => narrationRecordingRuntimeService.cleanupRuntime(runtime),
+  saveMediaBlob: (input) => narrationMediaService.saveMediaBlob(input),
+  resolveSelection: (runtime) => getNarrationTakeSelectionForScene(runtime?.selection?.sceneId ?? state.selectedSceneId),
+  getProjectId: () => state.activeProjectId || state.workspace?.project?.id || "",
+  reportLog: reportBrowserLog,
+  blobConstructor: typeof Blob === "undefined" ? null : Blob,
+});
+const voiceRecordingService = createVoiceRecordingService({
+  getWorkspace: () => state.workspace,
+  getProjectId: () => state.activeProjectId ?? state.workspace?.project?.id ?? "",
+});
+const voiceRecordingActionService = createVoiceRecordingActionService({
+  getRecordingById: (recordingId) => voiceRecordingService.getById(recordingId),
+  loadMediaBlob: (input) => narrationMediaService.loadMediaBlob(input),
+  playBlob: (blob) => voiceRecordingPreviewController.playBlob(blob),
+  getScene: (sceneId) => getScene(sceneId),
+  reportLog: reportBrowserLog,
+});
+const narrationMediaRecorderService = createNarrationMediaRecorderService({
+  mediaRecorderConstructor: typeof MediaRecorder === "undefined" ? null : MediaRecorder,
+  blobConstructor: typeof Blob === "undefined" ? null : Blob,
+  getRuntime: () => narrationRecordingRuntime,
+  appendChunk: (recordingId, chunk) => {
+    if (!narrationRecordingRuntime || narrationRecordingRuntime.recordingId !== recordingId) {
+      return;
+    }
+    narrationRecordingRuntime.chunks.push(chunk);
+  },
+  applyRuntimePatch: (recordingId, patch) => {
+    if (!narrationRecordingRuntime || narrationRecordingRuntime.recordingId !== recordingId) {
+      return;
+    }
+    narrationRecordingRuntime = {
+      ...narrationRecordingRuntime,
+      ...patch,
+    };
+  },
+  refreshSession: () => updateNarrationTakeSessionFromRuntime(),
+  finalizeRecording: (recordingId) => {
+    void finalizeNarrationRecording(recordingId);
+  },
+});
+const narrationSpeechRecognitionService = createNarrationSpeechRecognitionService({
+  recognitionConstructor: window.SpeechRecognition || window.webkitSpeechRecognition || null,
+  getRuntime: () => narrationRecordingRuntime,
+  applyRuntimePatch: (recordingId, patch) => {
+    if (!narrationRecordingRuntime || narrationRecordingRuntime.recordingId !== recordingId) {
+      return;
+    }
+    narrationRecordingRuntime = {
+      ...narrationRecordingRuntime,
+      ...patch,
+    };
+  },
+  refreshSession: () => updateNarrationTakeSessionFromRuntime(),
+});
+const narrationRecordingCommandService = createNarrationRecordingCommandService({
+  getRuntime: () => narrationRecordingRuntime,
+  setRuntime: (runtime) => {
+    narrationRecordingRuntime = runtime;
+  },
+  resolveSelection: (sceneId) => {
+    const scene = sceneId ? getScene(sceneId) : getSelectedScene() ?? state.scenes[0] ?? null;
+    return {
+      scene,
+      selection: scene ? getNarrationTakeSelectionForScene(scene.sceneId) : null,
+    };
+  },
+  getProjectId: () => state.activeProjectId ?? state.workspace?.project?.id ?? "",
+  setSession: (session) => setNarrationTakeSession(session),
+  createTimer: () => window.setInterval(refreshNarrationRecordingSession, 1000),
+  getUserMedia: (constraints) => navigator.mediaDevices.getUserMedia(constraints),
+  hasMicrophoneCapture: () => typeof navigator !== "undefined" && Boolean(navigator.mediaDevices?.getUserMedia),
+  hasMediaRecorder: () => typeof MediaRecorder !== "undefined",
+  mediaRecorderConstructor: typeof MediaRecorder === "undefined" ? null : MediaRecorder,
+  createRecorder: (recordingId, stream, options) => narrationMediaRecorderService.createRecorder(recordingId, stream, options),
+  createRecognition: (recordingId) => narrationSpeechRecognitionService.createRecognition(recordingId),
+  updateSessionFromRuntime: (overrides) => updateNarrationTakeSessionFromRuntime(overrides),
+  abortStart: (selection, error, stream) => abortNarrationRecordingStart(selection, error, stream),
+  finalizeRecording: (recordingId, error) => finalizeNarrationRecording(recordingId, error),
+  clone: cloneValue,
+});
+const voiceRecordingPreviewController = createVoiceRecordingPreviewController({
+  createObjectUrl: (blob) => URL.createObjectURL(blob),
+  revokeObjectUrl: (url) => URL.revokeObjectURL(url),
+  createAudio: (url) => new Audio(url),
+});
 
 const revisionStorageService = createRevisionStorageService({
   logger: revisionServiceLog,
@@ -830,15 +1044,11 @@ const projectActivationController = createProjectActivationController({
   setNarrationRecordingRuntime: (runtime) => {
     narrationRecordingRuntime = runtime;
   },
-  clearIntervalFn: (timerId) => window.clearInterval(timerId),
-  getVoiceRecordingPreviewAudio: () => voiceRecordingPreviewAudio,
-  setVoiceRecordingPreviewAudio: (audio) => {
-    voiceRecordingPreviewAudio = audio;
-  },
-  getVoiceRecordingPreviewUrl: () => voiceRecordingPreviewUrl,
-  setVoiceRecordingPreviewUrl: (url) => {
-    voiceRecordingPreviewUrl = url;
-  },
+  cleanupNarrationRecordingRuntime: (runtime) => narrationRecordingRuntimeService.cleanupRuntime(runtime),
+  getVoiceRecordingPreviewAudio: () => voiceRecordingPreviewController.getPreviewAudio(),
+  setVoiceRecordingPreviewAudio: (audio) => voiceRecordingPreviewController.setPreviewAudio(audio),
+  getVoiceRecordingPreviewUrl: () => voiceRecordingPreviewController.getPreviewUrl(),
+  setVoiceRecordingPreviewUrl: (url) => voiceRecordingPreviewController.setPreviewUrl(url),
   revokeObjectUrl: (url) => URL.revokeObjectURL(url),
   clearBinderTitleClickState: () => {
     binderTitleClickState = null;
@@ -2066,12 +2276,7 @@ function wireEvents() {
     }
 
     if (editField === "task-title") {
-      state.manuscriptTasks = updateManuscriptTaskTitle(
-        state.manuscriptTasks,
-        target.dataset.taskId,
-        target.value,
-      );
-      persistManuscriptTasksState({
+      anchoredRecordService.updateTaskTitle(target.dataset.taskId, target.value, {
         dirtyReason: "manuscript-task-title-edited",
         source: "task-title-input",
       });
@@ -2079,12 +2284,7 @@ function wireEvents() {
     }
 
     if (editField === "passage-note-title") {
-      state.passageNotes = updatePassageNoteTitle(
-        state.passageNotes,
-        target.dataset.noteId,
-        target.value,
-      );
-      persistPassageNotesState({
+      anchoredRecordService.updatePassageNoteTitle(target.dataset.noteId, target.value, {
         dirtyReason: "passage-note-title-edited",
         source: "passage-note-title-input",
       });
@@ -2092,12 +2292,7 @@ function wireEvents() {
     }
 
     if (editField === "passage-note-body") {
-      state.passageNotes = updatePassageNoteBody(
-        state.passageNotes,
-        target.dataset.noteId,
-        target.value,
-      );
-      persistPassageNotesState({
+      anchoredRecordService.updatePassageNoteBody(target.dataset.noteId, target.value, {
         dirtyReason: "passage-note-body-edited",
         source: "passage-note-body-input",
       });
@@ -2419,64 +2614,10 @@ function renderTaskContextMenu() {
 
   const spellcheckMenu = state.spellcheckContextMenu;
   if (spellcheckMenu) {
-    const suggestions = Array.isArray(spellcheckMenu.suggestions) ? spellcheckMenu.suggestions : [];
-    const menuWords = Array.isArray(spellcheckMenu.words) && spellcheckMenu.words.length
-      ? spellcheckMenu.words
-      : (spellcheckMenu.word ? [spellcheckMenu.word] : []);
-    const menuWidth = spellcheckMenu.mode === "selection" ? 440 : 360;
-    const menuHeight = spellcheckMenu.mode === "selection" ? 320 : 300;
-    const left = Math.min(Math.max(8, spellcheckMenu.x), Math.max(8, window.innerWidth - menuWidth));
-    const top = Math.min(Math.max(8, spellcheckMenu.y), Math.max(8, window.innerHeight - menuHeight));
-    const countLabel = `${menuWords.length} flagged word${menuWords.length === 1 ? "" : "s"}`;
-    slot.innerHTML = `
-      <div
-        class="task-context-menu grammar-check-context-menu spellcheck-context-menu"
-        style="left:${left}px; top:${top}px;"
-        role="menu"
-        data-spellcheck-menu
-      >
-        <p class="spellcheck-context-menu__label">Grammar check</p>
-        <strong class="spellcheck-context-menu__word">${escapeHtml(countLabel)}</strong>
-        <div class="spellcheck-context-menu__selection-list">
-          ${menuWords.length
-            ? menuWords.map((word) => `<span class="spellcheck-context-menu__chip">${escapeHtml(word)}</span>`).join("")
-            : `<p class="spellcheck-context-menu__empty">No flagged words found.</p>`}
-        </div>
-        ${spellcheckMenu.mode === "word" && suggestions.length
-          ? `
-            <div class="spellcheck-context-menu__suggestions">
-              ${suggestions.map((suggestion) => `
-                <button
-                  class="task-menu-item spellcheck-suggestion-item"
-                  data-action="apply-spellcheck-suggestion"
-                  data-spellcheck-replacement="${escapeHtml(suggestion)}"
-                  data-spellcheck-start-offset="${escapeHtml(String(spellcheckMenu.startOffset))}"
-                  data-spellcheck-end-offset="${escapeHtml(String(spellcheckMenu.endOffset))}"
-                  data-spellcheck-scene-id="${escapeHtml(spellcheckMenu.sceneId)}"
-                  data-spellcheck-word="${escapeHtml(spellcheckMenu.normalizedWord ?? spellcheckMenu.word ?? "")}"
-                  role="menuitem"
-                >
-                  <span class="task-menu-icon" aria-hidden="true">✓</span>
-                  <span>${escapeHtml(suggestion)}</span>
-                </button>
-              `).join("")}
-            </div>
-          `
-          : ""}
-        <button class="task-menu-item spellcheck-add-item" data-action="add-grammar-check-dictionary" role="menuitem">
-          <span class="task-menu-icon" aria-hidden="true">+</span>
-          <span>Add to project dictionary</span>
-        </button>
-        <button class="task-menu-item spellcheck-add-item" data-action="add-grammar-check-exceptions" role="menuitem">
-          <span class="task-menu-icon" aria-hidden="true">⟲</span>
-          <span>Add to project exceptions</span>
-        </button>
-        <button class="task-menu-item spellcheck-dismiss" data-action="dismiss-spellcheck-menu" role="menuitem">
-          <span class="task-menu-icon" aria-hidden="true">×</span>
-          <span>Close grammar check</span>
-        </button>
-      </div>
-    `;
+    slot.innerHTML = renderSpellcheckContextMenuHTML(spellcheckMenu, {
+      width: window.innerWidth,
+      height: window.innerHeight,
+    });
     return;
   }
 
@@ -2516,32 +2657,14 @@ function renderTaskContextMenu() {
 
   const composer = state.taskComposer;
   if (composer) {
-    const excerpt = composer.selectedText.trim().slice(0, 120);
     const isPassageNoteComposer = composer.composerType === "passage-note";
-    const noteLabel = composer.noteType === "research" ? "Research" : "Inspiration";
-    const left = Math.min(Math.max(8, composer.x), Math.max(8, window.innerWidth - 380));
-    const top = Math.min(Math.max(8, composer.y), Math.max(8, window.innerHeight - 260));
-    slot.innerHTML = `
-      <form
-        class="task-composer"
-        style="left:${left}px; top:${top}px; ${escapeHtml(buildEditorStyle())}"
-      >
-        <label for="task-description-input">${escapeHtml(isPassageNoteComposer ? noteLabel : "Task body")}</label>
-        <textarea
-          id="task-description-input"
-          class="task-description-input"
-          placeholder="${escapeHtml(isPassageNoteComposer ? getPassageNotePlaceholder(composer.noteType) : "Describe what needs to be done for this task...")}"
-          ${isPassageNoteComposer ? "data-passage-note-body" : "data-task-description"}
-        ></textarea>
-        <p>${escapeHtml(excerpt)}</p>
-        <div class="task-composer-actions">
-          <button class="tag-button" type="button" data-action="${isPassageNoteComposer ? "save-passage-note" : "save-selection-task"}">
-            ${escapeHtml(isPassageNoteComposer ? `Save ${noteLabel.toLowerCase()}` : "Add task")}
-          </button>
-          <button class="tag-button" type="button" data-action="cancel-selection-task">Cancel</button>
-        </div>
-      </form>
-    `;
+    slot.innerHTML = renderTaskComposerHTML(composer, {
+      width: window.innerWidth,
+      height: window.innerHeight,
+    }, {
+      editorStyle: buildEditorStyle(),
+      passageNotePlaceholder: isPassageNoteComposer ? getPassageNotePlaceholder(composer.noteType) : "",
+    });
 
     const input = document.querySelector(
       isPassageNoteComposer ? "[data-passage-note-body]" : "[data-task-description]",
@@ -2558,34 +2681,10 @@ function renderTaskContextMenu() {
     return;
   }
 
-  const excerpt = menu.selectedText.trim().slice(0, 80);
-  const left = Math.min(Math.max(8, menu.x), Math.max(8, window.innerWidth - 276));
-  const top = Math.min(Math.max(8, menu.y), Math.max(8, window.innerHeight - 230));
-  slot.innerHTML = `
-    <div
-      class="task-context-menu"
-      style="left:${left}px; top:${top}px;"
-      role="menu"
-      >
-      <button class="task-menu-item" data-action="add-selection-task" role="menuitem">
-        <span class="task-menu-icon" aria-hidden="true">+</span>
-        <span>${escapeHtml(menu.hasExplicitSelection ? "Add task" : "Add task from line")}</span>
-      </button>
-      <button class="task-menu-item" data-action="add-passage-note" data-note-type="inspiration" role="menuitem">
-        <span class="task-menu-icon" aria-hidden="true">i</span>
-        <span>Add inspiration</span>
-      </button>
-      <button class="task-menu-item" data-action="add-passage-note" data-note-type="research" role="menuitem">
-        <span class="task-menu-icon" aria-hidden="true">r</span>
-        <span>Add research</span>
-      </button>
-      <button class="task-menu-item" data-action="trim-scene-whitespace" data-scene-id="${escapeHtml(menu.sceneId)}" role="menuitem">
-        <span class="task-menu-icon" aria-hidden="true">↧</span>
-        <span>Trim scene whitespace</span>
-      </button>
-      <p>${escapeHtml(excerpt)}</p>
-    </div>
-  `;
+  slot.innerHTML = renderAnchoredRecordContextMenuHTML(menu, {
+    width: window.innerWidth,
+    height: window.innerHeight,
+  });
 }
 
 function getPassageNoteVerb(noteType) {
@@ -3176,7 +3275,7 @@ function renderManuscriptPanel() {
     state,
     selectedScene,
     editorMode,
-    grammarCheckSummary: buildGrammarCheckSummary(selectedScene),
+    grammarCheckSummary: buildGrammarCheckSummary(selectedScene, getCurrentSpellcheckLexicons()),
     projectFileDisplay: getProjectFileDisplayState(),
     projectIndex: getActiveProjectRecord()?.projectIndex ?? null,
     buildEditorStyle,
@@ -3403,7 +3502,7 @@ function renderGrammarCheckPanel(options = {}) {
   const selectedSceneChapter = selectedScene?.chapterTitle
     ? formatChapterDisplayTitle(selectedScene.chapterTitle)
     : "Current chapter";
-  const entries = buildGrammarCheckEntries(selectedScene, options);
+  const entries = buildGrammarCheckEntries(selectedScene, getCurrentSpellcheckLexicons(), options);
   const previousList = slot.querySelector("[data-grammar-check-list]");
   const previousScrollTop = previousList instanceof HTMLElement ? previousList.scrollTop : 0;
   const previousScrollLeft = previousList instanceof HTMLElement ? previousList.scrollLeft : 0;
@@ -3455,209 +3554,27 @@ function syncGrammarCheckSlotPosition(slot, position) {
 }
 
 function setGrammarCheckPanelPosition(left, top) {
-  state.grammarCheckPanel = {
-    ...state.grammarCheckPanel,
-    position: {
-      left: Math.round(left),
-      top: Math.round(top),
-    },
-  };
+  state.grammarCheckPanel = setGrammarCheckPanelPositionState(state.grammarCheckPanel, left, top);
 
   const slot = document.querySelector("#grammar-check-slot");
   syncGrammarCheckSlotPosition(slot, state.grammarCheckPanel.position);
 }
 
-function clampGrammarCheckPanelPosition(left, top, width, height) {
-  const safeWidth = Math.max(0, Number(width) || 0);
-  const safeHeight = Math.max(0, Number(height) || 0);
-  const minLeft = 12;
-  const minTop = 12;
-  const maxLeft = Math.max(minLeft, window.innerWidth - safeWidth - 12);
-  const maxTop = Math.max(minTop, window.innerHeight - safeHeight - 12);
-
-  return {
-    left: Math.min(Math.max(minLeft, left), maxLeft),
-    top: Math.min(Math.max(minTop, top), maxTop),
-  };
-}
-
 function handleGrammarCheckPointerDown(event) {
-  if (!state.grammarCheckPanel?.open || event.button !== 0) {
-    return;
-  }
-
-  const target = event.target instanceof Element ? event.target : null;
-  const dragHandle = target?.closest("[data-grammar-check-drag-handle]");
-  if (!(dragHandle instanceof HTMLElement)) {
-    return;
-  }
-
-  const slot = dragHandle.closest("#grammar-check-slot");
-  if (!(slot instanceof HTMLElement)) {
-    return;
-  }
-
-  const rect = slot.getBoundingClientRect();
-  manuscriptGrammarDragState = {
-    pointerId: event.pointerId,
-    slot,
-    dragHandle,
-    offsetX: event.clientX - rect.left,
-    offsetY: event.clientY - rect.top,
-    width: rect.width,
-    height: rect.height,
-  };
-
-  slot.classList.add("is-dragging");
-  event.preventDefault();
-  if (typeof dragHandle.setPointerCapture === "function") {
-    try {
-      dragHandle.setPointerCapture(event.pointerId);
-    } catch {
-      // Ignore capture failures; the document-level move/end handlers still work.
-    }
-  }
+  grammarCheckPanelDragController.begin(event);
 }
 
 function handleGrammarCheckPointerMove(event) {
-  if (!manuscriptGrammarDragState || event.pointerId !== manuscriptGrammarDragState.pointerId) {
-    return;
-  }
-
-  const nextLeft = event.clientX - manuscriptGrammarDragState.offsetX;
-  const nextTop = event.clientY - manuscriptGrammarDragState.offsetY;
-  const clamped = clampGrammarCheckPanelPosition(
-    nextLeft,
-    nextTop,
-    manuscriptGrammarDragState.width,
-    manuscriptGrammarDragState.height,
-  );
-
-  setGrammarCheckPanelPosition(clamped.left, clamped.top);
-  event.preventDefault();
+  grammarCheckPanelDragController.move(event);
 }
 
 function handleGrammarCheckPointerEnd(event) {
-  if (!manuscriptGrammarDragState || event.pointerId !== manuscriptGrammarDragState.pointerId) {
-    return;
-  }
-
-  const { slot, dragHandle, pointerId } = manuscriptGrammarDragState;
-  slot.classList.remove("is-dragging");
-  if (typeof dragHandle.releasePointerCapture === "function") {
-    try {
-      dragHandle.releasePointerCapture(pointerId);
-    } catch {
-      // Ignore release failures.
-    }
-  }
-
-  manuscriptGrammarDragState = null;
-}
-
-function renderGrammarCheckPanelHTML({
-  selectedSceneTitle,
-  selectedSceneChapter,
-  entries,
-  selectedCount,
-  selectionSet,
-  selectionAnchorIndex,
-}) {
-  const totalCount = entries.reduce((total, entry) => total + Number(entry.count ?? 0), 0);
-  const uniqueCount = entries.length;
-  const addDisabled = selectedCount <= 0;
-  const summaryLabel = totalCount
-    ? `${totalCount} flagged word${totalCount === 1 ? "" : "s"} · ${uniqueCount} unique`
-    : "No flagged words";
-
-  return `
-    <section class="manuscript-grammar-panel ${totalCount ? "has-entries" : ""}" data-grammar-check-panel>
-      <button
-        class="manuscript-grammar-panel__close"
-        type="button"
-        data-action="close-grammar-check-panel"
-        aria-label="Close grammar check window"
-        title="Close grammar check window"
-      >×</button>
-      <div class="manuscript-grammar-panel__dragbar">
-        <div class="manuscript-grammar-panel__drag-handle" data-grammar-check-drag-handle aria-label="Drag grammar check window">
-          <span>Grammar check</span>
-          <strong>Drag to move</strong>
-        </div>
-      </div>
-      <div class="manuscript-grammar-panel__header">
-        <div class="manuscript-grammar-panel__titles">
-          <p class="manuscript-grammar-panel__kicker">${escapeHtml(selectedSceneChapter)}</p>
-          <h2>${escapeHtml(selectedSceneTitle)}</h2>
-          <p class="manuscript-grammar-panel__summary">${escapeHtml(summaryLabel)}</p>
-        </div>
-        <div class="manuscript-grammar-panel__actions">
-          <button class="tag-button editor-action-button" type="button" data-action="grammar-check-select-all" ${totalCount ? "" : "disabled"}>Select all</button>
-          <button class="tag-button editor-action-button" type="button" data-action="grammar-check-clear-selection" ${selectedCount ? "" : "disabled"}>Clear</button>
-        </div>
-      </div>
-      <div class="manuscript-grammar-panel__list" data-grammar-check-list>
-        ${entries.length
-          ? entries.map((entry, index) => {
-              const isSelected = selectionSet.has(entry.normalizedWord);
-              const isAnchor = selectionAnchorIndex === index;
-              return `
-                <div class="grammar-check-item ${isSelected ? "is-selected" : ""} ${isAnchor ? "is-anchor" : ""}" data-grammar-check-word="${escapeHtml(entry.normalizedWord)}" data-grammar-check-index="${index}" data-grammar-check-first-index="${escapeHtml(String(entry.firstIndex ?? 0))}">
-                  <label class="grammar-check-item__toggle" data-action="toggle-grammar-check-word">
-                    <input type="checkbox" ${isSelected ? "checked" : ""} aria-label="Select ${escapeHtml(entry.word)} for project dictionary" />
-                  </label>
-                  <button class="grammar-check-item__body" type="button" data-action="focus-grammar-check-word" title="Go to this word in the manuscript">
-                    <strong class="grammar-check-item__word">${escapeHtml(entry.word)}</strong>
-                    <span class="grammar-check-item__meta">${escapeHtml(`${entry.count} occurrence${entry.count === 1 ? "" : "s"}`)}</span>
-                  </button>
-                </div>
-              `;
-            }).join("")
-          : `<p class="grammar-check-empty">No flagged words in this scene.</p>`}
-      </div>
-      <div class="manuscript-grammar-panel__footer">
-        <span>${escapeHtml(selectedCount ? `${selectedCount} selected` : "Select words to add them to the project dictionary.")}</span>
-        <div class="manuscript-grammar-panel__footer-actions">
-          <button class="tag-button editor-action-button" type="button" data-action="grammar-check-add-selected" ${addDisabled ? "disabled" : ""}>Add selected to project dictionary</button>
-        </div>
-      </div>
-    </section>
-  `;
-}
-
-function buildGrammarCheckEntries(scene, options = {}) {
-  if (!scene || !spellcheckBaseLexicon?.wordList?.length) {
-    return [];
-  }
-
-  const projectLexicon = buildCurrentProjectSpellcheckLexicon();
-  const misspellings = groupSpellcheckMisspellings(scene.editorText ?? "", {
-    baseLexicon: spellcheckBaseLexicon,
-    projectLexicon,
-    referenceLexicon: spellcheckReferenceLexicon,
-  }, options);
-
-  return misspellings
-    .map((entry) => ({
-      ...entry,
-      word: String(entry.word ?? "").trim() || String(entry.normalizedWord ?? ""),
-      normalizedWord: normalizeSpellcheckWord(entry.normalizedWord ?? entry.word),
-      count: Number(entry.count ?? 0),
-      firstIndex: Number(entry.firstIndex ?? 0),
-      lastIndex: Number(entry.lastIndex ?? 0),
-    }))
-    .filter((entry) => entry.normalizedWord)
-    .sort((left, right) => left.firstIndex - right.firstIndex || left.word.localeCompare(right.word));
+  grammarCheckPanelDragController.end(event);
 }
 
 function toggleGrammarCheckPanel() {
-  const isOpen = state.grammarCheckPanel?.open === true;
   state.activePane = "manuscript";
-  state.grammarCheckPanel = {
-    ...state.grammarCheckPanel,
-    open: !isOpen,
-    selectedWords: isOpen ? state.grammarCheckPanel.selectedWords ?? [] : state.grammarCheckPanel.selectedWords ?? [],
-  };
+  state.grammarCheckPanel = toggleGrammarCheckPanelState(state.grammarCheckPanel);
   syncGrammarCheckPanelHeaderState();
   renderGrammarCheckPanel();
 }
@@ -3667,87 +3584,42 @@ function closeGrammarCheckPanel() {
     return;
   }
 
-  state.grammarCheckPanel = {
-    ...state.grammarCheckPanel,
-    open: false,
-  };
+  state.grammarCheckPanel = closeGrammarCheckPanelState(state.grammarCheckPanel);
   syncGrammarCheckPanelHeaderState();
   renderGrammarCheckPanel();
 }
 
 function updateGrammarCheckPanelSelection(nextSelectedWords, selectionAnchorIndex = null) {
-  const entries = buildGrammarCheckEntries(getSelectedScene() ?? state.scenes[0] ?? null);
-  const validWords = new Set(entries.map((entry) => entry.normalizedWord));
-  const nextSelection = [];
-  const seen = new Set();
-
-  for (const word of Array.isArray(nextSelectedWords) ? nextSelectedWords : []) {
-    const normalized = normalizeSpellcheckWord(word);
-    if (!normalized || !validWords.has(normalized) || seen.has(normalized)) {
-      continue;
-    }
-
-    seen.add(normalized);
-    nextSelection.push(normalized);
-  }
-
-  state.grammarCheckPanel = {
-    ...state.grammarCheckPanel,
-    selectedWords: nextSelection,
-    selectionAnchorIndex: Number.isInteger(selectionAnchorIndex) ? selectionAnchorIndex : null,
-  };
+  const entries = buildGrammarCheckEntries(getSelectedScene() ?? state.scenes[0] ?? null, getCurrentSpellcheckLexicons());
+  state.grammarCheckPanel = updateGrammarCheckPanelSelectionState(
+    state.grammarCheckPanel,
+    entries,
+    nextSelectedWords,
+    selectionAnchorIndex,
+  );
   renderGrammarCheckPanel();
 }
 
 function toggleGrammarCheckPanelWordSelection(word, entryIndex = -1, isShiftKey = false) {
-  const normalizedWord = normalizeSpellcheckWord(word);
-  if (!normalizedWord) {
-    return;
-  }
-
-  const entries = buildGrammarCheckEntries(getSelectedScene() ?? state.scenes[0] ?? null);
-  const selectedIndex = Number.isInteger(entryIndex) ? entryIndex : entries.findIndex((entry) => entry.normalizedWord === normalizedWord);
-  const selectedEntry = selectedIndex >= 0 ? entries[selectedIndex] : null;
-  if (!selectedEntry || !entries.some((entry) => entry.normalizedWord === normalizedWord)) {
-    return;
-  }
-
-  const currentSelection = new Set(
-    Array.isArray(state.grammarCheckPanel?.selectedWords)
-      ? state.grammarCheckPanel.selectedWords.map((entry) => normalizeSpellcheckWord(entry)).filter(Boolean)
-      : [],
+  const entries = buildGrammarCheckEntries(getSelectedScene() ?? state.scenes[0] ?? null, getCurrentSpellcheckLexicons());
+  const result = toggleGrammarCheckPanelWordSelectionState(
+    state.grammarCheckPanel,
+    entries,
+    word,
+    entryIndex,
+    isShiftKey,
   );
-
-  const anchorIndex = Number.isInteger(state.grammarCheckPanel?.selectionAnchorIndex)
-    ? state.grammarCheckPanel.selectionAnchorIndex
-    : null;
-
-  if (isShiftKey && anchorIndex !== null) {
-    const startIndex = Math.min(anchorIndex, selectedIndex);
-    const endIndex = Math.max(anchorIndex, selectedIndex);
-    for (let index = startIndex; index <= endIndex; index += 1) {
-      const entry = entries[index];
-      if (entry?.normalizedWord) {
-        currentSelection.add(entry.normalizedWord);
-      }
-    }
-    updateGrammarCheckPanelSelection([...currentSelection], anchorIndex);
-    focusGrammarCheckEntry(selectedEntry);
+  if (!result.changed) {
     return;
   }
 
-  if (currentSelection.has(normalizedWord)) {
-    currentSelection.delete(normalizedWord);
-  } else {
-    currentSelection.add(normalizedWord);
-  }
-
-  updateGrammarCheckPanelSelection([...currentSelection], selectedIndex);
-  focusGrammarCheckEntry(selectedEntry);
+  state.grammarCheckPanel = result.state;
+  renderGrammarCheckPanel();
+  focusGrammarCheckEntry(result.selectedEntry);
 }
 
 function selectAllGrammarCheckPanelWords() {
-  const entries = buildGrammarCheckEntries(getSelectedScene() ?? state.scenes[0] ?? null);
+  const entries = buildGrammarCheckEntries(getSelectedScene() ?? state.scenes[0] ?? null, getCurrentSpellcheckLexicons());
   updateGrammarCheckPanelSelection(entries.map((entry) => entry.normalizedWord), null);
 }
 
@@ -3772,7 +3644,7 @@ function syncGrammarCheckPanelHeaderState() {
   const grammarCheckPanelOpen = Boolean(state.grammarCheckPanel?.open);
   const selectedScene = getSelectedScene() ?? state.scenes[0] ?? null;
   const summary = grammarCheckEnabled
-    ? (buildGrammarCheckSummary(selectedScene)?.label ?? "Grammar check")
+    ? (buildGrammarCheckSummary(selectedScene, getCurrentSpellcheckLexicons())?.label ?? "Grammar check")
     : "Live off";
 
   button.setAttribute("aria-pressed", grammarCheckPanelOpen ? "true" : "false");
@@ -3868,10 +3740,7 @@ function closeManuscriptFind() {
   clearTextareaRuntimeSelectionPreview(resolveTextareaEditorHost(getEditorTextareaForScene(state.selectedSceneId)));
   renderManuscriptFindPanel();
   window.requestAnimationFrame(() => {
-    const textarea = getEditorTextareaForScene(state.selectedSceneId);
-    if (textarea instanceof HTMLTextAreaElement) {
-      textarea.focus({ preventScroll: true });
-    }
+    focusTextareaEditorHost(resolveTextareaEditorHost(getEditorTextareaForScene(state.selectedSceneId)));
   });
 }
 
@@ -3886,15 +3755,13 @@ function captureManuscriptEditorBookmark() {
     return null;
   }
 
-  const codeframe = textarea.closest(".scene-editor-codeframe");
+  const bookmark = captureTextareaEditorHostBookmark(resolveTextareaEditorHost(textarea));
   return manuscriptSelectionController.createBookmark({
-    sceneId: String(textarea.dataset.sceneId ?? ""),
-    startOffset: Number.isInteger(textarea.selectionStart) ? textarea.selectionStart : 0,
-    endOffset: Number.isInteger(textarea.selectionEnd) ? textarea.selectionEnd : Number.isInteger(textarea.selectionStart)
-      ? textarea.selectionStart
-      : 0,
-    scrollTop: codeframe instanceof HTMLElement ? codeframe.scrollTop : 0,
-    scrollLeft: codeframe instanceof HTMLElement ? codeframe.scrollLeft : 0,
+    sceneId: bookmark?.sceneId,
+    startOffset: bookmark?.selectionStart,
+    endOffset: bookmark?.selectionEnd,
+    scrollTop: bookmark?.codeframeScrollTop,
+    scrollLeft: bookmark?.codeframeScrollLeft,
   });
 }
 
@@ -3908,17 +3775,7 @@ function restoreManuscriptEditorBookmark(bookmark) {
     return;
   }
 
-  const safeStart = clampEditorOffset(bookmark.selectionStart, textarea.value.length);
-  const safeEnd = clampEditorOffset(bookmark.selectionEnd, textarea.value.length);
-  const codeframe = textarea.closest(".scene-editor-codeframe");
-  if (codeframe instanceof HTMLElement) {
-    codeframe.scrollTo({
-      left: Math.max(0, Number(bookmark.codeframeScrollLeft) || 0),
-      top: Math.max(0, Number(bookmark.codeframeScrollTop) || 0),
-    });
-  }
-
-  textarea.setSelectionRange(Math.min(safeStart, safeEnd), Math.max(safeStart, safeEnd), "forward");
+  restoreTextareaEditorHostBookmark(resolveTextareaEditorHost(textarea), bookmark);
 }
 
 function updateManuscriptFindField(findField, value) {
@@ -3995,7 +3852,7 @@ function focusManuscriptFindMatchProjection(match, options = {}) {
     return false;
   }
 
-  takeToEditorOffset(textarea, match.startOffset, options);
+  scrollTextareaEditorHostToOffset(editorHost, match.startOffset, options);
   return true;
 }
 
@@ -4295,24 +4152,21 @@ function renderIssuePanelBody() {
 
 function getOpenManuscriptTasks() {
   // Intent: use one task source for both the side-panel tab badge and the task console heading.
-  return state.manuscriptTasks.filter((task) => task.status === "open");
+  return selectOpenManuscriptTasks(state.manuscriptTasks);
 }
 
 function renderPassageNotePanel(noteType) {
-  const notes = state.passageNotes.filter((note) => note.noteType === noteType);
-  const label = noteType === "research" ? "Research" : "Inspiration";
-  const noteGroups = groupConsoleItemsByChapter(notes);
-
-  return `
-    <div class="panel-heading">
-      <p class="panel-kicker">${escapeHtml(label)}</p>
-    </div>
-    ${noteGroups.length ? `
-      <div class="passage-note-list console-list console-chapter-list">
-        ${noteGroups.map((group) => renderPassageNoteChapterGroup(noteType, group)).join("")}
-      </div>
-    ` : renderEmptyPassageNoteState(label)}
-  `;
+  const panelModel = buildPassageNotePanelModel(
+    state.passageNotes,
+    noteType,
+    groupScenesByChapter(state.scenes),
+  );
+  return renderPassageNotePanelHTML(panelModel, {
+    selectedNoteId: state.selectedPassageNoteId,
+    previewNoteId: state.taskPreview?.taskId,
+    collapsedChapterIds: state.collapsedConsoleChapterIds?.[noteType],
+    formatChapterTitle: formatChapterDisplayTitle,
+  });
 }
 
 function buildRevisionPanelModel() {
@@ -4375,73 +4229,6 @@ function closeRevisionWindow() {
   renderRevisionWindow();
 }
 
-function renderEmptyPassageNoteState(label) {
-  return `
-    <div class="empty-note-state">
-      <strong>No ${escapeHtml(label.toLowerCase())} bubbles yet.</strong>
-      <span>Right-click in the editor, choose ${escapeHtml(label)}, then type into the inline bubble.</span>
-    </div>
-  `;
-}
-
-function renderPassageNoteItem(note) {
-  const isSelected = state.selectedPassageNoteId === note.id;
-  const isPreviewing = state.taskPreview?.taskId === note.id;
-  const sourceLabel = formatImportSourceLabel(note.source);
-  const deleteLabel = `Delete ${note.noteType === "research" ? "research" : "inspiration"} note`;
-  const editLabel = `Edit ${note.noteType === "research" ? "research" : "inspiration"} note`;
-  return `
-    <div
-      class="console-item passage-note-item ${isSelected ? "is-selected" : ""} ${isPreviewing ? "is-previewing" : ""}"
-      data-action="select-passage-note"
-      data-note-id="${escapeHtml(note.id)}"
-      role="button"
-      tabindex="0"
-      aria-expanded="${isPreviewing ? "true" : "false"}"
-    >
-      <span class="console-meta">${escapeHtml(note.chapterTitle || "Imported source")} · ${escapeHtml(note.sceneTitle || "Scene")}${sourceLabel && note.source !== "manual" ? ` · ${escapeHtml(sourceLabel)}` : ""}</span>
-      <input
-        class="inline-title-input passage-note-title-input"
-        type="text"
-        value="${escapeHtml(note.title || "Inspiration note")}"
-        data-title-input
-        data-edit-field="passage-note-title"
-        data-note-id="${escapeHtml(note.id)}"
-        aria-label="${escapeHtml(note.noteType === "research" ? "Research title" : "Inspiration title")}"
-      />
-      <textarea
-        class="passage-note-body-input"
-        data-edit-field="passage-note-body"
-        data-note-id="${escapeHtml(note.id)}"
-        aria-label="${escapeHtml(note.noteType === "research" ? "Research note body" : "Inspiration note body")}"
-        rows="3"
-      >${escapeHtml(note.body || "")}</textarea>
-      <div class="passage-note-actions">
-        <button
-          class="tag-button passage-note-icon-button passage-note-edit-button"
-          type="button"
-          data-action="edit-passage-note"
-          data-note-id="${escapeHtml(note.id)}"
-          aria-label="${escapeHtml(editLabel)}"
-          title="Edit this note"
-        >
-          ${renderPassageNoteEditIcon()}
-        </button>
-        <button
-          class="tag-button passage-note-icon-button passage-note-delete-button"
-          type="button"
-          data-action="delete-passage-note"
-          data-note-id="${escapeHtml(note.id)}"
-          aria-label="${escapeHtml(deleteLabel)}"
-          title="Delete this note"
-        >
-          ${renderPassageNoteDeleteIcon()}
-        </button>
-      </div>
-    </div>
-  `;
-}
-
 function renderDeleteConfirmationDialog() {
   const slot = document.querySelector("#confirmation-slot");
   if (!(slot instanceof HTMLElement)) {
@@ -4454,52 +4241,7 @@ function renderDeleteConfirmationDialog() {
     return;
   }
 
-  const preferenceKey = dialog.preferenceKey === "tasks" ? "tasks" : "passageNotes";
-  const skipConfirmation = Boolean(state.deleteConfirmationPreferences?.[preferenceKey]);
-  slot.innerHTML = `
-    <div class="delete-confirmation-backdrop" data-action="cancel-delete-confirmation" aria-hidden="true"></div>
-    <section class="delete-confirmation-modal" role="dialog" aria-modal="true" aria-label="${escapeHtml(dialog.title)}">
-      <header class="delete-confirmation-header">
-        <strong>${escapeHtml(dialog.title)}</strong>
-        <button
-          class="delete-confirmation-close"
-          type="button"
-          data-action="cancel-delete-confirmation"
-          aria-label="Close delete confirmation"
-          title="Close"
-        >×</button>
-      </header>
-      <p class="delete-confirmation-copy">${escapeHtml(dialog.message)}</p>
-      <label class="delete-confirmation-checkbox">
-        <input
-          type="checkbox"
-          data-action="toggle-delete-confirmation-preference"
-          data-confirmation-key="${escapeHtml(preferenceKey)}"
-          ${skipConfirmation ? "checked" : ""}
-        />
-        <span>Do not ask me again</span>
-      </label>
-      <div class="delete-confirmation-actions">
-        <button
-          class="tag-button delete-confirmation-cancel"
-          type="button"
-          data-action="cancel-delete-confirmation"
-        >Cancel</button>
-        <button
-          class="tag-button delete-confirmation-confirm"
-          type="button"
-          data-action="confirm-delete-confirmation"
-        >Delete</button>
-      </div>
-    </section>
-  `;
-}
-
-function createDeleteConfirmationPreferences(candidate = {}) {
-  return {
-    passageNotes: Boolean(candidate?.passageNotes),
-    tasks: Boolean(candidate?.tasks ?? candidate?.comments),
-  };
+  slot.innerHTML = renderDeleteConfirmationDialogHTML(dialog, state.deleteConfirmationPreferences);
 }
 
 function loadDeleteConfirmationPreferences() {
@@ -4511,27 +4253,6 @@ function persistDeleteConfirmationPreferences() {
     EDITOR_DELETE_CONFIRMATIONS_KEY,
     createDeleteConfirmationPreferences(state.deleteConfirmationPreferences),
   );
-}
-
-function renderPassageNoteEditIcon() {
-  return `
-    <svg class="passage-note-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-      <path d="M10.8 2.4 13.6 5.2 5.7 13.1 2.2 13.8 2.9 10.3 10.8 2.4Z"></path>
-      <path d="M9.4 3.8 12.2 6.6"></path>
-    </svg>
-  `;
-}
-
-function renderPassageNoteDeleteIcon() {
-  return `
-    <svg class="passage-note-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-      <path d="M3.5 4.5H12.5"></path>
-      <path d="M6 4.5 6.3 3.4H9.7L10 4.5"></path>
-      <path d="M5.5 4.5 6 12.2C6.1 12.9 6.6 13.5 7.3 13.5H8.7C9.4 13.5 9.9 12.9 10 12.2L10.5 4.5"></path>
-      <path d="M7 7V11"></path>
-      <path d="M9 7V11"></path>
-    </svg>
-  `;
 }
 
 function requestDeletePassageNoteFromPanel(noteId) {
@@ -4611,11 +4332,13 @@ function performPassageNoteDeletion(noteId) {
       candidate.sceneId === note.sceneId,
   ) ?? null;
 
-  state.passageNotes = state.passageNotes.filter((candidate) => candidate.id !== note.id);
-  persistPassageNotesState({
+  const deletion = anchoredRecordService.deletePassageNote(note.id, {
     dirtyReason: `${note.noteType}-note-deleted`,
     source: "performPassageNoteDeletion",
   });
+  if (!deletion) {
+    return false;
+  }
 
   if (wasPreviewing) {
     clearTaskAnchorPreview({ restoreSelection: false });
@@ -4737,186 +4460,13 @@ function formatImportSourceLabel(source) {
 }
 
 function renderTaskChapterList(tasks) {
-  if (!tasks.length) {
-    return "";
-  }
-
-  const chapters = groupScenesByChapter(state.scenes)
-    .map((chapter) => ({
-      ...chapter,
-      tasks: tasks.filter((task) => task.chapterId === chapter.chapterId),
-    }))
-    .filter((chapter) => chapter.tasks.length > 0);
-
-  return `
-    <div class="task-panel">
-      <div class="task-panel-heading">
-        <p class="selection-label">Tasks</p>
-        <strong>${escapeHtml(String(tasks.length))}</strong>
-      </div>
-      <div class="task-chapter-list">
-        ${chapters.map((chapter) => renderTaskChapterGroup(chapter)).join("")}
-      </div>
-    </div>
-  `;
-}
-
-function renderTaskChapterGroup(chapter) {
-  return renderCollapsibleChapterGroup({
-    panelId: "issueTasks",
-    chapterKey: chapter.chapterId,
-    chapterTitle: chapter.chapterTitle,
-    itemCount: chapter.tasks.length,
-    groupClassName: "task-chapter-group",
-    headingClassName: "task-chapter-heading",
-    childrenClassName: "task-list",
-    bodyHtml: chapter.tasks.map((task) => renderSceneTask(task)).join(""),
+  const panelModel = buildTaskPanelModel(tasks, groupScenesByChapter(state.scenes));
+  return renderTaskPanelHTML(panelModel, {
+    selectedTaskId: state.selectedTaskId,
+    previewTaskId: state.taskPreview?.taskId,
+    collapsedChapterIds: state.collapsedConsoleChapterIds?.issueTasks,
+    formatChapterTitle: formatChapterDisplayTitle,
   });
-}
-
-function renderPassageNoteChapterGroup(noteType, group) {
-  return renderCollapsibleChapterGroup({
-    panelId: noteType,
-    chapterKey: group.chapterKey,
-    chapterTitle: group.chapterTitle,
-    itemCount: group.items.length,
-    groupClassName: "console-chapter-group passage-note-chapter-group",
-    headingClassName: "console-chapter-heading",
-    childrenClassName: "console-chapter-children",
-    bodyHtml: group.items.map((note) => renderPassageNoteItem(note)).join(""),
-  });
-}
-
-function renderCollapsibleChapterGroup({
-  panelId,
-  chapterKey,
-  chapterTitle,
-  itemCount,
-  bodyHtml,
-  groupClassName,
-  headingClassName,
-  childrenClassName,
-}) {
-  const normalizedPanelId = String(panelId ?? "").trim();
-  const normalizedChapterKey = String(chapterKey ?? "").trim();
-  if (!normalizedPanelId || !normalizedChapterKey) {
-    return "";
-  }
-
-  const isCollapsed = isConsoleChapterCollapsed(normalizedPanelId, normalizedChapterKey);
-  return `
-    <section class="${escapeHtml(groupClassName)}${isCollapsed ? " is-collapsed" : ""}">
-      <button
-        class="${escapeHtml(headingClassName)}"
-        type="button"
-        data-action="toggle-console-chapter-collapse"
-        data-console-panel="${escapeHtml(normalizedPanelId)}"
-        data-chapter-key="${escapeHtml(normalizedChapterKey)}"
-        aria-expanded="${isCollapsed ? "false" : "true"}"
-      >
-        <span class="console-chapter-disclosure" aria-hidden="true">${isCollapsed ? "▸" : "▾"}</span>
-        <strong>${escapeHtml(formatChapterDisplayTitle(chapterTitle))}</strong>
-        <span class="console-chapter-count">${escapeHtml(String(itemCount))}</span>
-      </button>
-      <div class="${escapeHtml(childrenClassName)}">
-        ${bodyHtml}
-      </div>
-    </section>
-  `;
-}
-
-function groupConsoleItemsByChapter(items) {
-  const chapterOrder = groupScenesByChapter(state.scenes);
-  const groupsByKey = new Map();
-
-  for (const item of Array.isArray(items) ? items : []) {
-    if (!item || typeof item !== "object") {
-      continue;
-    }
-
-    const chapterId = typeof item.chapterId === "string" && item.chapterId.trim()
-      ? item.chapterId.trim()
-      : "";
-    const chapterKey = chapterId || createConsoleChapterKey(item.chapterTitle);
-    if (!groupsByKey.has(chapterKey)) {
-      groupsByKey.set(chapterKey, {
-        chapterKey,
-        chapterId: chapterId || chapterKey,
-        chapterTitle: item.chapterTitle || "Unknown chapter",
-        items: [],
-      });
-    }
-
-    groupsByKey.get(chapterKey).items.push(item);
-  }
-
-  const orderedGroups = [];
-  for (const chapter of chapterOrder) {
-    const chapterKey = chapter.chapterId;
-    const group = groupsByKey.get(chapterKey);
-    if (group) {
-      orderedGroups.push({
-        ...group,
-        chapterTitle: chapter.chapterTitle || group.chapterTitle,
-      });
-      groupsByKey.delete(chapterKey);
-    }
-  }
-
-  for (const group of groupsByKey.values()) {
-    orderedGroups.push(group);
-  }
-
-  return orderedGroups;
-}
-
-function createConsoleChapterKey(value) {
-  const normalized = String(value ?? "").trim().toLowerCase().replace(/\s+/g, "-");
-  return normalized ? `chapter-${normalized}` : "chapter-unknown";
-}
-
-function isConsoleChapterCollapsed(panelId, chapterKey) {
-  const collapsed = state.collapsedConsoleChapterIds?.[panelId];
-  return Array.isArray(collapsed) && collapsed.includes(chapterKey);
-}
-
-function renderSceneTask(task) {
-  const isSelected = state.selectedTaskId === task.id;
-  const isPreviewing = state.taskPreview?.taskId === task.id;
-  const sourceLabel = formatImportSourceLabel(task.source);
-  const taskNumberLabel = String(task.taskNumber || 1).padStart(2, "0");
-  return `
-    <div class="task-item ${isSelected ? "is-selected" : ""} ${isPreviewing ? "is-previewing" : ""}" data-task-preview-id="${escapeHtml(task.id)}" tabindex="0">
-      <button
-        class="task-thumb"
-        type="button"
-        tabindex="-1"
-        data-action="toggle-task-preview"
-        data-task-preview-trigger
-        data-task-preview-task-id="${escapeHtml(task.id)}"
-        aria-pressed="${isPreviewing ? "true" : "false"}"
-        aria-label="${escapeHtml(`Preview ${task.title || task.sceneTitle || "task"}`)}"
-        title="${escapeHtml(isPreviewing ? "Click to collapse the task text" : "Hover or click to preview the task text")}"
-      >
-        <span class="task-thumb-label" aria-hidden="true">${escapeHtml(taskNumberLabel)}</span>
-      </button>
-      <div class="task-copy">
-        ${sourceLabel && task.source !== "manual" ? `<span class="console-meta task-source">${escapeHtml(sourceLabel)}</span>` : ""}
-        <input
-          class="inline-title-input task-title-input"
-          type="text"
-          value="${escapeHtml(task.title || `${task.sceneTitle || "Scene"} task ${task.taskNumber || 1}`)}"
-          data-title-input
-          data-edit-field="task-title"
-          data-task-id="${escapeHtml(task.id)}"
-          aria-label="Task title"
-        />
-        <span class="task-body">${escapeHtml(task.body || task.description || "No task body")}</span>
-        ${isSelected ? `<em class="task-reference">Reference: ${escapeHtml(task.selectedText)}</em>` : ""}
-      </div>
-      <button class="tag-button task-complete-button" data-action="complete-task" data-task-id="${escapeHtml(task.id)}">Done</button>
-    </div>
-  `;
 }
 
 function renderEvent(eventTag) {
@@ -5192,49 +4742,14 @@ function renderSuggestion(suggestion) {
   `;
 }
 
-// Intent: keep narration take state tied to project and manuscript anchors for later voice-service extraction.
-function getVoiceRecordingsForProject(projectId = state.activeProjectId ?? state.workspace?.project?.id ?? "") {
-  const recordings = Array.isArray(state.workspace?.voice?.recordings)
-    ? state.workspace.voice.recordings
-    : [];
-  const normalizedProjectId = typeof projectId === "string" ? projectId.trim() : "";
-  if (!normalizedProjectId) {
-    return recordings;
-  }
-
-  return recordings.filter((recording) => recording.projectId === normalizedProjectId);
-}
-
-function getVoiceRecordingById(recordingId) {
-  if (typeof recordingId !== "string" || !recordingId.trim()) {
-    return null;
-  }
-
-  return getVoiceRecordingsForProject().find((recording) => recording.id === recordingId) ?? null;
-}
-
 function getNarrationTakeSelectionForScene(sceneId) {
-  if (state.narrationTakeSelection?.sceneId === sceneId) {
-    return state.narrationTakeSelection;
-  }
-
   const scene = getScene(sceneId);
-  if (!scene) {
-    return null;
-  }
-
-  const selectedBlockId = state.selectedBlockId && scene.blocks.some((block) => block.blockId === state.selectedBlockId)
-    ? state.selectedBlockId
-    : scene.blocks[0]?.blockId ?? null;
-  const block = selectedBlockId ? scene.blocks.find((candidate) => candidate.blockId === selectedBlockId) ?? null : null;
-
-  if (!block) {
-    return null;
-  }
-
-  const ranges = getSceneBlockRanges(scene);
-  const blockRange = ranges.find((candidate) => candidate.blockId === block.blockId) ?? null;
-  return buildNarrationTakeSelection(scene, block, blockRange ?? null, null, blockRange?.startOffset ?? 0, blockRange?.endOffset ?? block.text.length, block.text);
+  return selectNarrationTakeSelectionForScene(scene, {
+    currentSelection: state.narrationTakeSelection,
+    selectedBlockId: state.selectedBlockId,
+    projectId: state.activeProjectId ?? state.workspace?.project?.id ?? "",
+    getSceneBlockRanges,
+  });
 }
 
 function updateNarrationTakeSelectionFromTextarea(textarea, inlinePosition = null) {
@@ -5319,75 +4834,26 @@ function resolveNarrationTakeSelectionFromTextarea(textarea, inlinePosition = nu
 
   const contextRange = getEditorContextRange(textarea);
   const caretOffset = Number.isInteger(textarea.selectionStart) ? textarea.selectionStart : 0;
-  const anchorOffset = contextRange?.hasExplicitSelection
-    ? contextRange.startOffset
-    : caretOffset;
-  const block = findSceneBlockAtOffset(scene, anchorOffset) ?? scene.blocks[0] ?? null;
-
-  if (!block) {
-    return null;
-  }
-
-  const blockRange = getSceneBlockRanges(scene).find((candidate) => candidate.blockId === block.blockId) ?? null;
-  const selectedText = contextRange?.selectedText?.trim()
-    || block.text.trim()
-    || "";
-  const startOffset = contextRange?.hasExplicitSelection
-    ? contextRange.startOffset
-    : blockRange?.startOffset ?? 0;
-  const endOffset = contextRange?.hasExplicitSelection
-    ? contextRange.endOffset
-    : blockRange?.endOffset ?? selectedText.length;
-
-  return buildNarrationTakeSelection(
+  return resolveNarrationTakeSelectionFromTextInput({
     scene,
-    block,
+    contextRange,
+    caretOffset,
+    inlinePosition,
+    projectId: state.activeProjectId ?? state.workspace?.project?.id ?? "",
+    findSceneBlockAtOffset,
+    getSceneBlockRanges,
+  });
+}
+
+function buildNarrationTakeSelection(scene, block, blockRange, inlinePosition = null, startOffset = null, endOffset = null, selectedText = null) {
+  return buildNarrationTakeSelectionRecord(scene, block, {
     blockRange,
     inlinePosition,
     startOffset,
     endOffset,
     selectedText,
-  );
-}
-
-function buildNarrationTakeSelection(scene, block, blockRange, inlinePosition = null, startOffset = null, endOffset = null, selectedText = null) {
-  if (!scene || !block) {
-    return null;
-  }
-
-  const resolvedStartOffset = Number.isInteger(startOffset)
-    ? startOffset
-    : Number.isInteger(blockRange?.startOffset)
-      ? blockRange.startOffset
-      : 0;
-  const resolvedEndOffset = Number.isInteger(endOffset)
-    ? endOffset
-    : Number.isInteger(blockRange?.endOffset)
-      ? blockRange.endOffset
-      : Math.max(resolvedStartOffset, block.text.length);
-  const resolvedSelectedText = String(selectedText ?? block.text ?? "").trim();
-
-  return {
-    id: `${scene.sceneId}:${block.blockId}:${resolvedStartOffset}:${resolvedEndOffset}`,
     projectId: state.activeProjectId ?? state.workspace?.project?.id ?? "",
-    chapterId: scene.chapterId,
-    chapterTitle: scene.chapterTitle,
-    sceneId: scene.sceneId,
-    sceneTitle: scene.sceneTitle,
-    blockId: block.blockId,
-    paragraphId: block.paragraphId,
-    lineNumber: block.lineNumber ?? 0,
-    kind: block.kind,
-    kindLabel: block.kind === "dialogue" ? "Dialogue" : "Narration",
-    selectedText: resolvedSelectedText,
-    startOffset: resolvedStartOffset,
-    endOffset: resolvedEndOffset,
-    blockStartOffset: blockRange?.startOffset ?? resolvedStartOffset,
-    blockEndOffset: blockRange?.endOffset ?? resolvedEndOffset,
-    caretOffset: resolvedStartOffset,
-    inlinePosition,
-    verseText: resolvedSelectedText,
-  };
+  });
 }
 
 function getSceneBlockRanges(scene) {
@@ -5435,153 +4901,10 @@ function findSceneBlockAtOffset(scene, offset) {
   return priorMatch;
 }
 
-function createNarrationRecordingId(selection) {
-  const sceneSegment = sanitizeFileNameSegment(selection?.sceneId ?? selection?.sceneTitle ?? "scene");
-  const blockSegment = sanitizeFileNameSegment(selection?.blockId ?? `line-${selection?.lineNumber ?? "0"}`);
-  return `take-${Date.now().toString(36)}-${sceneSegment}-${blockSegment}`;
-}
-
-function buildVoiceRecordingMediaPath(projectId, recordingId, mediaMimeType) {
-  const safeProjectId = sanitizeFileNameSegment(projectId || "project");
-  const mediaName = getVoiceRecordingMediaName(recordingId, mediaMimeType);
-  return `project-media/${safeProjectId}/${mediaName}`;
-}
-
-function getVoiceRecordingMediaName(recordingId, mediaMimeType) {
-  return `${sanitizeFileNameSegment(recordingId || "voice-take")}.${getVoiceRecordingExtension(mediaMimeType)}`;
-}
-
-function getVoiceRecordingExtension(mediaMimeType) {
-  const normalizedMimeType = normalizeNarrationRecordingMimeType(mediaMimeType);
-  if (normalizedMimeType.includes("ogg")) {
-    return "ogg";
-  }
-
-  if (normalizedMimeType.includes("wav")) {
-    return "wav";
-  }
-
-  if (normalizedMimeType.includes("mp4") || normalizedMimeType.includes("m4a")) {
-    return "m4a";
-  }
-
-  return "webm";
-}
-
-function getSupportedNarrationRecordingMimeType() {
-  if (typeof MediaRecorder === "undefined" || typeof MediaRecorder.isTypeSupported !== "function") {
-    return NARRATION_RECORDING_DEFAULT_MIME_TYPE;
-  }
-
-  const candidates = [
-    "audio/webm;codecs=opus",
-    "audio/webm",
-    "audio/ogg;codecs=opus",
-    "audio/ogg",
-  ];
-
-  for (const candidate of candidates) {
-    if (MediaRecorder.isTypeSupported(candidate)) {
-      return candidate;
-    }
-  }
-
-  return NARRATION_RECORDING_DEFAULT_MIME_TYPE;
-}
-
-function normalizeNarrationRecordingMimeType(candidate) {
-  return typeof candidate === "string" && candidate.trim() ? candidate.trim() : "";
-}
-
-function sanitizeFileNameSegment(value) {
-  return String(value ?? "")
-    .trim()
-    .replace(/[<>:"/\\|?*\u0000-\u001F]+/g, "-")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^\.+/, "")
-    .replace(/\.+$/, "")
-    .slice(0, 96) || "segment";
-}
-
-function normalizeNarrationTakeTranscript(value) {
-  return typeof value === "string"
-    ? value.replace(/\s+/g, " ").trim()
-    : "";
-}
-
-function normalizeNarrationTakeStatusText(value) {
-  return typeof value === "string" && value.trim() ? value.trim() : "";
-}
-
-function formatNarrationRecordingElapsedLabel(durationMs) {
-  const totalSeconds = Math.max(0, Math.floor(Number(durationMs) / 1000));
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  const secondsLabel = String(seconds).padStart(2, "0");
-
-  if (hours > 0) {
-    return `${hours}:${String(minutes).padStart(2, "0")}:${secondsLabel}`;
-  }
-
-  return `${minutes}:${secondsLabel}`;
-}
-
-async function blobToBase64(blob) {
-  const arrayBuffer = await blob.arrayBuffer();
-  return arrayBufferToBase64(arrayBuffer);
-}
-
-function arrayBufferToBase64(buffer) {
-  const bytes = new Uint8Array(buffer);
-  const chunkSize = 0x8000;
-  let binary = "";
-
-  for (let index = 0; index < bytes.length; index += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
-  }
-
-  return window.btoa(binary);
-}
-
-function base64ToBlob(contentBase64, mediaMimeType) {
-  const normalizedContent = typeof contentBase64 === "string" ? contentBase64.trim() : "";
-  if (!normalizedContent) {
-    return null;
-  }
-
-  const binary = window.atob(normalizedContent);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-
-  return new Blob([bytes], {
-    type: normalizeNarrationRecordingMimeType(mediaMimeType) || NARRATION_RECORDING_DEFAULT_MIME_TYPE,
-  });
-}
-
 function createNarrationTakeSession(selection, options = {}) {
-  const startedAtMs = Number.isFinite(Number(options.startedAtMs))
-    ? Number(options.startedAtMs)
-    : Date.now();
-
-  return {
-    status: options.status === "recording" ? "recording" : "paused",
-    trackerStatus: normalizeNarrationTakeStatusText(options.trackerStatus) || "Speech tracker idle",
-    transcript: typeof options.transcript === "string" ? options.transcript : "",
-    elapsedLabel: typeof options.elapsedLabel === "string" ? options.elapsedLabel : "0:00",
-    recordingId: typeof options.recordingId === "string" ? options.recordingId : null,
-    mediaPath: typeof options.mediaPath === "string" ? options.mediaPath : null,
-    startedAt: new Date(startedAtMs).toISOString(),
-    sceneId: selection?.sceneId ?? normalizeNarrationTakeStatusText(options.sceneId) ?? "",
-    sceneTitle: selection?.sceneTitle ?? normalizeNarrationTakeStatusText(options.sceneTitle) ?? "",
-    chapterId: selection?.chapterId ?? normalizeNarrationTakeStatusText(options.chapterId) ?? "",
-    chapterTitle: selection?.chapterTitle ?? normalizeNarrationTakeStatusText(options.chapterTitle) ?? "",
-    blockId: selection?.blockId ?? normalizeNarrationTakeStatusText(options.blockId) ?? "",
-    selection: selection ? cloneValue(selection) : null,
-  };
+  return createNarrationTakeSessionRecord(selection, options, {
+    clone: cloneValue,
+  });
 }
 
 function updateNarrationTakeSessionFromRuntime(overrides = {}) {
@@ -5624,152 +4947,11 @@ function refreshNarrationRecordingSession() {
 }
 
 async function startNarrationRecording(sceneId = state.selectedSceneId) {
-  if (narrationRecordingRuntime) {
-    return;
-  }
-
-  const scene = sceneId ? getScene(sceneId) : getSelectedScene() ?? state.scenes[0] ?? null;
-  const selection = scene ? getNarrationTakeSelectionForScene(scene.sceneId) : null;
-  if (!scene || !selection) {
-    setNarrationTakeSession(createNarrationTakeSession(selection, {
-      status: "paused",
-      trackerStatus: "Select a verse before starting a narration take.",
-    }));
-    return;
-  }
-
-  if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
-    setNarrationTakeSession(createNarrationTakeSession(selection, {
-      status: "paused",
-      trackerStatus: "Microphone capture is not available in this browser.",
-    }));
-    return;
-  }
-
-  if (typeof MediaRecorder === "undefined") {
-    setNarrationTakeSession(createNarrationTakeSession(selection, {
-      status: "paused",
-      trackerStatus: "MediaRecorder is not available in this browser.",
-    }));
-    return;
-  }
-
-  const projectId = state.activeProjectId ?? state.workspace?.project?.id ?? "";
-  const recordingId = createNarrationRecordingId(selection);
-  const mediaMimeType = getSupportedNarrationRecordingMimeType();
-  const mediaPath = buildVoiceRecordingMediaPath(projectId, recordingId, mediaMimeType);
-  const startedAtMs = Date.now();
-  narrationRecordingRuntime = {
-    recordingId,
-    projectId,
-    selection: cloneValue(selection),
-    startedAtMs,
-    chunks: [],
-    mediaMimeType,
-    mediaPath,
-    stream: null,
-    mediaRecorder: null,
-    speechRecognition: null,
-    timerId: window.setInterval(refreshNarrationRecordingSession, 1000),
-    transcript: "",
-    trackerStatus: "Requesting microphone access...",
-  };
-  setNarrationTakeSession(createNarrationTakeSession(selection, {
-    status: "paused",
-    trackerStatus: "Requesting microphone access...",
-    transcript: "",
-    elapsedLabel: "0:00",
-    recordingId,
-    mediaPath,
-    startedAtMs,
-  }));
-
-  let stream;
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  } catch (error) {
-    await abortNarrationRecordingStart(selection, error);
-    return;
-  }
-
-  if (!narrationRecordingRuntime || narrationRecordingRuntime.recordingId !== recordingId) {
-    stream.getTracks().forEach((track) => track.stop());
-    return;
-  }
-
-  narrationRecordingRuntime.stream = stream;
-
-  let recorder;
-  try {
-    recorder = mediaMimeType
-      ? new MediaRecorder(stream, { mimeType: mediaMimeType })
-      : new MediaRecorder(stream);
-  } catch (error) {
-    await abortNarrationRecordingStart(selection, error, stream);
-    return;
-  }
-
-  narrationRecordingRuntime.mediaRecorder = recorder;
-  recorder.ondataavailable = (event) => {
-    if (!narrationRecordingRuntime || narrationRecordingRuntime.recordingId !== recordingId) {
-      return;
-    }
-
-    if (event.data instanceof Blob && event.data.size > 0) {
-      narrationRecordingRuntime.chunks.push(event.data);
-    }
-  };
-  recorder.onerror = () => {
-    if (!narrationRecordingRuntime || narrationRecordingRuntime.recordingId !== recordingId) {
-      return;
-    }
-
-    narrationRecordingRuntime.trackerStatus = "Recorder error";
-    updateNarrationTakeSessionFromRuntime();
-  };
-  recorder.onstop = () => {
-    void finalizeNarrationRecording(recordingId);
-  };
-
-  const speechRecognition = createNarrationSpeechRecognition(recordingId);
-  if (speechRecognition) {
-    narrationRecordingRuntime.speechRecognition = speechRecognition;
-    narrationRecordingRuntime.trackerStatus = "Speech tracker active";
-    try {
-      speechRecognition.start();
-    } catch {
-      narrationRecordingRuntime.speechRecognition = null;
-      narrationRecordingRuntime.trackerStatus = "Speech tracker unavailable; verse anchored.";
-    }
-  } else {
-    narrationRecordingRuntime.trackerStatus = "Speech tracker unavailable; verse anchored.";
-  }
-
-  updateNarrationTakeSessionFromRuntime({
-    status: "recording",
-    trackerStatus: narrationRecordingRuntime.trackerStatus,
-  });
-
-  try {
-    recorder.start(1000);
-  } catch (error) {
-    await abortNarrationRecordingStart(selection, error, stream);
-  }
+  await narrationRecordingCommandService.startRecording(sceneId);
 }
 
 async function stopNarrationRecording() {
-  if (!narrationRecordingRuntime?.mediaRecorder || narrationRecordingRuntime.mediaRecorder.state !== "recording") {
-    return;
-  }
-
-  narrationRecordingRuntime.trackerStatus = "Finalizing narration take...";
-  updateNarrationTakeSessionFromRuntime();
-
-  try {
-    narrationRecordingRuntime.mediaRecorder.stop();
-  } catch (error) {
-    await finalizeNarrationRecording(narrationRecordingRuntime.recordingId, error);
-  }
+  await narrationRecordingCommandService.stopRecording();
 }
 
 async function finalizeNarrationRecording(recordingId, stopError = null) {
@@ -5779,128 +4961,22 @@ async function finalizeNarrationRecording(recordingId, stopError = null) {
   }
 
   narrationRecordingRuntime = null;
-  clearInterval(runtime.timerId);
+  const { finalRecord, selection, sessionOptions } = await narrationRecordingFinalizationService.finalizeRuntime(runtime, {
+    stopError,
+  });
 
-  if (runtime.speechRecognition) {
-    try {
-      runtime.speechRecognition.onresult = null;
-      runtime.speechRecognition.onerror = null;
-      runtime.speechRecognition.onend = null;
-      runtime.speechRecognition.stop();
-    } catch {
-      // Ignore cleanup failures.
-    }
-  }
-
-  if (runtime.stream) {
-    runtime.stream.getTracks().forEach((track) => track.stop());
-  }
-
-  const projectId = runtime.projectId || state.activeProjectId || state.workspace?.project?.id || "";
-  const createdAt = new Date(runtime.startedAtMs).toISOString();
-  const updatedAt = new Date().toISOString();
-  const selection = runtime.selection ?? getNarrationTakeSelectionForScene(runtime.selection?.sceneId ?? state.selectedSceneId);
-  const transcript = normalizeNarrationTakeTranscript(runtime.transcript);
-  const durationMs = Math.max(0, Date.now() - runtime.startedAtMs);
-  const mediaMimeType = runtime.mediaMimeType || NARRATION_RECORDING_DEFAULT_MIME_TYPE;
-  const mediaName = getVoiceRecordingMediaName(runtime.recordingId, mediaMimeType);
-  const mediaPath = runtime.mediaPath || buildVoiceRecordingMediaPath(projectId, runtime.recordingId, mediaMimeType);
-  let finalRecord = null;
-  let trackerStatus = runtime.trackerStatus || "Narration take complete.";
-
-  try {
-    const recordingBlob = new Blob(runtime.chunks.length ? runtime.chunks : [], {
-      type: mediaMimeType,
-    });
-    if (!recordingBlob.size) {
-      throw new Error("The narration take did not capture any audio.");
-    }
-
-    const contentBase64 = await blobToBase64(recordingBlob);
-    const saveResponse = await fetchJsonFromDesktopApi("/api/project-media/save", {
-      method: "POST",
-      body: {
-        filePath: mediaPath,
-        contentBase64,
-      },
-    });
-    if (!saveResponse.ok) {
-      throw saveResponse.error ?? new Error("Unable to save the narration media file.");
-    }
-
-    finalRecord = createNarrationRecordingRecord(selection, {
-      projectId,
-      recordingId: runtime.recordingId,
-      transcript,
-      mediaPath,
-      mediaName,
-      mediaMimeType,
-      durationMs,
-      status: "saved",
-      createdAt,
-      updatedAt,
-    });
-    trackerStatus = "Narration take saved.";
-  } catch (error) {
-    finalRecord = createNarrationRecordingRecord(selection, {
-      projectId,
-      recordingId: runtime.recordingId,
-      transcript,
-      mediaPath,
-      mediaName,
-      mediaMimeType,
-      durationMs,
-      status: "failed",
-      createdAt,
-      updatedAt,
-    });
-    trackerStatus = `Narration take failed: ${error instanceof Error ? error.message : String(error)}`;
-    reportBrowserLog("error", "voice-recording", "Narration recording failed to save.", {
-      error,
-      recordingId: runtime.recordingId,
-      projectId,
-      mediaPath,
-    });
-  }
-
-  upsertVoiceRecordingRecord(finalRecord);
-  setNarrationTakeSession(createNarrationTakeSession(selection, {
-    status: "paused",
-    trackerStatus,
-    transcript,
-    elapsedLabel: formatNarrationRecordingElapsedLabel(durationMs),
-    recordingId: finalRecord.id,
-    mediaPath: finalRecord.mediaPath,
-    startedAtMs: runtime.startedAtMs,
-  }));
+  voiceRecordingService.upsert(finalRecord);
+  setNarrationTakeSession(createNarrationTakeSession(selection, sessionOptions));
   persistCurrentProjectRecord({ skipProjectFileAutosave: true });
   void saveCurrentProject();
-
-  if (stopError) {
-    reportBrowserLog("error", "voice-recording", "Failed to stop a narration recording cleanly.", {
-      error: stopError,
-      recordingId: runtime.recordingId,
-      projectId,
-    });
-  }
 }
 
 async function abortNarrationRecordingStart(selection, error, stream = null) {
   const runtime = narrationRecordingRuntime;
   narrationRecordingRuntime = null;
-  clearInterval(runtime?.timerId);
-
-  if (runtime?.speechRecognition) {
-    try {
-      runtime.speechRecognition.stop();
-    } catch {
-      // Ignore cleanup failures.
-    }
-  }
-
-  if (stream) {
-    stream.getTracks().forEach((track) => track.stop());
-  }
+  narrationRecordingRuntimeService.cleanupRuntime(runtime, {
+    additionalStream: stream,
+  });
 
   const message = error instanceof Error ? error.message : String(error);
   setNarrationTakeSession(createNarrationTakeSession(selection, {
@@ -5914,627 +4990,20 @@ async function abortNarrationRecordingStart(selection, error, stream = null) {
   });
 }
 
-function upsertVoiceRecordingRecord(record) {
-  if (!record || !state.workspace) {
-    return;
-  }
-
-  const recordings = ensureWorkspaceVoiceRecordings();
-  const existingIndex = recordings.findIndex((candidate) => candidate.id === record.id);
-  if (existingIndex >= 0) {
-    recordings.splice(existingIndex, 1, record);
-  } else {
-    recordings.unshift(record);
-  }
-  state.workspace.voice.recordings = recordings;
-}
-
-function ensureWorkspaceVoiceRecordings() {
-  if (!state.workspace || typeof state.workspace !== "object") {
-    return [];
-  }
-
-  if (!state.workspace.voice || typeof state.workspace.voice !== "object") {
-    state.workspace.voice = {
-      provider: {
-        id: "local-voice-service",
-        label: "Local Voice",
-        availability: "ready",
-        synthesisMode: "local",
-      },
-      profiles: [],
-      bindings: [],
-      renderJobs: [],
-      recordings: [],
-    };
-  }
-
-  if (!Array.isArray(state.workspace.voice.recordings)) {
-    state.workspace.voice.recordings = [];
-  }
-
-  return state.workspace.voice.recordings;
-}
-
-function createNarrationRecordingRecord(selection, options = {}) {
-  const projectId = typeof options.projectId === "string" && options.projectId.trim()
-    ? options.projectId.trim()
-    : state.activeProjectId ?? state.workspace?.project?.id ?? "";
-  const recordingId = typeof options.recordingId === "string" && options.recordingId.trim()
-    ? options.recordingId.trim()
-    : createNarrationRecordingId(selection);
-  const createdAt = typeof options.createdAt === "string" && options.createdAt.trim()
-    ? options.createdAt.trim()
-    : new Date().toISOString();
-  const updatedAt = typeof options.updatedAt === "string" && options.updatedAt.trim()
-    ? options.updatedAt.trim()
-    : createdAt;
-  const mediaMimeType = normalizeNarrationRecordingMimeType(options.mediaMimeType) || NARRATION_RECORDING_DEFAULT_MIME_TYPE;
-  const mediaName = typeof options.mediaName === "string" && options.mediaName.trim()
-    ? options.mediaName.trim()
-    : getVoiceRecordingMediaName(recordingId, mediaMimeType);
-  const mediaPath = typeof options.mediaPath === "string" && options.mediaPath.trim()
-    ? options.mediaPath.trim()
-    : buildVoiceRecordingMediaPath(projectId, recordingId, mediaMimeType);
-
-  return {
-    id: recordingId,
-    projectId,
-    chapterId: selection?.chapterId ?? "",
-    chapterTitle: selection?.chapterTitle ?? "",
-    sceneId: selection?.sceneId ?? "",
-    sceneTitle: selection?.sceneTitle ?? "",
-    blockId: selection?.blockId ?? "",
-    paragraphId: selection?.paragraphId ?? "",
-    lineNumber: Number.isInteger(selection?.lineNumber) ? selection.lineNumber : 0,
-    verseText: normalizeNarrationTakeTranscript(selection?.verseText ?? selection?.selectedText ?? ""),
-    transcript: normalizeNarrationTakeTranscript(options.transcript),
-    mediaPath,
-    mediaName,
-    mediaMimeType,
-    durationMs: Number.isFinite(Number(options.durationMs)) ? Math.max(0, Math.round(Number(options.durationMs))) : 0,
-    status: options.status === "recorded" || options.status === "failed" ? options.status : "saved",
-    createdAt,
-    updatedAt,
-  };
-}
-
-function createNarrationSpeechRecognition(recordingId) {
-  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!Recognition) {
-    return null;
-  }
-
-  try {
-    const recognition = new Recognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.maxAlternatives = 1;
-    recognition.lang = "en-US";
-    recognition.onresult = (event) => {
-      if (!narrationRecordingRuntime || narrationRecordingRuntime.recordingId !== recordingId) {
-        return;
-      }
-
-      const transcript = Array.from(event.results)
-        .map((result) => result[0]?.transcript ?? "")
-        .join(" ")
-        .replace(/\s+/g, " ")
-        .trim();
-
-      narrationRecordingRuntime.transcript = transcript;
-      narrationRecordingRuntime.trackerStatus = transcript
-        ? "Speech tracker active"
-        : "Speech tracker listening";
-      updateNarrationTakeSessionFromRuntime();
-    };
-    recognition.onerror = (event) => {
-      if (!narrationRecordingRuntime || narrationRecordingRuntime.recordingId !== recordingId) {
-        return;
-      }
-
-      narrationRecordingRuntime.trackerStatus = `Speech tracker ${normalizeNarrationTakeStatusText(event.error) || "error"}`;
-      updateNarrationTakeSessionFromRuntime();
-    };
-    recognition.onend = () => {
-      if (!narrationRecordingRuntime || narrationRecordingRuntime.recordingId !== recordingId) {
-        return;
-      }
-
-      if (narrationRecordingRuntime.mediaRecorder?.state === "recording") {
-        narrationRecordingRuntime.trackerStatus = "Speech tracker paused";
-        updateNarrationTakeSessionFromRuntime();
-      }
-    };
-    return recognition;
-  } catch {
-    return null;
-  }
-}
-
 async function previewVoiceRecording(recordingId) {
-  const recording = getVoiceRecordingById(recordingId);
-  if (!recording || recording.status !== "saved" || !recording.mediaPath) {
-    return;
-  }
-
-  try {
-    const response = await fetchJsonFromDesktopApi("/api/project-media/load", {
-      method: "POST",
-      body: {
-        filePath: recording.mediaPath,
-      },
-    });
-
-    if (!response.ok) {
-      throw response.error ?? new Error("Unable to load the voice recording.");
-    }
-
-    const blob = base64ToBlob(response.value?.contentBase64 ?? "", recording.mediaMimeType);
-    if (!blob) {
-      throw new Error("The voice recording was empty.");
-    }
-
-    if (voiceRecordingPreviewAudio) {
-      try {
-        voiceRecordingPreviewAudio.pause();
-      } catch {
-        // Ignore preview cleanup failures.
-      }
-    }
-    if (voiceRecordingPreviewUrl) {
-      URL.revokeObjectURL(voiceRecordingPreviewUrl);
-      voiceRecordingPreviewUrl = null;
-    }
-
-    voiceRecordingPreviewUrl = URL.createObjectURL(blob);
-    voiceRecordingPreviewAudio = new Audio(voiceRecordingPreviewUrl);
-    voiceRecordingPreviewAudio.preload = "auto";
-    voiceRecordingPreviewAudio.onended = () => {
-      if (voiceRecordingPreviewUrl) {
-        URL.revokeObjectURL(voiceRecordingPreviewUrl);
-        voiceRecordingPreviewUrl = null;
-      }
-      voiceRecordingPreviewAudio = null;
-    };
-    voiceRecordingPreviewAudio.onerror = () => {
-      if (voiceRecordingPreviewUrl) {
-        URL.revokeObjectURL(voiceRecordingPreviewUrl);
-        voiceRecordingPreviewUrl = null;
-      }
-      voiceRecordingPreviewAudio = null;
-    };
-    await voiceRecordingPreviewAudio.play();
-  } catch (error) {
-    reportBrowserLog("error", "voice-recording", "Voice recording preview failed.", {
-      error,
-      recordingId,
-      mediaPath: recording.mediaPath,
-    });
-  }
+  await voiceRecordingActionService.previewRecording(recordingId);
 }
 
 function goToVoiceRecordingVerse(recordingId) {
-  const recording = getVoiceRecordingById(recordingId);
-  if (!recording) {
-    return;
-  }
-
-  const scene = getScene(recording.sceneId);
-  if (!scene) {
+  const plan = voiceRecordingActionService.planRecordingVerseNavigation(recordingId);
+  if (!plan.ok) {
     return;
   }
 
   state.selectedIssueId = null;
-  state.selectedSceneId = scene.sceneId;
-  state.selectedBlockId =
-    scene.blocks.some((block) => block.blockId === recording.blockId)
-      ? recording.blockId
-      : scene.blocks[0]?.blockId ?? null;
+  state.selectedSceneId = plan.sceneId;
+  state.selectedBlockId = plan.selectedBlockId;
   render();
-}
-
-function createVoiceNarrationJobRecord(input) {
-  const now = new Date().toISOString();
-  const manuscriptRef = createVoiceNarrationAnchor(input.projectId, input.sourceLine);
-  const blockRange = input.sourceScene.blocks.length
-    ? {
-        startBlockId: input.sourceScene.blocks[0].blockId,
-        endBlockId: input.sourceScene.blocks[input.sourceScene.blocks.length - 1].blockId,
-      }
-    : undefined;
-
-  return {
-    id: `voice-narration-job-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    projectId: input.projectId,
-    manuscriptRef,
-    chapterId: input.sourceLine.chapterId,
-    sceneId: input.sourceLine.sceneId,
-    ...(blockRange ? { blockRange } : {}),
-    sourceTextSnapshot: input.sourceScene.editorText || input.sourceLine.text || "Placeholder narration text.",
-    voiceProfileId: input.voiceProfile.id,
-    status: "draft",
-    progress: 0,
-    createdAt: now,
-    updatedAt: now,
-  };
-}
-
-function createVoiceNarrationAnchor(projectId, sourceLine) {
-  return {
-    projectId,
-    chapterId: sourceLine.chapterId,
-    sceneId: sourceLine.sceneId,
-    blockId: sourceLine.blockId,
-    paragraphId: sourceLine.paragraphId,
-    startOffset: 0,
-    endOffset: sourceLine.text.length,
-  };
-}
-
-function queueVoiceNarrationJobRecord(job) {
-  if (job.status !== "draft" && job.status !== "failed") {
-    throw new Error(`Cannot queue a narration job with status '${job.status}'.`);
-  }
-
-  return {
-    ...job,
-    status: "queued",
-    progress: 0.15,
-    error: undefined,
-    outputAudioRef: undefined,
-    alignmentRef: undefined,
-    updatedAt: new Date().toISOString(),
-  };
-}
-
-function startVoiceNarrationJobRenderingRecord(job) {
-  if (job.status !== "queued") {
-    throw new Error(`Cannot start rendering a narration job with status '${job.status}'.`);
-  }
-
-  return {
-    ...job,
-    status: "rendering",
-    progress: 0.55,
-    error: undefined,
-    updatedAt: new Date().toISOString(),
-  };
-}
-
-function renderPlaceholderVoiceNarrationJobRecord(job) {
-  if (job.status !== "rendering") {
-    throw new Error(`Cannot complete a narration job with status '${job.status}'.`);
-  }
-
-  return {
-    ...job,
-    status: "rendered",
-    progress: 1,
-    outputAudioRef: `voice-output://placeholder/${job.id}`,
-    error: undefined,
-    updatedAt: new Date().toISOString(),
-  };
-}
-
-function compareVoiceNarrationJobs(left, right) {
-  const leftTime = Date.parse(left.createdAt);
-  const rightTime = Date.parse(right.createdAt);
-
-  if (Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime !== rightTime) {
-    return leftTime - rightTime;
-  }
-
-  if (left.id < right.id) {
-    return -1;
-  }
-
-  if (left.id > right.id) {
-    return 1;
-  }
-
-  return 0;
-}
-
-function loadVoiceNarrationState() {
-  const snapshot = projectService.loadUserPreference(VOICE_NARRATION_STORAGE_KEY, null);
-  const storedProfiles = normalizeVoiceNarrationProfiles(snapshot?.voiceProfiles);
-  const narrationJobs = normalizeVoiceNarrationJobs(snapshot?.narrationJobs);
-  const selectedVoiceProfileId = normalizeVoiceNarrationString(snapshot?.selectedVoiceProfileId);
-  const voiceProfiles = storedProfiles.length ? storedProfiles : createVoiceNarrationDemoProfiles();
-  const selectedProfile = selectedVoiceProfileId
-    ? voiceProfiles.find((profile) => profile.id === selectedVoiceProfileId) ?? null
-    : null;
-
-  return {
-    voiceProfiles,
-    narrationJobs,
-    selectedVoiceProfileId: selectedProfile?.id ?? voiceProfiles[0]?.id ?? null,
-  };
-}
-
-function saveVoiceNarrationState() {
-  projectService.saveUserPreference(VOICE_NARRATION_STORAGE_KEY, {
-    version: 1,
-    voiceProfiles: cloneValue(state.voiceNarration?.voiceProfiles ?? []),
-    narrationJobs: cloneValue(state.voiceNarration?.narrationJobs ?? []),
-    selectedVoiceProfileId: normalizeVoiceNarrationString(state.voiceNarration?.selectedVoiceProfileId) ?? null,
-    updatedAt: new Date().toISOString(),
-  });
-}
-
-function createVoiceNarrationDemoProfiles(now = new Date().toISOString()) {
-  return [
-    createVoiceNarrationProfileRecord({
-      id: "voice-profile-lantern",
-      displayName: "Lantern Narrator",
-      engineType: "local-placeholder",
-      language: "en",
-      accent: "neutral",
-      voiceStyleLabel: "Measured documentary warmth",
-      description: "Local narration placeholder for long-form manuscript reading.",
-      settings: {
-        pace: 0.96,
-        warmth: 0.72,
-      },
-      createdAt: now,
-      updatedAt: now,
-    }),
-    createVoiceNarrationProfileRecord({
-      id: "voice-profile-harbor",
-      displayName: "Harbor External",
-      engineType: "external-placeholder",
-      language: "en",
-      accent: "australian",
-      voiceStyleLabel: "Bright provider placeholder",
-      description: "Represents an external narration provider without real connectivity yet.",
-      settings: {
-        providerHint: "external-demo",
-      },
-      createdAt: now,
-      updatedAt: now,
-    }),
-    createVoiceNarrationProfileRecord({
-      id: "voice-profile-iron",
-      displayName: "Iron System Voice",
-      engineType: "system-voice-placeholder",
-      language: "en",
-      accent: "general",
-      genderLabel: "neutral",
-      voiceStyleLabel: "Plain OS fallback",
-      description: "Uses the operating system voice slot as a placeholder contract.",
-      settings: {
-        fallback: true,
-      },
-      createdAt: now,
-      updatedAt: now,
-    }),
-    createVoiceNarrationProfileRecord({
-      id: "voice-profile-rift",
-      displayName: "Rift Conversion",
-      engineType: "rvc-placeholder",
-      language: "en",
-      accent: "neutral",
-      voiceStyleLabel: "Performance conversion placeholder",
-      description: "Represents a future voice-conversion pipeline without any model integration.",
-      settings: {
-        conversionMode: "stub",
-      },
-      createdAt: now,
-      updatedAt: now,
-    }),
-  ];
-}
-
-function createVoiceNarrationProfileRecord(input) {
-  return {
-    id: String(input.id).trim(),
-    displayName: String(input.displayName).trim(),
-    engineType: normalizeVoiceNarrationEngineType(input.engineType),
-    language: normalizeVoiceNarrationString(input.language) || "und",
-    accent: normalizeVoiceNarrationString(input.accent) || "neutral",
-    ...(normalizeVoiceNarrationString(input.genderLabel) ? { genderLabel: normalizeVoiceNarrationString(input.genderLabel) } : {}),
-    ...(normalizeVoiceNarrationString(input.voiceStyleLabel) ? { voiceStyleLabel: normalizeVoiceNarrationString(input.voiceStyleLabel) } : {}),
-    description: normalizeVoiceNarrationString(input.description) || "",
-    ...(normalizeVoiceNarrationString(input.sampleAudioRef) ? { sampleAudioRef: normalizeVoiceNarrationString(input.sampleAudioRef) } : {}),
-    settings: isPlainObject(input.settings) ? { ...input.settings } : {},
-    createdAt: normalizeVoiceNarrationString(input.createdAt) || new Date(0).toISOString(),
-    updatedAt: normalizeVoiceNarrationString(input.updatedAt) || normalizeVoiceNarrationString(input.createdAt) || new Date(0).toISOString(),
-  };
-}
-
-function normalizeVoiceNarrationProfiles(candidate) {
-  if (!Array.isArray(candidate)) {
-    return [];
-  }
-
-  return candidate
-    .map((item) => normalizeVoiceNarrationProfileRecord(item))
-    .filter(Boolean);
-}
-
-function normalizeVoiceNarrationProfileRecord(candidate) {
-  if (!isPlainObject(candidate)) {
-    return null;
-  }
-
-  const id = normalizeVoiceNarrationString(candidate.id);
-  const displayName = normalizeVoiceNarrationString(candidate.displayName);
-  const engineType = normalizeVoiceNarrationEngineType(candidate.engineType);
-
-  if (!id || !displayName || !engineType) {
-    return null;
-  }
-
-  const createdAt = normalizeVoiceNarrationString(candidate.createdAt) || new Date(0).toISOString();
-  const updatedAt = normalizeVoiceNarrationString(candidate.updatedAt) || createdAt;
-
-  return createVoiceNarrationProfileRecord({
-    id,
-    displayName,
-    engineType,
-    language: normalizeVoiceNarrationString(candidate.language) || "und",
-    accent: normalizeVoiceNarrationString(candidate.accent) || "neutral",
-    genderLabel: normalizeVoiceNarrationString(candidate.genderLabel),
-    voiceStyleLabel: normalizeVoiceNarrationString(candidate.voiceStyleLabel),
-    description: normalizeVoiceNarrationString(candidate.description) || "",
-    sampleAudioRef: normalizeVoiceNarrationString(candidate.sampleAudioRef),
-    settings: isPlainObject(candidate.settings) ? { ...candidate.settings } : {},
-    createdAt,
-    updatedAt,
-  });
-}
-
-function normalizeVoiceNarrationJobs(candidate) {
-  if (!Array.isArray(candidate)) {
-    return [];
-  }
-
-  return candidate
-    .map((item) => normalizeVoiceNarrationJobRecord(item))
-    .filter(Boolean)
-    .sort(compareVoiceNarrationJobs);
-}
-
-function normalizeVoiceNarrationJobRecord(candidate) {
-  if (!isPlainObject(candidate)) {
-    return null;
-  }
-
-  const manuscriptRef = normalizeVoiceNarrationAnchor(candidate.manuscriptRef);
-  const projectId = normalizeVoiceNarrationString(candidate.projectId);
-  const voiceProfileId = normalizeVoiceNarrationString(candidate.voiceProfileId);
-  const sourceTextSnapshot =
-    typeof candidate.sourceTextSnapshot === "string" && candidate.sourceTextSnapshot.trim()
-      ? candidate.sourceTextSnapshot
-      : "";
-  const status = normalizeVoiceNarrationJobStatus(candidate.status);
-  const progress = normalizeVoiceNarrationProgress(candidate.progress);
-
-  if (!manuscriptRef || !projectId || !voiceProfileId || !sourceTextSnapshot || !status) {
-    return null;
-  }
-
-  const chapterId = normalizeVoiceNarrationString(candidate.chapterId);
-  const sceneId = normalizeVoiceNarrationString(candidate.sceneId);
-  const blockRange = candidate.blockRange ? normalizeVoiceNarrationBlockRange(candidate.blockRange) : undefined;
-
-  if (candidate.blockRange && !blockRange) {
-    return null;
-  }
-
-  const createdAt = normalizeVoiceNarrationString(candidate.createdAt) || new Date(0).toISOString();
-  const updatedAt = normalizeVoiceNarrationString(candidate.updatedAt) || createdAt;
-
-  return {
-    id: normalizeVoiceNarrationString(candidate.id) || `voice-narration-job-${Date.now()}`,
-    projectId,
-    manuscriptRef,
-    ...(chapterId ? { chapterId } : {}),
-    ...(sceneId ? { sceneId } : {}),
-    ...(blockRange ? { blockRange } : {}),
-    sourceTextSnapshot,
-    voiceProfileId,
-    status,
-    progress,
-    ...(normalizeVoiceNarrationString(candidate.outputAudioRef) ? { outputAudioRef: normalizeVoiceNarrationString(candidate.outputAudioRef) } : {}),
-    ...(normalizeVoiceNarrationString(candidate.alignmentRef) ? { alignmentRef: normalizeVoiceNarrationString(candidate.alignmentRef) } : {}),
-    ...(normalizeVoiceNarrationString(candidate.error) ? { error: normalizeVoiceNarrationString(candidate.error) } : {}),
-    createdAt,
-    updatedAt,
-  };
-}
-
-function normalizeVoiceNarrationAnchor(candidate) {
-  if (!isPlainObject(candidate)) {
-    return null;
-  }
-
-  const projectId = normalizeVoiceNarrationString(candidate.projectId);
-  const chapterId = normalizeVoiceNarrationString(candidate.chapterId);
-  const sceneId = normalizeVoiceNarrationString(candidate.sceneId);
-  const blockId = normalizeVoiceNarrationString(candidate.blockId);
-  const paragraphId = normalizeVoiceNarrationString(candidate.paragraphId);
-  const startOffset = Number(candidate.startOffset);
-  const endOffset = Number(candidate.endOffset);
-
-  if (
-    !projectId ||
-    !chapterId ||
-    !sceneId ||
-    !blockId ||
-    !paragraphId ||
-    !Number.isInteger(startOffset) ||
-    !Number.isInteger(endOffset) ||
-    startOffset < 0 ||
-    endOffset < startOffset
-  ) {
-    return null;
-  }
-
-  return {
-    projectId,
-    chapterId,
-    sceneId,
-    blockId,
-    paragraphId,
-    startOffset,
-    endOffset,
-  };
-}
-
-function normalizeVoiceNarrationBlockRange(candidate) {
-  if (!isPlainObject(candidate)) {
-    return null;
-  }
-
-  const startBlockId = normalizeVoiceNarrationString(candidate.startBlockId);
-  const endBlockId = normalizeVoiceNarrationString(candidate.endBlockId);
-
-  if (!startBlockId || !endBlockId) {
-    return null;
-  }
-
-  return {
-    startBlockId,
-    endBlockId,
-  };
-}
-
-function normalizeVoiceNarrationEngineType(candidate) {
-  const value = normalizeVoiceNarrationString(candidate);
-  return value && [
-    "local-placeholder",
-    "external-placeholder",
-    "rvc-placeholder",
-    "system-voice-placeholder",
-  ].includes(value)
-    ? value
-    : "";
-}
-
-function normalizeVoiceNarrationJobStatus(candidate) {
-  const value = normalizeVoiceNarrationString(candidate);
-  return value && ["draft", "queued", "rendering", "rendered", "failed", "cancelled"].includes(value)
-    ? value
-    : "";
-}
-
-function normalizeVoiceNarrationProgress(candidate) {
-  const value = Number(candidate);
-  if (!Number.isFinite(value)) {
-    return 0;
-  }
-
-  return Math.min(Math.max(Number(value.toFixed(4)), 0), 1);
-}
-
-function normalizeVoiceNarrationString(candidate) {
-  return typeof candidate === "string" && candidate.trim() ? candidate.trim() : "";
-}
-
-function isPlainObject(candidate) {
-  return Boolean(candidate) && typeof candidate === "object" && !Array.isArray(candidate);
 }
 
 // Intent: translate editor preferences into CSS variables without mutating manuscript data.
@@ -6600,6 +5069,7 @@ function syncSceneDocumentLayout(options = {}) {
     <span class="editor-gutter-line">${lineStartNumber + index}</span>
   `).join("");
   syncInlineFormatLayer(editorHost);
+  syncDiagnosticLayer(editorHost, selectedSceneId);
   if (state.editorPrefs.grammarCheckEnabled === false) {
     clearTextareaProjectionLayer(editorHost, MANUSCRIPT_PROJECTION_CHANNELS.SPELLCHECK);
   } else if (options.skipSpellcheck === true) {
@@ -6616,6 +5086,31 @@ function syncInlineFormatLayer(editorHost) {
   clearTextareaProjectionLayer(editorHost, MANUSCRIPT_PROJECTION_CHANNELS.AUTHOR_MARK);
 }
 
+// Intent: rebuild diagnostic visuals from durable issue anchors and current text without persisting overlays.
+function syncDiagnosticLayer(editorHost, sceneId) {
+  const scene = getScene(sceneId);
+  if (!scene) {
+    clearTextareaProjectionLayer(editorHost, MANUSCRIPT_PROJECTION_CHANNELS.DIAGNOSTIC);
+    return;
+  }
+
+  renderTextareaDiagnosticLayer(editorHost, {
+    sceneId,
+    text: editorHost.textarea.value,
+    projections: selectManuscriptProjections({
+      projectId: state.workspace?.project?.id ?? "",
+      sceneId,
+      text: editorHost.textarea.value,
+      sceneBlocks: scene.blocks,
+      diagnosticIssues: state.workspace?.project?.issues,
+      includeAuthorMarks: false,
+      includeAnchoredRecords: false,
+      includeRuntimeSelections: false,
+      includeSpellcheck: false,
+    }),
+  });
+}
+
 const sceneEditorTypingRefreshState = {
   frameId: null,
   sceneId: "",
@@ -6627,14 +5122,6 @@ const sceneEditorTypingRefreshState = {
   consoleCard: false,
   inlinePassageStatus: false,
 };
-
-const sceneEditorSpellcheckRefreshState = {
-  timerId: null,
-  sceneId: "",
-};
-
-// Intent: debounce scene editor overlays so typing remains responsive while diagnostics update.
-const SCENE_EDITOR_SPELLCHECK_REFRESH_DELAY_MS = 180;
 
 function scheduleSceneEditorTypingRefresh(sceneId, editorText, options = {}) {
   sceneEditorTypingRefreshState.sceneId = sceneId;
@@ -6687,19 +5174,9 @@ function scheduleSceneEditorTypingRefresh(sceneId, editorText, options = {}) {
 }
 
 function scheduleSceneEditorSpellcheckRefresh(sceneId) {
-  if (state.editorPrefs.grammarCheckEnabled === false) {
-    return;
-  }
-
-  sceneEditorSpellcheckRefreshState.sceneId = sceneId;
-  if (sceneEditorSpellcheckRefreshState.timerId !== null) {
-    window.clearTimeout(sceneEditorSpellcheckRefreshState.timerId);
-  }
-
-  sceneEditorSpellcheckRefreshState.timerId = window.setTimeout(() => {
-    sceneEditorSpellcheckRefreshState.timerId = null;
-    flushSceneEditorSpellcheckRefresh(sceneEditorSpellcheckRefreshState.sceneId);
-  }, SCENE_EDITOR_SPELLCHECK_REFRESH_DELAY_MS);
+  spellcheckRefreshController.schedule(sceneId, {
+    enabled: state.editorPrefs.grammarCheckEnabled !== false,
+  });
 }
 
 function flushSceneEditorSpellcheckRefresh(sceneId) {
@@ -6709,6 +5186,10 @@ function flushSceneEditorSpellcheckRefresh(sceneId) {
 
   const textarea = getEditorTextareaForScene(sceneId);
   if (!(textarea instanceof HTMLTextAreaElement)) {
+    return;
+  }
+  const editorHost = resolveTextareaEditorHost(textarea);
+  if (!editorHost) {
     return;
   }
 
@@ -6722,10 +5203,7 @@ function flushSceneEditorSpellcheckRefresh(sceneId) {
 }
 
 function clearSceneEditorSpellcheckRefresh() {
-  if (sceneEditorSpellcheckRefreshState.timerId !== null) {
-    window.clearTimeout(sceneEditorSpellcheckRefreshState.timerId);
-    sceneEditorSpellcheckRefreshState.timerId = null;
-  }
+  spellcheckRefreshController.clear();
 }
 
 function syncInlinePassageDraftLayout() {
@@ -7096,15 +5574,6 @@ function getProjectRecordWordCountForSettings(recordLike) {
   }, 0);
 }
 
-function createCollapsedConsoleChapterState(candidate = {}) {
-  return {
-    issueTasks: normalizeChapterIdList(candidate.issueTasks),
-    issues: normalizeChapterIdList(candidate.issues),
-    inspiration: normalizeChapterIdList(candidate.inspiration),
-    research: normalizeChapterIdList(candidate.research),
-  };
-}
-
 function createDefaultProjectSettingsSnapshot(currentWordCount = 0, now = new Date()) {
   return {
     editorPrefs: createDefaultEditorPrefs(),
@@ -7171,7 +5640,7 @@ function normalizeProjectSettingsSnapshot(candidate, projectId = "", currentWord
     consoleDockCollapsed: typeof normalizedCandidate.consoleDockCollapsed === "boolean"
       ? normalizedCandidate.consoleDockCollapsed
       : defaults.consoleDockCollapsed,
-    collapsedChapterIds: normalizeChapterIdList(
+    collapsedChapterIds: normalizeCollapsedChapterIds(
       normalizedCandidate.collapsedChapterIds ?? defaults.collapsedChapterIds,
     ),
     collapsedConsoleChapterIds: createCollapsedConsoleChapterState(
@@ -7429,20 +5898,14 @@ function restoreSceneSelectionRange(selection) {
     : "";
 
   if (lineNumber) {
-    const style = window.getComputedStyle(textarea);
-    const fontSize = parseFloat(style.fontSize || "0") || 16;
-    const approximateCharacterWidth = Math.max(6, fontSize * 0.56);
-    const charactersPerLine = Math.max(
-      8,
-      Math.floor(textarea.clientWidth / approximateCharacterWidth),
-    );
+    const { charactersPerLine } = getTextareaEditorHostWrapMetrics(editorHost);
     const sceneMetrics = buildSceneLineMetrics(
       state.scenes,
       charactersPerLine,
       { [scene.sceneId]: textarea.value },
     ).find((candidate) => candidate.sceneId === scene.sceneId);
     const relativeLineNumber = Math.max(0, lineNumber - (sceneMetrics?.startLineNumber ?? lineNumber));
-    const lineEndOffset = findEditorOffsetForVisualLineEnd(
+    const lineEndOffset = findTextareaOffsetForVisualLineEnd(
       textarea.value,
       relativeLineNumber,
       charactersPerLine,
@@ -7458,9 +5921,11 @@ function restoreSceneSelectionRange(selection) {
       state.selectedBlockId = resolvedBlock.blockId;
     }
 
-    textarea.focus({ preventScroll: true });
-    textarea.setSelectionRange(lineEndOffset, lineEndOffset, "forward");
-    takeToEditorOffset(textarea, lineEndOffset, { behavior: "auto" });
+    selectTextareaEditorHostRange(editorHost, lineEndOffset, lineEndOffset, {
+      behavior: "auto",
+      focus: true,
+      scroll: true,
+    });
     return;
   }
 
@@ -7475,9 +5940,11 @@ function restoreSceneSelectionRange(selection) {
       const blockRange = getSceneBlockRanges(scene).find((candidate) => candidate.blockId === targetBlock.blockId) ?? null;
       const targetOffset = blockRange?.endOffset ?? targetBlock.text.length;
       state.selectedBlockId = targetBlock.blockId;
-      textarea.focus({ preventScroll: true });
-      textarea.setSelectionRange(targetOffset, targetOffset, "forward");
-      takeToEditorOffset(textarea, targetOffset, { behavior: "auto" });
+      selectTextareaEditorHostRange(editorHost, targetOffset, targetOffset, {
+        behavior: "auto",
+        focus: true,
+        scroll: true,
+      });
       return;
     }
 
@@ -7496,9 +5963,11 @@ function restoreSceneSelectionRange(selection) {
     state.selectedBlockId = block.blockId;
   }
 
-  textarea.focus({ preventScroll: true });
-  textarea.setSelectionRange(startOffset, endOffset, "forward");
-  takeToEditorOffset(textarea, startOffset, { behavior: "auto" });
+  selectTextareaEditorHostRange(editorHost, startOffset, endOffset, {
+    behavior: "auto",
+    focus: true,
+    scroll: true,
+  });
 }
 
 // Intent: cache the current scene editor caret and viewport so autosave can persist it reliably.
@@ -7507,7 +5976,8 @@ function captureSceneEditorSelectionSnapshotFromTextarea(textarea) {
     return null;
   }
 
-  const sceneId = typeof textarea.dataset.sceneId === "string" ? textarea.dataset.sceneId.trim() : "";
+  const hostSelection = readTextareaEditorHostSelection(resolveTextareaEditorHost(textarea));
+  const sceneId = typeof hostSelection?.sceneId === "string" ? hostSelection.sceneId.trim() : "";
   if (!sceneId) {
     return null;
   }
@@ -7517,20 +5987,19 @@ function captureSceneEditorSelectionSnapshotFromTextarea(textarea) {
     return null;
   }
 
-  const codeframe = textarea.closest(".scene-editor-codeframe");
-  const startOffset = Number.isInteger(textarea.selectionStart) ? textarea.selectionStart : 0;
-  const endOffset = Number.isInteger(textarea.selectionEnd) ? textarea.selectionEnd : startOffset;
+  const startOffset = hostSelection.startOffset;
+  const endOffset = hostSelection.endOffset;
   const lineNumber = getSceneEditorSelectionLineNumber(textarea, scene, startOffset);
 
   return manuscriptSelectionController.createSelectionSnapshot({
     scene,
     sceneId,
-    text: textarea.value,
+    text: hostSelection.text,
     lineNumber,
     startOffset,
     endOffset,
-    scrollTop: codeframe instanceof HTMLElement ? codeframe.scrollTop : null,
-    scrollLeft: codeframe instanceof HTMLElement ? codeframe.scrollLeft : null,
+    scrollTop: hostSelection.scrollTop,
+    scrollLeft: hostSelection.scrollLeft,
   });
 }
 
@@ -7570,44 +6039,16 @@ function getSceneEditorSelectionLineNumber(textarea, scene, offset = null) {
     return null;
   }
 
-  const style = window.getComputedStyle(textarea);
-  const fontSize = parseFloat(style.fontSize || "0") || 16;
-  const approximateCharacterWidth = Math.max(6, fontSize * 0.56);
-  const charactersPerLine = Math.max(
-    8,
-    Math.floor(textarea.clientWidth / approximateCharacterWidth),
-  );
+  const editorHost = resolveTextareaEditorHost(textarea);
+  const { charactersPerLine } = getTextareaEditorHostWrapMetrics(editorHost);
   const selectedSceneMetrics = buildSceneLineMetrics(
     state.scenes,
     charactersPerLine,
     { [scene.sceneId]: textarea.value },
   ).find((candidate) => candidate.sceneId === scene.sceneId);
   const caretOffset = Number.isInteger(offset) ? offset : Number.isInteger(textarea.selectionStart) ? textarea.selectionStart : 0;
-  const visualLineOffset = estimateVisualLineBeforeOffset(textarea.value, caretOffset, charactersPerLine);
+  const visualLineOffset = estimateTextareaVisualLineBeforeOffset(textarea.value, caretOffset, charactersPerLine);
   return (selectedSceneMetrics?.startLineNumber ?? 1) + visualLineOffset;
-}
-
-// Intent: resolve a persisted visual line number back to the end of that wrapped line in the editor.
-function findEditorOffsetForVisualLineEnd(text, targetVisualLineIndex, charactersPerLine) {
-  const safeTargetIndex = Math.max(0, Math.floor(Number(targetVisualLineIndex) || 0));
-  const logicalLines = String(text ?? "").split("\n");
-  let visualLineIndex = 0;
-  let logicalStartOffset = 0;
-
-  for (const logicalLine of logicalLines) {
-    const lineLength = logicalLine.length;
-    const wrappedLineCount = Math.max(1, Math.ceil(lineLength / charactersPerLine));
-    if (safeTargetIndex < visualLineIndex + wrappedLineCount) {
-      const relativeLineIndex = safeTargetIndex - visualLineIndex;
-      const endOffsetWithinLine = Math.min(lineLength, (relativeLineIndex + 1) * charactersPerLine);
-      return logicalStartOffset + endOffsetWithinLine;
-    }
-
-    visualLineIndex += wrappedLineCount;
-    logicalStartOffset += lineLength + 1;
-  }
-
-  return String(text ?? "").length;
 }
 
 function restoreSelectionFromWorkspaceDefaults() {
@@ -8055,35 +6496,18 @@ async function loadProjectSource() {
   renderHeader();
 
   try {
-    const response = await fetchJsonFromDesktopApi("/api/project-source", {
-      method: "POST",
-      body: {
-        projectPath,
-      },
-    });
-
-    if (!response.ok) {
-      throw response.error ?? new Error("Project source load failed.");
-    }
-
-    const importedLibrary = normalizeProjectLibrarySnapshot(response.value);
-    const currentLibrary = normalizeProjectLibrarySnapshot({
+    const result = await projectSourceService.loadProjectSource({
+      projectPath,
       activeProjectId: state.activeProjectId,
       projects: state.projectLibrary,
     });
-    const mergedLibrary = mergeProjectLibrarySnapshots(currentLibrary, importedLibrary, null);
-    const activeProjectId = resolveActiveProjectId(
-      importedLibrary.activeProjectId ?? mergedLibrary.activeProjectId,
-      mergedLibrary,
-    );
+    if (!result.ok) {
+      throw result.error ?? new Error("Project source load failed.");
+    }
 
-    const persistedLibrary = projectService.saveProjectLibrarySnapshot({
-      activeProjectId,
-      projects: mergedLibrary.projects,
-    });
-    state.projectLibrary = persistedLibrary.projects;
-    state.activeProjectId = persistedLibrary.activeProjectId;
-    state.projectLibrarySelectionId = persistedLibrary.activeProjectId;
+    state.projectLibrary = result.persistedLibrary.projects;
+    state.activeProjectId = result.persistedLibrary.activeProjectId;
+    state.projectLibrarySelectionId = result.persistedLibrary.activeProjectId;
 
     const record = getActiveProjectRecord();
     if (!record) {
@@ -8355,8 +6779,10 @@ function getEditorContextFromEvent(event) {
 
   if (!(target instanceof HTMLTextAreaElement)) {
     const cursorOffset = textarea.value.length;
-    textarea.focus({ preventScroll: true });
-    textarea.setSelectionRange(cursorOffset, cursorOffset);
+    selectTextareaEditorHostRange(resolveTextareaEditorHost(textarea), cursorOffset, cursorOffset, {
+      focus: true,
+      scroll: false,
+    });
   }
 
   const contextRange = getEditorContextRange(textarea) ?? {
@@ -8374,207 +6800,24 @@ function getEditorContextFromEvent(event) {
 }
 
 function getSpellcheckContextFromEvent(editorContext, event) {
-  if (!spellcheckBaseLexicon?.wordList?.length || !editorContext) {
-    return null;
-  }
-
-  const { textarea, contextRange } = editorContext;
-  if (!(textarea instanceof HTMLTextAreaElement)) {
-    return null;
-  }
-
-  const sceneId = String(textarea.dataset.sceneId ?? "");
-  if (!sceneId) {
-    return null;
-  }
-
-  const projectLexicon = buildCurrentProjectSpellcheckLexicon();
-  const explicitSelection = contextRange?.hasExplicitSelection === true;
-  const selectionText = explicitSelection ? String(contextRange.selectedText ?? "").trim() : "";
-  const selectionLooksLikeOneWord = selectionText && !/\s/.test(selectionText);
-  if (explicitSelection && selectionText) {
-    const selectionMisspellings = collectSpellcheckMisspellings(selectionText, {
-      baseLexicon: spellcheckBaseLexicon,
-      projectLexicon,
-      referenceLexicon: spellcheckReferenceLexicon,
-    });
-    if (selectionMisspellings.length) {
-      const words = getSpellcheckProjectWordsFromSelection(selectionMisspellings);
-      const mode = words.length > 1 ? "selection" : "word";
-      const firstWord = selectionMisspellings[0];
-      return {
-        sceneId,
-        mode,
-        words,
-        word: firstWord?.word ?? selectionText,
-        normalizedWord: firstWord?.normalizedWord ?? normalizeSpellcheckWord(selectionText),
-        startOffset: contextRange.startOffset,
-        endOffset: contextRange.endOffset,
-        selectionText,
-        suggestions: mode === "word"
-          ? suggestSpellcheckAlternatives(firstWord?.word ?? selectionText, {
-            baseLexicon: spellcheckBaseLexicon,
-            projectLexicon,
-            referenceLexicon: spellcheckReferenceLexicon,
-          })
-          : [],
-        x: event.clientX,
-        y: event.clientY,
-        count: words.length,
-      };
-    }
-  }
-
-  let wordRange = getSpellcheckWordRangeFromLayerPoint(textarea, event);
-  if (!wordRange) {
-    wordRange = getSpellcheckWordRangeFromPointer(textarea, event);
-  }
-  if (!wordRange) {
-    const caretOffset = Number.isInteger(textarea.selectionStart) ? textarea.selectionStart : contextRange?.startOffset ?? 0;
-    wordRange = getSpellcheckWordRange(textarea.value, caretOffset);
-  }
-
-  if (!wordRange || !wordRange.word) {
-    return null;
-  }
-
-  if (!isSpellcheckMisspelledWord(wordRange.word, {
+  return buildSpellcheckEditorContextMenu(editorContext, event, {
     baseLexicon: spellcheckBaseLexicon,
-    projectLexicon,
+    projectLexicon: buildCurrentProjectSpellcheckLexicon(),
     referenceLexicon: spellcheckReferenceLexicon,
-  })) {
-    return null;
-  }
-
-  return {
-    sceneId,
-    mode: "word",
-    words: [wordRange.word],
-    word: wordRange.word,
-    normalizedWord: wordRange.normalizedWord,
-    startOffset: wordRange.startOffset,
-    endOffset: wordRange.endOffset,
-    suggestions: suggestSpellcheckAlternatives(wordRange.word, {
-      baseLexicon: spellcheckBaseLexicon,
-      projectLexicon,
-      referenceLexicon: spellcheckReferenceLexicon,
-    }),
-    x: event.clientX,
-    y: event.clientY,
-    count: 1,
-  };
+  }, {
+    getTextareaOffsetFromPoint,
+  });
 }
 
 function getSpellcheckContextFromGrammarCheckTarget(target, event) {
-  if (!spellcheckBaseLexicon?.wordList?.length || !(target instanceof HTMLElement)) {
-    return null;
-  }
-
-  const scene = getSelectedScene() ?? state.scenes[0] ?? null;
-  const sceneId = String(scene?.sceneId ?? "");
-  if (!scene || !sceneId) {
-    return null;
-  }
-
-  const word = String(target.dataset.grammarCheckWord ?? "").trim();
-  const normalizedWord = normalizeSpellcheckWord(word);
-  const firstIndex = Number(target.dataset.grammarCheckFirstIndex);
-  if (!normalizedWord || !Number.isInteger(firstIndex)) {
-    return null;
-  }
-
-  const sourceText = String(scene.editorText ?? "");
-  const originalWord = sourceText.slice(firstIndex, firstIndex + word.length) || word;
-  const projectLexicon = buildCurrentProjectSpellcheckLexicon();
-  const suggestions = suggestSpellcheckAlternatives(originalWord, {
-    baseLexicon: spellcheckBaseLexicon,
-    projectLexicon,
-    referenceLexicon: spellcheckReferenceLexicon,
+  return buildSpellcheckGrammarCheckContextMenu(target, event, {
+    scene: getSelectedScene() ?? state.scenes[0] ?? null,
+    lexicons: {
+      baseLexicon: spellcheckBaseLexicon,
+      projectLexicon: buildCurrentProjectSpellcheckLexicon(),
+      referenceLexicon: spellcheckReferenceLexicon,
+    },
   });
-
-  return {
-    sceneId,
-    mode: "word",
-    words: [originalWord],
-    word: originalWord,
-    normalizedWord,
-    startOffset: firstIndex,
-    endOffset: firstIndex + originalWord.length,
-    suggestions,
-    x: event.clientX,
-    y: event.clientY,
-    count: 1,
-  };
-}
-
-function getSpellcheckWordRangeFromPointer(textarea, event) {
-  if (!(textarea instanceof HTMLTextAreaElement) || !(event instanceof MouseEvent)) {
-    return null;
-  }
-
-  const offset = getTextareaOffsetFromPoint(textarea, event.clientX, event.clientY);
-  if (!Number.isInteger(offset)) {
-    return null;
-  }
-
-  return getSpellcheckWordRange(textarea.value, offset);
-}
-
-// Intent: use the rendered underline spans as the source of truth when browser textarea caret hit-testing misses.
-function getSpellcheckWordRangeFromLayerPoint(textarea, event) {
-  if (!(textarea instanceof HTMLTextAreaElement) || !(event instanceof MouseEvent)) {
-    return null;
-  }
-
-  const codeframe = textarea.closest("[data-scene-editor]");
-  const layer = codeframe?.querySelector("[data-spellcheck-layer]");
-  if (!(layer instanceof HTMLElement)) {
-    return null;
-  }
-
-  const flaggedWords = layer.querySelectorAll(".editor-spellcheck-word.is-misspelled");
-  for (const flaggedWord of flaggedWords) {
-    if (!(flaggedWord instanceof HTMLElement)) {
-      continue;
-    }
-
-    if (!isPointInsideElementRects(flaggedWord, event.clientX, event.clientY, 2)) {
-      continue;
-    }
-
-    const startOffset = Number(flaggedWord.dataset.spellcheckStart);
-    const endOffset = Number(flaggedWord.dataset.spellcheckEnd);
-    const wordRange = getSpellcheckWordRangeFromKnownOffsets(textarea.value, startOffset, endOffset);
-    if (wordRange) {
-      return wordRange;
-    }
-  }
-
-  return null;
-}
-
-function isPointInsideElementRects(element, clientX, clientY, tolerance = 0) {
-  if (!(element instanceof HTMLElement)) {
-    return false;
-  }
-
-  const safeTolerance = Number.isFinite(Number(tolerance)) ? Math.max(0, Number(tolerance)) : 0;
-  for (const rect of Array.from(element.getClientRects())) {
-    if (
-      clientX >= rect.left - safeTolerance &&
-      clientX <= rect.right + safeTolerance &&
-      clientY >= rect.top - safeTolerance &&
-      clientY <= rect.bottom + safeTolerance
-    ) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-function getSpellcheckWordRangeFromKnownOffsets(sourceText, startOffset, endOffset) {
-  return resolveLiveSpellcheckWordRange(sourceText, startOffset, endOffset);
 }
 
 function getTextareaOffsetFromPoint(textarea, clientX, clientY) {
@@ -8852,45 +7095,12 @@ function buildCurrentProjectSpellcheckLexicon() {
   return buildSpellcheckProjectLexicon(texts);
 }
 
-function buildGrammarCheckSummary(scene) {
-  if (!scene || !spellcheckBaseLexicon?.wordList?.length) {
-    return {
-      count: 0,
-      label: "Grammar check",
-    };
-  }
-
-  const projectLexicon = buildCurrentProjectSpellcheckLexicon();
-  const count = countSpellcheckMisspellings(scene.editorText ?? "", {
-    baseLexicon: spellcheckBaseLexicon,
-    projectLexicon,
-    referenceLexicon: spellcheckReferenceLexicon,
-  });
-
+function getCurrentSpellcheckLexicons() {
   return {
-    count,
-    label: count === 1 ? "1 flagged word" : `${count} flagged words`,
+    baseLexicon: spellcheckBaseLexicon,
+    projectLexicon: buildCurrentProjectSpellcheckLexicon(),
+    referenceLexicon: spellcheckReferenceLexicon,
   };
-}
-
-function getSpellcheckProjectWordsFromSelection(words) {
-  const source = Array.isArray(words) ? words : [];
-  const normalizedWords = [];
-  const seen = new Set();
-
-  for (const entry of source) {
-    const candidate = typeof entry === "string" ? entry : entry?.word;
-    const normalized = normalizeSpellcheckWord(candidate);
-    if (!normalized || seen.has(normalized)) {
-      continue;
-    }
-
-    seen.add(normalized);
-    const displayWord = String(candidate ?? "").trim();
-    normalizedWords.push(displayWord || normalized);
-  }
-
-  return normalizedWords;
 }
 
 function collectSpellcheckBinderTexts(node, texts) {
@@ -9209,21 +7419,28 @@ function focusEditorWhitespace(clickTarget, event) {
   event.preventDefault();
   clearTaskAnchorPreview({ restoreSelection: false });
 
+  const editorHost = resolveTextareaEditorHost(textarea);
   const offset = getTextareaOffsetFromPoint(textarea, event.clientX, event.clientY);
-  textarea.focus({ preventScroll: true });
   const trailingWhitespaceRange = getTrailingWhitespaceRange(textarea.value);
   if (trailingWhitespaceRange && (!Number.isInteger(offset) || offset >= textarea.value.length)) {
-    textarea.setSelectionRange(
+    selectTextareaEditorHostRange(
+      editorHost,
       trailingWhitespaceRange.start,
       trailingWhitespaceRange.end,
-      "forward",
+      {
+        focus: true,
+        scroll: false,
+      },
     );
     return true;
   }
 
   if (Number.isInteger(offset)) {
     const safeOffset = clampEditorOffset(offset, textarea.value.length);
-    textarea.setSelectionRange(safeOffset, safeOffset, "forward");
+    selectTextareaEditorHostRange(editorHost, safeOffset, safeOffset, {
+      focus: true,
+      scroll: false,
+    });
   }
   return true;
 }
@@ -9291,7 +7508,7 @@ function focusTaskRange(task, options = {}) {
   };
 
   showTextareaAnchoredRecordPreview(editorHost, preview.projection);
-  takeToEditorOffset(textarea, startOffset, options);
+  scrollTextareaEditorHostToOffset(editorHost, startOffset, options);
 }
 
 function previewTaskAnchor(taskId) {
@@ -9357,59 +7574,18 @@ function syncResolvedTaskRange(task, resolvedRange) {
     return;
   }
 
-  state.manuscriptTasks = state.manuscriptTasks.map((candidate) =>
-    candidate.id === task.id
-      ? {
-          ...candidate,
-          startOffset: resolvedRange.startOffset,
-          endOffset: resolvedRange.endOffset,
-        }
-      : candidate,
-  );
-  persistManuscriptTasksState({
+  anchoredRecordService.repairTaskAnchor(task.id, resolvedRange, {
     dirtyReason: "manuscript-task-anchor-repaired",
     source: "syncResolvedTaskRange",
   });
 }
 
 function centerEditorOnCaret(textarea) {
-  takeToEditorOffset(textarea, textarea.selectionStart);
+  scrollTextareaEditorHostToSelection(resolveTextareaEditorHost(textarea));
 }
 
 function takeToEditorOffset(textarea, offset, options = {}) {
-  const codeframe = textarea.closest(".scene-editor-codeframe");
-  if (!(codeframe instanceof HTMLElement)) {
-    return;
-  }
-
-  const style = window.getComputedStyle(textarea);
-  const lineHeight = parseFloat(style.lineHeight || "0") || 1;
-  const fontSize = parseFloat(style.fontSize || "0") || 16;
-  const body = textarea.closest(".editor-document-body");
-  const bodyStyle = body instanceof HTMLElement ? window.getComputedStyle(body) : null;
-  const paddingTop = bodyStyle ? parseFloat(bodyStyle.paddingTop || "0") : 0;
-  const measuredOffsetTop = measureTextareaOffsetTop(textarea, offset);
-  const approximateCharacterWidth = Math.max(6, fontSize * 0.56);
-  const charactersPerLine = Math.max(
-    8,
-    Math.floor(textarea.clientWidth / approximateCharacterWidth),
-  );
-  const visualLine = estimateVisualLineBeforeOffset(
-    textarea.value,
-    offset,
-    charactersPerLine,
-  );
-  const offsetTop = Number.isFinite(measuredOffsetTop)
-    ? measuredOffsetTop
-    : visualLine * lineHeight;
-  const targetTop = paddingTop + offsetTop - codeframe.clientHeight / 2 + lineHeight;
-  const maxScrollTop = Math.max(0, codeframe.scrollHeight - codeframe.clientHeight);
-  const top = Math.max(0, Math.min(maxScrollTop, targetTop));
-
-  codeframe.scrollTo({
-    top,
-    behavior: options.behavior ?? "auto",
-  });
+  scrollTextareaEditorHostToOffset(resolveTextareaEditorHost(textarea), offset, options);
 }
 
 function centerEditorOnOffset(textarea, offset, options = {}) {
@@ -9435,87 +7611,11 @@ function takeToSceneRange(sceneId, startOffset, endOffset = startOffset, options
     return false;
   }
 
-  const safeStart = clampEditorOffset(startOffset, textarea.value.length);
-  const safeEnd = clampEditorOffset(endOffset, textarea.value.length);
-  textarea.focus({ preventScroll: true });
-  textarea.setSelectionRange(Math.min(safeStart, safeEnd), Math.max(safeStart, safeEnd), "forward");
-  takeToEditorOffset(textarea, safeStart, options);
-  return true;
-}
-
-function measureTextareaOffsetTop(textarea, offset) {
-  const style = window.getComputedStyle(textarea);
-  const marker = document.createElement("span");
-  const mirror = document.createElement("div");
-  const bounds = textarea.getBoundingClientRect();
-  const mirroredProperties = [
-    "borderBottomWidth",
-    "borderLeftWidth",
-    "borderRightWidth",
-    "borderTopWidth",
-    "boxSizing",
-    "fontFamily",
-    "fontSize",
-    "fontStyle",
-    "fontWeight",
-    "letterSpacing",
-    "lineHeight",
-    "overflowWrap",
-    "paddingBottom",
-    "paddingLeft",
-    "paddingRight",
-    "paddingTop",
-    "tabSize",
-    "textIndent",
-    "textTransform",
-    "wordBreak",
-    "wordSpacing",
-  ];
-
-  for (const property of mirroredProperties) {
-    mirror.style[property] = style[property];
-  }
-
-  Object.assign(mirror.style, {
-    position: "absolute",
-    visibility: "hidden",
-    pointerEvents: "none",
-    top: "0",
-    left: "-9999px",
-    width: `${bounds.width}px`,
-    minHeight: "0",
-    height: "auto",
-    overflow: "hidden",
-    whiteSpace: "pre-wrap",
-  });
-
-  const safeOffset = Math.max(0, Math.min(offset, textarea.value.length));
-  mirror.append(document.createTextNode(textarea.value.slice(0, safeOffset)));
-  marker.textContent = "\u200b";
-  mirror.append(marker);
-  mirror.append(document.createTextNode(textarea.value.slice(safeOffset) || "\u200b"));
-  document.body.append(mirror);
-  const top = marker.offsetTop;
-  mirror.remove();
-  return top;
-}
-
-function estimateVisualLineBeforeOffset(text, offset, charactersPerLine) {
-  const beforeCursor = String(text ?? "").slice(0, Math.max(0, offset));
-  const logicalLines = beforeCursor.split("\n");
-  let visualLine = 0;
-
-  for (let index = 0; index < logicalLines.length; index += 1) {
-    const line = logicalLines[index];
-    if (index === logicalLines.length - 1) {
-      visualLine += Math.floor(line.length / charactersPerLine);
-      continue;
-    }
-
-    visualLine += Math.max(1, Math.ceil(line.length / charactersPerLine));
-  }
-
-  return visualLine;
+  return Boolean(selectTextareaEditorHostRange(resolveTextareaEditorHost(textarea), startOffset, endOffset, {
+    behavior: options.behavior ?? "auto",
+    focus: true,
+    scroll: true,
+  }));
 }
 
 function clearTaskAnchorPreview(options = {}) {
@@ -9530,13 +7630,20 @@ function clearTaskAnchorPreview(options = {}) {
   );
 
   if (textarea instanceof HTMLTextAreaElement) {
-    clearTextareaAnchoredRecordPreview(resolveTextareaEditorHost(textarea));
+    const editorHost = resolveTextareaEditorHost(textarea);
+    clearTextareaAnchoredRecordPreview(editorHost);
 
     if (restoreSelection) {
       if (preview.wasFocused) {
-        textarea.setSelectionRange(preview.selectionStart, preview.selectionEnd);
+        selectTextareaEditorHostRange(editorHost, preview.selectionStart, preview.selectionEnd, {
+          focus: false,
+          scroll: false,
+        });
       } else {
-        textarea.setSelectionRange(textarea.selectionEnd, textarea.selectionEnd);
+        selectTextareaEditorHostRange(editorHost, textarea.selectionEnd, textarea.selectionEnd, {
+          focus: false,
+          scroll: false,
+        });
         textarea.blur();
       }
     }
@@ -9551,19 +7658,7 @@ function clearTaskAnchorPreview(options = {}) {
 // Intent: preserve the editor viewport when anchored notes are removed or rehydrated.
 function captureSceneEditorViewport(sceneId) {
   const textarea = getEditorTextareaForScene(sceneId);
-  const codeframe = textarea?.closest?.(".scene-editor-codeframe");
-  if (!(textarea instanceof HTMLTextAreaElement) || !(codeframe instanceof HTMLElement)) {
-    return null;
-  }
-
-  return {
-    wasFocused: document.activeElement === textarea,
-    selectionStart: textarea.selectionStart,
-    selectionEnd: textarea.selectionEnd,
-    selectionDirection: textarea.selectionDirection,
-    scrollTop: codeframe.scrollTop,
-    scrollLeft: codeframe.scrollLeft,
-  };
+  return captureTextareaEditorHostViewport(resolveTextareaEditorHost(textarea));
 }
 
 // Intent: restore the manuscript editor to the same visual position after note deletion.
@@ -9573,25 +7668,7 @@ function restoreSceneEditorViewport(sceneId, viewport) {
   }
 
   const textarea = getEditorTextareaForScene(sceneId);
-  const codeframe = textarea?.closest?.(".scene-editor-codeframe");
-  if (!(textarea instanceof HTMLTextAreaElement) || !(codeframe instanceof HTMLElement)) {
-    return;
-  }
-
-  if (viewport.wasFocused) {
-    textarea.focus({ preventScroll: true });
-  }
-
-  const safeStart = clampEditorOffset(viewport.selectionStart ?? textarea.selectionStart, textarea.value.length);
-  const safeEnd = clampEditorOffset(viewport.selectionEnd ?? textarea.selectionEnd, textarea.value.length);
-  try {
-    textarea.setSelectionRange(safeStart, safeEnd, viewport.selectionDirection ?? "forward");
-  } catch (error) {
-    textarea.setSelectionRange(Math.min(safeStart, safeEnd), Math.max(safeStart, safeEnd));
-  }
-
-  codeframe.scrollTop = Math.max(0, viewport.scrollTop ?? 0);
-  codeframe.scrollLeft = Math.max(0, viewport.scrollLeft ?? 0);
+  restoreTextareaEditorHostViewport(resolveTextareaEditorHost(textarea), viewport);
 }
 
 // Intent: start anchored inspiration/research notes from the active manuscript selection.
@@ -9605,28 +7682,7 @@ function openPassageNoteComposerFromContextMenu(noteType) {
   state.taskContextMenu = null;
   state.spellcheckContextMenu = null;
   state.taskComposer = null;
-  const selectedText = menu.hasExplicitSelection ? String(menu.selectedText ?? "") : "";
-  const anchorStartOffset = menu.hasExplicitSelection
-    ? menu.startOffset
-    : menu.insertionOffset;
-  const anchorEndOffset = menu.hasExplicitSelection
-    ? menu.endOffset
-    : menu.insertionOffset;
-  state.inlinePassageDraft = {
-    sceneId: menu.sceneId,
-    noteType,
-    selectedText,
-    startOffset: anchorStartOffset,
-    endOffset: anchorEndOffset,
-    anchorStartOffset,
-    seededSelection: Boolean(menu.hasExplicitSelection),
-    typedStartOffset: null,
-    typedEndOffset: null,
-    body: "",
-    typedText: selectedText,
-    x: menu.inlinePosition?.x ?? 110,
-    y: menu.inlinePosition?.y ?? 40,
-  };
+  state.inlinePassageDraft = buildInlinePassageNoteDraftFromContextMenu(menu, noteType);
   renderConsolePanel();
   renderManuscriptPanel();
   syncSceneDocumentLayout();
@@ -9662,22 +7718,22 @@ function savePassageNoteFromComposer() {
     return;
   }
 
-  const note = {
-    ...createPassageNote(scene, {
-      selectedText: composer.selectedText,
-      startOffset: composer.startOffset,
-      endOffset: composer.endOffset,
-      body,
-    }, composer.noteType),
-  };
+  const note = buildPassageNoteFromComposer({
+    composer,
+    scene,
+    body,
+  });
+  if (!note) {
+    hideTaskSurfaces();
+    return;
+  }
 
-  state.passageNotes = [note, ...state.passageNotes];
-  state.sidePanelMode = note.noteType;
-  state.selectedPassageNoteId = note.id;
-  persistPassageNotesState({
+  anchoredRecordService.addPassageNote(note, {
     dirtyReason: `${note.noteType}-note-created`,
     source: "savePassageNoteFromComposer",
   });
+  state.sidePanelMode = note.noteType;
+  state.selectedPassageNoteId = note.id;
   maybeSuggestPassageNoteTitle(note);
   state.taskComposer = null;
   renderConsolePanel();
@@ -9719,21 +7775,18 @@ function commitInlinePassageNote() {
   }
 
   if (draft.editingNoteId) {
-    const updatedNotes = updatePassageNoteBody(state.passageNotes, draft.editingNoteId, body);
-    const updatedNote = updatedNotes.find((candidate) => candidate.id === draft.editingNoteId);
+    const updatedNote = anchoredRecordService.updatePassageNoteBody(draft.editingNoteId, body, {
+      dirtyReason: `${draft.noteType}-note-body-edited`,
+      source: "commitInlinePassageNote.edit",
+    });
     if (!updatedNote) {
       cancelInlinePassageNote();
       return;
     }
 
-    state.passageNotes = updatedNotes;
     state.sidePanelMode = updatedNote.noteType;
     state.selectedPassageNoteId = updatedNote.id;
     state.inlinePassageDraft = null;
-    persistPassageNotesState({
-      dirtyReason: `${updatedNote.noteType}-note-body-edited`,
-      source: "commitInlinePassageNote.edit",
-    });
     renderManuscriptPanel();
     syncSceneDocumentLayout();
     renderConsolePanel();
@@ -9773,14 +7826,13 @@ function commitInlinePassageNote() {
     body,
   }, draft.noteType);
 
-  state.passageNotes = [note, ...state.passageNotes];
-  state.sidePanelMode = note.noteType;
-  state.selectedPassageNoteId = note.id;
-  state.inlinePassageDraft = null;
-  persistPassageNotesState({
+  anchoredRecordService.addPassageNote(note, {
     dirtyReason: `${note.noteType}-note-created`,
     source: "commitInlinePassageNote.create",
   });
+  state.sidePanelMode = note.noteType;
+  state.selectedPassageNoteId = note.id;
+  state.inlinePassageDraft = null;
   maybeSuggestPassageNoteTitle(note);
   renderManuscriptPanel();
   syncSceneDocumentLayout();
@@ -9807,180 +7859,48 @@ function trackInlinePassageDraftTyping(sceneId, previousText, textarea) {
 
   const nextText = textarea.value;
   const previous = String(previousText ?? "");
-  if (previous === nextText) {
-    return;
-  }
-
-  const change = getTextChangeRange(previous, nextText);
-  if (!change) {
-    return;
-  }
-
-  const anchorStart = Number.isInteger(draft.anchorStartOffset)
-    ? draft.anchorStartOffset
-    : change.startOffset;
-  const previousTypedStart = Number.isInteger(draft.typedStartOffset)
-    ? draft.typedStartOffset
-    : null;
-  const previousTypedEnd = Number.isInteger(draft.typedEndOffset)
-    ? draft.typedEndOffset
-    : null;
-  const delta = nextText.length - previous.length;
-
-  let typedStart = previousTypedStart;
-  let typedEnd = previousTypedEnd;
-
-  if (typedStart === null || typedEnd === null || typedEnd <= typedStart) {
-    if (change.endOffset <= change.startOffset || change.startOffset < anchorStart - 1) {
-      return;
-    }
-    typedStart = change.startOffset;
-    typedEnd = change.endOffset;
-  } else if (change.startOffset <= typedEnd + 1) {
-    typedStart = Math.min(typedStart, change.startOffset);
-    typedEnd = Math.max(typedStart, typedEnd + delta, change.endOffset);
-  } else {
-    return;
-  }
-
-  state.inlinePassageDraft = {
-    ...draft,
-    typedStartOffset: clampEditorOffset(typedStart, nextText.length),
-    typedEndOffset: clampEditorOffset(typedEnd, nextText.length),
-  };
-}
-
-function getTextChangeRange(previousText, nextText) {
-  let prefixLength = 0;
-  const shortestLength = Math.min(previousText.length, nextText.length);
-
-  while (
-    prefixLength < shortestLength &&
-    previousText[prefixLength] === nextText[prefixLength]
-  ) {
-    prefixLength += 1;
-  }
-
-  let suffixLength = 0;
-  while (
-    suffixLength < previousText.length - prefixLength &&
-    suffixLength < nextText.length - prefixLength &&
-    previousText[previousText.length - 1 - suffixLength] === nextText[nextText.length - 1 - suffixLength]
-  ) {
-    suffixLength += 1;
-  }
-
-  const endOffset = nextText.length - suffixLength;
-  return endOffset >= prefixLength
-    ? {
-        startOffset: prefixLength,
-        endOffset,
-      }
-    : null;
+  state.inlinePassageDraft = updateInlinePassageDraftTypingState(draft, previous, nextText, {
+    clampOffset: clampEditorOffset,
+  });
 }
 
 function insertInlinePassageVerse(draft, verseText, editorText) {
-  const content = String(editorText ?? "");
-  const rawVerseText = String(verseText ?? "");
-  const existingRange = getInlinePassageDraftExistingSelectionRange(draft, content);
-  const replacementStartOffset = existingRange?.startOffset
-    ?? clampEditorOffset(draft.anchorStartOffset, content.length);
-  const replacementEndOffset = existingRange?.endOffset ?? replacementStartOffset;
-  const nextEditorText = `${content.slice(0, replacementStartOffset)}${rawVerseText}${content.slice(replacementEndOffset)}`;
-  const insertedEndOffset = replacementStartOffset + rawVerseText.length;
-  const anchor = manuscriptSelectionController.trimTextRange(nextEditorText, replacementStartOffset, insertedEndOffset, true);
-
-  if (!anchor || !anchor.selectedText.trim()) {
+  const insertion = planInlinePassageVerseInsertion(draft, verseText, editorText, {
+    trimTextRange: manuscriptSelectionController.trimTextRange,
+    clampOffset: clampEditorOffset,
+  });
+  if (!insertion) {
     return null;
   }
 
   updateSceneDraft(draft.sceneId, (sceneDraft) => {
-    sceneDraft.editorText = nextEditorText;
+    sceneDraft.editorText = insertion.editorText;
     sceneDraft.revisionStats = updateSceneRevisionStats(
       sceneDraft.revisionStats ?? draft.revisionStats,
-      content,
-      nextEditorText,
+      insertion.previousText,
+      insertion.editorText,
     );
   });
   syncRevisionPanel(draft.sceneId);
 
   const textarea = getEditorTextareaForScene(draft.sceneId);
   if (textarea instanceof HTMLTextAreaElement) {
-    textarea.value = nextEditorText;
-    textarea.setSelectionRange(anchor.startOffset, anchor.endOffset, "forward");
+    textarea.value = insertion.editorText;
+    selectTextareaEditorHostRange(resolveTextareaEditorHost(textarea), insertion.anchor.startOffset, insertion.anchor.endOffset, {
+      focus: false,
+      scroll: false,
+    });
   }
 
-  return {
-    editorText: nextEditorText,
-    anchor,
-  };
-}
-
-function getInlinePassageDraftExistingSelectionRange(draft, editorText) {
-  if (!draft?.seededSelection) {
-    return null;
-  }
-
-  const content = String(editorText ?? "");
-  const startOffset = clampEditorOffset(draft.startOffset, content.length);
-  const endOffset = clampEditorOffset(draft.endOffset, content.length);
-  if (endOffset <= startOffset) {
-    return null;
-  }
-
-  return {
-    startOffset,
-    endOffset,
-  };
-}
-
-function getInlinePassageDraftPendingVerse(draft) {
-  const rawVerseText = String(draft?.typedText ?? "");
-  if (!rawVerseText.trim()) {
-    return null;
-  }
-
-  const range = manuscriptSelectionController.trimTextRange(rawVerseText, 0, rawVerseText.length, true);
-  if (!range || !range.selectedText.trim()) {
-    return null;
-  }
-
-  const anchorStartOffset = Number.isInteger(draft.anchorStartOffset)
-    ? draft.anchorStartOffset
-    : 0;
-
-  return {
-    selectedText: range.selectedText,
-    startOffset: anchorStartOffset + range.startOffset,
-    endOffset: anchorStartOffset + range.endOffset,
-  };
+  return insertion;
 }
 
 function getInlinePassageDraftAnchor(draft, editorText, options = {}) {
-  if (!draft) {
-    return null;
-  }
-
-  if (options.includePendingVerse) {
-    const pendingVerse = getInlinePassageDraftPendingVerse(draft);
-    if (pendingVerse) {
-      return pendingVerse;
-    }
-  }
-
-  const content = String(editorText ?? "");
-  const startOffset = clampEditorOffset(draft.typedStartOffset, content.length);
-  const endOffset = clampEditorOffset(draft.typedEndOffset, content.length);
-  if (endOffset <= startOffset) {
-    return null;
-  }
-
-  const range = manuscriptSelectionController.trimTextRange(content, startOffset, endOffset, true);
-  if (!range || !range.selectedText.trim()) {
-    return null;
-  }
-
-  return range;
+  return getInlinePassageDraftAnchorFromController(draft, editorText, {
+    ...options,
+    trimTextRange: manuscriptSelectionController.trimTextRange,
+    clampOffset: clampEditorOffset,
+  });
 }
 
 function updateInlinePassageDraftStatus(editorText) {
@@ -10022,9 +7942,11 @@ function focusTypedVerseTarget(draft) {
   }
 
   const offset = clampEditorOffset(draft.anchorStartOffset, textarea.value.length);
-  textarea.focus({ preventScroll: true });
-  textarea.setSelectionRange(offset, offset);
-  centerEditorOnCaret(textarea);
+  selectTextareaEditorHostRange(resolveTextareaEditorHost(textarea), offset, offset, {
+    behavior: "auto",
+    focus: true,
+    scroll: true,
+  });
 }
 
 function clampEditorOffset(value, textLength) {
@@ -10209,7 +8131,7 @@ function focusPassageNoteRangeInCurrentScene(note, options = {}) {
   };
 
   if (showTextareaAnchoredRecordPreview(editorHost, preview.projection)) {
-    takeToEditorOffset(textarea, startOffset, options);
+    scrollTextareaEditorHostToOffset(editorHost, startOffset, options);
   }
 }
 
@@ -10225,16 +8147,7 @@ function syncResolvedPassageNoteRange(note, resolvedRange) {
     return;
   }
 
-  state.passageNotes = state.passageNotes.map((candidate) =>
-    candidate.id === note.id
-      ? {
-          ...candidate,
-          startOffset: resolvedRange.startOffset,
-          endOffset: resolvedRange.endOffset,
-        }
-      : candidate,
-  );
-  persistPassageNotesState({
+  anchoredRecordService.repairPassageNoteAnchor(note.id, resolvedRange, {
     dirtyReason: "passage-note-anchor-repaired",
     source: "syncResolvedPassageNoteRange",
   });
@@ -10254,12 +8167,10 @@ function openTaskComposerFromContextMenu(event) {
 
   state.taskContextMenu = null;
   state.spellcheckContextMenu = null;
-  state.taskComposer = {
-    ...menu,
-    composerType: "task",
-    x: event.clientX + 10,
+  state.taskComposer = buildTaskComposerFromContextMenu(menu, {
+    x: event.clientX,
     y: event.clientY,
-  };
+  });
   renderTaskContextMenu();
 }
 
@@ -10286,15 +8197,17 @@ function saveTaskFromComposer() {
     return;
   }
 
-  const task = createManuscriptTask(scene, {
+  const task = buildTaskFromComposer({
+    composer,
+    scene,
     body,
     taskNumber: getNextTaskNumberForScene(scene.sceneId),
-    selectedText: composer.selectedText,
-    startOffset: composer.startOffset,
-    endOffset: composer.endOffset,
   });
-  state.manuscriptTasks = [...state.manuscriptTasks, task];
-  persistManuscriptTasksState({
+  if (!task) {
+    hideTaskSurfaces();
+    return;
+  }
+  anchoredRecordService.addTask(task, {
     dirtyReason: "manuscript-task-created",
     source: "saveTaskFromComposer",
   });
@@ -10319,7 +8232,7 @@ async function suggestSceneTitle(sceneId) {
   renderManuscriptPanel();
   syncSceneDocumentLayout();
 
-  const result = await requestLocalAiTitle({
+  const result = await localAiTitleService.requestTitle({
     userInput: scene.editorText || scene.sceneSynopsis || scene.sceneTitle,
     manuscriptContext: [
       `Chapter: ${formatChapterDisplayTitle(scene.chapterTitle)}`,
@@ -10355,31 +8268,26 @@ function maybeSuggestTaskTitle(task) {
   }
 
   const fallbackTitle = task.title;
-  requestLocalAiTitle({
-    userInput: task.body || task.description || "",
-    manuscriptContext: [
-      `Chapter: ${formatChapterDisplayTitle(task.chapterTitle)}`,
-      `Scene: ${task.sceneTitle}`,
-      `Referenced manuscript text:\n${task.selectedText}`,
-    ].join("\n"),
+  const request = buildTaskTitleRequest(task, {
     projectContext: state.projectTitle,
-    maxTokens: 20,
-  }).then((result) => {
+    formatChapterTitle: formatChapterDisplayTitle,
+  });
+
+  if (!request) {
+    return;
+  }
+
+  localAiTitleService.requestTitle(request).then((result) => {
     if (!result.ok) {
       return;
     }
 
     const currentTask = state.manuscriptTasks.find((candidate) => candidate.id === task.id);
-    if (!currentTask || currentTask.title !== fallbackTitle) {
+    if (!canApplySuggestedRecordTitle(currentTask, fallbackTitle)) {
       return;
     }
 
-    state.manuscriptTasks = updateManuscriptTaskTitle(
-      state.manuscriptTasks,
-      task.id,
-      result.title,
-    );
-    persistManuscriptTasksState({
+    anchoredRecordService.updateTaskTitle(task.id, result.title, {
       dirtyReason: "manuscript-task-title-suggested",
       source: "maybeSuggestTaskTitle",
     });
@@ -10393,112 +8301,31 @@ function maybeSuggestPassageNoteTitle(note) {
   }
 
   const fallbackTitle = note.title;
-  requestLocalAiTitle({
-    userInput: note.body || "",
-    manuscriptContext: [
-      `Chapter: ${formatChapterDisplayTitle(note.chapterTitle)}`,
-      `Scene: ${note.sceneTitle}`,
-      `Referenced manuscript text:\n${note.selectedText}`,
-    ].join("\n"),
+  const request = buildPassageNoteTitleRequest(note, {
     projectContext: state.projectTitle,
-    maxTokens: 20,
-  }).then((result) => {
+    formatChapterTitle: formatChapterDisplayTitle,
+  });
+
+  if (!request) {
+    return;
+  }
+
+  localAiTitleService.requestTitle(request).then((result) => {
     if (!result.ok) {
       return;
     }
 
     const currentNote = state.passageNotes.find((candidate) => candidate.id === note.id);
-    if (!currentNote || currentNote.title !== fallbackTitle) {
+    if (!canApplySuggestedRecordTitle(currentNote, fallbackTitle)) {
       return;
     }
 
-    state.passageNotes = updatePassageNoteTitle(
-      state.passageNotes,
-      note.id,
-      result.title,
-    );
-    persistPassageNotesState({
+    anchoredRecordService.updatePassageNoteTitle(note.id, result.title, {
       dirtyReason: `${currentNote.noteType}-note-title-suggested`,
       source: "maybeSuggestPassageNoteTitle",
     });
     renderConsolePanel();
   }).catch((error) => console.warn("Unable to suggest passage note title", error));
-}
-
-async function requestLocalAiTitle({ userInput, manuscriptContext, projectContext, maxTokens }) {
-  try {
-    const response = await fetchJsonFromDesktopApi("/api/local-ai/generate-title", {
-      method: "POST",
-      body: {
-        userInput,
-        manuscriptContext,
-        projectContext,
-        outputFormat: "text",
-        maxTokens,
-        temperature: 0.25,
-      },
-    });
-
-    if (!response.ok) {
-      return {
-        ok: false,
-        message: "Local AI unavailable",
-      };
-    }
-
-    const payload = response.value;
-    if (!payload.ok) {
-      return {
-        ok: false,
-        message: localAiUnavailableMessage(payload),
-      };
-    }
-
-    const title = sanitizeSuggestedTitle(payload.text);
-    if (!title) {
-      return {
-        ok: false,
-        message: "No title returned",
-      };
-    }
-
-    return {
-      ok: true,
-      title,
-    };
-  } catch (error) {
-    console.warn("Local AI title request failed", error);
-    return {
-      ok: false,
-      message: "Local AI unavailable",
-    };
-  }
-}
-
-function localAiUnavailableMessage(payload) {
-  if (payload?.reason === "provider_unavailable") {
-    return "Local AI unavailable";
-  }
-
-  if (payload?.reason === "tier_not_configured") {
-    return "AI tier not configured";
-  }
-
-  return "Title not generated";
-}
-
-function sanitizeSuggestedTitle(value) {
-  const cleaned = String(value ?? "")
-    .replace(/```[\s\S]*?```/g, "")
-    .split(/\r?\n/)
-    .map((line) => line.replace(/^[-*\d.\s"']+|["']+$/g, "").trim())
-    .find(Boolean);
-
-  if (!cleaned) {
-    return "";
-  }
-
-  return cleaned.length > 72 ? `${cleaned.slice(0, 69).trim()}...` : cleaned;
 }
 
 function applySceneTitle(sceneId, title) {
@@ -10536,8 +8363,7 @@ function completeTask(taskId) {
     state.selectedTaskId = null;
   }
   clearTaskAnchorPreview();
-  state.manuscriptTasks = completeManuscriptTask(state.manuscriptTasks, taskId);
-  persistManuscriptTasksState({
+  anchoredRecordService.completeTask(taskId, {
     dirtyReason: "manuscript-task-completed",
     source: "completeTask",
   });
@@ -10608,30 +8434,16 @@ function hideSpellcheckContextMenu() {
 }
 
 function applyGrammarCheckWordsToProjectList(targetListKey, sourceWords) {
-  const normalizedSourceWords = getSpellcheckProjectWordsFromSelection(sourceWords);
-  if (!normalizedSourceWords.length) {
+  const result = applySpellcheckProjectListMutation(
+    state.spellcheckProjectSettings,
+    targetListKey,
+    sourceWords,
+  );
+  if (!result.changed) {
     return false;
   }
 
-  const currentSettings = normalizeSpellcheckProjectSettings(state.spellcheckProjectSettings);
-  const nextSettings = normalizeSpellcheckProjectSettings({
-    ...currentSettings,
-    [targetListKey]: [
-      ...(currentSettings[targetListKey] ?? []),
-      ...normalizedSourceWords,
-    ],
-  });
-
-  if (
-    nextSettings.dictionaryWords.length === currentSettings.dictionaryWords.length &&
-    nextSettings.exceptionWords.length === currentSettings.exceptionWords.length &&
-    nextSettings.dictionaryWords.every((word, index) => word === currentSettings.dictionaryWords[index]) &&
-    nextSettings.exceptionWords.every((word, index) => word === currentSettings.exceptionWords[index])
-  ) {
-    return false;
-  }
-
-  state.spellcheckProjectSettings = nextSettings;
+  state.spellcheckProjectSettings = result.settings;
   persistCurrentProjectRecord();
   return true;
 }
@@ -10694,7 +8506,7 @@ function applySpellcheckSuggestionFromMenu(target) {
     return;
   }
 
-  textarea.focus({ preventScroll: true });
+  focusTextareaEditorHost(resolveTextareaEditorHost(textarea), { preventScroll: true });
   textarea.setRangeText(replacement, liveRange.startOffset, liveRange.endOffset, "end");
   textarea.dispatchEvent(new Event("input", { bubbles: true }));
 }
@@ -11292,14 +9104,7 @@ function toggleChapterCollapse(chapterId) {
     return;
   }
 
-  const nextCollapsed = new Set(state.collapsedChapterIds);
-  if (nextCollapsed.has(chapterId)) {
-    nextCollapsed.delete(chapterId);
-  } else {
-    nextCollapsed.add(chapterId);
-  }
-
-  state.collapsedChapterIds = [...nextCollapsed];
+  state.collapsedChapterIds = toggleCollapsedChapterId(state.collapsedChapterIds, chapterId);
   persistCollapsedChapterState(state.activeProjectId, state.collapsedChapterIds);
   persistCurrentProjectRecord();
   renderBinderPanel();
@@ -11314,23 +9119,10 @@ function toggleConsoleChapterCollapse(panelId, chapterKey) {
     return;
   }
 
-  const panelState = {
-    issueTasks: normalizeChapterIdList(state.collapsedConsoleChapterIds.issueTasks),
-    issues: normalizeChapterIdList(state.collapsedConsoleChapterIds.issues),
-    inspiration: normalizeChapterIdList(state.collapsedConsoleChapterIds.inspiration),
-    research: normalizeChapterIdList(state.collapsedConsoleChapterIds.research),
-  };
-  if (!Object.prototype.hasOwnProperty.call(panelState, panelId)) {
+  const panelState = toggleCollapsedConsoleChapter(state.collapsedConsoleChapterIds, panelId, chapterKey);
+  if (panelState === state.collapsedConsoleChapterIds) {
     return;
   }
-  const nextCollapsed = new Set(panelState[panelId] ?? []);
-  if (nextCollapsed.has(chapterKey)) {
-    nextCollapsed.delete(chapterKey);
-  } else {
-    nextCollapsed.add(chapterKey);
-  }
-
-  panelState[panelId] = [...nextCollapsed];
   state.collapsedConsoleChapterIds = panelState;
   persistCollapsedConsoleChapterState(state.activeProjectId, panelState);
   persistCurrentProjectRecord();
@@ -12104,112 +9896,6 @@ function syncSuggestionQueueMetadata(queue, lineByBlockId) {
   }));
 }
 
-function syncNarrationSessionMetadata(session, lineByBlockId) {
-  if (!session || typeof session !== "object") {
-    return session;
-  }
-
-  const anchor = session.currentAnchor && typeof session.currentAnchor === "object"
-    ? session.currentAnchor
-    : null;
-  const line = anchor?.blockId ? lineByBlockId.get(anchor.blockId) : null;
-  if (!line) {
-    return session;
-  }
-
-  return {
-    ...session,
-    currentAnchor: {
-      ...anchor,
-      chapterId: line.chapterId,
-      sceneId: line.sceneId,
-    },
-    currentLineNumber: line.lineNumber,
-    currentText: line.text,
-    updatedAt: new Date().toISOString(),
-  };
-}
-
-function syncNarrationAlignmentJobs(jobs, lineByBlockId) {
-  if (!Array.isArray(jobs)) {
-    return [];
-  }
-
-  return jobs.map((job) => {
-    const anchor = job?.request?.anchor;
-    const line = anchor?.blockId ? lineByBlockId.get(anchor.blockId) : null;
-    if (!line) {
-      return { ...job };
-    }
-
-    return {
-      ...job,
-      request: {
-        ...job.request,
-        anchor: {
-          ...anchor,
-          chapterId: line.chapterId,
-          sceneId: line.sceneId,
-        },
-      },
-      result: job.result && typeof job.result === "object"
-        ? {
-            ...job.result,
-            matchedLineNumber: line.lineNumber,
-          }
-        : job.result,
-    };
-  });
-}
-
-function syncVoiceRecordingsMetadata(recordings, lineByBlockId) {
-  if (!Array.isArray(recordings)) {
-    return [];
-  }
-
-  return recordings.map((recording) => {
-    const line = typeof recording?.blockId === "string" ? lineByBlockId.get(recording.blockId) : null;
-    if (!line) {
-      return { ...recording };
-    }
-
-    return {
-      ...recording,
-      chapterId: line.chapterId,
-      chapterTitle: line.chapterTitle,
-      sceneId: line.sceneId,
-      sceneTitle: line.sceneTitle,
-      lineNumber: line.lineNumber,
-    };
-  });
-}
-
-function syncVoiceRenderJobsMetadata(jobs, sceneMetaBySceneId) {
-  if (!Array.isArray(jobs)) {
-    return [];
-  }
-
-  return jobs.map((job) => {
-    const sceneId = typeof job?.request?.sceneId === "string" ? job.request.sceneId : "";
-    if (!sceneId) {
-      return { ...job };
-    }
-
-    const sceneMeta = sceneMetaBySceneId.get(sceneId);
-    if (!sceneMeta) {
-      return { ...job };
-    }
-
-    return {
-      ...job,
-      request: {
-        ...job.request,
-        chapterId: sceneMeta.chapterId,
-      },
-    };
-  });
-}
-
 function moveBinderScene(sceneId, dropTarget) {
   if (typeof sceneId !== "string" || !sceneId.trim() || !dropTarget || !state.workspace?.project) {
     return false;
@@ -12540,7 +10226,7 @@ function removeScenesFromProject(removedSceneIds) {
   );
 
   if (state.workspace.narration && typeof state.workspace.narration === "object") {
-    state.workspace.narration.alignmentJobs = syncNarrationAlignmentJobs(
+    state.workspace.narration.alignmentJobs = syncNarrationAlignmentJobsMetadata(
       state.workspace.narration.alignmentJobs,
       rebuilt.lineByBlockId,
     ).filter((job) => remainingBlockIds.has(job?.request?.anchor?.blockId));
@@ -12608,7 +10294,7 @@ function removeScenesFromProject(removedSceneIds) {
   state.editingSceneTitleId = removedSet.has(state.editingSceneTitleId)
     ? null
     : state.editingSceneTitleId;
-  state.collapsedChapterIds = state.collapsedChapterIds.filter((chapterId) => remainingChapterIds.has(chapterId));
+  state.collapsedChapterIds = pruneCollapsedChapterIds(state.collapsedChapterIds, remainingChapterIds);
   persistCollapsedChapterState(state.activeProjectId, state.collapsedChapterIds);
   state.workspace.selectionDefaults = {
     ...(state.workspace.selectionDefaults ?? {}),
@@ -12692,8 +10378,10 @@ function trimSceneWhitespace(sceneId) {
 
   if (textarea instanceof HTMLTextAreaElement) {
     textarea.value = trimmedText;
-    textarea.focus({ preventScroll: true });
-    textarea.setSelectionRange(trimmedText.length, trimmedText.length);
+    selectTextareaEditorHostRange(resolveTextareaEditorHost(textarea), trimmedText.length, trimmedText.length, {
+      focus: true,
+      scroll: false,
+    });
   }
 
   renderHeader();
@@ -12741,7 +10429,7 @@ function applyBinderSceneGroups(sceneGroups, options = {}) {
     state.workspace.narration.session,
     rebuilt.lineByBlockId,
   );
-  state.workspace.narration.alignmentJobs = syncNarrationAlignmentJobs(
+  state.workspace.narration.alignmentJobs = syncNarrationAlignmentJobsMetadata(
     state.workspace.narration.alignmentJobs,
     rebuilt.lineByBlockId,
   );
@@ -12762,7 +10450,7 @@ function applyBinderSceneGroups(sceneGroups, options = {}) {
   const existingChapterIds = new Set(
     [...rebuilt.sceneMetaBySceneId.values()].map((sceneMeta) => sceneMeta.chapterId),
   );
-  state.collapsedChapterIds = state.collapsedChapterIds.filter((chapterId) => existingChapterIds.has(chapterId));
+  state.collapsedChapterIds = pruneCollapsedChapterIds(state.collapsedChapterIds, existingChapterIds);
   persistCollapsedChapterState(state.activeProjectId, state.collapsedChapterIds);
   refreshScenes();
 

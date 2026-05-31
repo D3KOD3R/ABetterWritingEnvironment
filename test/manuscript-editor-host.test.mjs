@@ -10,7 +10,10 @@ import {
   selectManuscriptProjections,
 } from "../apps/editor/public/features/manuscript-editor/projection-selector.js";
 import {
+  estimateTextareaVisualLineBeforeOffset,
+  findTextareaOffsetForVisualLineEnd,
   renderTextareaAuthorMarkContent,
+  renderTextareaDiagnosticContent,
   renderTextareaEditorHostHTML,
   renderTextareaSpellcheckContent,
 } from "../apps/editor/public/adapters/editor-host/textarea-editor-host.js";
@@ -18,8 +21,13 @@ import {
 export function runManuscriptEditorHostTest() {
   const text = "Quiet dooor.";
   const projections = selectManuscriptProjections({
+    projectId: "project-1",
     sceneId: "scene-1",
     text,
+    sceneBlocks: [{
+      blockId: "block-1",
+      text,
+    }],
     inlineFormatRanges: [{
       id: "mark-1",
       formatId: "italic",
@@ -30,6 +38,19 @@ export function runManuscriptEditorHostTest() {
       word: "dooor",
       index: 6,
       endIndex: 11,
+    }],
+    diagnosticIssues: [{
+      id: "issue-1",
+      severity: "warning",
+      lifecycle: "open",
+      evidenceExcerpt: "dooor",
+      anchor: {
+        projectId: "project-1",
+        sceneId: "scene-1",
+        blockId: "block-1",
+        startOffset: 6,
+        endOffset: 11,
+      },
     }],
     anchoredRecordPreviews: [{
       recordType: "passageNote",
@@ -69,13 +90,16 @@ export function runManuscriptEditorHostTest() {
     ],
   });
 
-  assert.equal(snapshot.projections.length, 5);
+  assert.equal(snapshot.projections.length, 6);
   assert.equal(selectManuscriptEditorHostChannel(snapshot, MANUSCRIPT_PROJECTION_CHANNELS.AUTHOR_MARK).length, 1);
+  assert.equal(selectManuscriptEditorHostChannel(snapshot, MANUSCRIPT_PROJECTION_CHANNELS.DIAGNOSTIC).length, 1);
   assert.equal(selectManuscriptEditorHostChannel(snapshot, MANUSCRIPT_PROJECTION_CHANNELS.NOTE).length, 1);
   assert.equal(selectManuscriptEditorHostChannel(snapshot, MANUSCRIPT_PROJECTION_CHANNELS.SEARCH).length, 1);
   assert.equal(selectManuscriptEditorHostChannel(snapshot, MANUSCRIPT_PROJECTION_CHANNELS.NARRATION_FOLLOW).length, 1);
   assert.equal(selectManuscriptEditorHostChannel(snapshot, MANUSCRIPT_PROJECTION_CHANNELS.SPELLCHECK).length, 1);
   assert.match(renderTextareaAuthorMarkContent(snapshot), /editor-inline-format-italic/);
+  assert.match(renderTextareaDiagnosticContent(snapshot), /editor-diagnostic-warning/);
+  assert.match(renderTextareaDiagnosticContent(snapshot), /data-diagnostic-id="issue-1"/);
   assert.match(renderTextareaSpellcheckContent(snapshot), /editor-spellcheck-word is-misspelled/);
 
   const markup = renderTextareaEditorHostHTML({
@@ -85,7 +109,16 @@ export function runManuscriptEditorHostTest() {
     inputClassName: "has-revision-preview",
   });
   assert.match(markup, /data-inline-format-layer/);
+  assert.match(markup, /data-diagnostic-layer/);
+  assert.match(markup, /editor-diagnostic-warning/);
   assert.match(markup, /data-spellcheck-layer/);
   assert.match(markup, /class="editor-document-input has-revision-preview"/);
   assert.match(markup, /Quiet dooor\./);
+
+  const wrappedText = "abcdefghij\nklmno";
+  assert.equal(estimateTextareaVisualLineBeforeOffset(wrappedText, 9, 4), 2);
+  assert.equal(estimateTextareaVisualLineBeforeOffset(wrappedText, 12, 4), 3);
+  assert.equal(findTextareaOffsetForVisualLineEnd(wrappedText, 0, 4), 4);
+  assert.equal(findTextareaOffsetForVisualLineEnd(wrappedText, 2, 4), 10);
+  assert.equal(findTextareaOffsetForVisualLineEnd(wrappedText, 3, 4), 15);
 }

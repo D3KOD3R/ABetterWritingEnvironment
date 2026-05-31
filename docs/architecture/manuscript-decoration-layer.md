@@ -2,7 +2,7 @@
 
 ## Decision Status
 
-Status: active staged architecture. Compatibility range persistence, the projection selector, and the textarea-host boundary are implemented; diagnostic and manuscript-suggestion projection inputs remain to be added.
+Status: active staged architecture. Compatibility range persistence, the projection selector, the textarea-host boundary, and the accepted-issue `diagnostic` projection source are implemented. A shared anchored manuscript-suggestion DTO is staged, but no `suggestion` projection channel exists yet.
 
 This document defines how manuscript styling, anchored author records, AI suggestions, and runtime editor visuals must integrate without making the editor rendering engine the owner of project data.
 
@@ -57,7 +57,7 @@ The current repository already contains useful parts of this design:
 - `ProjectPersistenceService` owns save/load/autosave workflow boundaries.
 - `apps/editor/public/features/manuscript-editor/manuscript-command-controller.js` models inline formatting as ranges rather than inserting HTML into manuscript text.
 - `apps/editor/public/features/manuscript-editor/editor-host-interface.js` now normalizes scene text and render-only projections before an editor implementation receives them.
-- `apps/editor/public/adapters/editor-host/textarea-editor-host.js` now contains the existing textarea-overlay markup and paints author-mark, active anchored-record preview, spellcheck, search, and narration-follow projections without persisting them.
+- `apps/editor/public/adapters/editor-host/textarea-editor-host.js` now contains the existing textarea-overlay markup and paints author-mark, accepted diagnostic, active anchored-record preview, spellcheck, search, and narration-follow projections without persisting them.
 
 The interrupted implementation also revealed a gap:
 
@@ -94,7 +94,7 @@ It has identity, provenance, lifecycle, and anchor recovery rules. Its editor hi
 
 A proposed change or record returned by local or hosted analysis. A suggestion may carry evidence anchors and a proposed mark/record, but it cannot modify canonical project data until the author accepts it.
 
-Current scope note: the implemented workspace `suggestionQueue` contains world-template/entity/link and Dream Scaping proposals. Those records may carry evidence anchors for review, but they are not manuscript-range suggestion records and must not be sent to a manuscript `suggestion` projection channel. That channel requires a separate anchored manuscript-suggestion contract and lifecycle.
+Current scope note: the implemented workspace `suggestionQueue` contains world-template/entity/link and Dream Scaping proposals. Those records may carry evidence anchors for review, but they are not manuscript-range suggestion records and must not be sent to a manuscript `suggestion` projection channel. `packages/shared-types` now defines `AnchoredManuscriptSuggestion` for future manuscript-range proposals; the editor still must not paint those proposals until a dedicated source, review queue, and accept/reject commands are implemented.
 
 ### Projection
 
@@ -158,7 +158,7 @@ interface ManuscriptProjection {
     | "narration-follow";
   styleToken: string;
   priority: number;
-  interactionRef?: {
+  sourceRef?: {
     recordType: string;
     recordId: string;
   };
@@ -385,12 +385,28 @@ Implemented evidence:
 - `test/manuscript-projection-selector.test.mjs`
 - `test/manuscript-editor-host.test.mjs`
 
-### Slice 1A: Anchored Diagnostic Projection - Next
+### Slice 1A: Anchored Diagnostic Projection - Implemented
 
 - Derive `diagnostic` projections from durable `IssueRecord` anchors already accepted into the active project.
 - Retain issue-console records as the navigation and lifecycle owner; the projection selector emits only disposable render descriptors.
 - Do not feed worldbuilding or Dream Scaping proposal records into manuscript projections.
 - Add tests for valid/invalid issue anchors, projection priority, host rendering behavior, and persistence exclusion.
+
+Implemented evidence:
+
+- `apps/editor/public/features/manuscript-editor/projection-selector.js`
+- `apps/editor/public/adapters/editor-host/textarea-editor-host.js`
+- `apps/editor/public/features/scene-editor.js`
+- `apps/editor/public/app.js`
+- `test/manuscript-projection-selector.test.mjs`
+- `test/manuscript-editor-host.test.mjs`
+- `test/project-refresh-persistence.test.mjs`
+
+### Slice 1B: Anchored Manuscript Suggestion DTO - Staged
+
+- Define `AnchoredManuscriptSuggestion` in `packages/shared-types` with review state, source identity, evidence anchor, proposed action, and accepted/rejected lifecycle fields.
+- Keep world-template/entity/link and Dream Scaping proposal queues separate from manuscript-range suggestion projections.
+- Do not add a `suggestion` projection channel until the editor has a dedicated manuscript-suggestion source and explicit accept/reject commands.
 
 ### Slice 2: Canonical Marks
 

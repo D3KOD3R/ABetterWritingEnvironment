@@ -2852,7 +2852,20 @@ aside#binder-slot {
   z-index: 1;
 }
 
+.editor-diagnostic-layer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  pointer-events: none;
+  user-select: none;
+  overflow: hidden;
+  z-index: 1;
+}
+
 .editor-spellcheck-layer__content,
+.editor-diagnostic-layer__content,
 .editor-inline-format-layer__content {
   width: min(100%, var(--editor-content-width));
   margin: 0 auto;
@@ -2869,6 +2882,26 @@ aside#binder-slot {
 
 .editor-spellcheck-layer__content {
   color: rgba(31, 36, 48, 0.02);
+}
+
+.editor-diagnostic-layer__content {
+  color: transparent;
+}
+
+.editor-diagnostic-range {
+  border-radius: 3px;
+  box-shadow: inset 0 -2px 0 rgba(194, 123, 33, 0.6);
+  background: rgba(255, 223, 150, 0.24);
+}
+
+.editor-diagnostic-error {
+  box-shadow: inset 0 -2px 0 rgba(174, 48, 48, 0.75);
+  background: rgba(255, 193, 187, 0.32);
+}
+
+.editor-diagnostic-info {
+  box-shadow: inset 0 -2px 0 rgba(31, 110, 120, 0.58);
+  background: rgba(202, 236, 239, 0.3);
 }
 
 .editor-inline-format-layer {

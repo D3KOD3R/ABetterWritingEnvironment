@@ -55,7 +55,17 @@ export function runProjectActivationControllerTest() {
       narrationRuntime = value;
       events.push("narration.runtime.clear");
     },
-    clearIntervalFn: () => events.push("interval.clear"),
+    cleanupNarrationRecordingRuntime: (runtime) => {
+      if (runtime?.timerId) {
+        events.push("interval.clear");
+      }
+      if (runtime?.speechRecognition) {
+        runtime.speechRecognition.stop();
+      }
+      if (runtime?.stream) {
+        runtime.stream.getTracks().forEach((track) => track.stop());
+      }
+    },
     getVoiceRecordingPreviewAudio: () => previewAudio,
     setVoiceRecordingPreviewAudio: (value) => {
       previewAudio = value;

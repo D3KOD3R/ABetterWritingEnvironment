@@ -50,13 +50,30 @@ Completed or active slices:
 - `apps/editor/public/features/manuscript-editor/manuscript-input-controller.js` owns live scene text-input sequencing and inline-format range derivation while shell callbacks retain persistence, revision, and refresh effects.
 - `apps/editor/public/features/manuscript-editor/manuscript-selection-controller.js` owns normalized selection text, context-range derivation, bookmark snapshots, and saved scene-selection policy while the shell retains browser focus and scroll effects.
 - `apps/editor/public/features/manuscript-editor/anchored-record-navigation-controller.js` owns task/note selection matching and projection planning, with anchor-repair persistence kept behind explicit shell callbacks and disabled for hover-only previews.
-- `apps/editor/public/adapters/editor-host/textarea-editor-host.js` owns the active textarea-overlay host markup, spellcheck/author-mark painting, anchored-record/search/narration selection preview styling, mirrored overlay styling, and textarea command bridge.
+- `apps/editor/public/features/spellcheck/grammar-check-panel.js` owns grammar-check panel view models, state transitions, drag sessions, and markup; `apps/editor/public/features/spellcheck/spellcheck-project-settings.js` owns project dictionary/exception list mutation rules; `apps/editor/public/features/spellcheck/spellcheck-context-menu.js` owns spellcheck context-menu view modeling/markup; `apps/editor/public/features/spellcheck/spellcheck-context-controller.js` owns context-menu record derivation; and `apps/editor/public/features/spellcheck/spellcheck-refresh-controller.js` owns spellcheck refresh debounce state while the shell still owns menu mounting, edit effects, and persistence effects.
+- `apps/editor/public/adapters/editor-host/textarea-editor-host.js` owns the active textarea-overlay host markup, spellcheck/author-mark painting, anchored-record/search/narration selection preview styling, mirrored overlay styling, textarea command bridge, and the first focus/selection/viewport scrolling capabilities used by shell navigation.
 - `apps/editor/public/state/project-library-state.js` owns project-library snapshot normalization, cache/seed merge policy, active-record resolution, and persisted selection-default normalization.
 - `apps/editor/public/state/project-record-state.js` owns durable project-record normalization and construction from canonical workspace snapshots.
 - `apps/editor/public/state/project-runtime-record-state.js` owns save-time assembly of the durable project record from live runtime state while receiving DOM selection capture through explicit callbacks.
 - `apps/editor/public/state/project-activation-state.js` owns record-to-runtime state hydration before the activation controller coordinates effects.
 - `apps/editor/public/state/project-activation-controller.js` owns project activation teardown, compatibility persistence, and shared post-activation refresh/render/snapshot orchestration.
 - `apps/editor/public/adapters/storage/project-persistence-service.js` owns project-file save/load/autosave/import/export orchestration.
+- `apps/editor/public/features/local-ai/local-ai-title-service.js` owns the editor-side Local AI title endpoint payload, default generation policy, title sanitization, and unavailable-provider response mapping.
+- `apps/editor/public/adapters/storage/project-source-service.js` owns project-source desktop loading, source library normalization, merge, active-project selection, and project-library save orchestration.
+- `apps/editor/public/features/anchored-records/anchored-record-service.js` owns anchored task/note collection mutations, dirty reasons, and persistence callback calls while the shell retains DOM reads and render scheduling.
+- `apps/editor/public/features/narration/narration-media-service.js` owns project-media save/load endpoint calls and base64/blob conversion used by narration recording saves and voice preview loading.
+- `apps/editor/public/features/narration/narration-metadata-sync-service.js` owns narration session, alignment job, saved voice recording, and voice render-job metadata sync after manuscript structure changes.
+- `apps/editor/public/features/narration/narration-media-recorder-service.js` owns MediaRecorder construction and event handling for captured audio chunks, recorder errors, and stop finalization dispatch.
+- `apps/editor/public/features/narration/narration-recording-command-service.js` owns narration recording start/stop command sequencing, capability gates, microphone request ordering, recorder attachment, speech tracker attachment, and stop fallback finalization dispatch through injected browser/shell callbacks.
+- `apps/editor/public/features/narration/narration-recording-finalization-service.js` owns stopped-runtime cleanup, project-media save result mapping, saved/failed take record creation, final paused session options, and recording failure/stop-error logging.
+- `apps/editor/public/features/narration/narration-recording-runtime-service.js` owns shared cleanup for in-flight browser narration recorder timers, speech recognition, and media streams.
+- `apps/editor/public/features/narration/narration-selection-service.js` owns armed narration verse selection derivation from scene/block/offset context.
+- `apps/editor/public/features/narration/narration-speech-recognition-service.js` owns Web Speech API tracker setup and transcript/error/end event interpretation.
+- `apps/editor/public/features/narration/narration-take-service.js` owns narration runtime DTO construction, initial session state, finalization context, recording blob creation, transcript/status normalization, elapsed-time labels, media MIME fallback, recording IDs, and project-media naming policy.
+- `apps/editor/public/features/voice/voice-workflow-service.js` owns editor voice profile/job normalization, placeholder render-job transitions, and voice narration preference snapshot load/save.
+- `apps/editor/public/features/voice/voice-recording-preview-service.js` owns browser audio/object-URL lifecycle for saved voice recording previews.
+- `apps/editor/public/features/voice/voice-recording-service.js` owns saved voice/narration recording collection initialization, active-project filtering, lookup, and upsert mutation.
+- `apps/editor/public/features/voice/voice-recording-action-service.js` owns saved recording preview orchestration and manuscript verse navigation planning.
 - `apps/editor/public/adapters/storage/project-repository.js` preserves the scene-level inline formatting compatibility field through persistence.
 
 Immediate constraint:
@@ -80,17 +97,17 @@ Completed in the current checkpoint:
 - Phase 1 project persistence and activation state ownership is extracted behind `ProjectPersistenceService` and `apps/editor/public/state/*`.
 - Scene editor compatibility rendering now runs through `editor-host-interface.js` and `textarea-editor-host.js`.
 - Find/replace derivation, scene input sequencing, selection policy, anchored-record preview planning, and projection selection have feature-owned controller modules.
-- Projection channels currently implemented are `author-mark`, `task`, `note`, `spellcheck`, `search`, and `narration-follow`.
+- Projection channels currently implemented are `author-mark`, `diagnostic`, `task`, `note`, `spellcheck`, `search`, and `narration-follow`.
 - Targeted tests cover the extracted state modules, manuscript controllers, projection selector, and textarea host adapter; the full test harness passed `35` tests at the checkpoint.
 
 Next refactor command:
 
-- Add the stable-anchor `diagnostic` projection source first, then define an anchored manuscript-suggestion DTO before adding a `suggestion` projection source.
+- Continue Phase 2 by keeping `diagnostic` projections derived from stable issue anchors, then wire any future manuscript `suggestion` source only after the staged `AnchoredManuscriptSuggestion` DTO has a dedicated queue and accept/reject commands.
 
 Still intentionally deferred:
 
 - Canonical `ManuscriptMark` schema migration from compatibility `inlineFormatRanges`.
-- Remaining DOM focus/scroll effects behind the editor-host boundary.
+- Remaining non-host panel focus/scroll effects behind their appropriate feature or shell boundaries.
 - CodeMirror adapter evaluation until projection and command contracts are complete.
 
 ### Next Slice Contract
@@ -99,8 +116,8 @@ The next Phase 2 change must use the following boundary:
 
 - `diagnostic` projections derive from accepted, anchor-backed manuscript `IssueRecord` data already carried by `state.workspace.project.issues`; the projection is visual output only and must reference the durable issue ID.
 - The existing `state.workspace.analysis.suggestionQueue` is currently for world-template/entity/link proposals and Dream Scaping proposals. It is not a manuscript-range suggestion source and must not be painted on manuscript text.
-- A `suggestion` manuscript projection may be added only after an explicit anchored manuscript-suggestion DTO exists with review state, evidence anchor, source identity, and accept/reject lifecycle.
-- The first implementation should add diagnostic projection selection, adapter rendering or selection behavior, and focused tests for anchor filtering, deterministic priority, and exclusion of projection objects from persistence.
+- A `suggestion` manuscript projection may be added only from `AnchoredManuscriptSuggestion` data, after a dedicated review queue and explicit accept/reject commands exist.
+- The first implementation has added diagnostic projection selection, adapter rendering, and focused tests for anchor filtering, deterministic priority, suggestion-queue exclusion, and exclusion of projection objects from persistence.
 
 Completion evidence for that slice:
 
@@ -118,6 +135,45 @@ Completion evidence for that slice:
 - Browser-side adapter code can talk to storage and the desktop host, but repo-root service logic stays outside the editor bundle.
 - No generic `utils` or `misc` bucket should be used as a dumping ground.
 - Cross-feature imports should be minimized; shared helpers belong in `shared/` or a true platform adapter.
+
+## Service Call Internalization
+
+The refactor must not only move markup and selectors out of `app.js`. Service calls should move to the service level whenever they represent a repeatable workflow, a domain capability, retry/error policy, provider selection, persistence boundary, or cross-feature side effect. The shell may initiate a command and schedule renders, but it should not construct service-specific payloads, call desktop endpoints directly for feature workflows, or interpret service failure details.
+
+### Internalize These Calls
+
+| Current shell concern | Service-level owner | Internalized responsibility | Shell responsibility after extraction |
+| --- | --- | --- | --- |
+| Project save/load/autosave/import/export | `adapters/storage/project-persistence-service.js` | choose save/load route, clear stale cache, normalize loaded records, report persistence failures | invoke `ProjectPersistenceService` command, update active UI state, render |
+| Project source loading | future `adapters/storage/project-source-service.js` or existing persistence service if kept project-file scoped | call `/api/project-source`, normalize source provenance, create reportable import errors | pass selected source path/options, render import result |
+| Local AI title generation for scenes/tasks/notes | `features/local-ai/local-ai-title-service.js` plus feature-local request builders | call `/api/local-ai/generate-title`, apply title sanitization, normalize unavailable-provider failures, enforce max-token/default-temperature policy | request a title for a known record and commit the returned accepted title through feature state |
+| Spellcheck lexicon refresh and project dictionary persistence | `features/spellcheck/*` plus a spellcheck service wrapper | load base/reference lexicons, derive misspellings, debounce refresh, mutate dictionary/exception lists, normalize failures | dispatch text/settings changes and render projections/panels |
+| Anchored task/passage-note persistence after record mutations | `features/anchored-records/anchored-record-service.js` | update task/note collections, persist with workflow-specific dirty reasons, return changed records for UI follow-up | dispatch user intent and refresh selected panels/projections |
+| Revision banking and revision package writes | `features/revisions/revision-service.js` plus revision storage adapter | construct revision events, bank sessions, normalize persisted revision state, write reloadable revision artifacts | start/choose revision commands and render revision windows |
+| Writing target state updates | `features/writing-targets/writing-goals-service.js` and `writing-goals-state-service.js` | compute targets, archive snapshots, session timing, goal sync hints, persistence-ready records | dispatch user edits and render header/window |
+| Narration take recording and project media writes | `features/narration/narration-media-service.js` now owns media save/load calls; `features/narration/narration-media-recorder-service.js` owns recorder construction/events; `features/narration/narration-recording-command-service.js` owns start/stop command sequencing; `features/narration/narration-recording-finalization-service.js` owns final media-save result mapping; `features/narration/narration-recording-runtime-service.js` owns recorder resource cleanup; `features/narration/narration-speech-recognition-service.js` owns speech tracker events; `features/narration/narration-take-service.js` owns runtime/take/session/final-record DTOs, recording blobs, finalization context, and media naming | save/load `/api/project-media/*`, convert blobs/base64, release recorder timers/speech/media streams, collect audio chunks, normalize recorder/speech tracker events, normalize transcript/status/session/record DTOs, derive recording IDs and media paths, create initial recording runtime/session state, create final saved/failed take records, coordinate start/stop capability checks and microphone/recorder/speech setup, map media save failures to failed take records and paused sessions | arm/stop/clear commands, commit returned take records, show selected take state, render projections |
+| Voice recording preview and narration render jobs | `features/narration/narration-media-service.js`, `features/voice/voice-recording-preview-service.js`, and `features/voice/voice-workflow-service.js` | load media blobs, manage preview audio URLs, normalize voice profiles/jobs, and apply placeholder render-job transitions; later enforce live provider/profile contracts | choose profile/recording/job action and render voice surfaces |
+| World template/entity AI suggestions | future `features/world/world-suggestion-service.js` backed by `services/analysis` outputs | keep suggestions reviewable, trace evidence anchors, apply accepted mutations only through world-schema commands | open review UI and render accepted world changes |
+
+### Do Not Internalize Into Services
+
+- DOM focus, pointer capture, element measurements, and `scrollIntoView` calls belong behind host adapters or shell/browser boundaries, not domain services.
+- Feature markup belongs in feature view modules, not service modules.
+- Pure canonical data models belong in `packages/*`, not editor services.
+- Repo-root `services/analysis`, `services/audio`, and `services/voice` remain runtime/service-contract owners; editor services should call them through explicit adapters rather than reimplementing their engines.
+
+### Extraction Rule
+
+When a shell function does two or more of the following, create or extend a service-level owner before continuing the roadmap:
+
+- builds a desktop API payload
+- calls `fetchJsonFromDesktopApi`
+- normalizes service success/error shapes
+- performs retry, fallback, provider, or unavailable-state policy
+- mutates multiple state buckets as one workflow
+- logs under a service domain
+- persists project data as part of a feature command
+- creates or updates long-running job/session state
 
 ## Store Contract
 
@@ -217,7 +273,7 @@ Exit criteria:
 - scene editing no longer depends on unrelated shell rerenders
 
 Status:
-- In progress: scene-editor extraction, inline-format command control, find derivation/replacement planning, live scene text-input routing, selection/context snapshot policy, anchor-aware task/note projection routing, the `author-mark`/`task`/`note`/`spellcheck`/`search`/`narration-follow` projection channels, and the textarea compatibility host boundary are present; diagnostic/suggestion sources and remaining DOM focus/scroll effects remain.
+- In progress: scene-editor extraction, inline-format command control, find derivation/replacement planning, live scene text-input routing, selection/context snapshot policy, anchor-aware task/note projection routing, anchored task/note context-menu rendering, the `author-mark`/`diagnostic`/`task`/`note`/`spellcheck`/`search`/`narration-follow` projection channels, the textarea compatibility host boundary, and host-owned manuscript focus/selection/viewport scrolling helpers are present; the manuscript `suggestion` source and residual non-host DOM focus/scroll effects remain.
 
 ### Phase 3: Extract Grammar And Spellcheck As A Projection Source
 
@@ -236,6 +292,9 @@ Exit criteria:
 - spellcheck rules can be unit tested independently of the editor page
 - spellcheck ranges are runtime projections and cannot enter project persistence
 
+Status:
+- Active: `features/spellcheck/grammar-check-panel.js` owns grammar-check summary, grouped-entry modeling, panel state transitions, drag sessions, and panel markup. `features/spellcheck/spellcheck-project-settings.js` owns dictionary/exception word normalization and mutation planning. `features/spellcheck/spellcheck-context-menu.js` owns the spellcheck context-menu model and markup. `features/spellcheck/spellcheck-context-controller.js` owns selection, grammar-panel item, and editor word-range context-menu record derivation. `features/spellcheck/spellcheck-refresh-controller.js` owns debounce timer state for refresh scheduling. The shell still owns persistence effects, menu mounting/event dispatch, and host-specific projection refresh effects.
+
 ### Phase 4: Extract Anchored Records And Workflow Panels
 
 Goal:
@@ -251,6 +310,9 @@ Exit criteria:
 - durable anchored records persist through project services
 - side-panel navigation uses projection/anchor selectors rather than shell-specific range state
 
+Status:
+- Active: `features/anchored-records/task-context-menu.js` owns anchored task/passage-note context-menu and composer view modeling/markup. `features/anchored-records/anchored-record-controller.js` owns task composer planning, inline passage-note draft seeding, composer-backed task/note record creation, inline passage-note typing range policy, panel model grouping, and Local AI title request planning/guard checks. `features/anchored-records/passage-note-panel.js`, `features/anchored-records/task-panel.js`, and `features/anchored-records/delete-confirmation-dialog.js` own anchored-record panel, console item, chapter-group, empty-state, and delete-confirmation rendering. `features/manuscript-editor/anchored-record-navigation-controller.js` already owns anchor-aware task/note preview selection. Inline note manuscript insertion, persistence effects, async AI title calls, and event dispatch remain shell-owned.
+
 ### Phase 5: Reduce The Shell And Introduce The Store Facade
 
 Goal:
@@ -261,11 +323,17 @@ Deliverables:
 - a store or store-like facade for editor state
 - explicit selectors for derived UI state
 - a single place where render orchestration happens
+- service-level command wrappers for feature workflows that currently call desktop APIs or persistence from `app.js`
 
 Exit criteria:
 - feature modules can read state without directly mutating unrelated global objects
 - new feature-specific logic is no longer added to `app.js`
+- `app.js` no longer builds desktop API payloads for feature workflows; it calls service commands and handles render scheduling
 - `app.js` is reduced toward a composition/compatibility target of approximately 3,000 lines or fewer
+
+Status:
+- Started: `state/editor-ui-state.js` owns pure collapse-state normalization, binder chapter collapse toggling, console chapter collapse toggling, and removed-chapter pruning. `features/local-ai/local-ai-title-service.js` owns Local AI title endpoint calls and response policy. `adapters/storage/project-source-service.js` owns project-source endpoint loading plus project-library merge/save orchestration. `features/anchored-records/anchored-record-service.js` owns anchored task/note mutation persistence. `features/narration/narration-media-service.js` owns project-media save/load calls and base64/blob conversion. `features/narration/narration-media-recorder-service.js` owns MediaRecorder construction and event handling. `features/narration/narration-recording-command-service.js` owns start/stop command sequencing and browser capability gates through injected callbacks. `features/narration/narration-recording-finalization-service.js` owns stopped-runtime cleanup, media-save result mapping, final take record creation, and final paused session options. `features/narration/narration-recording-runtime-service.js` owns the shared cleanup boundary for recorder timers, speech recognition, and media streams used by stop/fail/project-activation paths. `features/narration/narration-speech-recognition-service.js` owns Web Speech API tracker setup and event interpretation. `features/narration/narration-take-service.js` owns narration runtime/take/session/final-record DTOs, elapsed labels, MIME fallback, recording IDs, media naming, finalization context, and recording blob construction. The shell still owns persistence writes and render scheduling after UI-state transitions and still commits accepted title/source-load/media results into runtime UI state.
+- Next service-call candidates: full narration take recorder/session lifecycle, voice render-job commands, and remaining voice surface event orchestration.
 
 ### Phase 6: Extract Narration, Voice, and Worldbuilding Surfaces
 
@@ -277,9 +345,14 @@ Deliverables:
 - voice routing and preview feature
 - world spine feature
 - world template and entity feature
+- narration, voice, and world suggestion service wrappers that own runtime calls, job/session state, provider errors, and evidence-linked mutation commands
 
 Exit criteria:
 - these surfaces use shared workspace data and services, but do not rely on the manuscript shell for core behavior
+- editor UI code calls narration/voice/world command services rather than direct desktop endpoints or ad hoc job mutations
+
+Status:
+- Started: `features/narration/narration-media-service.js` owns project-media save/load calls for narration recordings and voice preview loading. `features/narration/narration-metadata-sync-service.js` owns narration and voice metadata resync after manuscript structure changes. `features/narration/narration-media-recorder-service.js` owns MediaRecorder construction, chunk collection, recorder errors, and stop finalization dispatch. `features/narration/narration-recording-command-service.js` owns start/stop command sequencing, microphone request ordering, recorder attachment, speech tracker attachment, and stop fallback finalization dispatch. `features/narration/narration-recording-finalization-service.js` owns final media-save orchestration, stopped-runtime cleanup, saved/failed take record creation, and final paused session options. `features/narration/narration-recording-runtime-service.js` owns recorder cleanup for normal finalization, failed-start abort, and project activation teardown. `features/narration/narration-selection-service.js` owns armed narration verse selection derivation. `features/narration/narration-speech-recognition-service.js` owns speech tracker setup and transcript/error/end event interpretation. `features/narration/narration-take-service.js` owns runtime/take/session/final-record DTO construction, initial recording session state, recording blob construction, finalization context, media naming, and fallback policy. `features/voice/voice-workflow-service.js` owns editor voice profile/job normalization, placeholder render-job transitions, and voice narration preference snapshot load/save. `features/voice/voice-recording-preview-service.js` owns audio preview object-URL cleanup and playback lifecycle. `features/voice/voice-recording-service.js` owns saved recording collection mutation and active-project lookup. `features/voice/voice-recording-action-service.js` owns saved recording preview load/play policy and manuscript verse navigation plans. The shell still owns persistence/render scheduling and broader voice surface event/render orchestration.
 
 ### Phase 7: Evaluate A CodeMirror Editor-Host Adapter
 
@@ -391,15 +464,42 @@ These are the lowest-risk extractions to start with:
 | `apps/editor/public/session-tracker-icons.js` | `features/writing-targets/session-tracker-icons.js` | feature-local asset helper |
 | `apps/editor/public/serva-vitae-project-library.js` | `adapters/storage/project-library.js` | project library persistence belongs with storage and load/save code |
 | save/load and autosave helpers inside `app.js` | `adapters/storage/project-file.js` and `adapters/storage/autosave.js` | persistence should be moved out of the shell |
-| grammar check panel helpers inside `app.js` | `features/spellcheck/panel.js` | panel rendering and interactions should live with the feature |
+| grammar check panel helpers inside `app.js` | `features/spellcheck/grammar-check-panel.js` | active Phase 3 extraction; view modeling, state transitions, drag sessions, and markup are feature-owned while shell persistence effects remain |
+| dictionary/exception mutation rules inside `app.js` | `features/spellcheck/spellcheck-project-settings.js` | active Phase 3 extraction; project word normalization, duplicate handling, and target-list mutation planning are feature-owned while shell persistence and refresh effects remain |
+| spellcheck context-menu markup and context derivation inside `app.js` | `features/spellcheck/spellcheck-context-menu.js`, `features/spellcheck/spellcheck-context-controller.js` | active Phase 3 extraction; menu positioning, word/suggestion view modeling, markup, and context records are feature-owned while shell menu mounting and edit/persistence effects remain |
+| spellcheck refresh debounce state inside `app.js` | `features/spellcheck/spellcheck-refresh-controller.js` | active Phase 3 extraction; timer scheduling and clear semantics are feature-owned while shell host projection refresh effects remain |
 | task/note anchor matching and preview-projection planning inside `app.js` | `features/manuscript-editor/anchored-record-navigation-controller.js` | completed Phase 2 projection/navigation slice; durable anchor repairs are explicit callbacks and hover-only previews remain non-mutating |
 | inline range and visual overlay selection inside `app.js` | `features/manuscript-editor/projection-selector.js` | completed Phase 2 selector slice; durable-derived and runtime-only visual channels use one deterministic render contract |
 | textarea overlay markup, mirrored layer rendering, and command DOM access inside the scene/shell path | `features/manuscript-editor/editor-host-interface.js`, `adapters/editor-host/textarea-editor-host.js` | completed Phase 2 host slice; the active textarea implementation now consumes projections behind a replaceable adapter |
+| manuscript editor focus, selection range, bookmark, viewport, and offset centering effects inside shell flows | `adapters/editor-host/textarea-editor-host.js` | active Phase 2 host slice; shell callers now use host capabilities while feature controllers keep owning selection policy and record navigation |
 | active task, inspiration, and research preview classes/range painting inside `app.js` | `features/manuscript-editor/projection-selector.js`, `adapters/editor-host/textarea-editor-host.js` | completed Phase 2 anchored-preview slice; durable anchored records now derive disposable host previews with typed record references |
 | find-result and narration-verse selection styling inside shell flows | `features/manuscript-editor/projection-selector.js`, `adapters/editor-host/textarea-editor-host.js` | completed Phase 2 runtime-preview slice; transient search and narration visuals are explicit runtime-only projections |
 | manuscript match derivation, find-panel modeling, and replacement planning inside `app.js` | `features/manuscript-editor/manuscript-find-controller.js` | completed Phase 2 controller slice; durable edit effects and DOM focus remain explicit shell callbacks |
 | manuscript selection text, context-range, bookmark, and saved-selection normalization inside `app.js` | `features/manuscript-editor/manuscript-selection-controller.js` | completed Phase 2 policy slice; browser focus/scroll operations and scene mutation effects remain shell-owned |
 | live `editor-text` mutation sequencing and inline-format text-edit range derivation inside `app.js` | `features/manuscript-editor/manuscript-input-controller.js` | completed Phase 2 controller slice; revision/persistence/render effects are explicit shell callbacks while browser interaction remains compatible |
+| anchored task/note context-menu and composer markup inside `app.js` | `features/anchored-records/task-context-menu.js` | active Phase 4 extraction; view models and markup are feature-owned while shell event dispatch and persistence effects remain |
+| anchored task/note composer planning and typed inline-note range policy inside `app.js` | `features/anchored-records/anchored-record-controller.js` | active Phase 4 extraction; record/draft planning, panel grouping models, and AI title request DTO planning are feature-owned while shell still owns DOM fields, manuscript mutation effects, persistence, and async title calls |
+| anchored task/note console item and delete confirmation markup inside `app.js` | `features/anchored-records/task-panel.js`, `features/anchored-records/passage-note-panel.js`, `features/anchored-records/delete-confirmation-dialog.js` | active Phase 4 extraction; repeated item/dialog/chapter-group/empty-state markup is feature-owned while shell delete effects remain |
+| collapsed binder and console chapter state mutation inside `app.js` | `state/editor-ui-state.js` | started Phase 5 store-facade extraction; pure UI-state transitions are state-owned while shell persistence and render effects remain explicit |
+| desktop API calls for Local AI title generation inside `app.js` | `features/local-ai/local-ai-title-service.js` | completed Phase 5 service-call extraction; title endpoint payloads, default generation policy, sanitization, and unavailable-provider errors are service-owned while shell commits accepted titles |
+| desktop API calls for project-source import inside `app.js` | `adapters/storage/project-source-service.js` | completed Phase 5 service-call extraction; source loading/provenance/error normalization and project-library merge/save orchestration are service-owned while shell coordinates activation/rendering |
+| anchored-record task/note mutation persistence inside `app.js` | `features/anchored-records/anchored-record-service.js` | completed Phase 5 service-call extraction; task/note collection mutation, dirty reasons, and persistence callbacks are feature-service owned while shell keeps DOM reads/rendering |
+| narration project-media save/load calls inside `app.js` | `features/narration/narration-media-service.js` | completed Phase 6 service-call extraction; `/api/project-media/save` and `/api/project-media/load` calls plus blob/base64 conversion are service-owned while shell keeps recorder and preview UI lifecycle |
+| narration/voice metadata resync after scene changes inside `app.js` | `features/narration/narration-metadata-sync-service.js` | completed Phase 6 partial extraction; narration sessions, alignment jobs, saved voice recordings, and voice render jobs are re-anchored through feature-service helpers |
+| MediaRecorder construction/event handling inside `app.js` | `features/narration/narration-media-recorder-service.js` | completed Phase 6 partial extraction; recorder construction, chunk collection, recorder error status, and stop finalization dispatch are feature-service owned |
+| narration recording start/stop command sequencing inside `app.js` | `features/narration/narration-recording-command-service.js` | completed Phase 6 partial extraction; active-runtime guard, selection/capability gate handling, microphone request order, recorder/speech attachment, recorder start, stop eligibility, and stop fallback finalization are feature-service owned through injected shell/browser callbacks |
+| narration recording finalization and media-save result mapping inside `app.js` | `features/narration/narration-recording-finalization-service.js` | completed Phase 6 partial extraction; stopped-runtime cleanup, recording blob save, saved/failed record mapping, final paused session options, and recording failure logs are feature-service owned |
+| narration recording runtime cleanup inside `app.js` and project activation | `features/narration/narration-recording-runtime-service.js` | completed Phase 6 partial extraction; recorder timer, speech-recognition, and media-stream cleanup are service-owned for finalization, abort, and project-switch teardown |
+| armed narration verse selection derivation inside `app.js` | `features/narration/narration-selection-service.js` | completed Phase 6 partial extraction; scene/block/offset selection records, default scene selection, and textarea context selection derivation are feature-service owned while shell keeps DOM reads and render effects |
+| Web Speech API tracker event handling inside `app.js` | `features/narration/narration-speech-recognition-service.js` | completed Phase 6 partial extraction; speech-recognition setup, transcript extraction, error status, paused status, and active-runtime guards are feature-service owned |
+| narration runtime/take/session/finalization DTO and media naming helpers inside `app.js` | `features/narration/narration-take-service.js` | completed Phase 6 partial extraction; initial recorder runtime/session state, transcript/status normalization, elapsed labels, MIME fallback, recording IDs, media names/paths, recording blob construction, finalization context, session snapshots, and final saved/failed take records are feature-service owned |
+| narration/voice recording collection mutation inside `app.js` | `features/voice/voice-recording-service.js` | completed Phase 6 partial extraction; saved recording collection initialization, active-project filtering, lookup, and upsert mutation are feature-service owned while shell schedules project persistence |
+| saved recording preview/open actions inside `app.js` | `features/voice/voice-recording-action-service.js` | completed Phase 6 partial extraction; saved recording media load/play policy, preview error logging, and manuscript verse navigation planning are feature-service owned while shell applies selected scene/block and renders |
+| narration recording project persistence side effects inside `app.js` | future persistence command wrapper plus `ProjectPersistenceService` | planned Phase 6/Phase 5 follow-up; final take persistence scheduling should be narrowed while project file writes remain behind `ProjectPersistenceService` |
+| voice recording preview lifecycle inside `app.js` | `features/voice/voice-recording-preview-service.js` | completed Phase 6 extraction; audio object construction, object URL cleanup, and preview teardown are service-owned |
+| voice profile/job normalization and placeholder render-job mutation inside `app.js` | `features/voice/voice-workflow-service.js` | completed Phase 6 extraction; profile/job normalization, placeholder job transitions, and preference snapshot load/save are service-owned |
+| live voice provider/render command orchestration inside `app.js` | `features/voice/voice-workflow-service.js` plus voice service contracts | planned Phase 6 extraction; provider/profile validation and real render-job transitions should be service-owned when live voice generation is wired |
+| world/template/entity AI proposal queues inside `app.js` | `features/world/world-suggestion-service.js` plus analysis/world schema contracts | planned Phase 6 extraction; reviewable suggestion intake, evidence anchors, and accepted mutation commands should be service-owned |
 
 Those pieces already have a clear responsibility and are easy to validate without changing the canonical manuscript model.
 

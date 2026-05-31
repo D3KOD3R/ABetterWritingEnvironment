@@ -1011,6 +1011,8 @@ function buildProjectSnapshot(
       detail: issue.detail,
       source: issue.source,
       confidence: issue.confidence,
+      lifecycle: issue.lifecycle,
+      anchor: issue.anchor,
       evidenceExcerpt: resolved.excerpt,
       blockId: issue.anchor.blockId,
       lineNumber: resolved.index.lineNumber,

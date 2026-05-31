@@ -11,7 +11,7 @@ export function createProjectActivationController({
   clearProjectAutosaveState,
   getNarrationRecordingRuntime,
   setNarrationRecordingRuntime,
-  clearIntervalFn,
+  cleanupNarrationRecordingRuntime,
   getVoiceRecordingPreviewAudio,
   setVoiceRecordingPreviewAudio,
   getVoiceRecordingPreviewUrl,
@@ -47,7 +47,7 @@ export function createProjectActivationController({
     clearProjectAutosaveState,
     getNarrationRecordingRuntime,
     setNarrationRecordingRuntime,
-    clearIntervalFn,
+    cleanupNarrationRecordingRuntime,
     getVoiceRecordingPreviewAudio,
     setVoiceRecordingPreviewAudio,
     getVoiceRecordingPreviewUrl,
@@ -86,19 +86,7 @@ export function createProjectActivationController({
   // Intent: end in-flight recording and preview resources before a different project becomes active.
   function stopProjectScopedMedia() {
     const narrationRuntime = getNarrationRecordingRuntime();
-    if (narrationRuntime?.timerId) {
-      clearIntervalFn(narrationRuntime.timerId);
-    }
-    if (narrationRuntime?.speechRecognition) {
-      try {
-        narrationRuntime.speechRecognition.stop();
-      } catch {
-        // Ignore cleanup failures while replacing the active project.
-      }
-    }
-    if (narrationRuntime?.stream) {
-      narrationRuntime.stream.getTracks().forEach((track) => track.stop());
-    }
+    cleanupNarrationRecordingRuntime(narrationRuntime);
     setNarrationRecordingRuntime(null);
     state.narrationTakeSelection = null;
     state.narrationTakeSession = null;
