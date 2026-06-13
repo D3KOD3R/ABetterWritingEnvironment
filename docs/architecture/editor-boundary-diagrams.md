@@ -109,7 +109,7 @@ erDiagram
   TIMELINE_NODE }o--o{ MANUSCRIPT_ANCHOR : evidenced_by
 ```
 
-Compatibility note: `inlineFormatRanges` currently persists author formatting within scene chunks until `MANUSCRIPT_MARK` is implemented as an anchor-backed canonical schema record.
+Compatibility note: `inlineFormatRanges` currently persists author formatting within scene chunks until editor writes and project JSON normalization migrate to the anchor-backed `MANUSCRIPT_MARK` schema record.
 
 ## Projection And Suggestion Lifecycle
 

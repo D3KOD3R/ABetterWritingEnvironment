@@ -2905,9 +2905,11 @@ aside#binder-slot {
 }
 
 .editor-inline-format-layer {
-  display: none;
+  display: flex;
   position: absolute;
   inset: 0;
+  box-sizing: border-box;
+  padding: inherit;
   justify-content: center;
   align-items: flex-start;
   pointer-events: none;
@@ -2917,20 +2919,32 @@ aside#binder-slot {
 }
 
 .editor-inline-format-layer__content {
-  color: var(--ink);
+  color: transparent;
 }
 
 .editor-inline-format-bold {
-  font-weight: 700;
+  color: var(--ink);
+  font-weight: inherit;
+  text-shadow:
+    0.018em 0 0 currentColor,
+    -0.018em 0 0 currentColor;
 }
 
 .editor-inline-format-italic {
+  color: var(--ink);
   font-style: italic;
 }
 
 .editor-inline-format-underline {
+  color: var(--ink);
   text-decoration-line: underline;
   text-underline-offset: 3px;
+}
+
+.editor-inline-format-strikethrough {
+  color: var(--ink);
+  text-decoration-line: line-through;
+  text-decoration-thickness: 1.5px;
 }
 
 .editor-inline-format-highlight {
@@ -4017,6 +4031,56 @@ button.grammar-check-status[aria-pressed="true"] {
 .side-panel-tab strong {
   color: var(--accent-deep);
   font-size: 0.92rem;
+}
+
+.user-highlight-item {
+  gap: 7px;
+}
+
+.user-highlight-item strong {
+  line-height: 1.35;
+}
+
+.user-highlight-selection-command {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  margin: 0 16px 12px;
+  border: 1px solid rgba(184, 92, 56, 0.18);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 249, 241, 0.84);
+}
+
+.user-highlight-selection-command.has-selection {
+  background: rgba(255, 244, 217, 0.92);
+}
+
+.user-highlight-selection-copy {
+  display: grid;
+  gap: 3px;
+  min-height: 0;
+}
+
+.user-highlight-selection-copy strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.35;
+}
+
+.user-highlight-create {
+  justify-self: start;
+  min-height: 30px;
+  padding: 6px 10px;
+}
+
+.user-highlight-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.user-highlight-delete {
+  min-height: 28px;
+  padding: 5px 9px;
 }
 
 .task-panel {

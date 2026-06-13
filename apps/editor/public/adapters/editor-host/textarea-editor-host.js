@@ -329,6 +329,23 @@ export function getTextareaEditorHostWrapMetrics(host) {
   };
 }
 
+// Intent: repaint durable author marks as a disposable textarea overlay after shell layout changes.
+export function renderTextareaAuthorMarkLayer(host, snapshot) {
+  const layer = getTextareaProjectionLayer(host, MANUSCRIPT_PROJECTION_CHANNELS.AUTHOR_MARK);
+  if (!(layer instanceof HTMLElement) || !(host?.textarea instanceof HTMLTextAreaElement)) {
+    return false;
+  }
+
+  const normalizedSnapshot = createManuscriptEditorHostSnapshot(snapshot);
+  layer.innerHTML = renderTextareaAuthorMarkContent(normalizedSnapshot);
+  const content = layer.querySelector(".editor-inline-format-layer__content");
+  if (content instanceof HTMLElement) {
+    syncTextareaMirroredLayerStyle(content, host.textarea);
+    content.style.color = "transparent";
+  }
+  return true;
+}
+
 // Intent: paint accepted anchor-backed issues as disposable manuscript diagnostics below editable text.
 export function renderTextareaDiagnosticLayer(host, snapshot) {
   const layer = getTextareaProjectionLayer(host, MANUSCRIPT_PROJECTION_CHANNELS.DIAGNOSTIC);

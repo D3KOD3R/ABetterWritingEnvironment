@@ -19,6 +19,8 @@ import { runManuscriptCommandControllerTest } from "./manuscript-command-control
 import { runManuscriptEditorHostTest } from "./manuscript-editor-host.test.mjs";
 import { runManuscriptFindControllerTest } from "./manuscript-find-controller.test.mjs";
 import { runManuscriptInputControllerTest } from "./manuscript-input-controller.test.mjs";
+import { runManuscriptMarkServiceTest } from "./manuscript-mark-service.test.mjs";
+import { runManuscriptAnchorServicesTest } from "./manuscript-anchor-services.test.mjs";
 import { runManuscriptProjectionSelectorTest } from "./manuscript-projection-selector.test.mjs";
 import { runManuscriptSelectionControllerTest } from "./manuscript-selection-controller.test.mjs";
 import { runNarrationMediaServiceTest } from "./narration-media-service.test.mjs";
@@ -53,6 +55,8 @@ import { runSpellcheckRefreshControllerTest } from "./spellcheck-refresh-control
 import { runSpellcheckTest } from "./spellcheck.test.mjs";
 import { runTaskContextMenuTest } from "./task-context-menu.test.mjs";
 import { runTaskPanelTest } from "./task-panel.test.mjs";
+import { runUserHighlightCommandServiceTest } from "./user-highlight-command-service.test.mjs";
+import { runUserHighlightPanelTest } from "./user-highlight-panel.test.mjs";
 import { runVoiceNarrationFoundationTest } from "./voice-narration-foundation.test.mjs";
 import { runVoiceRecordingActionServiceTest } from "./voice-recording-action-service.test.mjs";
 import { runVoiceRecordingPreviewServiceTest } from "./voice-recording-preview-service.test.mjs";
@@ -142,6 +146,14 @@ const tests = [
   {
     name: "manuscript input controller routes live text edits outside the shell",
     run: runManuscriptInputControllerTest,
+  },
+  {
+    name: "manuscript mark service derives canonical marks from legacy ranges",
+    run: runManuscriptMarkServiceTest,
+  },
+  {
+    name: "manuscript anchor services prepare drift-safe decoration pipelines",
+    run: runManuscriptAnchorServicesTest,
   },
   {
     name: "manuscript projection selector separates durable marks from runtime visuals",
@@ -278,6 +290,14 @@ const tests = [
   {
     name: "task panel renders task console items outside the shell",
     run: runTaskPanelTest,
+  },
+  {
+    name: "user highlight command recovers toolbar click selections",
+    run: runUserHighlightCommandServiceTest,
+  },
+  {
+    name: "user highlight panel renders canonical manuscript marks",
+    run: runUserHighlightPanelTest,
   },
   {
     name: "voice service creates speaker bindings and render jobs",

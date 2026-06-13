@@ -755,6 +755,21 @@ export async function runDesktopApplicationTest() {
   assert.match(styles.body, /\.editor-document-input\.has-narration-preview::selection/);
   assert.match(styles.body, /\.editor-diagnostic-layer/);
   assert.match(styles.body, /\.editor-diagnostic-error/);
+  const inlineFormatLayerRule = styles.body.match(/\.editor-inline-format-layer\s*{(?<body>[\s\S]*?)}/)?.groups?.body ?? "";
+  const inlineFormatContentRules = [...styles.body.matchAll(/\.editor-inline-format-layer__content\s*{(?<body>[\s\S]*?)}/g)]
+    .map((match) => match.groups?.body ?? "");
+  const inlineFormatContentRule = inlineFormatContentRules[inlineFormatContentRules.length - 1] ?? "";
+  const boldInlineFormatRule = styles.body.match(/\.editor-inline-format-bold\s*{(?<body>[\s\S]*?)}/)?.groups?.body ?? "";
+  assert.match(inlineFormatLayerRule, /display: flex/);
+  assert.match(inlineFormatLayerRule, /padding: inherit/);
+  assert.doesNotMatch(inlineFormatLayerRule, /display: none/);
+  assert.match(inlineFormatContentRule, /color: transparent/);
+  assert.match(boldInlineFormatRule, /color: var\(--ink\)/);
+  assert.match(boldInlineFormatRule, /font-weight: inherit/);
+  assert.match(boldInlineFormatRule, /text-shadow:/);
+  assert.doesNotMatch(boldInlineFormatRule, /font-weight: 700/);
+  assert.match(styles.body, /\.editor-inline-format-highlight\s*{[\s\S]*?background: rgba\(255, 222, 99, 0\.44\)/);
+  assert.match(styles.body, /\.editor-inline-format-strikethrough\s*{[\s\S]*?text-decoration-line: line-through/);
   assert.match(styles.body, /rgba\(216, 244, 253, 0\.82\)/);
   assert.match(styles.body, /\.scene-editor-codeframe\.is-task-previewing/);
   assert.match(styles.body, /\.scene-editor-codeframe\.is-inspiration-previewing/);

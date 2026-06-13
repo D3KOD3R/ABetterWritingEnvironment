@@ -35,6 +35,7 @@ export function runEditorModelTest() {
       lines: [
         {
           blockId: "block-1",
+          paragraphId: "paragraph-1",
           lineNumber: 1,
           sceneLineNumber: 1,
           kind: "narration",
@@ -50,6 +51,7 @@ export function runEditorModelTest() {
         },
         {
           blockId: "block-2",
+          paragraphId: "paragraph-2",
           lineNumber: 2,
           sceneLineNumber: 2,
           kind: "dialogue",
@@ -79,6 +81,7 @@ export function runEditorModelTest() {
         blocks: [
           {
             blockId: "block-1",
+            paragraphId: "paragraph-1",
             lineNumber: 1,
             kind: "narration",
             text: "The frigate crawled toward Halcyon Station in silence.",
@@ -117,6 +120,7 @@ export function runEditorModelTest() {
   assert.equal(scenes[0].sceneSynopsis, "A sharper version of the approach scene.");
   assert.equal(scenes[0].blocks.length, 2);
   assert.equal(scenes[0].editorText, "The frigate crawled toward Halcyon Station in silence.\n\nAnother beat follows.");
+  assert.equal(scenes[0].blocks[0].paragraphId, "paragraph-1");
   assert.equal(scenes[0].blocks[1].isDraft, true);
   assert.equal(scenes[0].blocks[1].speakerLabel, "Unnamed Speaker");
   assert.equal(scenes[1].sceneTitle, "New Scene");

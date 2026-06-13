@@ -14,6 +14,7 @@ export function createManuscriptInputController({
   getInlineFormattingState,
   recordRevisionTextEdit,
   trackInlinePassageTyping,
+  updateAnchoredRecordsForTextEdit,
   getTypingSpellcheckRange,
   commitSceneTextEdit,
   scheduleTypingRefresh,
@@ -48,16 +49,25 @@ export function createManuscriptInputController({
       previousText,
       nextText,
       pendingFormats,
+      selectionStart: editorSurface.selectionStart,
+      selectionEnd: editorSurface.selectionEnd,
     });
 
     recordRevisionTextEdit?.(normalizedSceneId, previousText, nextText);
     trackInlinePassageTyping?.(normalizedSceneId, previousText, editorSurface);
+    updateAnchoredRecordsForTextEdit?.(normalizedSceneId, previousText, nextText, {
+      selectionStart: editorSurface.selectionStart,
+      selectionEnd: editorSurface.selectionEnd,
+    });
     const activeTypingWordRange = getTypingSpellcheckRange?.(editorSurface) ?? null;
     commitSceneTextEdit?.({
       sceneId: normalizedSceneId,
       previousText,
       nextText,
       inlineFormatRanges,
+      pendingFormats,
+      selectionStart: editorSurface.selectionStart,
+      selectionEnd: editorSurface.selectionEnd,
     });
     scheduleTypingRefresh?.(normalizedSceneId, nextText, {
       revisionPanel: true,

@@ -2,7 +2,7 @@
 
 ## Decision Status
 
-Status: active staged architecture. Compatibility range persistence, the projection selector, the textarea-host boundary, and the accepted-issue `diagnostic` projection source are implemented. A shared anchored manuscript-suggestion DTO is staged, but no `suggestion` projection channel exists yet.
+Status: active staged architecture. Compatibility range persistence, canonical mark schema/projection, compatibility mark save-sync, the projection selector, the textarea-host boundary, and the accepted-issue `diagnostic` projection source are implemented. A shared anchored manuscript-suggestion DTO is staged, but no `suggestion` projection channel exists yet.
 
 This document defines how manuscript styling, anchored author records, AI suggestions, and runtime editor visuals must integrate without making the editor rendering engine the owner of project data.
 
@@ -17,7 +17,7 @@ The application must maintain four separate concepts:
 
 The editor canvas may render all four as visual decoration ranges, but they must not share one persistence model or lifecycle.
 
-For the current plain-text, IDE-like manuscript surface, a future CodeMirror 6 adapter is the best fit for replacing textarea overlays. It supports transaction-mapped ranges, composable decoration extensions, and a text-first editor without requiring the project to adopt an editor-owned rich document format.
+For the current plain-text, IDE-like manuscript surface, the next implementation step is not an editor-library swap. The application must first own anchor drift handling: live edit transactions update durable anchors, hashes validate saved anchors on load, and bounded context recovers stale offsets. A future editor adapter can improve rendering mechanics, but it must not become the source of truth for anchors or decorations.
 
 ProseMirror remains a valid later option only if product requirements intentionally change the canonical manuscript into a rich document tree whose marks and block structure are owned by a schema. That is a more invasive domain decision and should not be made to solve highlighting alone.
 
@@ -102,18 +102,37 @@ A render-time descriptor that tells the active editor surface how to display a c
 
 ## Target Domain Model
 
-The eventual canonical manuscript schema should add a durable mark collection owned by manuscript content rather than by the editor adapter:
+The canonical manuscript schema has a durable mark collection owned by manuscript content rather than by the editor adapter:
 
 ```ts
-type ManuscriptMarkKind = "bold" | "italic" | "underline" | "highlight";
+type ManuscriptMarkKind = "bold" | "italic" | "underline" | "strikethrough" | "highlight";
+type ManuscriptAnchorStatus =
+  | "resolved"
+  | "shifted"
+  | "contentChanged"
+  | "approximate"
+  | "stale"
+  | "orphaned"
+  | "deleted";
 
 interface ManuscriptMark {
   id: string;
   kind: ManuscriptMarkKind;
   anchor: ManuscriptAnchor;
   source: "author" | "accepted-suggestion";
+  anchorStatus: ManuscriptAnchorStatus;
+  anchorDirtyReason: string;
+  evidenceMode: "full" | "hash-context";
+  evidenceExcerpt: string;
+  originalHash: string;
+  originalLength: number;
+  selectedTextPreview: string;
+  prefixContext: string;
+  suffixContext: string;
   createdAt: string;
   updatedAt: string;
+  anchorLastTouchedAt?: string;
+  anchorLastTouchedByEditId?: string;
   metadata?: {
     colorToken?: string;
     purpose?: "emphasis" | "reference" | "revision";
@@ -121,7 +140,7 @@ interface ManuscriptMark {
 }
 ```
 
-The mark uses `ManuscriptAnchor`, not a DOM range or editor-library position. For the browser prototype, `sceneDrafts[sceneId].inlineFormatRanges` remains a compatibility representation until the manuscript schema and scene-block persistence model are promoted together.
+The mark uses `ManuscriptAnchor`, not a DOM range or editor-library position. For the browser prototype, `sceneDrafts[sceneId].inlineFormatRanges` remains a compatibility representation for inline formatting that has not yet moved to direct mark writes. Scene edit persistence now synchronizes those ranges into `workspace.project.marks` as `mark-inline-*` compatibility marks, and older project JSON normalizes missing `marks` to an empty canonical collection. The direct mutation planner is staged in the browser mark service: it can turn a scene selection into canonical `ManuscriptMark` additions, removals, or split fragments while preserving mark sequence state. User highlights and selected Bold marks now use that planner directly, render through author-mark projections, and user highlights appear in the Decorations side panel. The remaining migration is to move italic, underline, and strikethrough commands to the same direct mark path and keep legacy ranges only as a read fallback.
 
 Durable author records should converge on a consistent anchor envelope:
 
@@ -135,6 +154,77 @@ interface AnchoredRecordReference {
 ```
 
 Tasks, notes, issues, and events retain their own domain fields and lifecycle. They do not become `ManuscriptMark` objects merely because the editor paints a range for them.
+
+## Anchor Drift Contract
+
+Anchor tracking is a three-layer pipeline:
+
+1. Live edit tracking is the primary mechanism.
+2. Load-time hash validation confirms whether saved offsets still point at the expected content.
+3. Bounded context recovery attempts safe reattachment when offsets no longer validate.
+
+The live layer must stay cheap. It should derive the edit transaction once, update only active-scene anchors whose offsets are affected, and avoid fuzzy searching or whole-scene validation while the user is typing. Pure offset shifts should preserve existing evidence metadata; overlap, replacement, and deletion are the only live paths that should refresh bounded evidence for the affected anchor.
+
+Live edit tracking receives the edit transaction while the user is changing text:
+
+```ts
+interface ManuscriptEditTransaction {
+  editId: string;
+  sceneId: string;
+  startOffset: number;
+  endOffset: number;
+  insertedText: string;
+  deletedText: string;
+}
+```
+
+`insertedText` and `deletedText` are runtime transaction fields. They exist so the anchor mutation service can shift or dirty anchors during the current edit; they are not anchor metadata and must not be saved in the project JSON. Durable inserted/deleted prose belongs only in revision/diff artifacts when a revision workflow explicitly records it.
+
+Anchor metadata should avoid large duplicated manuscript excerpts:
+
+```ts
+interface AnchorEvidence {
+  evidenceMode: "full" | "hash-context";
+  originalHash: string;
+  originalLength: number;
+  selectedTextPreview: string;
+  prefixContext: string;
+  suffixContext: string;
+}
+```
+
+Recommended limits:
+
+- `selectedTextPreview`: 120-240 characters.
+- `prefixContext`: 40-80 characters before the anchor.
+- `suffixContext`: 40-80 characters after the anchor.
+- `originalHash`: hash of the full anchored range.
+- `originalLength`: original selected range length.
+
+Use `evidenceMode: "full"` only for short selections where storing the complete selected text is safe. Use `evidenceMode: "hash-context"` for paragraph-sized highlights, revision ranges, comments, scene-level decorations, and any anchor that could bloat the project JSON.
+
+Status values should distinguish renderable anchors from uncertain ones:
+
+```ts
+type AnchorStatus =
+  | "resolved"
+  | "shifted"
+  | "contentChanged"
+  | "approximate"
+  | "stale"
+  | "orphaned"
+  | "deleted";
+```
+
+Projection rendering should accept only anchors whose current status is explicitly renderable for that channel. For example, a hover preview may show an `approximate` task with a warning treatment, while a revision-pass completion marker may require `resolved` or `shifted`.
+
+### Live Versus Lazy Work
+
+| Stage | Allowed work | Avoid |
+| --- | --- | --- |
+| Live typing | derive one transaction, shift affected active-scene offsets, mark overlaps dirty/contentChanged/deleted | fuzzy recovery, whole-scene scans, broad hash/context rewrites |
+| Idle/load/navigation | validate hashes, attempt bounded context recovery, repair stale offsets, mark stale/orphaned | blocking editor input |
+| Explicit repair/review | update uncertain records after user or service confirmation | silently reattaching low-confidence anchors |
 
 ## Projection Contract
 
@@ -285,7 +375,7 @@ Conclusion: retain only while establishing schema and adapter contracts.
 
 ### CodeMirror 6 Adapter
 
-Recommended next editor-host experiment.
+Optional later editor-host experiment.
 
 Reasons:
 
@@ -297,6 +387,7 @@ Reasons:
 Constraint:
 
 - CodeMirror addresses a flat text document. The adapter must translate between scene-local offsets and canonical `ManuscriptAnchor` identities rather than replacing the manuscript schema with editor offsets.
+- Do not introduce it merely to test revision-pass or decoration workflows. Those workflows should first run against the app-owned anchor pipeline and current textarea host.
 
 ### ProseMirror Adapter
 
@@ -355,7 +446,7 @@ Examples:
 
 | Failure mode | Control |
 | --- | --- |
-| Formatting is visible but disappears after reload | round-trip tests for scene compatibility data now; canonical mark migration next |
+| Formatting is visible but disappears after reload | round-trip tests for scene compatibility data and canonical mark save-sync now; direct canonical command writes next |
 | Spellcheck or hover range is saved as project truth | projection contract forbids runtime channels in JSON |
 | AI silently changes author data | suggestion acceptance command required before canonical mutation |
 | Editor-engine swap breaks anchors | engine adapter works from anchors/projections and never owns IDs |
@@ -408,11 +499,19 @@ Implemented evidence:
 - Keep world-template/entity/link and Dream Scaping proposal queues separate from manuscript-range suggestion projections.
 - Do not add a `suggestion` projection channel until the editor has a dedicated manuscript-suggestion source and explicit accept/reject commands.
 
-### Slice 2: Canonical Marks
+### Slice 2: Canonical Marks - User Highlight Path Implemented
 
-- Add `ManuscriptMark` to `packages/manuscript-schema`.
-- Add mark mutation tests and project JSON migration.
-- Move author formatting writes from scene compatibility ranges to canonical marks.
+- Add `ManuscriptMark` to `packages/manuscript-schema`. Implemented with anchor status and bounded evidence fields so marks can use the Phase 7 drift/validation lifecycle rather than an editor decoration store.
+- Add mark mutation tests. Implemented in `test/manuscript-schema.test.mjs`.
+- Add browser-side compatibility conversion from `inlineFormatRanges` to schema-shaped marks. Implemented in `features/manuscript-editor/manuscript-mark-service.js`.
+- Prefer explicit `manuscriptMarks` in projection selection, derive marks from legacy ranges when explicit marks are absent, suppress duplicate derived projections when compatibility marks already exist, and fall back to range projections only when a range cannot be mapped to a stable block anchor.
+- Add project JSON migration for saved projects that predate canonical marks. Implemented by defaulting missing `workspace.project.marks` to `[]`.
+- Synchronize current scene compatibility ranges into `workspace.project.marks` before scene persistence. Implemented by replacing only `mark-inline-*` compatibility marks for the edited scene while preserving future canonical marks.
+- Add a direct mark mutation planner for selected manuscript ranges. Implemented in `toggleManuscriptMarksForSceneSelection`, including sequence allocation, cross-block mark creation, full toggle-off removal, partial split fragments, and bounded evidence refresh.
+- Move author highlight and Bold writes from scene compatibility ranges to canonical marks by wiring the toolbar commands to the planner. Implemented for user highlights and selected Bold marks.
+- Render user highlights from author-mark projections after textarea layout refresh. Implemented in the textarea host boundary.
+- Add a Decorations side-panel list for canonical user highlights with jump and delete actions. Implemented in `features/manuscript-decorations/user-highlight-panel.js`.
+- Move the remaining italic, underline, and strikethrough author formatting writes from scene compatibility ranges to canonical marks. Remaining.
 
 ### Slice 3: Durable Record Alignment
 
@@ -420,14 +519,47 @@ Implemented evidence:
 - Render their visual states only through projections.
 - Add orphan/recovery persistence tests.
 
-### Slice 4: CodeMirror Experiment
+### Slice 4: Anchor Drift Pipeline - Implemented For Current Owners
+
+- Add `features/manuscript-anchors/*` services for anchor DTO normalization, edit transaction derivation, live mutation, load-time validation, bounded context recovery, active-scene anchor indexing, and decoration projection planning.
+- Update `ManuscriptInputController` integration so scene text edits produce an edit transaction before projections are refreshed.
+- Route task/note project activation and navigation repair through the shared anchor record service so load/lazy validation can add bounded evidence, recover legacy selected-text anchors, or suppress stale anchors without each feature owning its own recovery policy.
+- Seed newly created task/note records with bounded hash/context evidence while keeping render projections disposable.
+- Update issue/task/note/event/narration owners to expose anchor records to the anchor index rather than each feature inventing its own highlight store.
+- Route future revision-pass marker records through `updateCanonicalAnchorRecordsForTextEdit` and the existing `revisionMarkers` index input when a durable revision-marker collection is introduced.
+- Persist updated anchor status and bounded evidence metadata through `ProjectPersistenceService`; never persist projection objects.
+- Add tests for insert-before, delete-before, edit-inside, range replacement, deleted anchors, multi-anchor overlap, hash mismatch, context recovery, and stale/orphaned handling.
+
+Implemented evidence:
+
+- `apps/editor/public/features/manuscript-anchors/manuscript-anchor-service.js`
+- `apps/editor/public/features/manuscript-anchors/manuscript-edit-transaction-service.js`
+- `apps/editor/public/features/manuscript-anchors/manuscript-anchor-mutation-service.js`
+- `apps/editor/public/features/manuscript-anchors/manuscript-anchor-validation-service.js`
+- `apps/editor/public/features/manuscript-anchors/manuscript-anchor-index-service.js`
+- `apps/editor/public/features/manuscript-anchors/manuscript-decoration-projection-service.js`
+- `apps/editor/public/features/manuscript-anchors/manuscript-anchor-record-service.js`
+- `apps/editor/public/features/manuscript-anchors/manuscript-anchor-idle-validation-scheduler.js`
+- `packages/manuscript-schema/src/index.ts`
+- `apps/editor/public/features/manuscript-editor/manuscript-mark-service.js`
+- `apps/editor/public/features/manuscript-editor/projection-selector.js`
+- `apps/editor/public/features/manuscript-editor/anchored-record-navigation-controller.js`
+- `apps/editor/public/features/anchored-records/anchored-record-service.js`
+- `apps/editor/public/features/anchored-records/anchored-record-controller.js`
+- `apps/editor/public/app.js`
+- `test/manuscript-anchor-services.test.mjs`
+- `test/anchored-record-navigation-controller.test.mjs`
+- `test/anchored-record-service.test.mjs`
+- `test/anchored-record-controller.test.mjs`
+
+### Slice 5: CodeMirror Experiment - Deferred
 
 - Extend the established editor-host interface with a CodeMirror-backed implementation for one scene.
 - Map application projections into CodeMirror decoration extensions.
 - Route edits back through manuscript commands and persistence services.
 - Keep the textarea host as fallback until save/load, IME, navigation, spellcheck, and autosave behavior are validated.
 
-### Slice 5: AI Consumption
+### Slice 6: AI Consumption
 
 - Define analysis context and suggestion contracts for marks/records.
 - Project AI proposals visibly without mutation.
@@ -437,7 +569,7 @@ Implemented evidence:
 
 This design improves on simply adopting an editor library because it makes domain ownership explicit before swapping renderers. It improves on the present overlay because it prevents every new feature from inventing its own offset lifecycle and persistence policy.
 
-The remaining deliberate limitation is staged migration: the current browser implementation still uses `inlineFormatRanges` until canonical mark schema work is implemented. That compromise is acceptable only because the compatibility correction prevents data loss and the field is not being generalized into the durable annotation model.
+The remaining deliberate limitation is staged migration: the current browser implementation still writes `inlineFormatRanges` until the editor command path and project JSON migration write canonical marks. The projection path now consumes explicit `ManuscriptMark` records when present and otherwise derives schema-shaped marks from legacy ranges, so new durable decoration creation should target `ManuscriptMark` or another domain record rather than a generic editor-owned decoration collection.
 
 ## Reference Material
 

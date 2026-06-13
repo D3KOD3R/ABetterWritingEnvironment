@@ -28,9 +28,9 @@ export function createAnchoredRecordNavigationController({
       .filter((record) => record?.sceneId === normalizedSceneId)
       .map((record) => ({
         record,
-        range: resolveRecordRange(record, String(text ?? "")),
+        range: resolveRecordRange(record, String(text ?? ""), { recordType }),
       }))
-      .filter(({ range }) => Number(range?.endOffset) > Number(range?.startOffset))
+      .filter(({ range }) => isUsableResolvedRange(range))
       .filter(({ range }) =>
         hasSelection
           ? range.startOffset < endOffset && range.endOffset > startOffset
@@ -60,13 +60,8 @@ export function createAnchoredRecordNavigationController({
       return null;
     }
 
-    const resolvedRange = resolveRecordRange(record, String(text ?? ""));
-    if (
-      !resolvedRange ||
-      !Number.isInteger(resolvedRange.startOffset) ||
-      !Number.isInteger(resolvedRange.endOffset) ||
-      resolvedRange.endOffset <= resolvedRange.startOffset
-    ) {
+    const resolvedRange = resolveRecordRange(record, String(text ?? ""), { recordType });
+    if (!isUsableResolvedRange(resolvedRange)) {
       return null;
     }
 
@@ -116,4 +111,14 @@ export function createAnchoredRecordNavigationController({
 function normalizeOffset(value) {
   const number = Number(value);
   return Number.isFinite(number) ? Math.max(0, Math.floor(number)) : 0;
+}
+
+function isUsableResolvedRange(range) {
+  return Boolean(
+    range &&
+    range.matched !== false &&
+    Number.isInteger(range.startOffset) &&
+    Number.isInteger(range.endOffset) &&
+    range.endOffset > range.startOffset,
+  );
 }

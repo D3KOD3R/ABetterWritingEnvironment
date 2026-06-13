@@ -30,6 +30,7 @@ export async function runProjectPersistenceServiceTest() {
     projectFileStatus: "",
     projectFileBusy: false,
     projectFileAutosaveDirty: false,
+    projectFileAutosaveBlocked: null,
     projectFileAutosaveTarget: null,
     projectFileAutosaveTimer: null,
     projectFileAutosaveRevision: 0,
@@ -296,7 +297,8 @@ export async function runProjectPersistenceServiceTest() {
   await projectPersistenceService.flushProjectAutosave();
   assert.equal(operationLog.some((entry) => String(entry).startsWith("write:")), false);
   assert.equal(browserCacheWrites.length >= 1, true);
-  assert.equal(state.projectFileAutosaveDirty, false);
+  assert.equal(state.projectFileAutosaveDirty, true);
+  assert.equal(state.projectFileAutosaveBlocked?.reason, "write-permission-required");
   assert.match(state.projectFileStatus, /re-authorize the project file/);
   assert.equal(
     browserLogs.some((entry) => entry.level === "error" && entry.message === "Project file save failed."),
@@ -305,6 +307,9 @@ export async function runProjectPersistenceServiceTest() {
   state.projectFileHandle = createFakeWritableHandle("project-1.abe-project.json", operationLog);
   state.projectFileHandlePermission = "granted";
   state.projectFilePath = "project-1.abe-project.json";
+  await projectPersistenceService.saveProjectSnapshot({ reason: "manual-save" });
+  assert.equal(state.projectFileAutosaveDirty, false);
+  assert.equal(state.projectFileAutosaveBlocked, null);
 
   // Project-file loads must flush pending passage-note mutations before reading a possibly stale file.
   operationLog.length = 0;
@@ -398,6 +403,46 @@ export async function runProjectPersistenceServiceTest() {
   assert.equal(state.projectFileAutosaveDirty, true);
   assert.equal(state.projectPersistenceDirtyDomains?.["passage-notes"]?.reason, "research-note-created");
   projectPersistenceService.clearProjectAutosaveState();
+
+  // Edited inspiration bodies must reach the external JSON write before autosave can report clean.
+  const inspirationWrites = [];
+  runtimePassageNotes = [
+    {
+      id: "inspiration-runtime-1",
+      noteType: "inspiration",
+      chapterId: "chapter-1",
+      chapterTitle: "Chapter One",
+      sceneId: "scene-1",
+      sceneTitle: "Scene One",
+      selectedText: "Scene one",
+      startOffset: 0,
+      endOffset: 9,
+      body: "Bank this revised inspiration note.",
+      title: "Revised inspiration",
+      createdAt: "2026-05-20T02:00:00.000Z",
+      updatedAt: "2026-05-20T02:05:00.000Z",
+      source: "manual",
+    },
+  ];
+  state.projectLibrary = [projectRecord];
+  state.projectFileHandle = createFakeWritableHandle("project-1.abe-project.json", operationLog, {
+    writtenValues: inspirationWrites,
+  });
+  state.projectFileHandlePermission = "granted";
+  state.projectFilePath = "project-1.abe-project.json";
+  projectPersistenceService.commitCanonicalProjectMutation({
+    domain: "passage-notes",
+    dirtyReason: "inspiration-note-body-edited",
+    source: "test-inspiration-edit",
+  });
+  await projectPersistenceService.flushProjectAutosave();
+  const inspirationSnapshot = JSON.parse(inspirationWrites.at(-1));
+  assert.equal(inspirationSnapshot.projects[0].passageNotes.length, 1);
+  assert.equal(inspirationSnapshot.projects[0].passageNotes[0].id, "inspiration-runtime-1");
+  assert.equal(inspirationSnapshot.projects[0].passageNotes[0].body, "Bank this revised inspiration note.");
+  assert.equal(state.projectFileAutosaveDirty, false);
+  assert.equal(state.projectFileAutosaveBlocked, null);
+
   runtimePassageNotes = [];
   state.activeProjectId = "project-1";
   state.projectLibrarySelectionId = "project-1";
@@ -798,6 +843,9 @@ function createFakeWritableHandle(name, operationLog, options = {}) {
       return {
         async write(value) {
           operationLog.push(`write:${String(value).length}`);
+          if (Array.isArray(options.writtenValues)) {
+            options.writtenValues.push(String(value));
+          }
         },
         async close() {
           operationLog.push("close");

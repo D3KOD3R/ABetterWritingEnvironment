@@ -18,6 +18,22 @@ export type EventTagKind =
 export type EventSource = "manual" | "analysis";
 export type CharacterAliasKind = "primary" | "title" | "short-name" | "callsign";
 export type SpeakerAssignmentRole = "narrator" | "character";
+export type ManuscriptMarkKind = "bold" | "italic" | "underline" | "strikethrough" | "highlight";
+export type ManuscriptMarkSource = "author" | "accepted-suggestion";
+export type ManuscriptMarkPurpose = "emphasis" | "reference" | "revision";
+export type ManuscriptAnchorStatus =
+  | "resolved"
+  | "shifted"
+  | "contentChanged"
+  | "approximate"
+  | "stale"
+  | "orphaned"
+  | "deleted";
+export type ManuscriptAnchorEvidenceMode = "full" | "hash-context";
+
+const DEFAULT_MARK_CONTEXT_LIMIT = 64;
+const DEFAULT_MARK_PREVIEW_LIMIT = 180;
+const DEFAULT_MARK_FULL_EVIDENCE_LIMIT = 240;
 
 export interface Project {
   id: string;
@@ -29,6 +45,7 @@ export interface Project {
   speakerAssignments: SpeakerAssignment[];
   issues: IssueRecord[];
   eventTags: EventTag[];
+  marks: ManuscriptMark[];
   sequences: ManuscriptSequences;
 }
 
@@ -39,6 +56,7 @@ export interface ManuscriptSequences {
   paragraph: number;
   issue: number;
   event: number;
+  mark: number;
   character: number;
   alias: number;
   speakerAssignment: number;
@@ -157,6 +175,32 @@ export interface EventTag {
   notes?: string;
 }
 
+export interface ManuscriptMarkMetadata {
+  colorToken?: string;
+  purpose?: ManuscriptMarkPurpose;
+}
+
+export interface ManuscriptMark {
+  id: string;
+  kind: ManuscriptMarkKind;
+  anchor: ManuscriptAnchor;
+  source: ManuscriptMarkSource;
+  anchorStatus: ManuscriptAnchorStatus;
+  anchorDirtyReason: string;
+  evidenceMode: ManuscriptAnchorEvidenceMode;
+  evidenceExcerpt: string;
+  originalHash: string;
+  originalLength: number;
+  selectedTextPreview: string;
+  prefixContext: string;
+  suffixContext: string;
+  createdAt: string;
+  updatedAt: string;
+  anchorLastTouchedAt?: string;
+  anchorLastTouchedByEditId?: string;
+  metadata?: ManuscriptMarkMetadata;
+}
+
 export interface CreateProjectInput {
   id?: string;
   title: string;
@@ -223,6 +267,13 @@ export interface AddEventTagInput {
   anchor: ManuscriptAnchor;
 }
 
+export interface AddManuscriptMarkInput {
+  kind: ManuscriptMarkKind;
+  source?: ManuscriptMarkSource;
+  anchor: ManuscriptAnchor;
+  metadata?: ManuscriptMarkMetadata;
+}
+
 export interface ResolvedManuscriptAnchor {
   chapter: Chapter;
   scene: Scene;
@@ -238,6 +289,7 @@ const DEFAULT_SEQUENCES: ManuscriptSequences = {
   paragraph: 0,
   issue: 0,
   event: 0,
+  mark: 0,
   character: 0,
   alias: 0,
   speakerAssignment: 0,
@@ -258,6 +310,7 @@ export function createProject(input: CreateProjectInput): Project {
     speakerAssignments: [],
     issues: [],
     eventTags: [],
+    marks: [],
     sequences: { ...DEFAULT_SEQUENCES },
   };
 }
@@ -688,6 +741,47 @@ export function addEventTag(
   };
 }
 
+// Intent: store durable author marks as anchored manuscript data rather than editor decoration state.
+export function addManuscriptMark(
+  project: Project,
+  input: AddManuscriptMarkInput,
+  now?: string,
+): { project: Project; mark: ManuscriptMark } {
+  const resolved = resolveManuscriptAnchor(project, input.anchor);
+  const timestamp = resolveNow(now);
+  const sequence = resolveSequence(project.sequences.mark);
+  const evidence = createManuscriptMarkEvidence(resolved.block.text, input.anchor);
+  const mark: ManuscriptMark = {
+    id: formatId("mark", sequence + 1),
+    kind: input.kind,
+    anchor: input.anchor,
+    source: input.source ?? "author",
+    anchorStatus: "resolved",
+    anchorDirtyReason: "",
+    evidenceMode: evidence.evidenceMode,
+    evidenceExcerpt: evidence.evidenceExcerpt,
+    originalHash: evidence.originalHash,
+    originalLength: evidence.originalLength,
+    selectedTextPreview: evidence.selectedTextPreview,
+    prefixContext: evidence.prefixContext,
+    suffixContext: evidence.suffixContext,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    ...(input.metadata ? { metadata: normalizeManuscriptMarkMetadata(input.metadata) } : {}),
+  };
+
+  return {
+    project: touch(project, now, {
+      marks: [...(project.marks ?? []), mark],
+      sequences: {
+        ...project.sequences,
+        mark: sequence + 1,
+      },
+    }),
+    mark,
+  };
+}
+
 interface SceneLocation {
   chapterIndex: number;
   sceneIndex: number;
@@ -767,10 +861,65 @@ function formatId(prefix: string, sequence: number): string {
   return `${prefix}-${String(sequence).padStart(4, "0")}`;
 }
 
+function resolveSequence(sequence: number | undefined): number {
+  return Number.isInteger(sequence) && sequence >= 0 ? sequence : 0;
+}
+
 function normalizeConfidence(confidence: number): number {
   if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1) {
     throw new Error("Issue confidence must be between 0 and 1.");
   }
 
   return Number(confidence.toFixed(4));
+}
+
+function normalizeManuscriptMarkMetadata(metadata: ManuscriptMarkMetadata): ManuscriptMarkMetadata {
+  const normalized: ManuscriptMarkMetadata = {};
+
+  if (metadata.colorToken?.trim()) {
+    normalized.colorToken = metadata.colorToken.trim();
+  }
+
+  if (metadata.purpose) {
+    normalized.purpose = metadata.purpose;
+  }
+
+  return normalized;
+}
+
+function createManuscriptMarkEvidence(
+  text: string,
+  anchor: ManuscriptAnchor,
+): {
+  evidenceMode: ManuscriptAnchorEvidenceMode;
+  evidenceExcerpt: string;
+  originalHash: string;
+  originalLength: number;
+  selectedTextPreview: string;
+  prefixContext: string;
+  suffixContext: string;
+} {
+  const selectedText = text.slice(anchor.startOffset, anchor.endOffset);
+  const evidenceMode =
+    selectedText.length <= DEFAULT_MARK_FULL_EVIDENCE_LIMIT ? "full" : "hash-context";
+
+  return {
+    evidenceMode,
+    evidenceExcerpt: evidenceMode === "full" ? selectedText : "",
+    originalHash: createStableTextHash(selectedText),
+    originalLength: selectedText.length,
+    selectedTextPreview: selectedText.slice(0, DEFAULT_MARK_PREVIEW_LIMIT),
+    prefixContext: text.slice(Math.max(0, anchor.startOffset - DEFAULT_MARK_CONTEXT_LIMIT), anchor.startOffset),
+    suffixContext: text.slice(anchor.endOffset, Math.min(text.length, anchor.endOffset + DEFAULT_MARK_CONTEXT_LIMIT)),
+  };
+}
+
+function createStableTextHash(text: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+
+  return `fnv1a32:${hash.toString(16).padStart(8, "0")}`;
 }

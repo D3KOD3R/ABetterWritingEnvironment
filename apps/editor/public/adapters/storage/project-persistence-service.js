@@ -1393,7 +1393,9 @@ export function createProjectPersistenceService({
           });
           if (fallbackPersisted) {
             state.projectFileStatus = "Autosave paused: press Ctrl+S to re-authorize the project file. Latest project preserved in browser cache.";
-            clearProjectAutosaveState();
+            blockProjectAutosave({
+              reason: "write-permission-required",
+            });
             renderHeader();
             reportProjectLibrarySaveResult(
               "browser-handle-permission-fallback",
@@ -1411,7 +1413,10 @@ export function createProjectPersistenceService({
           if (!fallbackPersisted) {
             throw new Error("Autosave could not preserve the current project in browser cache.");
           }
-          return;
+          return {
+            projectFilePersisted: false,
+            fallbackPersisted: true,
+          };
         }
 
         let browserHandleSaved = false;
@@ -1438,8 +1443,12 @@ export function createProjectPersistenceService({
             fallbackPersisted: browserHandleFallbackPersisted,
             error,
           });
-          if (browserHandleFallbackPersisted && reason === "autosave") {
-            clearProjectAutosaveState();
+          if (browserHandleFallbackPersisted) {
+            blockProjectAutosave({
+              reason: isBrowserHandlePermissionError(error)
+                ? "write-permission-required"
+                : "write-failed",
+            });
           }
         }
         renderHeader();
@@ -1452,7 +1461,10 @@ export function createProjectPersistenceService({
         if (!browserHandleSaved && !browserHandleFallbackPersisted && reason === "autosave") {
           throw browserHandleFailure ?? new Error("Autosave failed and browser cache fallback was unavailable.");
         }
-        return;
+        return {
+          projectFilePersisted: browserHandleSaved,
+          fallbackPersisted: browserHandleFallbackPersisted,
+        };
       }
 
       let projectSnapshotPersisted = false;
@@ -1476,6 +1488,11 @@ export function createProjectPersistenceService({
           projectSnapshotPersisted = fallbackPersisted;
           projectSnapshotReportTarget = "desktop-path-fallback";
           projectSnapshotReportMessage = "Preserved current project in browser cache after file save failure.";
+          if (fallbackPersisted) {
+            blockProjectAutosave({
+              reason: "write-failed",
+            });
+          }
           desktopFileSystemLog.warn("persistence", "project.save.file-path-failed", "Saving project library to file path failed.", {
             projectId: state.activeProjectId ?? state.workspace?.project?.id ?? "",
             filePath,
@@ -1508,6 +1525,10 @@ export function createProjectPersistenceService({
       if (projectSnapshotPersisted) {
         reportProjectLibrarySaveResult(projectSnapshotReportTarget, projectSnapshotReportMessage);
       }
+      return {
+        projectFilePersisted: filePath ? projectSnapshotReportTarget === "desktop-path" : projectSnapshotPersisted,
+        fallbackPersisted: projectSnapshotReportTarget === "desktop-path-fallback" && projectSnapshotPersisted,
+      };
     } finally {
       projectSaveGateLog.info("lifecycle", "project.save.end", "Project save flow completed.", {
         projectId: state.activeProjectId ?? state.workspace?.project?.id ?? "",
@@ -1557,6 +1578,9 @@ export function createProjectPersistenceService({
           if (!fallbackPersisted) {
             throw error;
           }
+          blockProjectAutosave({
+            reason: "write-failed",
+          });
         }
         return;
       }
@@ -1836,6 +1860,10 @@ export function createProjectPersistenceService({
 
   function markProjectAutosaveDirty(context = {}) {
     autosaveController.markDirty(context);
+  }
+
+  function blockProjectAutosave(context = {}) {
+    autosaveController.block(context);
   }
 
   function primeProjectAutosaveTarget() {

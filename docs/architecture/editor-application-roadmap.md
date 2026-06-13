@@ -79,7 +79,8 @@ Completed or active slices:
 Immediate constraint:
 
 - Do not expand major editor workflows in `app.js`; extract ownership or add a small compatibility call into an existing boundary.
-- Treat `inlineFormatRanges` as compatibility data while canonical anchor-backed marks and render projections are designed and tested.
+- Treat `inlineFormatRanges` as compatibility data while canonical anchor-backed mark writes and render projections are migrated and tested.
+- Treat anchor/decorations drift as a service-level manuscript concern: live edit tracking is primary, hash validation is load-time support, and bounded context is the recovery fallback.
 - Treat the active `.abe-project.json` snapshot as durable truth until a desktop folder-backed adapter is implemented.
 
 ## Remote Review Checkpoint
@@ -106,9 +107,9 @@ Next refactor command:
 
 Still intentionally deferred:
 
-- Canonical `ManuscriptMark` schema migration from compatibility `inlineFormatRanges`.
+- Canonical `ManuscriptMark` write/persistence migration from compatibility `inlineFormatRanges`.
 - Remaining non-host panel focus/scroll effects behind their appropriate feature or shell boundaries.
-- CodeMirror adapter evaluation until projection and command contracts are complete.
+- CodeMirror adapter evaluation until projection, command, and anchor-drift contracts are complete. The current roadmap should first harden the app-owned textarea projection pipeline so workflow testing is not blocked by a third-party editor dependency.
 
 ### Next Slice Contract
 
@@ -148,6 +149,7 @@ The refactor must not only move markup and selectors out of `app.js`. Service ca
 | Project source loading | future `adapters/storage/project-source-service.js` or existing persistence service if kept project-file scoped | call `/api/project-source`, normalize source provenance, create reportable import errors | pass selected source path/options, render import result |
 | Local AI title generation for scenes/tasks/notes | `features/local-ai/local-ai-title-service.js` plus feature-local request builders | call `/api/local-ai/generate-title`, apply title sanitization, normalize unavailable-provider failures, enforce max-token/default-temperature policy | request a title for a known record and commit the returned accepted title through feature state |
 | Spellcheck lexicon refresh and project dictionary persistence | `features/spellcheck/*` plus a spellcheck service wrapper | load base/reference lexicons, derive misspellings, debounce refresh, mutate dictionary/exception lists, normalize failures | dispatch text/settings changes and render projections/panels |
+| Anchor-backed decoration drift handling | `features/manuscript-anchors/*` with eventual DTO promotion to `packages/manuscript-schema` | derive edit transactions, update anchors during live edits, validate anchors on load with hashes, recover stale offsets with bounded context, emit projection-ready anchor states, and mark uncertain records dirty/orphaned before persistence | pass previous/next scene text and commit returned record updates through `ProjectPersistenceService`; render only projections |
 | Anchored task/passage-note persistence after record mutations | `features/anchored-records/anchored-record-service.js` | update task/note collections, persist with workflow-specific dirty reasons, return changed records for UI follow-up | dispatch user intent and refresh selected panels/projections |
 | Revision banking and revision package writes | `features/revisions/revision-service.js` plus revision storage adapter | construct revision events, bank sessions, normalize persisted revision state, write reloadable revision artifacts | start/choose revision commands and render revision windows |
 | Writing target state updates | `features/writing-targets/writing-goals-service.js` and `writing-goals-state-service.js` | compute targets, archive snapshots, session timing, goal sync hints, persistence-ready records | dispatch user edits and render header/window |
@@ -354,7 +356,49 @@ Exit criteria:
 Status:
 - Started: `features/narration/narration-media-service.js` owns project-media save/load calls for narration recordings and voice preview loading. `features/narration/narration-metadata-sync-service.js` owns narration and voice metadata resync after manuscript structure changes. `features/narration/narration-media-recorder-service.js` owns MediaRecorder construction, chunk collection, recorder errors, and stop finalization dispatch. `features/narration/narration-recording-command-service.js` owns start/stop command sequencing, microphone request ordering, recorder attachment, speech tracker attachment, and stop fallback finalization dispatch. `features/narration/narration-recording-finalization-service.js` owns final media-save orchestration, stopped-runtime cleanup, saved/failed take record creation, and final paused session options. `features/narration/narration-recording-runtime-service.js` owns recorder cleanup for normal finalization, failed-start abort, and project activation teardown. `features/narration/narration-selection-service.js` owns armed narration verse selection derivation. `features/narration/narration-speech-recognition-service.js` owns speech tracker setup and transcript/error/end event interpretation. `features/narration/narration-take-service.js` owns runtime/take/session/final-record DTO construction, initial recording session state, recording blob construction, finalization context, media naming, and fallback policy. `features/voice/voice-workflow-service.js` owns editor voice profile/job normalization, placeholder render-job transitions, and voice narration preference snapshot load/save. `features/voice/voice-recording-preview-service.js` owns audio preview object-URL cleanup and playback lifecycle. `features/voice/voice-recording-service.js` owns saved recording collection mutation and active-project lookup. `features/voice/voice-recording-action-service.js` owns saved recording preview load/play policy and manuscript verse navigation plans. The shell still owns persistence/render scheduling and broader voice surface event/render orchestration.
 
-### Phase 7: Evaluate A CodeMirror Editor-Host Adapter
+### Phase 7: Prepare The Anchor-Aware Decoration Pipeline
+
+Goal:
+- make decorations reliable by updating their durable anchors as manuscript text changes, then deriving render-only projections from those anchors
+- support revision-pass and future decoration workflow tests on the current textarea host before any editor-engine experiment like codemirror
+- keep live typing cheap: live edits may shift offsets and mark overlaps dirty, while hash validation, fuzzy/context recovery, and broad evidence refresh run only on load, idle, navigation, or explicit repair paths
+
+Design source:
+- `Design notes/anchor-decoration-drift-handling-design.md`
+
+Deliverables:
+- `features/manuscript-anchors/manuscript-anchor-service.js` for anchor DTO normalization, evidence policy, status values, dirty reasons, and lightweight hash/context metadata
+- `features/manuscript-anchors/manuscript-edit-transaction-service.js` for deriving `{ sceneId, startOffset, endOffset, insertedText, deletedText, editId }` from previous/next scene text
+- `features/manuscript-anchors/manuscript-anchor-mutation-service.js` for live offset shifting, overlap handling, deleted-range orphaning, dirty/contentChanged status, and last-touched edit metadata
+- `features/manuscript-anchors/manuscript-anchor-validation-service.js` for load-time hash validation and bounded context recovery using preview/prefix/suffix evidence rather than full excerpts for long ranges
+- `features/manuscript-anchors/manuscript-anchor-index-service.js` for collecting active-scene anchors from issues, tasks, passage notes, manuscript marks, revision-pass markers, event pins, narration/voice ranges, and future manuscript suggestions without giving rendering ownership to those features
+- `features/manuscript-anchors/manuscript-decoration-projection-service.js` or an extension of `projection-selector.js` that turns validated anchors into render-only projection DTOs
+- project-record normalization/migration notes that keep legacy `selectedText`/`nearbyBefore`/`nearbyAfter` fields readable while moving new metadata toward bounded context plus hash
+
+Pipeline:
+1. `ManuscriptInputController` captures `previousText` and `nextText`.
+2. The edit-transaction service derives the exact edit delta and an `editId`.
+3. The anchor index service collects affected active-scene anchors only.
+4. The mutation service performs cheap deterministic mapping: shift offsets for before-anchor edits, mark overlap edits dirty/contentChanged, and mark fully deleted ranges deleted.
+5. Pure shifts do not refresh hash/context evidence during typing; overlapping edits refresh bounded evidence for the affected record only.
+6. Load, idle, navigation, and explicit repair flows perform hash validation, context recovery, and stale/orphaned decisions.
+7. The shell commits returned domain-record updates through normal project state and `ProjectPersistenceService`.
+8. Projection selection rebuilds decorations from updated anchors; projection objects remain disposable and are never persisted.
+
+Exit criteria:
+- insert-before, delete-before, edit-inside, range-replacement, full-anchor-delete, and multi-anchor-overlap cases have unit tests
+- pure offset shifts preserve existing evidence/hash/context until lazy validation
+- project load can validate anchor hashes and either resolve, recover approximately, or mark anchors stale/orphaned without silently painting wrong text
+- long highlights do not persist huge evidence excerpts; bounded preview/prefix/suffix plus hash is used for new anchor metadata
+- revision-pass decoration testing can use the same anchor pipeline as issues/tasks/notes rather than a feature-specific highlight store
+- runtime-only spellcheck/search/narration-follow projections remain excluded from anchor persistence
+
+Status:
+- Complete for current editor-owned anchor records: `features/manuscript-anchors/manuscript-anchor-service.js` defines the editor-side anchor DTO/evidence/status helpers, `manuscript-edit-transaction-service.js` derives runtime-only edit transactions, `manuscript-anchor-mutation-service.js` applies live offset/status updates, `manuscript-anchor-validation-service.js` validates/recover anchors with hash/context evidence, `manuscript-anchor-index-service.js` collects scene-local anchor owners, `manuscript-decoration-projection-service.js` creates anchor-backed and runtime-only decoration projections, and `manuscript-anchor-record-service.js` now applies live edit drift plus load/navigation validation and repair DTO patches to both offset-backed task/note records and canonical `{ anchor }` records. `ManuscriptInputController` injects the anchor-update step before scene draft persistence; the shell maps scene-level textarea edits into block-local canonical edits for issues, event tags, narration sessions, and narration alignment jobs. The same canonical update helper covers future revision-marker records when a revision-pass marker collection is introduced. Idle validation is debounced through `manuscript-anchor-idle-validation-scheduler.js`, project activation validates loaded owners, pure shifted anchors preserve existing evidence during typing, overlapping/deleted anchors refresh bounded hash/context metadata, and stale validation results are not projected. Runtime-only spellcheck/search/narration-follow projections remain excluded from project persistence.
+- Canonical mark DTO staged: `packages/manuscript-schema` now defines anchor-backed `ManuscriptMark` records, mark sequencing, bounded evidence/status fields, and `addManuscriptMark`; `manuscript-anchor-index-service.js` accepts `marks` as a named owner collection and canonical drift tests cover `manuscriptMark` records. The editor command path still writes compatibility `inlineFormatRanges` while the direct command mutation path is migrated to canonical marks.
+- Canonical mark projection, save-sync, mutation planning, and user highlights staged: `features/manuscript-editor/manuscript-mark-service.js` derives schema-shaped marks from legacy `inlineFormatRanges`, splits cross-block ranges into block-local anchors, uses bounded hash/context evidence for long ranges, replaces only `mark-inline-*` compatibility marks for the edited scene, and leaves unmapped ranges on the legacy projection path. It also exposes a direct selection-to-`ManuscriptMark` toggle planner that allocates schema-style `mark-0001` IDs, preserves sequence state, adds cross-block marks, removes fully covered marks, and splits partially toggled marks with refreshed bounded evidence. The editor Highlight command now uses that planner for user highlights, removes highlight from the scene compatibility range list, persists canonical marks, repaints author-mark projections through the textarea host, and exposes those marks in a Decorations side-panel list with jump/delete actions. `projection-selector.js` now prefers explicit `manuscriptMarks`, suppresses duplicate legacy derivation when compatibility marks already exist, and `scene-editor.js` passes `workspace.project.marks` into scene rendering. `editor-model.js` and `project-repository.js` preserve `paragraphId` on scene blocks where available so derived marks can resolve to stronger manuscript anchors. Project migration defaults missing `workspace.project.marks` to `[]`, and `updateSceneDraft` synchronizes current compatibility ranges into canonical marks before persistence. The remaining migration is extending the direct canonical path beyond user highlights and keeping `inlineFormatRanges` only as a legacy read fallback.
+
+### Phase 8: Evaluate A CodeMirror Editor-Host Adapter
 
 Goal:
 - replace fragile textarea-overlay rendering only after manuscript ownership and projection contracts are enforceable
@@ -367,6 +411,9 @@ Deliverables:
 Exit criteria:
 - the adapter can be enabled without changing canonical project records or persistence paths
 - the textarea host remains a viable fallback until the experiment satisfies behavior checks
+
+Status:
+- Deferred. This is an optional host experiment after the app-owned anchor pipeline is stable, not a prerequisite for revision-pass or decoration workflow testing.
 
 ## Parallel Product Track: MobileFriendlyArchitecture
 
@@ -424,6 +471,14 @@ apps/editor/public/
       manuscript-view.js
       projection-selector.js
       editor-host-interface.js
+    manuscript-anchors/
+      manuscript-anchor-service.js
+      manuscript-edit-transaction-service.js
+      manuscript-anchor-mutation-service.js
+      manuscript-anchor-validation-service.js
+      manuscript-anchor-index-service.js
+      manuscript-decoration-projection-service.js
+      manuscript-anchor-record-service.js
     spellcheck/
       spellcheck-controller.js
       spellcheck-projection-source.js
@@ -477,6 +532,7 @@ These are the lowest-risk extractions to start with:
 | manuscript match derivation, find-panel modeling, and replacement planning inside `app.js` | `features/manuscript-editor/manuscript-find-controller.js` | completed Phase 2 controller slice; durable edit effects and DOM focus remain explicit shell callbacks |
 | manuscript selection text, context-range, bookmark, and saved-selection normalization inside `app.js` | `features/manuscript-editor/manuscript-selection-controller.js` | completed Phase 2 policy slice; browser focus/scroll operations and scene mutation effects remain shell-owned |
 | live `editor-text` mutation sequencing and inline-format text-edit range derivation inside `app.js` | `features/manuscript-editor/manuscript-input-controller.js` | completed Phase 2 controller slice; revision/persistence/render effects are explicit shell callbacks while browser interaction remains compatible |
+| anchor-backed decoration drift handling across issues/tasks/notes/revisions/events/narration | `features/manuscript-anchors/*` plus later `packages/manuscript-schema` DTO promotion | planned Phase 7 pipeline; live edit transactions should update anchors before projections render, load-time validation should use hashes, bounded context should recover stale offsets, and persistent records should store anchor status rather than editor decoration objects |
 | anchored task/note context-menu and composer markup inside `app.js` | `features/anchored-records/task-context-menu.js` | active Phase 4 extraction; view models and markup are feature-owned while shell event dispatch and persistence effects remain |
 | anchored task/note composer planning and typed inline-note range policy inside `app.js` | `features/anchored-records/anchored-record-controller.js` | active Phase 4 extraction; record/draft planning, panel grouping models, and AI title request DTO planning are feature-owned while shell still owns DOM fields, manuscript mutation effects, persistence, and async title calls |
 | anchored task/note console item and delete confirmation markup inside `app.js` | `features/anchored-records/task-panel.js`, `features/anchored-records/passage-note-panel.js`, `features/anchored-records/delete-confirmation-dialog.js` | active Phase 4 extraction; repeated item/dialog/chapter-group/empty-state markup is feature-owned while shell delete effects remain |
@@ -511,6 +567,7 @@ Every extraction should bring tests with it.
 - DOM integration tests for feature controllers and panel interactions.
 - Persistence round-trip tests for save/load and autosave.
 - Projection lifecycle tests ensuring runtime-only decoration channels are never persisted.
+- Anchor drift tests for insert-before, delete-before, edit-inside, replace-overlap, full-anchor-delete, load-time hash mismatch, bounded-context recovery, and stale/orphaned status handling.
 - Schema migration tests for any change that affects local storage or project files.
 - A small smoke test for each new feature slice before the next slice is extracted.
 

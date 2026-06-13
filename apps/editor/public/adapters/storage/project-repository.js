@@ -58,6 +58,11 @@ function normalizeSceneDraft(candidate, fallback = {}) {
       blockId: typeof block?.blockId === "string" && block.blockId.trim()
         ? block.blockId
         : `block-${sceneId}-${index + 1}`,
+      paragraphId: typeof block?.paragraphId === "string" && block.paragraphId.trim()
+        ? block.paragraphId
+        : (typeof block?.blockId === "string" && block.blockId.trim()
+          ? block.blockId
+          : `paragraph-${sceneId}-${index + 1}`),
       lineNumber: Number.isFinite(Number(block?.lineNumber))
         ? Number(block.lineNumber)
         : null,
@@ -178,6 +183,11 @@ function collectSceneDraftsFromProjectRecord(projectRecord) {
       blockId: typeof line?.blockId === "string" && line.blockId.trim()
         ? line.blockId
         : `block-${sceneId}-${scene.blocks.length + 1}`,
+      paragraphId: typeof line?.paragraphId === "string" && line.paragraphId.trim()
+        ? line.paragraphId
+        : (typeof line?.blockId === "string" && line.blockId.trim()
+          ? line.blockId
+          : `paragraph-${sceneId}-${scene.blocks.length + 1}`),
       lineNumber: Number.isFinite(Number(line?.lineNumber))
         ? Number(line.lineNumber)
         : null,

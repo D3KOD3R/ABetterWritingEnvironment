@@ -6,6 +6,7 @@ import {
   addChapter,
   addEventTag,
   addIssueRecord,
+  addManuscriptMark,
   addScene,
   buildBinderTree,
   buildManuscriptIndex,
@@ -129,5 +130,83 @@ export function runManuscriptSchemaTest() {
 
   assert.equal(project.eventTags.length, 1);
   assert.equal(project.eventTags[0].evidenceExcerpt, "Halcyon Station");
-  assert.equal(project.updatedAt, "2026-04-21T03:06:00.000Z");
+
+  const markAnchor = createManuscriptAnchor(project, {
+    blockId: narrationResult.block.id,
+    startOffset: 4,
+    endOffset: 11,
+  });
+  const markResult = addManuscriptMark(
+    project,
+    {
+      kind: "highlight",
+      source: "author",
+      anchor: markAnchor,
+      metadata: {
+        colorToken: "amber",
+        purpose: "reference",
+      },
+    },
+    "2026-04-21T03:07:00.000Z",
+  );
+  project = markResult.project;
+
+  assert.equal(project.marks.length, 1);
+  assert.equal(project.marks[0].id, "mark-0001");
+  assert.equal(project.marks[0].evidenceExcerpt, "frigate");
+  assert.equal(project.marks[0].evidenceMode, "full");
+  assert.match(project.marks[0].originalHash, /^fnv1a32:/);
+  assert.equal(project.marks[0].anchorStatus, "resolved");
+  assert.equal(project.marks[0].metadata.colorToken, "amber");
+  assert.equal(project.sequences.mark, 1);
+  assert.equal(project.updatedAt, "2026-04-21T03:07:00.000Z");
+  assert.equal(resolveManuscriptAnchor(project, project.marks[0].anchor).excerpt, "frigate");
+  assert.equal(Object.hasOwn(project.marks[0], "projectionType"), false);
+  assert.equal(Object.hasOwn(project.marks[0], "decorationClass"), false);
+
+  assert.throws(
+    () =>
+      addManuscriptMark(project, {
+        kind: "italic",
+        anchor: {
+          ...markAnchor,
+          paragraphId: "paragraph-mismatch",
+        },
+      }),
+    /Anchor does not match the current manuscript hierarchy/,
+  );
+
+  const longMarkBlockResult = addBlock(
+    project,
+    sceneResult.scene.id,
+    {
+      kind: "narration",
+      text: `${"A".repeat(300)} suffix context`,
+    },
+    "2026-04-21T03:08:00.000Z",
+  );
+  project = longMarkBlockResult.project;
+
+  const longMarkResult = addManuscriptMark(
+    project,
+    {
+      kind: "highlight",
+      anchor: createManuscriptAnchor(project, {
+        blockId: longMarkBlockResult.block.id,
+        startOffset: 0,
+        endOffset: 300,
+      }),
+    },
+    "2026-04-21T03:09:00.000Z",
+  );
+  project = longMarkResult.project;
+
+  assert.equal(project.marks.length, 2);
+  assert.equal(project.marks[1].id, "mark-0002");
+  assert.equal(project.marks[1].evidenceMode, "hash-context");
+  assert.equal(project.marks[1].evidenceExcerpt, "");
+  assert.equal(project.marks[1].originalLength, 300);
+  assert.equal(project.marks[1].selectedTextPreview.length, 180);
+  assert.equal(project.marks[1].suffixContext, " suffix context");
+  assert.equal(project.updatedAt, "2026-04-21T03:09:00.000Z");
 }

@@ -1,5 +1,6 @@
 // Intent: own all writing-goals panel interactions behind a stable service boundary.
 import { escapeHtml, formatDisplayNumber } from "../../shared/ui-utils.js";
+import { buildProjectAutosaveStatusModel } from "../../shared/project-autosave-status.js";
 import { getSessionTrackerVisualState } from "../progress-tracker.js";
 import { renderSessionTrackerPenSvg as renderSessionTrackerPenGlyph } from "../../session-tracker-icons.js";
 import { renderWritingTargetWindowHTML } from "./writing-target-window.js";
@@ -333,70 +334,10 @@ function syncSessionTrackerLiveState() {
 }
 
 function resolveProjectAutosaveIndicatorLiveModel() {
-  const enabled = state?.editorPrefs?.projectFileAutosaveEnabled === true;
-  if (!enabled) {
-    return {
-      statusKey: "off",
-      statusLabel: "Off",
-      note: "Project-file autosave is disabled.",
-      toneClass: "is-off",
-    };
-  }
-
   const connected = typeof hasProjectFileDestination === "function"
     ? hasProjectFileDestination() === true
     : false;
-  if (!connected) {
-    if (state?.projectFileHandle && state?.projectFileHandlePermission !== "granted") {
-      return {
-        statusKey: "waiting",
-        statusLabel: "Needs permission",
-        note: "Press Ctrl+S to re-authorize the project file.",
-        toneClass: "is-waiting",
-      };
-    }
-
-    return {
-      statusKey: "waiting",
-      statusLabel: "Waiting",
-      note: "Select a project file destination.",
-      toneClass: "is-waiting",
-    };
-  }
-
-  if (state?.projectFileBusy === true) {
-    return {
-      statusKey: "saving",
-      statusLabel: "Saving",
-      note: "Writing project snapshot.",
-      toneClass: "is-saving",
-    };
-  }
-
-  if ((Number(state?.projectFileAutosaveSuppressionDepth) || 0) > 0) {
-    return {
-      statusKey: "suppressed",
-      statusLabel: "Suppressed",
-      note: "Paused while project changes are batched.",
-      toneClass: "is-suppressed",
-    };
-  }
-
-  if (state?.projectFileAutosaveDirty === true) {
-    return {
-      statusKey: "pending",
-      statusLabel: "Pending",
-      note: "Queued for idle save.",
-      toneClass: "is-pending",
-    };
-  }
-
-  return {
-    statusKey: "ready",
-    statusLabel: "Ready",
-    note: "Project file is in sync.",
-    toneClass: "is-ready",
-  };
+  return buildProjectAutosaveStatusModel(state, { connected });
 }
 
 function syncProjectAutosaveIndicatorLiveState(heroSlot) {

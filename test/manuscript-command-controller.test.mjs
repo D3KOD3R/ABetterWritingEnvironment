@@ -75,6 +75,52 @@ export async function runManuscriptCommandControllerTest() {
     },
   ]);
 
+  const selectedHighlightClearsPending = runInlineFormatCommand({
+    text: "The quiet door opened.",
+    startOffset: 4,
+    endOffset: 14,
+    format: "highlight",
+    state: {
+      pendingFormats: {
+        highlight: true,
+      },
+    },
+  });
+  assert.equal(selectedHighlightClearsPending.state.pendingFormats.highlight, false);
+
+  const collapsedHighlight = runInlineFormatCommand({
+    text: "The door opened.",
+    startOffset: 4,
+    endOffset: 4,
+    format: "highlight",
+  });
+  assert.equal(collapsedHighlight.mutation.kind, "start-pending-format");
+  assert.equal(collapsedHighlight.state.pendingFormats.highlight, true);
+
+  const selectedBold = runInlineFormatCommand({
+    text: "The quiet door opened.",
+    startOffset: 4,
+    endOffset: 14,
+    format: "bold",
+  });
+  assert.deepEqual(selectedBold.ranges, [
+    {
+      id: "inline-bold-4-14",
+      formatId: "bold",
+      startOffset: 4,
+      endOffset: 14,
+    },
+  ]);
+
+  const collapsedBold = runInlineFormatCommand({
+    text: "The door opened.",
+    startOffset: 4,
+    endOffset: 4,
+    format: "bold",
+  });
+  assert.equal(collapsedBold.mutation.kind, "start-pending-format");
+  assert.equal(collapsedBold.state.pendingFormats.bold, true);
+
   const selectedStrikethrough = runInlineFormatCommand({
     text: "The quiet door opened.",
     startOffset: 4,
@@ -104,6 +150,150 @@ export async function runManuscriptCommandControllerTest() {
       formatId: "highlight",
       startOffset: 4,
       endOffset: 9,
+    },
+  ]);
+
+  const typedWithRepeatedPrefixHighlight = updateInlineFormatRangesForTextEdit({
+    ranges: [],
+    previousText: "abcabc",
+    nextText: "abcaabc",
+    selectionStart: 4,
+    selectionEnd: 4,
+    pendingFormats: {
+      highlight: true,
+    },
+  });
+  assert.deepEqual(typedWithRepeatedPrefixHighlight, [
+    {
+      id: "inline-highlight-3-4",
+      formatId: "highlight",
+      startOffset: 3,
+      endOffset: 4,
+    },
+  ]);
+
+  const typedWithPendingBold = updateInlineFormatRangesForTextEdit({
+    ranges: [],
+    previousText: "The door opened.",
+    nextText: "The gold door opened.",
+    pendingFormats: {
+      bold: true,
+    },
+  });
+  assert.deepEqual(typedWithPendingBold, [
+    {
+      id: "inline-bold-4-9",
+      formatId: "bold",
+      startOffset: 4,
+      endOffset: 9,
+    },
+  ]);
+
+  const typedInsideHighlightWithSwitchOff = updateInlineFormatRangesForTextEdit({
+    ranges: [{
+      id: "inline-highlight-0-6",
+      formatId: "highlight",
+      startOffset: 0,
+      endOffset: 6,
+    }],
+    previousText: "abcdef",
+    nextText: "abcXdef",
+    selectionStart: 4,
+    selectionEnd: 4,
+    pendingFormats: {
+      highlight: false,
+    },
+  });
+  assert.deepEqual(typedInsideHighlightWithSwitchOff, [
+    {
+      id: "inline-highlight-0-3",
+      formatId: "highlight",
+      startOffset: 0,
+      endOffset: 3,
+    },
+    {
+      id: "inline-highlight-4-7",
+      formatId: "highlight",
+      startOffset: 4,
+      endOffset: 7,
+    },
+  ]);
+
+  const typedInsideHighlightWithSwitchOn = updateInlineFormatRangesForTextEdit({
+    ranges: [{
+      id: "inline-highlight-0-6",
+      formatId: "highlight",
+      startOffset: 0,
+      endOffset: 6,
+    }],
+    previousText: "abcdef",
+    nextText: "abcXdef",
+    selectionStart: 4,
+    selectionEnd: 4,
+    pendingFormats: {
+      highlight: true,
+    },
+  });
+  assert.deepEqual(typedInsideHighlightWithSwitchOn, [
+    {
+      id: "inline-highlight-0-7",
+      formatId: "highlight",
+      startOffset: 0,
+      endOffset: 7,
+    },
+  ]);
+
+  const typedInsideBoldWithSwitchOff = updateInlineFormatRangesForTextEdit({
+    ranges: [{
+      id: "inline-bold-0-6",
+      formatId: "bold",
+      startOffset: 0,
+      endOffset: 6,
+    }],
+    previousText: "abcdef",
+    nextText: "abcXdef",
+    selectionStart: 4,
+    selectionEnd: 4,
+    pendingFormats: {
+      bold: false,
+    },
+  });
+  assert.deepEqual(typedInsideBoldWithSwitchOff, [
+    {
+      id: "inline-bold-0-3",
+      formatId: "bold",
+      startOffset: 0,
+      endOffset: 3,
+    },
+    {
+      id: "inline-bold-4-7",
+      formatId: "bold",
+      startOffset: 4,
+      endOffset: 7,
+    },
+  ]);
+
+  const typedInsideBoldWithSwitchOn = updateInlineFormatRangesForTextEdit({
+    ranges: [{
+      id: "inline-bold-0-6",
+      formatId: "bold",
+      startOffset: 0,
+      endOffset: 6,
+    }],
+    previousText: "abcdef",
+    nextText: "abcXdef",
+    selectionStart: 4,
+    selectionEnd: 4,
+    pendingFormats: {
+      bold: true,
+    },
+  });
+  assert.deepEqual(typedInsideBoldWithSwitchOn, [
+    {
+      id: "inline-bold-0-7",
+      formatId: "bold",
+      startOffset: 0,
+      endOffset: 7,
     },
   ]);
 

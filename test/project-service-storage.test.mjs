@@ -73,6 +73,7 @@ export async function runProjectServiceStorageTest() {
   assert.equal(migrated.schemaVersion, PROJECT_SCHEMA_VERSION);
   assert.equal(migrated.projects[0].schemaVersion, PROJECT_SCHEMA_VERSION);
   assert.equal(migrated.projects[0].projectIndex.projectId, "project-test");
+  assert.deepEqual(migrated.projects[0].workspace.project.marks, []);
   assert.equal(
     migrated.projects[0].projectIndex.scenes.find((scene) => scene.id === "scene-1")?.inspirationCount,
     1,

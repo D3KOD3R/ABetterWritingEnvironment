@@ -1,5 +1,15 @@
 // Intent: select render-only manuscript projections without making the editor host a persistence owner.
+import {
+  createAnchorDecorationProjection,
+  createSpellcheckDecorationProjections,
+} from "../manuscript-anchors/manuscript-decoration-projection-service.js";
 import { normalizeInlineFormatRanges } from "./manuscript-command-controller.js";
+import {
+  createAuthorMarkProjectionFromManuscriptMark,
+  deriveManuscriptMarksFromInlineFormatRanges,
+  isCompatibilityManuscriptMark,
+  normalizeManuscriptMarks,
+} from "./manuscript-mark-service.js";
 
 export const MANUSCRIPT_PROJECTION_CHANNELS = Object.freeze({
   AUTHOR_MARK: "author-mark",
@@ -27,6 +37,7 @@ export function selectManuscriptProjections({
   text = "",
   sceneBlocks = [],
   inlineFormatRanges = [],
+  manuscriptMarks = [],
   diagnosticIssues = [],
   anchoredRecordPreviews = [],
   searchPreviews = [],
@@ -44,22 +55,14 @@ export function selectManuscriptProjections({
   const projections = [];
 
   if (includeAuthorMarks) {
-    for (const range of normalizeInlineFormatRanges(inlineFormatRanges, normalizedText.length)) {
-      projections.push({
-        id: `author-mark:${range.id}`,
-        sceneId: normalizedSceneId,
-        startOffset: range.startOffset,
-        endOffset: range.endOffset,
-        channel: MANUSCRIPT_PROJECTION_CHANNELS.AUTHOR_MARK,
-        styleToken: range.formatId,
-        priority: PROJECTION_PRIORITY[MANUSCRIPT_PROJECTION_CHANNELS.AUTHOR_MARK],
-        persistence: "derived-durable",
-        sourceRef: {
-          recordType: "inlineFormatRange",
-          recordId: range.id,
-        },
-      });
-    }
+    projections.push(...createAuthorMarkProjections({
+      projectId: normalizedProjectId,
+      sceneId: normalizedSceneId,
+      text: normalizedText,
+      sceneBlocks,
+      manuscriptMarks,
+      inlineFormatRanges,
+    }));
   }
 
   if (includeDiagnostics) {
@@ -111,32 +114,14 @@ export function selectManuscriptProjections({
   }
 
   if (includeSpellcheck) {
-    for (const misspelling of Array.isArray(spellcheckMisspellings) ? spellcheckMisspellings : []) {
-      const startOffset = Number(misspelling?.index);
-      const endOffset = Number(misspelling?.endIndex);
-      if (
-        !Number.isInteger(startOffset) ||
-        !Number.isInteger(endOffset) ||
-        startOffset < 0 ||
-        endOffset <= startOffset ||
-        endOffset > normalizedText.length
-      ) {
-        continue;
-      }
-      const normalizedWord = typeof misspelling.normalizedWord === "string"
-        ? misspelling.normalizedWord
-        : String(misspelling.word ?? "").toLowerCase();
-      projections.push({
-        id: `spellcheck:${normalizedSceneId}:${startOffset}:${endOffset}:${normalizedWord}`,
-        sceneId: normalizedSceneId,
-        startOffset,
-        endOffset,
-        channel: MANUSCRIPT_PROJECTION_CHANNELS.SPELLCHECK,
-        styleToken: "misspelled",
-        priority: PROJECTION_PRIORITY[MANUSCRIPT_PROJECTION_CHANNELS.SPELLCHECK],
-        persistence: "runtime-only",
-      });
-    }
+    projections.push(...createSpellcheckDecorationProjections({
+      sceneId: normalizedSceneId,
+      text: normalizedText,
+      misspellings: spellcheckMisspellings,
+      channel: MANUSCRIPT_PROJECTION_CHANNELS.SPELLCHECK,
+      styleToken: "misspelled",
+      priority: PROJECTION_PRIORITY[MANUSCRIPT_PROJECTION_CHANNELS.SPELLCHECK],
+    }));
   }
 
   return projections.sort(compareManuscriptProjections);
@@ -146,6 +131,72 @@ export function selectProjectionChannel(projections, channel) {
   return (Array.isArray(projections) ? projections : [])
     .filter((projection) => projection?.channel === channel)
     .sort(compareManuscriptProjections);
+}
+
+// Intent: prefer schema-shaped manuscript marks while legacy scene ranges remain readable during migration.
+function createAuthorMarkProjections({
+  projectId = "",
+  sceneId = "",
+  text = "",
+  sceneBlocks = [],
+  manuscriptMarks = [],
+  inlineFormatRanges = [],
+} = {}) {
+  const explicitMarks = normalizeManuscriptMarks(manuscriptMarks, { sceneId });
+  const hasCompatibilityMarks = explicitMarks.some((mark) => (
+    isCompatibilityManuscriptMark(mark) &&
+    String(mark?.anchor?.sceneId ?? "") === sceneId
+  ));
+  const derived = hasCompatibilityMarks
+    ? { marks: [], unmappedRanges: [] }
+    : deriveManuscriptMarksFromInlineFormatRanges({
+      projectId,
+      sceneId,
+      text,
+      sceneBlocks,
+      inlineFormatRanges,
+    });
+  const projectionMarks = [
+    ...explicitMarks,
+    ...derived.marks,
+  ];
+  const projections = [];
+
+  for (const mark of projectionMarks) {
+    const projection = createAuthorMarkProjectionFromManuscriptMark(mark, {
+      sceneId,
+      sceneBlocks,
+      text,
+      channel: MANUSCRIPT_PROJECTION_CHANNELS.AUTHOR_MARK,
+      priority: PROJECTION_PRIORITY[MANUSCRIPT_PROJECTION_CHANNELS.AUTHOR_MARK],
+    });
+    if (projection) {
+      projections.push(projection);
+    }
+  }
+
+  for (const range of normalizeInlineFormatRanges(derived.unmappedRanges, text.length)) {
+    projections.push(createLegacyAuthorMarkProjection(range, sceneId));
+  }
+
+  return projections;
+}
+
+function createLegacyAuthorMarkProjection(range, sceneId) {
+  return {
+    id: `author-mark:${range.id}`,
+    sceneId,
+    startOffset: range.startOffset,
+    endOffset: range.endOffset,
+    channel: MANUSCRIPT_PROJECTION_CHANNELS.AUTHOR_MARK,
+    styleToken: range.formatId,
+    priority: PROJECTION_PRIORITY[MANUSCRIPT_PROJECTION_CHANNELS.AUTHOR_MARK],
+    persistence: "derived-durable",
+    sourceRef: {
+      recordType: "inlineFormatRange",
+      recordId: range.id,
+    },
+  };
 }
 
 function compareManuscriptProjections(left, right) {
@@ -254,20 +305,23 @@ function createAnchoredRecordProjection(preview, sceneId, textLength) {
   const noteType = preview?.noteType === "research" ? "research" : "inspiration";
   const channel = isTask ? MANUSCRIPT_PROJECTION_CHANNELS.TASK : MANUSCRIPT_PROJECTION_CHANNELS.NOTE;
   const styleToken = isTask ? "task" : noteType;
-  return {
-    id: `${channel}:${recordId}`,
-    sceneId,
+  return createAnchorDecorationProjection({
+    anchorId: `${recordType}:${recordId}`,
+    ownerType: recordType,
+    ownerId: recordId,
+    projectionId: `${channel}:${recordId}`,
+    sceneId: projectionSceneId,
     startOffset,
     endOffset,
+    status: preview?.anchorStatus,
+  }, {
+    sceneId,
+    textLength,
     channel,
     styleToken,
     priority: PROJECTION_PRIORITY[channel],
     persistence: "derived-durable",
-    sourceRef: {
-      recordType,
-      recordId,
-    },
-  };
+  });
 }
 
 function createRuntimeSelectionProjection(preview, sceneId, textLength, channel) {

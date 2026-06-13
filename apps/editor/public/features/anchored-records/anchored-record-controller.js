@@ -3,6 +3,7 @@ import {
   createManuscriptTask,
   createPassageNote,
 } from "../../editor-model.js";
+import { createOffsetAnchoredRecordEvidencePatch } from "../manuscript-anchors/manuscript-anchor-record-service.js";
 
 export function buildTaskComposerFromContextMenu(menu, point = {}) {
   if (!menu) {
@@ -57,13 +58,15 @@ export function buildTaskFromComposer({
     return null;
   }
 
-  return createManuscriptTask(scene, {
+  const task = createManuscriptTask(scene, {
     body,
     taskNumber,
     selectedText: composer.selectedText,
     startOffset: composer.startOffset,
     endOffset: composer.endOffset,
   });
+
+  return applyInitialAnchorEvidence(task, scene?.editorText);
 }
 
 export function buildPassageNoteFromComposer({
@@ -75,12 +78,29 @@ export function buildPassageNoteFromComposer({
     return null;
   }
 
-  return createPassageNote(scene, {
+  const note = createPassageNote(scene, {
     selectedText: composer.selectedText,
     startOffset: composer.startOffset,
     endOffset: composer.endOffset,
     body,
   }, composer.noteType);
+
+  return applyInitialAnchorEvidence(note, scene?.editorText);
+}
+
+function applyInitialAnchorEvidence(record, text) {
+  if (!record || typeof text !== "string") {
+    return record;
+  }
+
+  return {
+    ...record,
+    ...createOffsetAnchoredRecordEvidencePatch({
+      text,
+      startOffset: record.startOffset,
+      endOffset: record.endOffset,
+    }),
+  };
 }
 
 // Intent: prepare Local AI title requests without coupling anchored records to shell effects.

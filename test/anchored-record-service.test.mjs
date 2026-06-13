@@ -60,6 +60,22 @@ export function runAnchoredRecordServiceTest() {
     source: "anchoredRecordService.repairTaskAnchor",
   }]);
 
+  const repairedTaskMetadata = service.repairTaskAnchor("task-1", {
+    matched: true,
+    startOffset: 4,
+    endOffset: 10,
+    recordPatch: {
+      anchorStatus: "resolved",
+      originalHash: "fnv1a32:testhash",
+    },
+  });
+  assert.equal(repairedTaskMetadata.originalHash, "fnv1a32:testhash");
+  assert.equal(repairedTaskMetadata.anchorStatus, "resolved");
+  assert.deepEqual(events.at(-1), ["tasks", {
+    dirtyReason: "manuscript-task-anchor-repaired",
+    source: "anchoredRecordService.repairTaskAnchor",
+  }]);
+
   const completedTask = service.completeTask("task-1", { source: "test.complete" });
   assert.equal(completedTask.status, "completed");
   assert.deepEqual(events.at(-1), ["tasks", {
@@ -112,8 +128,14 @@ export function runAnchoredRecordServiceTest() {
     matched: true,
     startOffset: 6,
     endOffset: 14,
+    recordPatch: {
+      anchorStatus: "approximate",
+      anchorDirtyReason: "context-recovered",
+    },
   });
   assert.equal(repairedNote.endOffset, 14);
+  assert.equal(repairedNote.anchorStatus, "approximate");
+  assert.equal(repairedNote.anchorDirtyReason, "context-recovered");
   assert.deepEqual(events.at(-1), ["notes", {
     dirtyReason: "passage-note-anchor-repaired",
     source: "anchoredRecordService.repairPassageNoteAnchor",

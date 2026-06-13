@@ -119,6 +119,17 @@ function migrateProjectRecord(record, targetSchemaVersion) {
       sceneFiles,
     },
   };
+  if (migratedRecord.workspace?.project && typeof migratedRecord.workspace.project === "object" && !Array.isArray(migratedRecord.workspace.project)) {
+    migratedRecord.workspace = {
+      ...migratedRecord.workspace,
+      project: {
+        ...migratedRecord.workspace.project,
+        marks: Array.isArray(migratedRecord.workspace.project.marks)
+          ? cloneValue(migratedRecord.workspace.project.marks)
+          : [],
+      },
+    };
+  }
   const existingProjectIndex = record.projectIndex && typeof record.projectIndex === "object" && !Array.isArray(record.projectIndex)
     ? cloneValue(record.projectIndex)
     : null;

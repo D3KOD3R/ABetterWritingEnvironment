@@ -50,8 +50,19 @@ import {
   MANUSCRIPT_PROJECTION_CHANNELS,
   selectManuscriptProjections,
 } from "./features/manuscript-editor/projection-selector.js";
+import {
+  createAuthorMarkProjectionFromManuscriptMark,
+  promoteCompatibilityManuscriptMarksForSceneFormat,
+  syncCompatibilityManuscriptMarksForScene as syncCompatibilityManuscriptMarksForSceneState,
+  toggleManuscriptMarksForSceneSelection,
+  updateManuscriptMarksForSceneTextEdit,
+} from "./features/manuscript-editor/manuscript-mark-service.js";
 import { createManuscriptFindController } from "./features/manuscript-editor/manuscript-find-controller.js";
 import { createManuscriptInputController } from "./features/manuscript-editor/manuscript-input-controller.js";
+import {
+  reconcileSceneBlocksWithEditorText,
+  updateSceneBlocksForTextEdit,
+} from "./features/manuscript-editor/manuscript-block-text-service.js";
 import { createManuscriptSelectionController } from "./features/manuscript-editor/manuscript-selection-controller.js";
 import { createAnchoredRecordNavigationController } from "./features/manuscript-editor/anchored-record-navigation-controller.js";
 import { validateLiveSpellcheckMenuRange } from "./features/manuscript-editor/spellcheck-range-guard.js";
@@ -100,10 +111,35 @@ import {
 import { renderPassageNotePanelHTML } from "./features/anchored-records/passage-note-panel.js";
 import { renderTaskPanelHTML } from "./features/anchored-records/task-panel.js";
 import {
+  buildUserHighlightPanelModel,
+  renderUserHighlightPanelHTML,
+} from "./features/manuscript-decorations/user-highlight-panel.js";
+import {
+  USER_MARK_COMMAND_MODE,
+  resolveUserMarkCommandIntent,
+  resolveUserMarkCommandSelection,
+} from "./features/manuscript-decorations/user-highlight-command-service.js";
+import {
   createDeleteConfirmationPreferences,
   renderDeleteConfirmationDialogHTML,
 } from "./features/anchored-records/delete-confirmation-dialog.js";
 import { createAnchoredRecordService } from "./features/anchored-records/anchored-record-service.js";
+import {
+  DEFAULT_ANCHOR_IDLE_VALIDATION_DELAY_MS,
+  createManuscriptAnchorIdleValidationScheduler,
+} from "./features/manuscript-anchors/manuscript-anchor-idle-validation-scheduler.js";
+import {
+  createOffsetAnchoredRecordEvidencePatch,
+  updateCanonicalAnchorRecordForTextEdit,
+  validateCanonicalAnchorRecordAgainstText,
+  validateCanonicalAnchorRecordsByAnchorText,
+  resolveOffsetAnchoredRecordRange,
+  validateOffsetAnchoredRecordsByScene,
+  updateOffsetAnchoredRecordsForTextEdit,
+} from "./features/manuscript-anchors/manuscript-anchor-record-service.js";
+import {
+  deriveManuscriptEditTransaction,
+} from "./features/manuscript-anchors/manuscript-edit-transaction-service.js";
 import { escapeHtml, formatDisplayNumber } from "./shared/ui-utils.js";
 import { createDeveloperLogger } from "./shared/developer-logger.js";
 import {
@@ -164,6 +200,7 @@ import {
   focusTextareaEditorHost,
   getTextareaEditorHostWrapMetrics,
   readTextareaEditorHostSelection,
+  renderTextareaAuthorMarkLayer,
   renderTextareaDiagnosticLayer,
   renderTextareaSpellcheckLayer,
   resolveTextareaEditorHost,
@@ -213,6 +250,7 @@ import { createVoiceRecordingPreviewController } from "./features/voice/voice-re
 import { createVoiceRecordingService } from "./features/voice/voice-recording-service.js";
 
 // Intent: keep shell-wide constants and state visible until each concern moves into its roadmap owner.
+const AUTHOR_MARK_DECORATION_FORMAT_IDS = new Set(["bold", "highlight"]);
 const appRoot = document.querySelector("#app");
 const EDITOR_RIGHT_DOCK_COLLAPSED_KEY = "abe-right-dock-collapsed-v1";
 const EDITOR_BINDER_WIDTH_KEY = "abe-binder-width-v1";
@@ -316,6 +354,7 @@ const state = {
   projectFileStatus: "",
   projectFileBusy: false,
   projectFileAutosaveDirty: false,
+  projectFileAutosaveBlocked: null,
   projectFileAutosaveTarget: null,
   projectFileAutosaveTimer: null,
   projectFileAutosaveRevision: 0,
@@ -356,6 +395,7 @@ const state = {
   sidePanelMode: "issues",
   selectedTaskId: null,
   selectedPassageNoteId: null,
+  selectedUserHighlightId: null,
   inlinePassageDraft: null,
   taskContextMenu: null,
   binderContextMenu: null,
@@ -452,15 +492,47 @@ const manuscriptInputController = createManuscriptInputController({
   getInlineFormattingState: () => state.manuscriptInlineFormatting,
   recordRevisionTextEdit: (sceneId, previousText, nextText) => recordRevisionSceneTextEdit(sceneId, previousText, nextText),
   trackInlinePassageTyping: (sceneId, previousText, editorSurface) => trackInlinePassageDraftTyping(sceneId, previousText, editorSurface),
+  updateAnchoredRecordsForTextEdit: (sceneId, previousText, nextText, options) =>
+    updateAnchoredRecordsForSceneTextEdit(sceneId, previousText, nextText, options),
   getTypingSpellcheckRange: (editorSurface) => getEditorTypingSpellcheckRange(editorSurface),
   commitSceneTextEdit: ({
     sceneId,
     previousText,
     nextText,
     inlineFormatRanges,
+    pendingFormats,
+    selectionStart,
+    selectionEnd,
   }) => {
+    const scene = getScene(sceneId);
+    const sourceBlocks = scene?.blocks ?? state.sceneDrafts?.[sceneId]?.blocks;
+    const editedBlocks = updateSceneBlocksForTextEdit({
+      blocks: sourceBlocks,
+      sceneId,
+      previousText,
+      nextText,
+      selectionStart,
+      selectionEnd,
+    });
+    const nextBlocks = reconcileSceneBlocksWithEditorText({
+      blocks: editedBlocks,
+      sceneId,
+      chapterId: scene?.chapterId ?? state.sceneDrafts?.[sceneId]?.chapterId ?? "",
+      text: nextText,
+    });
+    updateManuscriptMarksAfterSceneTextEdit({
+      sceneId,
+      previousText,
+      nextText,
+      previousSceneBlocks: scene?.blocks,
+      nextSceneBlocks: nextBlocks,
+      pendingFormats,
+      selectionStart,
+      selectionEnd,
+    });
     updateSceneDraft(sceneId, (draft) => {
       draft.editorText = nextText;
+      draft.blocks = nextBlocks;
       draft.inlineFormatRanges = inlineFormatRanges;
       draft.revisionStats = updateSceneRevisionStats(draft.revisionStats, previousText, nextText);
     });
@@ -477,6 +549,14 @@ const spellcheckRefreshController = createSpellcheckRefreshController({
   clearTimeoutRef: window.clearTimeout.bind(window),
   onFlush: (sceneId) => flushSceneEditorSpellcheckRefresh(sceneId),
 });
+const anchorIdleValidationScheduler = createManuscriptAnchorIdleValidationScheduler({
+  delayMs: DEFAULT_ANCHOR_IDLE_VALIDATION_DELAY_MS,
+  setTimeoutRef: window.setTimeout.bind(window),
+  clearTimeoutRef: window.clearTimeout.bind(window),
+  onValidate: (sceneId, { reason } = {}) => validateAnchoredRecordsForSceneIdle(sceneId, {
+    source: `anchor-idle.${reason ?? "scene-text-edit"}`,
+  }),
+});
 const grammarCheckPanelDragController = createGrammarCheckPanelDragController({
   isPanelOpen: () => state.grammarCheckPanel?.open === true,
   getViewport: () => ({
@@ -488,7 +568,11 @@ const grammarCheckPanelDragController = createGrammarCheckPanelDragController({
 
 // Intent: centralize anchor-aware task/note resolution while the shell retains browser navigation effects.
 const anchoredRecordNavigationController = createAnchoredRecordNavigationController({
-  resolveRecordRange: (record, text) => resolveManuscriptTaskRange(record, text),
+  resolveRecordRange: (record, text, { recordType } = {}) => resolveOffsetAnchoredRecordRange(record, text, {
+    ownerType: recordType === "passageNote" ? "passageNote" : "task",
+    now: new Date().toISOString(),
+    fallbackRange: (candidate, source) => resolveManuscriptTaskRange(candidate, source),
+  }),
   repairResolvedRange: (recordType, record, resolvedRange) => {
     if (recordType === "task") {
       syncResolvedTaskRange(record, resolvedRange);
@@ -1103,6 +1187,7 @@ async function boot() {
   state.projectFileStatus = "";
   state.projectFileBusy = false;
   state.projectFileAutosaveDirty = false;
+  state.projectFileAutosaveBlocked = null;
   state.projectFileAutosaveTarget = null;
   state.projectFileAutosaveRevision = 0;
   state.projectPersistenceDirtyDomains = {};
@@ -1162,7 +1247,8 @@ function wireEvents() {
 
   document.addEventListener("pointerdown", (event) => {
     const clickTarget = event.target instanceof Element ? event.target : null;
-    if (clickTarget?.closest('[data-action="toggle-inline-format"]')) {
+    if (isManuscriptSelectionCommandTarget(clickTarget)) {
+      refreshSceneEditorSelectionStateFromActiveTextarea();
       event.preventDefault();
     }
     if (clickTarget instanceof HTMLTextAreaElement && clickTarget.classList.contains("editor-document-input")) {
@@ -1190,7 +1276,11 @@ function wireEvents() {
   document.addEventListener("pointermove", handleLayoutResizePointerMove);
   document.addEventListener("pointerup", endLayoutResize);
   document.addEventListener("pointercancel", endLayoutResize);
-  document.addEventListener("pointerup", () => {
+  document.addEventListener("pointerup", (event) => {
+    const pointerTarget = event.target instanceof Element ? event.target : null;
+    refreshSceneEditorSelectionStateFromActiveTextarea({
+      renderDecorationsPanel: !isManuscriptSelectionCommandTarget(pointerTarget),
+    });
     window.setTimeout(() => {
       writingTargetPointerDownStartedInsideWindow = false;
       revisionWindowPointerDownStartedInsideWindow = false;
@@ -1206,12 +1296,7 @@ function wireEvents() {
   document.addEventListener("pointercancel", handleManuscriptFindPointerEnd);
   document.addEventListener("wheel", handleManuscriptFindWheel, { passive: false });
   document.addEventListener("selectionchange", () => {
-    const activeElement = document.activeElement;
-    if (activeElement instanceof HTMLTextAreaElement && activeElement.classList.contains("editor-document-input")) {
-      updateSceneEditorSelectionSnapshotFromTextarea(activeElement);
-      syncSceneEditorWordCountReadouts(activeElement);
-      updateInlineFormatToolbarState(activeElement);
-    }
+    const activeElement = refreshSceneEditorSelectionStateFromActiveTextarea();
 
     if (state.activePane !== "narration" || state.narrationTakeSession?.status === "recording") {
       return;
@@ -1421,6 +1506,11 @@ function wireEvents() {
 
     if (action === "toggle-inline-format") {
       toggleManuscriptInlineFormat(target.dataset.inlineFormat);
+      return;
+    }
+
+    if (action === "create-user-highlight-from-selection") {
+      toggleUserHighlightDecoration();
       return;
     }
 
@@ -1685,6 +1775,18 @@ function wireEvents() {
     if (action === "select-side-panel") {
       hideFileMenu();
       selectSidePanel(target.dataset.sidePanel);
+      return;
+    }
+
+    if (action === "select-user-highlight") {
+      hideFileMenu();
+      selectUserHighlight(target.dataset.highlightId);
+      return;
+    }
+
+    if (action === "delete-user-highlight") {
+      hideFileMenu();
+      deleteUserHighlight(target.dataset.highlightId);
       return;
     }
 
@@ -2535,6 +2637,32 @@ function wireEvents() {
   });
 }
 
+// Intent: identify commands that consume the current manuscript selection before browser focus can change.
+function isManuscriptSelectionCommandTarget(target) {
+  return Boolean(
+    target instanceof Element &&
+    target.closest('[data-action="toggle-inline-format"], [data-action="create-user-highlight-from-selection"]')
+  );
+}
+
+// Intent: keep drag-selected manuscript ranges available to toolbar and Decorations-panel commands.
+function refreshSceneEditorSelectionStateFromActiveTextarea({
+  renderDecorationsPanel = false,
+} = {}) {
+  const activeElement = document.activeElement;
+  if (!(activeElement instanceof HTMLTextAreaElement) || !activeElement.classList.contains("editor-document-input")) {
+    return null;
+  }
+
+  updateSceneEditorSelectionSnapshotFromTextarea(activeElement);
+  syncSceneEditorWordCountReadouts(activeElement);
+  updateInlineFormatToolbarState(activeElement);
+  if (renderDecorationsPanel && state.sidePanelMode === "decorations") {
+    renderConsolePanel();
+  }
+  return activeElement;
+}
+
 // Intent: orchestrate slot rendering without letting individual panels own whole-app refresh order.
 function render() {
   if (!state.shellReady) {
@@ -2816,6 +2944,8 @@ function insertPastedTextWithUndoFallback(target, normalizedText) {
   }
 
   if (insertedWithNativeUndo) {
+    // Intent: ensure browser undo-preserving paste still reaches the draft-state mutation pipeline.
+    target.dispatchEvent(new Event("input", { bubbles: true }));
     return {
       insertedWithNativeUndo: true,
       fallbackUsed: false,
@@ -3294,7 +3424,7 @@ function renderConsolePanel() {
 
   slot.classList.toggle("is-collapsed", state.consoleDockCollapsed);
   appRoot.classList.toggle("is-console-dock-collapsed", state.consoleDockCollapsed);
-  if (!["issues", "inspiration", "research"].includes(state.sidePanelMode)) {
+  if (!["issues", "inspiration", "research", "decorations"].includes(state.sidePanelMode)) {
     state.sidePanelMode = "issues";
   }
   slot.innerHTML = `
@@ -3314,7 +3444,9 @@ function renderConsolePanel() {
         ${renderSidePanelTabs()}
         ${state.sidePanelMode === "issues"
           ? renderIssuePanelBody()
-          : renderPassageNotePanel(state.sidePanelMode)}
+          : state.sidePanelMode === "decorations"
+            ? renderUserHighlightPanel()
+            : renderPassageNotePanel(state.sidePanelMode)}
       </div>
     </div>
   `;
@@ -3968,7 +4100,10 @@ function updateInlineFormatToolbarState(textarea = null) {
 
   for (const formatId of Object.keys(INLINE_FORMATS)) {
     const isPending = inlineFormattingState.pendingFormats[formatId] === true;
-    const isActive = isPending || isInlineFormatActiveAtOffset(ranges, offset, formatId);
+    const isDecorationSwitch = AUTHOR_MARK_DECORATION_FORMAT_IDS.has(formatId);
+    const isActive = isDecorationSwitch
+      ? isPending
+      : isPending || isInlineFormatActiveAtOffset(ranges, offset, formatId);
     const button = document.querySelector(`[data-action="toggle-inline-format"][data-inline-format="${CSS.escape(formatId)}"]`);
     if (!(button instanceof HTMLButtonElement)) {
       continue;
@@ -4106,11 +4241,13 @@ function renderSidePanelTabs() {
   const taskCount = getOpenManuscriptTasks().length;
   const inspirationCount = state.passageNotes.filter((note) => note.noteType === "inspiration").length;
   const researchCount = state.passageNotes.filter((note) => note.noteType === "research").length;
+  const highlightCount = getUserHighlightMarks().length;
   return `
     <div class="side-panel-tabs" aria-label="Editor side panel modes">
       ${renderSidePanelTab("issues", "Tasks", taskCount)}
       ${renderSidePanelTab("inspiration", "Inspiration", inspirationCount)}
       ${renderSidePanelTab("research", "Research", researchCount)}
+      ${renderSidePanelTab("decorations", "Decorations", highlightCount)}
     </div>
   `;
 }
@@ -4155,6 +4292,11 @@ function getOpenManuscriptTasks() {
   return selectOpenManuscriptTasks(state.manuscriptTasks);
 }
 
+function getUserHighlightMarks() {
+  return (Array.isArray(state.workspace?.project?.marks) ? state.workspace.project.marks : [])
+    .filter((mark) => mark?.kind === "highlight" && mark?.source === "author");
+}
+
 function renderPassageNotePanel(noteType) {
   const panelModel = buildPassageNotePanelModel(
     state.passageNotes,
@@ -4167,6 +4309,61 @@ function renderPassageNotePanel(noteType) {
     collapsedChapterIds: state.collapsedConsoleChapterIds?.[noteType],
     formatChapterTitle: formatChapterDisplayTitle,
   });
+}
+
+function renderUserHighlightPanel() {
+  const model = buildUserHighlightPanelModel({
+    marks: state.workspace?.project?.marks,
+    scenes: state.scenes,
+    selectedHighlightId: state.selectedUserHighlightId,
+    activeSelection: getActiveUserHighlightSelectionForPanel(),
+  });
+  return renderUserHighlightPanelHTML(model, {
+    collapsedChapterIds: state.collapsedConsoleChapterIds?.decorations,
+    formatChapterTitle: formatChapterDisplayTitle,
+  });
+}
+
+function getActiveUserHighlightSelectionForPanel() {
+  const snapshotSceneId =
+    state.sceneEditorSelectionSnapshot && typeof state.sceneEditorSelectionSnapshot.sceneId === "string"
+      ? state.sceneEditorSelectionSnapshot.sceneId.trim()
+      : "";
+  const activeElement = document.activeElement;
+  const activeTextarea = activeElement instanceof HTMLTextAreaElement && activeElement.classList.contains("editor-document-input")
+    ? activeElement
+    : null;
+  const textarea = activeTextarea
+    ?? (snapshotSceneId
+      ? document.querySelector(`.editor-document-input[data-scene-id="${CSS.escape(snapshotSceneId)}"]`)
+      : null);
+  const sceneId = String(textarea?.dataset?.sceneId ?? snapshotSceneId);
+  const scene = getScene(sceneId);
+  if (!scene) {
+    return null;
+  }
+
+  const text = textarea instanceof HTMLTextAreaElement ? textarea.value : String(scene.editorText ?? "");
+  const inlineFormatRanges = getSceneInlineFormatRanges(sceneId, text.length);
+  const editorHost = textarea instanceof HTMLTextAreaElement ? resolveTextareaEditorHost(textarea) : null;
+  const selection = resolveUserMarkCommandSelection({
+    liveSelection: editorHost?.readSelection(inlineFormatRanges) ?? null,
+    cachedSelection: state.sceneEditorSelectionSnapshot,
+    sceneId,
+    text,
+    formatRanges: inlineFormatRanges,
+  });
+  if (!selection) {
+    return null;
+  }
+
+  return {
+    sceneId,
+    sceneTitle: scene.sceneTitle ?? "Untitled scene",
+    selectedText: text.slice(selection.startOffset, selection.endOffset).trim(),
+    startOffset: selection.startOffset,
+    endOffset: selection.endOffset,
+  };
 }
 
 function buildRevisionPanelModel() {
@@ -5082,8 +5279,29 @@ function syncSceneDocumentLayout(options = {}) {
 
 // Intent: defer the current overlay limitation to the textarea host while richer hosts remain possible.
 function syncInlineFormatLayer(editorHost) {
-  // Intent: keep the editor usable while the visual inline-format overlay is reworked for exact textarea metrics.
-  clearTextareaProjectionLayer(editorHost, MANUSCRIPT_PROJECTION_CHANNELS.AUTHOR_MARK);
+  const sceneId = String(editorHost?.sceneId ?? "");
+  const scene = getScene(sceneId);
+  if (!scene || !(editorHost?.textarea instanceof HTMLTextAreaElement)) {
+    clearTextareaProjectionLayer(editorHost, MANUSCRIPT_PROJECTION_CHANNELS.AUTHOR_MARK);
+    return;
+  }
+
+  renderTextareaAuthorMarkLayer(editorHost, {
+    sceneId,
+    text: editorHost.textarea.value,
+    projections: selectManuscriptProjections({
+      projectId: state.workspace?.project?.id ?? "",
+      sceneId,
+      text: editorHost.textarea.value,
+      sceneBlocks: scene.blocks,
+      manuscriptMarks: state.workspace?.project?.marks,
+      inlineFormatRanges: getSceneInlineFormatRanges(sceneId, editorHost.textarea.value.length),
+      includeDiagnostics: false,
+      includeAnchoredRecords: false,
+      includeRuntimeSelections: false,
+      includeSpellcheck: false,
+    }),
+  });
 }
 
 // Intent: rebuild diagnostic visuals from durable issue anchors and current text without persisting overlays.
@@ -5750,7 +5968,19 @@ function applyProjectRecord(record) {
 }
 
 function activateProjectRecord(record, options = {}) {
-  projectActivationController.activateProjectRecord(record, options);
+  const beforeRender = options.beforeRender;
+  anchorIdleValidationScheduler.clearAll();
+  projectActivationController.activateProjectRecord(record, {
+    ...options,
+    beforeRender: () => {
+      if (typeof beforeRender === "function") {
+        beforeRender();
+      }
+      validateAnchoredRecordsForLoadedProject({
+        source: options.reason ? `activateProjectRecord.${options.reason}` : "activateProjectRecord",
+      });
+    },
+  });
 }
 
 function createBinderSceneMoveHistoryState() {
@@ -6216,6 +6446,526 @@ function persistPassageNotesState(options = {}) {
     skipProjectFileAutosave: options.skipProjectFileAutosave === true,
     markWorkingState: options.markWorkingState,
   });
+}
+
+// Intent: update durable task/note anchors from the live edit transaction before scene projections rerender.
+function updateAnchoredRecordsForSceneTextEdit(sceneId, previousText, nextText, {
+  selectionStart = null,
+  selectionEnd = null,
+} = {}) {
+  const now = new Date().toISOString();
+  const normalizedSceneId = String(sceneId ?? "");
+  const taskResult = updateOffsetAnchoredRecordsForTextEdit({
+    records: state.manuscriptTasks,
+    sceneId: normalizedSceneId,
+    previousText,
+    nextText,
+    ownerType: "task",
+    now,
+    selectionStart,
+    selectionEnd,
+  });
+  const noteResult = updateOffsetAnchoredRecordsForTextEdit({
+    records: state.passageNotes,
+    sceneId: normalizedSceneId,
+    previousText,
+    nextText,
+    ownerType: "passageNote",
+    now,
+    selectionStart,
+    selectionEnd,
+  });
+  const issueResult = updateCanonicalAnchorCollectionFromSceneTextEdit({
+    records: state.workspace?.project?.issues,
+    ownerType: "issue",
+    sceneId: normalizedSceneId,
+    previousText,
+    nextText,
+    now,
+    selectionStart,
+    selectionEnd,
+  });
+  const eventTagResult = updateCanonicalAnchorCollectionFromSceneTextEdit({
+    records: state.workspace?.project?.eventTags,
+    ownerType: "eventTag",
+    sceneId: normalizedSceneId,
+    previousText,
+    nextText,
+    now,
+    selectionStart,
+    selectionEnd,
+  });
+  const narrationResult = updateNarrationAnchorsForSceneTextEdit({
+    sceneId: normalizedSceneId,
+    previousText,
+    nextText,
+    now,
+    selectionStart,
+    selectionEnd,
+  });
+
+  if (taskResult.changedRecords.length) {
+    state.manuscriptTasks = taskResult.records;
+  }
+
+  if (noteResult.changedRecords.length) {
+    state.passageNotes = noteResult.records;
+  }
+  if (state.workspace?.project && issueResult.changedRecords.length) {
+    state.workspace.project = {
+      ...state.workspace.project,
+      issues: issueResult.records,
+    };
+  }
+  if (state.workspace?.project && eventTagResult.changedRecords.length) {
+    state.workspace.project = {
+      ...state.workspace.project,
+      eventTags: eventTagResult.records,
+    };
+  }
+  if (
+    taskResult.changedRecords.length ||
+    noteResult.changedRecords.length ||
+    issueResult.changedRecords.length ||
+    eventTagResult.changedRecords.length ||
+    narrationResult.changedCount
+  ) {
+    manuscriptStateLog.debug("state-change", "manuscript.anchors.updated", "Updated anchored record ranges from scene edit.", {
+      sceneId: normalizedSceneId,
+      taskCount: taskResult.changedRecords.length,
+      passageNoteCount: noteResult.changedRecords.length,
+      issueCount: issueResult.changedRecords.length,
+      eventTagCount: eventTagResult.changedRecords.length,
+      markCount: 0,
+      narrationCount: narrationResult.changedCount,
+    });
+  }
+
+  anchorIdleValidationScheduler.schedule(normalizedSceneId, {
+    reason: "scene-text-edit",
+  });
+}
+
+// Intent: map scene-level textarea edits into block-local canonical anchor edits before mutating issue/event-style records.
+function updateCanonicalAnchorCollectionFromSceneTextEdit({
+  records = [],
+  ownerType = "record",
+  sceneId = "",
+  previousText = "",
+  nextText = "",
+  now = "",
+  anchorPath = ["anchor"],
+  selectionStart = null,
+  selectionEnd = null,
+} = {}) {
+  const sourceRecords = Array.isArray(records) ? records : [];
+  const changedRecords = [];
+  const nextRecords = sourceRecords.map((record) => {
+    const result = updateCanonicalAnchorRecordFromSceneTextEdit(record, {
+      ownerType,
+      sceneId,
+      previousText,
+      nextText,
+      now,
+      anchorPath,
+      selectionStart,
+      selectionEnd,
+    });
+    if (result.changed) {
+      changedRecords.push(result.record);
+    }
+    return result.record;
+  });
+
+  return {
+    records: nextRecords,
+    changedRecords,
+  };
+}
+
+function updateCanonicalAnchorRecordFromSceneTextEdit(record, {
+  ownerType = "record",
+  sceneId = "",
+  previousText = "",
+  nextText = "",
+  now = "",
+  anchorPath = ["anchor"],
+  selectionStart = null,
+  selectionEnd = null,
+} = {}) {
+  const anchor = getValueAtPath(record, anchorPath);
+  const context = getCanonicalAnchorTextEditContext(anchor, {
+    sceneId,
+    previousText,
+    nextText,
+    selectionStart,
+    selectionEnd,
+  });
+  if (!context) {
+    return {
+      record,
+      changed: false,
+    };
+  }
+
+  return updateCanonicalAnchorRecordForTextEdit({
+    record,
+    sceneId,
+    previousText: context.previousText,
+    nextText: context.nextText,
+    ownerType,
+    now,
+    anchorPath,
+    selectionStart: context.selectionStart,
+    selectionEnd: context.selectionEnd,
+  });
+}
+
+function getCanonicalAnchorTextEditContext(anchor, {
+  sceneId = "",
+  previousText = "",
+  nextText = "",
+  selectionStart = null,
+  selectionEnd = null,
+} = {}) {
+  const normalizedSceneId = String(sceneId ?? "");
+  const anchorSceneId = String(anchor?.sceneId ?? "");
+  if (!normalizedSceneId || anchorSceneId !== normalizedSceneId) {
+    return null;
+  }
+
+  const scene = getScene(normalizedSceneId);
+  const blocks = Array.isArray(scene?.blocks) ? scene.blocks : [];
+  if (!blocks.length) {
+    return null;
+  }
+
+  if (blocks.length === 1) {
+    return {
+      previousText: String(previousText ?? ""),
+      nextText: String(nextText ?? ""),
+      selectionStart,
+      selectionEnd,
+    };
+  }
+
+  const blockId = String(anchor?.blockId ?? "");
+  if (!blockId) {
+    return null;
+  }
+
+  const ranges = getSceneBlockRanges(scene);
+  const blockRange = ranges.find((candidate) => candidate.blockId === blockId) ?? null;
+  if (!blockRange) {
+    return null;
+  }
+
+  const composedPreviousText = ranges.map((range) => range.text).join("\n\n");
+  if (composedPreviousText !== String(previousText ?? "")) {
+    return null;
+  }
+
+  const transaction = deriveManuscriptEditTransaction({
+    sceneId: normalizedSceneId,
+    previousText,
+    nextText,
+    selectionStart,
+    selectionEnd,
+  });
+  if (
+    !transaction ||
+    transaction.startOffset < blockRange.startOffset ||
+    transaction.endOffset > blockRange.endOffset
+  ) {
+    return null;
+  }
+
+  const previousBlockText = blockRange.text;
+  const localStartOffset = transaction.startOffset - blockRange.startOffset;
+  const localEndOffset = transaction.endOffset - blockRange.startOffset;
+  const localSelectionStart = toBlockLocalSelectionOffset(selectionStart, blockRange, transaction.insertedLength);
+  const localSelectionEnd = toBlockLocalSelectionOffset(selectionEnd, blockRange, transaction.insertedLength);
+  return {
+    previousText: previousBlockText,
+    nextText: `${previousBlockText.slice(0, localStartOffset)}${transaction.insertedText}${previousBlockText.slice(localEndOffset)}`,
+    selectionStart: localSelectionStart,
+    selectionEnd: localSelectionEnd,
+  };
+}
+
+// Intent: convert textarea-level post-input selections to block-local offsets for canonical anchors.
+function toBlockLocalSelectionOffset(offset, blockRange, insertedLength = 0) {
+  const numericOffset = Number(offset);
+  if (!Number.isInteger(numericOffset)) {
+    return null;
+  }
+
+  const blockStart = Number(blockRange?.startOffset) || 0;
+  const blockEnd = Number(blockRange?.endOffset) || blockStart;
+  const maxLocalOffset = Math.max(0, blockEnd - blockStart + Math.max(0, Number(insertedLength) || 0));
+  return Math.max(0, Math.min(numericOffset - blockStart, maxLocalOffset));
+}
+
+function getValueAtPath(source, path) {
+  const segments = Array.isArray(path) && path.length ? path : ["anchor"];
+  return segments.reduce((value, segment) => (
+    value && typeof value === "object" ? value[segment] : undefined
+  ), source);
+}
+
+function updateNarrationAnchorsForSceneTextEdit({
+  sceneId = "",
+  previousText = "",
+  nextText = "",
+  now = "",
+  selectionStart = null,
+  selectionEnd = null,
+} = {}) {
+  const narration = state.workspace?.narration;
+  if (!narration || typeof narration !== "object") {
+    return { changedCount: 0 };
+  }
+
+  let changedCount = 0;
+  if (narration.session?.currentAnchor) {
+    const sessionResult = updateCanonicalAnchorRecordFromSceneTextEdit(narration.session, {
+      ownerType: "narrationSession",
+      sceneId,
+      previousText,
+      nextText,
+      now,
+      anchorPath: ["currentAnchor"],
+      selectionStart,
+      selectionEnd,
+    });
+    if (sessionResult.changed) {
+      narration.session = sessionResult.record;
+      changedCount += 1;
+    }
+  }
+
+  const jobResult = updateCanonicalAnchorCollectionFromSceneTextEdit({
+    records: narration.alignmentJobs,
+    ownerType: "narrationAlignmentJob",
+    sceneId,
+    previousText,
+    nextText,
+    now,
+    anchorPath: ["request", "anchor"],
+    selectionStart,
+    selectionEnd,
+  });
+  if (jobResult.changedRecords.length) {
+    narration.alignmentJobs = jobResult.records;
+    changedCount += jobResult.changedRecords.length;
+  }
+
+  return { changedCount };
+}
+
+// Intent: validate loaded task/note anchors once the activated project has rebuilt scene text.
+function validateAnchoredRecordsForLoadedProject({
+  source = "validateAnchoredRecordsForLoadedProject",
+} = {}) {
+  validateAnchoredRecordsForProject({
+    source,
+    skipProjectFileAutosave: true,
+    markWorkingState: false,
+  });
+}
+
+function validateAnchoredRecordsForSceneIdle(sceneId, {
+  source = "validateAnchoredRecordsForSceneIdle",
+} = {}) {
+  validateAnchoredRecordsForProject({
+    sceneId,
+    source,
+    skipProjectFileAutosave: false,
+    markWorkingState: true,
+  });
+}
+
+// Intent: keep all anchor owners on the same validation/repair path after load or quiet editing.
+function validateAnchoredRecordsForProject({
+  sceneId = "",
+  source = "validateAnchoredRecordsForProject",
+  skipProjectFileAutosave = true,
+  markWorkingState = false,
+} = {}) {
+  const now = new Date().toISOString();
+  const normalizedSceneId = String(sceneId ?? "");
+  const taskResult = validateOffsetAnchoredRecordsByScene({
+    records: state.manuscriptTasks,
+    ownerType: "task",
+    now,
+    getTextForScene: (candidateSceneId) =>
+      normalizedSceneId && candidateSceneId !== normalizedSceneId
+        ? null
+        : getSceneTextForAnchorValidation(candidateSceneId),
+    fallbackRange: (record, text) => resolveManuscriptTaskRange(record, text),
+  });
+  const noteResult = validateOffsetAnchoredRecordsByScene({
+    records: state.passageNotes,
+    ownerType: "passageNote",
+    now,
+    getTextForScene: (candidateSceneId) =>
+      normalizedSceneId && candidateSceneId !== normalizedSceneId
+        ? null
+        : getSceneTextForAnchorValidation(candidateSceneId),
+    fallbackRange: (record, text) => resolveManuscriptTaskRange(record, text),
+  });
+  const issueResult = validateCanonicalAnchorRecordsByAnchorText({
+    records: state.workspace?.project?.issues,
+    ownerType: "issue",
+    now,
+    getTextForAnchor: (anchor) => getBlockTextForAnchorValidation(anchor, {
+      sceneId: normalizedSceneId,
+    }),
+  });
+  const eventTagResult = validateCanonicalAnchorRecordsByAnchorText({
+    records: state.workspace?.project?.eventTags,
+    ownerType: "eventTag",
+    now,
+    getTextForAnchor: (anchor) => getBlockTextForAnchorValidation(anchor, {
+      sceneId: normalizedSceneId,
+    }),
+  });
+  const narrationResult = validateNarrationAnchorsForProject({
+    sceneId: normalizedSceneId,
+    now,
+  });
+
+  if (taskResult.changedRecords.length) {
+    state.manuscriptTasks = taskResult.records;
+  }
+
+  if (noteResult.changedRecords.length) {
+    state.passageNotes = noteResult.records;
+  }
+  if (state.workspace?.project && issueResult.changedRecords.length) {
+    state.workspace.project = {
+      ...state.workspace.project,
+      issues: issueResult.records,
+    };
+  }
+  if (state.workspace?.project && eventTagResult.changedRecords.length) {
+    state.workspace.project = {
+      ...state.workspace.project,
+      eventTags: eventTagResult.records,
+    };
+  }
+
+  const changedCount =
+    taskResult.changedRecords.length +
+    noteResult.changedRecords.length +
+    issueResult.changedRecords.length +
+    eventTagResult.changedRecords.length +
+    narrationResult.changedCount;
+  if (!changedCount) {
+    return;
+  }
+
+  manuscriptStateLog.info("state-change", "manuscript.anchors.validated", "Validated anchored record ranges.", {
+    sceneId: normalizedSceneId,
+    taskCount: taskResult.changedRecords.length,
+    passageNoteCount: noteResult.changedRecords.length,
+    issueCount: issueResult.changedRecords.length,
+    eventTagCount: eventTagResult.changedRecords.length,
+    narrationCount: narrationResult.changedCount,
+    source,
+  });
+  persistCurrentProjectRecord({
+    domain: "manuscript-anchors",
+    dirtyReason: normalizedSceneId ? "manuscript-anchors-idle-validated" : "manuscript-anchors-load-validated",
+    source,
+    skipProjectFileAutosave,
+    markWorkingState,
+  });
+  if (normalizedSceneId && state.selectedSceneId === normalizedSceneId) {
+    syncSceneDocumentLayout({ skipSpellcheck: true });
+  }
+}
+
+function getSceneTextForAnchorValidation(sceneId) {
+  const normalizedSceneId = String(sceneId ?? "");
+  if (!normalizedSceneId) {
+    return null;
+  }
+
+  const scene = getScene(normalizedSceneId);
+  if (scene && typeof scene.editorText === "string") {
+    return scene.editorText;
+  }
+
+  const draft = state.sceneDrafts?.[normalizedSceneId];
+  return typeof draft?.editorText === "string" ? draft.editorText : null;
+}
+
+function getBlockTextForAnchorValidation(anchor, {
+  sceneId = "",
+} = {}) {
+  const normalizedSceneId = String(anchor?.sceneId ?? "");
+  if (!normalizedSceneId || (sceneId && normalizedSceneId !== sceneId)) {
+    return null;
+  }
+
+  const scene = getScene(normalizedSceneId);
+  if (!scene || !Array.isArray(scene.blocks)) {
+    return null;
+  }
+
+  const block = scene.blocks.find((candidate) => candidate.blockId === anchor?.blockId) ?? null;
+  if (!block) {
+    return null;
+  }
+
+  if (scene.blocks.length === 1 && typeof scene.editorText === "string") {
+    return scene.editorText;
+  }
+
+  return typeof block.text === "string" ? block.text : null;
+}
+
+function validateNarrationAnchorsForProject({
+  sceneId = "",
+  now = new Date().toISOString(),
+} = {}) {
+  const narration = state.workspace?.narration;
+  if (!narration || typeof narration !== "object") {
+    return { changedCount: 0 };
+  }
+
+  let changedCount = 0;
+  const session = narration.session;
+  if (session?.currentAnchor) {
+    const sessionText = getBlockTextForAnchorValidation(session.currentAnchor, { sceneId });
+    if (sessionText !== null && sessionText !== undefined) {
+      const sessionResult = validateCanonicalAnchorRecordAgainstText(session, sessionText, {
+        ownerType: "narrationSession",
+        now,
+        anchorPath: ["currentAnchor"],
+      });
+      if (sessionResult.changed) {
+        narration.session = sessionResult.record;
+        changedCount += 1;
+      }
+    }
+  }
+
+  const jobs = Array.isArray(narration.alignmentJobs) ? narration.alignmentJobs : [];
+  const jobResult = validateCanonicalAnchorRecordsByAnchorText({
+    records: jobs,
+    ownerType: "narrationAlignmentJob",
+    now,
+    anchorPath: ["request", "anchor"],
+    getTextForAnchor: (anchor) => getBlockTextForAnchorValidation(anchor, { sceneId }),
+  });
+  if (jobResult.changedRecords.length) {
+    narration.alignmentJobs = jobResult.records;
+    changedCount += jobResult.changedRecords.length;
+  }
+
+  return { changedCount };
 }
 
 function loadSelectedProject() {
@@ -7173,7 +7923,7 @@ function renderPaneVisibility() {
 }
 
 function selectSidePanel(panelId) {
-  if (!["issues", "inspiration", "research"].includes(panelId)) {
+  if (!["issues", "inspiration", "research", "decorations"].includes(panelId)) {
     return;
   }
 
@@ -7181,7 +7931,16 @@ function selectSidePanel(panelId) {
   if (panelId === "issues") {
     state.selectedPassageNoteId = null;
     state.selectedIssueId = null;
+    state.selectedUserHighlightId = null;
+  } else if (panelId === "decorations") {
+    state.selectedPassageNoteId = null;
+    state.selectedIssueId = null;
+    state.selectedUserHighlightId =
+      getUserHighlightMarks().some((mark) => mark.id === state.selectedUserHighlightId)
+        ? state.selectedUserHighlightId
+        : getUserHighlightMarks()[0]?.id ?? null;
   } else {
+    state.selectedUserHighlightId = null;
     const selectedNote = state.passageNotes.find((note) =>
       note.noteType === panelId && note.id === state.selectedPassageNoteId,
     );
@@ -7569,7 +8328,8 @@ function syncResolvedTaskRange(task, resolvedRange) {
 
   if (
     task.startOffset === resolvedRange.startOffset &&
-    task.endOffset === resolvedRange.endOffset
+    task.endOffset === resolvedRange.endOffset &&
+    !hasResolvedAnchorRecordPatch(task, resolvedRange)
   ) {
     return;
   }
@@ -7819,12 +8579,19 @@ function commitInlinePassageNote() {
     return;
   }
 
-  const note = createPassageNote(scene, {
-    selectedText: anchor.selectedText,
-    startOffset: anchor.startOffset,
-    endOffset: anchor.endOffset,
-    body,
-  }, draft.noteType);
+  const note = {
+    ...createPassageNote(scene, {
+      selectedText: anchor.selectedText,
+      startOffset: anchor.startOffset,
+      endOffset: anchor.endOffset,
+      body,
+    }, draft.noteType),
+    ...createOffsetAnchoredRecordEvidencePatch({
+      text: getCurrentSceneEditorText(draft.sceneId, scene.editorText ?? ""),
+      startOffset: anchor.startOffset,
+      endOffset: anchor.endOffset,
+    }),
+  };
 
   anchoredRecordService.addPassageNote(note, {
     dirtyReason: `${note.noteType}-note-created`,
@@ -8142,7 +8909,8 @@ function syncResolvedPassageNoteRange(note, resolvedRange) {
 
   if (
     note.startOffset === resolvedRange.startOffset &&
-    note.endOffset === resolvedRange.endOffset
+    note.endOffset === resolvedRange.endOffset &&
+    !hasResolvedAnchorRecordPatch(note, resolvedRange)
   ) {
     return;
   }
@@ -8151,6 +8919,10 @@ function syncResolvedPassageNoteRange(note, resolvedRange) {
     dirtyReason: "passage-note-anchor-repaired",
     source: "syncResolvedPassageNoteRange",
   });
+}
+
+function hasResolvedAnchorRecordPatch(record, resolvedRange) {
+  return Object.entries(resolvedRange?.recordPatch ?? {}).some(([key, value]) => record?.[key] !== value);
 }
 
 function openTaskComposerFromContextMenu(event) {
@@ -8538,6 +9310,9 @@ function updateSceneDraft(sceneId, mutate, options = {}) {
   };
   writeStoredJsonRaw(EDITOR_DRAFTS_KEY, state.sceneDrafts);
   refreshScenes();
+  syncCompatibilityManuscriptMarksForScene(sceneId, {
+    now: new Date().toISOString(),
+  });
   const markSessionActivity = options.markSessionActivity !== false;
   const currentWordCount = getCurrentManuscriptWordCount();
   const wordDelta = currentWordCount - previousWordCount;
@@ -8828,28 +9603,43 @@ function toggleRevisionOverlay(sceneId) {
 
 // Intent: route manuscript styling through a shared command controller instead of scene-wide editor preferences.
 function toggleManuscriptInlineFormat(formatId) {
+  if (AUTHOR_MARK_DECORATION_FORMAT_IDS.has(String(formatId ?? ""))) {
+    toggleAuthorMarkDecoration(formatId);
+    return;
+  }
+
+  executeManuscriptInlineFormatCommand(formatId);
+}
+
+// Intent: run inline command mutations from either live DOM selection or a recovered same-scene command selection.
+function executeManuscriptInlineFormatCommand(formatId, {
+  textarea = null,
+  selectionOverride = null,
+} = {}) {
   const activeElement = document.activeElement;
-  const textarea = activeElement instanceof HTMLTextAreaElement && activeElement.classList.contains("editor-document-input")
-    ? activeElement
+  const targetTextarea = textarea instanceof HTMLTextAreaElement && textarea.classList.contains("editor-document-input")
+    ? textarea
+    : activeElement instanceof HTMLTextAreaElement && activeElement.classList.contains("editor-document-input")
+      ? activeElement
     : document.querySelector(".editor-document-input");
-  const editorHost = resolveTextareaEditorHost(textarea);
+  const editorHost = resolveTextareaEditorHost(targetTextarea);
   const controller = createManuscriptCommandController({
     getInlineFormattingState: () => state.manuscriptInlineFormatting,
     setInlineFormattingState: (nextInlineFormattingState) => {
       state.manuscriptInlineFormatting = normalizeManuscriptInlineFormattingState(nextInlineFormattingState);
     },
-    resolveSelection: () => editorHost?.readSelection(
-      getSceneInlineFormatRanges(String(textarea?.dataset?.sceneId ?? ""), String(textarea?.value ?? "").length),
+    resolveSelection: () => selectionOverride ?? editorHost?.readSelection(
+      getSceneInlineFormatRanges(String(targetTextarea?.dataset?.sceneId ?? ""), String(targetTextarea?.value ?? "").length),
     ),
     applyTextMutation: (mutation) => editorHost?.applyTextMutation(mutation),
     applyRangeMutation: (ranges) => {
-      const sceneId = String(textarea?.dataset?.sceneId ?? "");
+      const sceneId = String(targetTextarea?.dataset?.sceneId ?? "");
       if (!sceneId) {
         return;
       }
 
       updateSceneDraft(sceneId, (draft) => {
-        draft.inlineFormatRanges = normalizeInlineFormatRanges(ranges, String(textarea?.value ?? "").length);
+        draft.inlineFormatRanges = normalizeInlineFormatRanges(ranges, String(targetTextarea?.value ?? "").length);
       }, {
         reason: "manuscript-inline-format",
         markSessionActivity: false,
@@ -8867,10 +9657,94 @@ function toggleManuscriptInlineFormat(formatId) {
       format: String(formatId ?? ""),
       reason: result.reason,
     });
-    return;
+    return result;
   }
 
-  updateInlineFormatToolbarState(textarea);
+  updateInlineFormatToolbarState(targetTextarea);
+  return result;
+}
+
+// Intent: keep canonical mark records current while the editor command path still writes compatibility ranges.
+function syncCompatibilityManuscriptMarksForScene(sceneId, {
+  now = new Date().toISOString(),
+} = {}) {
+  const normalizedSceneId = String(sceneId ?? "");
+  const project = state.workspace?.project;
+  const scene = getScene(normalizedSceneId);
+  if (!project || !scene) {
+    return {
+      changed: false,
+      changedMarks: [],
+      unmappedRanges: [],
+    };
+  }
+
+  const result = syncCompatibilityManuscriptMarksForSceneState({
+    marks: project.marks,
+    projectId: project.id ?? "",
+    chapterId: scene.chapterId ?? "",
+    sceneId: normalizedSceneId,
+    text: scene.editorText ?? "",
+    sceneBlocks: scene.blocks,
+    inlineFormatRanges: state.sceneDrafts?.[normalizedSceneId]?.inlineFormatRanges,
+    now,
+  });
+  if (result.changed) {
+    project.marks = result.marks;
+    manuscriptStateLog.info("state-change", "manuscript.marks.synced", "Synchronized compatibility inline ranges into canonical manuscript marks.", {
+      sceneId: normalizedSceneId,
+      markCount: result.changedMarks.length,
+      unmappedRangeCount: result.unmappedRanges.length,
+    });
+  }
+
+  return result;
+}
+
+// Intent: update decoration marks from the same text edit and block snapshot used by the live editor draft.
+function updateManuscriptMarksAfterSceneTextEdit({
+  sceneId = "",
+  previousText = "",
+  nextText = "",
+  previousSceneBlocks = [],
+  nextSceneBlocks = [],
+  pendingFormats = {},
+  selectionStart = null,
+  selectionEnd = null,
+} = {}) {
+  const normalizedSceneId = String(sceneId ?? "");
+  const project = state.workspace?.project;
+  const scene = getScene(normalizedSceneId);
+  if (!project || !scene) {
+    return {
+      changedMarks: [],
+    };
+  }
+
+  const result = updateManuscriptMarksForSceneTextEdit({
+    marks: project.marks,
+    projectId: project.id ?? state.activeProjectId ?? "",
+    chapterId: scene.chapterId ?? "",
+    sceneId: normalizedSceneId,
+    previousText,
+    nextText,
+    previousSceneBlocks,
+    nextSceneBlocks,
+    pendingFormats,
+    selectionStart,
+    selectionEnd,
+    now: new Date().toISOString(),
+  });
+  if (!result.changedMarks.length) {
+    return result;
+  }
+
+  project.marks = result.marks;
+  manuscriptStateLog.debug("state-change", "manuscript.marks.updated", "Updated decoration mark ranges from scene edit.", {
+    sceneId: normalizedSceneId,
+    markCount: result.changedMarks.length,
+  });
+  return result;
 }
 
 function resetSceneDraft(sceneId) {
@@ -9097,6 +9971,382 @@ function selectChapterById(chapterId) {
   if (chapterScene) {
     selectSceneById(chapterScene.sceneId);
   }
+}
+
+function toggleUserHighlightDecoration() {
+  toggleAuthorMarkDecoration("highlight");
+}
+
+// Intent: make author mark commands reliable when a fresh draft scene's visible textarea is ahead of scene state.
+function reconcileLiveSceneForAuthorMarkCommand(sceneId, textarea) {
+  const normalizedSceneId = String(sceneId ?? "");
+  const scene = getScene(normalizedSceneId);
+  if (!scene || !(textarea instanceof HTMLTextAreaElement)) {
+    return null;
+  }
+
+  const liveText = String(textarea.value ?? "");
+  const previousText = String(scene.editorText ?? "");
+  const sourceBlocks = Array.isArray(scene.blocks) && scene.blocks.length
+    ? scene.blocks
+    : state.sceneDrafts?.[normalizedSceneId]?.blocks;
+  const editedBlocks = updateSceneBlocksForTextEdit({
+    blocks: sourceBlocks,
+    sceneId: normalizedSceneId,
+    previousText,
+    nextText: liveText,
+    selectionStart: textarea.selectionStart,
+    selectionEnd: textarea.selectionEnd,
+  });
+  const liveBlocks = reconcileSceneBlocksWithEditorText({
+    blocks: editedBlocks,
+    sceneId: normalizedSceneId,
+    chapterId: scene.chapterId ?? state.sceneDrafts?.[normalizedSceneId]?.chapterId ?? "",
+    text: liveText,
+  });
+
+  if (shouldSyncLiveSceneDraftForAuthorMark(scene, liveText, liveBlocks)) {
+    updateSceneDraft(normalizedSceneId, (draft) => {
+      draft.editorText = liveText;
+      draft.blocks = liveBlocks;
+    }, {
+      reason: "manuscript-author-mark-live-text",
+      markSessionActivity: false,
+      immediate: true,
+    });
+    syncSceneEditorWordCountReadouts(textarea);
+  }
+
+  const refreshedScene = getScene(normalizedSceneId) ?? scene;
+  return {
+    scene: {
+      ...refreshedScene,
+      editorText: liveText,
+      blocks: liveBlocks,
+    },
+    text: liveText,
+    blocks: liveBlocks,
+  };
+}
+
+function shouldSyncLiveSceneDraftForAuthorMark(scene, liveText, liveBlocks) {
+  if (String(scene?.editorText ?? "") !== String(liveText ?? "")) {
+    return true;
+  }
+
+  const sceneBlocks = Array.isArray(scene?.blocks) ? scene.blocks : [];
+  if (sceneBlocks.length !== liveBlocks.length) {
+    return true;
+  }
+
+  return sceneBlocks.some((block, index) => {
+    const liveBlock = liveBlocks[index] ?? {};
+    return (
+      String(block?.blockId ?? "") !== String(liveBlock.blockId ?? "") ||
+      String(block?.paragraphId ?? "") !== String(liveBlock.paragraphId ?? "") ||
+      String(block?.text ?? "") !== String(liveBlock.text ?? "")
+    );
+  });
+}
+
+// Intent: apply author mark buttons to selected manuscript spans or toggle pending styling for incoming text.
+function toggleAuthorMarkDecoration(formatId) {
+  const normalizedFormatId = normalizeAuthorMarkDecorationFormat(formatId);
+  const formatLabel = INLINE_FORMATS[normalizedFormatId]?.label ?? normalizedFormatId;
+  if (!normalizedFormatId) {
+    editorInteractionLog.warn("user-action", "manuscript.mark.skipped", "Skipped author mark command.", {
+      format: String(formatId ?? ""),
+      reason: "unsupported-format",
+    });
+    return;
+  }
+
+  const activeElement = document.activeElement;
+  const cachedSceneId =
+    state.sceneEditorSelectionSnapshot && typeof state.sceneEditorSelectionSnapshot.sceneId === "string"
+      ? state.sceneEditorSelectionSnapshot.sceneId.trim()
+      : "";
+  const textarea = activeElement instanceof HTMLTextAreaElement && activeElement.classList.contains("editor-document-input")
+    ? activeElement
+    : cachedSceneId
+      ? document.querySelector(`.editor-document-input[data-scene-id="${CSS.escape(cachedSceneId)}"]`)
+      : document.querySelector(".editor-document-input");
+  const editorHost = resolveTextareaEditorHost(textarea);
+  const sceneId = String(textarea?.dataset?.sceneId ?? "");
+  let scene = getScene(sceneId);
+  const project = state.workspace?.project;
+  if (!(textarea instanceof HTMLTextAreaElement) || !editorHost || !scene || !project) {
+    editorInteractionLog.warn("user-action", `manuscript.${normalizedFormatId}.skipped`, `Skipped ${formatLabel.toLowerCase()} author mark command.`, {
+      sceneId,
+      reason: "missing-editor-context",
+    });
+    return;
+  }
+
+  const liveSceneContext = reconcileLiveSceneForAuthorMarkCommand(sceneId, textarea);
+  if (!liveSceneContext) {
+    editorInteractionLog.warn("user-action", `manuscript.${normalizedFormatId}.skipped`, `Skipped ${formatLabel.toLowerCase()} author mark command.`, {
+      sceneId,
+      reason: "unresolved-live-scene",
+    });
+    return;
+  }
+
+  scene = liveSceneContext.scene;
+  const liveText = liveSceneContext.text;
+  const liveSceneBlocks = liveSceneContext.blocks;
+  const inlineFormatRanges = getSceneInlineFormatRanges(sceneId, liveText.length);
+  const liveSelection = editorHost.readSelection(inlineFormatRanges);
+  const formatPending = normalizeManuscriptInlineFormattingState(
+    state.manuscriptInlineFormatting,
+  ).pendingFormats[normalizedFormatId] === true;
+  let commandIntent = null;
+  if (formatPending) {
+    const selectedWhilePending = resolveUserMarkCommandSelection({
+      liveSelection,
+      cachedSelection: null,
+      sceneId,
+      text: liveText,
+      formatRanges: inlineFormatRanges,
+    });
+    if (selectedWhilePending) {
+      commandIntent = {
+        mode: USER_MARK_COMMAND_MODE.SELECTION,
+        selection: selectedWhilePending,
+      };
+    } else {
+      stopPendingAuthorMarkDecoration(normalizedFormatId, textarea, sceneId);
+      return;
+    }
+  }
+
+  commandIntent ??= resolveUserMarkCommandIntent({
+    liveSelection,
+    cachedSelection: state.sceneEditorSelectionSnapshot,
+    sceneId,
+    text: liveText,
+    formatRanges: inlineFormatRanges,
+  });
+  if (!commandIntent) {
+    editorInteractionLog.warn("user-action", `manuscript.${normalizedFormatId}.skipped`, `Skipped ${formatLabel.toLowerCase()} author mark command.`, {
+      sceneId,
+      reason: "empty-selection",
+    });
+    return;
+  }
+
+  if (commandIntent.mode === USER_MARK_COMMAND_MODE.PENDING) {
+    const result = executeManuscriptInlineFormatCommand(normalizedFormatId, {
+      textarea,
+      selectionOverride: commandIntent.selection,
+    });
+    if (result?.applied) {
+      editorInteractionLog.info("user-action", `manuscript.${normalizedFormatId}.pending-toggled`, `Toggled pending ${formatLabel.toLowerCase()} for incoming text.`, {
+        sceneId,
+        selectionSource: commandIntent.selection.selectionSource,
+        pending: result.state?.pendingFormats?.[normalizedFormatId] === true,
+      });
+    }
+    return;
+  }
+
+  const selection = commandIntent.selection;
+  state.manuscriptInlineFormatting = normalizeManuscriptInlineFormattingState({
+    ...state.manuscriptInlineFormatting,
+    pendingFormats: {
+      ...state.manuscriptInlineFormatting?.pendingFormats,
+      [normalizedFormatId]: formatPending === true,
+    },
+  });
+
+  syncCompatibilityManuscriptMarksForScene(sceneId, {
+    now: new Date().toISOString(),
+  });
+
+  const now = new Date().toISOString();
+  const result = toggleManuscriptMarksForSceneSelection({
+    marks: project.marks,
+    sequences: project.sequences,
+    projectId: project.id ?? state.activeProjectId ?? "",
+    chapterId: scene.chapterId ?? "",
+    sceneId,
+    text: liveText,
+    sceneBlocks: liveSceneBlocks,
+    selection,
+    kind: normalizedFormatId,
+    source: "author",
+    metadata: getAuthorMarkDecorationMetadata(normalizedFormatId),
+    now,
+  });
+  if (!result.changed) {
+    updateInlineFormatToolbarState(textarea);
+    editorInteractionLog.warn("user-action", `manuscript.${normalizedFormatId}.skipped`, `Skipped ${formatLabel.toLowerCase()} author mark command.`, {
+      sceneId,
+      reason: result.reason,
+    });
+    return;
+  }
+
+  const promotedResult = promoteCompatibilityManuscriptMarksForSceneFormat({
+    marks: result.marks,
+    sequences: result.sequences,
+    sceneId,
+    kind: normalizedFormatId,
+    source: "author",
+    now,
+  });
+  project.marks = promotedResult.marks;
+  project.sequences = promotedResult.sequences;
+  if (normalizedFormatId === "highlight") {
+    state.selectedUserHighlightId = result.addedMarks[0]?.id ?? null;
+  }
+  updateSceneDraft(sceneId, (draft) => {
+    draft.editorText = liveText;
+    draft.blocks = liveSceneBlocks;
+    draft.inlineFormatRanges = removeInlineFormatRangesByFormat(
+      draft.inlineFormatRanges,
+      normalizedFormatId,
+      liveText.length,
+    );
+  }, {
+    reason: "manuscript-author-mark",
+    markSessionActivity: false,
+  });
+  if (normalizedFormatId === "highlight") {
+    renderConsolePanel();
+  }
+  syncSceneDocumentLayout({ skipSpellcheck: true });
+  takeToSceneRange(sceneId, selection.startOffset, selection.endOffset, { behavior: "smooth" });
+  updateInlineFormatToolbarState(textarea);
+  editorInteractionLog.info("user-action", `manuscript.${normalizedFormatId}.toggled`, `Toggled ${formatLabel.toLowerCase()} author mark.`, {
+    sceneId,
+    format: normalizedFormatId,
+    addedCount: result.addedMarks.length,
+    removedCount: result.removedMarkIds.length,
+    promotedCompatibilityCount: promotedResult.promotedMarkIds.length,
+    selectionSource: selection.selectionSource,
+    toggledOff: result.toggledOff,
+    pending: normalizeManuscriptInlineFormattingState(state.manuscriptInlineFormatting).pendingFormats[normalizedFormatId] === true,
+  });
+}
+
+function stopPendingUserHighlightDecoration(textarea, sceneId = "") {
+  stopPendingAuthorMarkDecoration("highlight", textarea, sceneId);
+}
+
+// Intent: turn off one pending author mark switch without changing selected manuscript text.
+function stopPendingAuthorMarkDecoration(formatId, textarea, sceneId = "") {
+  const normalizedFormatId = normalizeAuthorMarkDecorationFormat(formatId);
+  if (!normalizedFormatId) {
+    return;
+  }
+
+  state.manuscriptInlineFormatting = normalizeManuscriptInlineFormattingState({
+    ...state.manuscriptInlineFormatting,
+    pendingFormats: {
+      ...state.manuscriptInlineFormatting?.pendingFormats,
+      [normalizedFormatId]: false,
+    },
+  });
+  updateInlineFormatToolbarState(textarea);
+  editorInteractionLog.info("user-action", `manuscript.${normalizedFormatId}.pending-toggled`, `Stopped pending ${normalizedFormatId} for incoming text.`, {
+    sceneId,
+    pending: false,
+  });
+}
+
+function normalizeAuthorMarkDecorationFormat(formatId) {
+  const normalizedFormatId = String(formatId ?? "").trim();
+  return AUTHOR_MARK_DECORATION_FORMAT_IDS.has(normalizedFormatId) ? normalizedFormatId : "";
+}
+
+function getAuthorMarkDecorationMetadata(formatId) {
+  if (formatId === "highlight") {
+    return {
+      purpose: "reference",
+      colorToken: "user-highlight",
+    };
+  }
+
+  return {
+    purpose: "emphasis",
+  };
+}
+
+function selectUserHighlight(highlightId) {
+  const mark = getUserHighlightMarks().find((candidate) => candidate.id === highlightId);
+  if (!mark) {
+    return;
+  }
+
+  const range = resolveUserHighlightSceneRange(mark);
+  state.sidePanelMode = "decorations";
+  state.selectedUserHighlightId = mark.id;
+  state.selectedBlockId = mark.anchor?.blockId ?? state.selectedBlockId;
+  renderConsolePanel();
+  if (range) {
+    takeToSceneRange(mark.anchor.sceneId, range.startOffset, range.endOffset, { behavior: "smooth" });
+  }
+}
+
+function deleteUserHighlight(highlightId) {
+  const project = state.workspace?.project;
+  const marks = Array.isArray(project?.marks) ? project.marks : [];
+  const mark = marks.find((candidate) => candidate?.id === highlightId && candidate.kind === "highlight");
+  if (!project || !mark) {
+    return;
+  }
+
+  project.marks = marks.filter((candidate) => candidate?.id !== mark.id);
+  if (state.selectedUserHighlightId === mark.id) {
+    state.selectedUserHighlightId = getUserHighlightMarks()[0]?.id ?? null;
+  }
+  updateSceneDraft(mark.anchor?.sceneId, (draft) => {
+    draft.inlineFormatRanges = removeInlineFormatRangesByFormat(
+      draft.inlineFormatRanges,
+      "highlight",
+      getScene(mark.anchor?.sceneId)?.editorText?.length ?? Number.POSITIVE_INFINITY,
+    );
+  }, {
+    reason: "manuscript-user-highlight-delete",
+    markSessionActivity: false,
+  });
+  persistCurrentProjectRecord({
+    domain: "manuscript-decorations",
+    dirtyReason: "user-highlight-deleted",
+    source: "deleteUserHighlight",
+    markWorkingState: false,
+  });
+  renderConsolePanel();
+  if (mark.anchor?.sceneId === state.selectedSceneId) {
+    syncSceneDocumentLayout({ skipSpellcheck: true });
+  }
+}
+
+function resolveUserHighlightSceneRange(mark) {
+  const scene = getScene(mark?.anchor?.sceneId);
+  if (!scene) {
+    return null;
+  }
+
+  const projection = createAuthorMarkProjectionFromManuscriptMark(mark, {
+    sceneId: scene.sceneId,
+    sceneBlocks: scene.blocks,
+    text: scene.editorText ?? "",
+  });
+  if (!projection) {
+    return null;
+  }
+
+  return {
+    startOffset: projection.startOffset,
+    endOffset: projection.endOffset,
+  };
+}
+
+function removeInlineFormatRangesByFormat(ranges, formatId, textLength = Number.POSITIVE_INFINITY) {
+  return normalizeInlineFormatRanges(ranges, textLength)
+    .filter((range) => range.formatId !== formatId);
 }
 
 function toggleChapterCollapse(chapterId) {

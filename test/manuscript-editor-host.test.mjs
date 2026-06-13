@@ -79,6 +79,15 @@ export function runManuscriptEditorHostTest() {
     projections: [
       ...projections,
       {
+        id: "same-scene-bold",
+        sceneId: "scene-1",
+        startOffset: 6,
+        endOffset: 11,
+        channel: MANUSCRIPT_PROJECTION_CHANNELS.AUTHOR_MARK,
+        styleToken: "bold",
+        priority: 100,
+      },
+      {
         id: "foreign-scene",
         sceneId: "scene-2",
         startOffset: 0,
@@ -90,14 +99,15 @@ export function runManuscriptEditorHostTest() {
     ],
   });
 
-  assert.equal(snapshot.projections.length, 6);
-  assert.equal(selectManuscriptEditorHostChannel(snapshot, MANUSCRIPT_PROJECTION_CHANNELS.AUTHOR_MARK).length, 1);
+  assert.equal(snapshot.projections.length, 7);
+  assert.equal(selectManuscriptEditorHostChannel(snapshot, MANUSCRIPT_PROJECTION_CHANNELS.AUTHOR_MARK).length, 2);
   assert.equal(selectManuscriptEditorHostChannel(snapshot, MANUSCRIPT_PROJECTION_CHANNELS.DIAGNOSTIC).length, 1);
   assert.equal(selectManuscriptEditorHostChannel(snapshot, MANUSCRIPT_PROJECTION_CHANNELS.NOTE).length, 1);
   assert.equal(selectManuscriptEditorHostChannel(snapshot, MANUSCRIPT_PROJECTION_CHANNELS.SEARCH).length, 1);
   assert.equal(selectManuscriptEditorHostChannel(snapshot, MANUSCRIPT_PROJECTION_CHANNELS.NARRATION_FOLLOW).length, 1);
   assert.equal(selectManuscriptEditorHostChannel(snapshot, MANUSCRIPT_PROJECTION_CHANNELS.SPELLCHECK).length, 1);
   assert.match(renderTextareaAuthorMarkContent(snapshot), /editor-inline-format-italic/);
+  assert.match(renderTextareaAuthorMarkContent(snapshot), /editor-inline-format-bold/);
   assert.match(renderTextareaDiagnosticContent(snapshot), /editor-diagnostic-warning/);
   assert.match(renderTextareaDiagnosticContent(snapshot), /data-diagnostic-id="issue-1"/);
   assert.match(renderTextareaSpellcheckContent(snapshot), /editor-spellcheck-word is-misspelled/);

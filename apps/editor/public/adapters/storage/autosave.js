@@ -79,6 +79,7 @@ export function createProjectFileAutosaveController({
   const clearState = () => {
     clearTimer("clear-state");
     state.projectFileAutosaveDirty = false;
+    state.projectFileAutosaveBlocked = null;
     state.projectFileAutosaveTarget = null;
     state.projectFileAutosaveRevision = 0;
     state.projectPersistenceDirtyDomains = {};
@@ -90,6 +91,13 @@ export function createProjectFileAutosaveController({
   const queue = () => {
     if (!state.projectFileAutosaveDirty) {
       logQueueSkip("not-dirty");
+      return;
+    }
+
+    if (state.projectFileAutosaveBlocked) {
+      logQueueSkip("blocked", {
+        reason: state.projectFileAutosaveBlocked.reason ?? "write-failed",
+      });
       return;
     }
 
@@ -162,6 +170,18 @@ export function createProjectFileAutosaveController({
   const markDirty = (context = {}) => {
     const domain = normalizeDirtyDomain(context.domain);
     const dirtyDomains = ensureDirtyDomainState();
+    const nextTarget = getTarget();
+    const blockedTarget = state.projectFileAutosaveBlocked?.target;
+    if (
+      blockedTarget &&
+      (
+        blockedTarget.projectId !== nextTarget.projectId ||
+        blockedTarget.filePath !== nextTarget.filePath ||
+        blockedTarget.fileHandle !== nextTarget.fileHandle
+      )
+    ) {
+      state.projectFileAutosaveBlocked = null;
+    }
     dirtyDomains[domain] = {
       markedAt: new Date().toISOString(),
       reason: typeof context.reason === "string" && context.reason.trim() ? context.reason.trim() : "user-edit",
@@ -169,7 +189,7 @@ export function createProjectFileAutosaveController({
     };
     state.projectFileAutosaveDirty = true;
     state.projectFileAutosaveRevision += 1;
-    state.projectFileAutosaveTarget = getTarget();
+    state.projectFileAutosaveTarget = nextTarget;
     logDebug("autosave.dirty-marked", "Editor mutation marked autosave as dirty.", {
       revision: state.projectFileAutosaveRevision,
       domain,
@@ -180,6 +200,27 @@ export function createProjectFileAutosaveController({
       hasHandle: Boolean(state.projectFileAutosaveTarget?.fileHandle),
     });
     queue();
+  };
+
+  // Intent: retain dirty truth after cache-only fallback without repeatedly retrying a blocked file target.
+  const block = (context = {}) => {
+    clearTimer("blocked");
+    state.projectFileAutosaveDirty = true;
+    state.projectFileAutosaveTarget = getTarget();
+    state.projectFileAutosaveBlocked = {
+      reason: typeof context.reason === "string" && context.reason.trim()
+        ? context.reason.trim()
+        : "write-failed",
+      blockedAt: new Date().toISOString(),
+      target: state.projectFileAutosaveTarget,
+    };
+    lastQueueSkipReason = "";
+    logWarn("autosave.blocked", "Project file remains out of sync after cache-only preservation.", {
+      reason: state.projectFileAutosaveBlocked.reason,
+      projectId: state.projectFileAutosaveTarget?.projectId ?? "",
+      filePath: state.projectFileAutosaveTarget?.filePath ?? "",
+      dirtyDomains: getDirtyDomainNames(),
+    });
   };
 
   // Intent: sync the active destination after a project switch without manufacturing dirty state.
@@ -205,6 +246,7 @@ export function createProjectFileAutosaveController({
   const flush = async () => {
     if (
       !state.projectFileAutosaveDirty ||
+      state.projectFileAutosaveBlocked ||
       state.projectFileAutosaveSuppressionDepth > 0 ||
       !isEnabled() ||
       !hasDestination() ||
@@ -212,6 +254,7 @@ export function createProjectFileAutosaveController({
     ) {
       logQueueSkip("flush-precondition-failed", {
         dirty: state.projectFileAutosaveDirty === true,
+        blocked: Boolean(state.projectFileAutosaveBlocked),
         suppressionDepth: state.projectFileAutosaveSuppressionDepth,
         enabled: isEnabled() === true,
         hasDestination: hasDestination() === true,
@@ -250,11 +293,18 @@ export function createProjectFileAutosaveController({
     });
     let saveSucceeded = false;
     try {
-      await save();
-      saveSucceeded = true;
-      logInfo("autosave.succeeded", "Autosave write succeeded.", {
-        revision: saveRevision,
-      });
+      const saveResult = await save();
+      saveSucceeded = saveResult?.projectFilePersisted !== false;
+      if (saveSucceeded) {
+        logInfo("autosave.succeeded", "Autosave write succeeded.", {
+          revision: saveRevision,
+        });
+      } else {
+        logWarn("autosave.deferred", "Autosave preserved the project without syncing the project file.", {
+          revision: saveRevision,
+          fallbackPersisted: saveResult?.fallbackPersisted === true,
+        });
+      }
     } catch {
       // Save errors are surfaced by the project-file adapter caller.
       logError("autosave.failed", "Autosave write failed.", {
@@ -276,6 +326,7 @@ export function createProjectFileAutosaveController({
 
   return {
     beginSuppression,
+    block,
     clearState,
     clearTimer,
     endSuppression,

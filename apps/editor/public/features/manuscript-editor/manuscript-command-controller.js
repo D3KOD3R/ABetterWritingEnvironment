@@ -261,17 +261,23 @@ export function updateInlineFormatRangesForTextEdit({
   previousText,
   nextText,
   pendingFormats,
+  selectionStart = null,
+  selectionEnd = null,
 } = {}) {
   const oldText = String(previousText ?? "");
   const newText = String(nextText ?? "");
   const normalizedRanges = normalizeInlineFormatRanges(ranges, oldText.length);
-  const edit = resolveTextEditSpan(oldText, newText);
+  const edit = resolveTextEditSpan(oldText, newText, {
+    selectionStart,
+    selectionEnd,
+  });
   if (!edit) {
     return normalizeInlineFormatRanges(normalizedRanges, newText.length);
   }
 
   const removedLength = edit.oldEndOffset - edit.startOffset;
   const delta = edit.insertedLength - removedLength;
+  const pending = pendingFormats && typeof pendingFormats === "object" ? pendingFormats : {};
   const shiftedRanges = [];
   for (const range of normalizedRanges) {
     if (range.endOffset <= edit.startOffset) {
@@ -288,6 +294,33 @@ export function updateInlineFormatRangesForTextEdit({
       continue;
     }
 
+    const isPureInsertionInsideRange =
+      removedLength === 0 &&
+      edit.insertedLength > 0 &&
+      range.startOffset < edit.startOffset &&
+      range.endOffset > edit.startOffset;
+    if (isPureInsertionInsideRange && pending[range.formatId] !== true) {
+      const beforeEnd = edit.startOffset;
+      const afterStart = edit.startOffset + edit.insertedLength;
+      const afterEnd = range.endOffset + delta;
+      if (beforeEnd > range.startOffset) {
+        shiftedRanges.push({
+          ...range,
+          id: createInlineFormatRangeId(range.formatId, range.startOffset, beforeEnd),
+          endOffset: beforeEnd,
+        });
+      }
+      if (afterEnd > afterStart) {
+        shiftedRanges.push({
+          ...range,
+          id: createInlineFormatRangeId(range.formatId, afterStart, afterEnd),
+          startOffset: afterStart,
+          endOffset: afterEnd,
+        });
+      }
+      continue;
+    }
+
     const nextStart = Math.min(range.startOffset, edit.startOffset);
     const nextEnd = Math.max(nextStart, range.endOffset + delta);
     if (nextEnd > nextStart) {
@@ -299,7 +332,6 @@ export function updateInlineFormatRangesForTextEdit({
     }
   }
 
-  const pending = pendingFormats && typeof pendingFormats === "object" ? pendingFormats : {};
   if (edit.insertedLength > 0) {
     for (const formatId of Object.keys(INLINE_FORMATS)) {
       if (pending[formatId] !== true) {
@@ -407,9 +439,20 @@ function mergeInlineFormatRanges(ranges, textLength = Number.POSITIVE_INFINITY) 
   return merged;
 }
 
-function resolveTextEditSpan(previousText, nextText) {
+function resolveTextEditSpan(previousText, nextText, {
+  selectionStart = null,
+  selectionEnd = null,
+} = {}) {
   if (previousText === nextText) {
     return null;
+  }
+
+  const caretResolvedInsertion = resolveCaretAnchoredInsertion(previousText, nextText, {
+    selectionStart,
+    selectionEnd,
+  });
+  if (caretResolvedInsertion) {
+    return caretResolvedInsertion;
   }
 
   let startOffset = 0;
@@ -436,6 +479,43 @@ function resolveTextEditSpan(previousText, nextText) {
     startOffset,
     oldEndOffset: previousEndOffset,
     insertedLength: nextEndOffset - startOffset,
+  };
+}
+
+// Intent: use the browser's post-input caret to disambiguate inserted text when adjacent content repeats.
+function resolveCaretAnchoredInsertion(previousText, nextText, {
+  selectionStart = null,
+  selectionEnd = null,
+} = {}) {
+  const oldText = String(previousText ?? "");
+  const newText = String(nextText ?? "");
+  const insertedLength = newText.length - oldText.length;
+  if (insertedLength <= 0) {
+    return null;
+  }
+
+  const caretStart = Number(selectionStart);
+  const caretEnd = Number(selectionEnd);
+  if (!Number.isInteger(caretStart) || !Number.isInteger(caretEnd) || caretStart !== caretEnd) {
+    return null;
+  }
+
+  const nextCaretOffset = clampOffset(caretStart, newText.length);
+  const startOffset = nextCaretOffset - insertedLength;
+  if (startOffset < 0 || startOffset > oldText.length) {
+    return null;
+  }
+
+  const insertedText = newText.slice(startOffset, nextCaretOffset);
+  const reconstructedText = `${oldText.slice(0, startOffset)}${insertedText}${oldText.slice(startOffset)}`;
+  if (reconstructedText !== newText) {
+    return null;
+  }
+
+  return {
+    startOffset,
+    oldEndOffset: startOffset,
+    insertedLength,
   };
 }
 

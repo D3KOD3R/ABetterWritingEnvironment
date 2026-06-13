@@ -175,6 +175,7 @@ export function renderSceneEditorHTML(scene, {
     text: scene.editorText ?? "",
     sceneBlocks: scene.blocks,
     inlineFormatRanges: state.sceneDrafts?.[scene.sceneId]?.inlineFormatRanges,
+    manuscriptMarks: state.workspace?.project?.marks,
     diagnosticIssues: state.workspace?.project?.issues,
     includeSpellcheck: false,
   });

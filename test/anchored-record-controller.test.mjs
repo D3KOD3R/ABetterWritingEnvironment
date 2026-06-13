@@ -61,6 +61,7 @@ export function runAnchoredRecordControllerTest() {
     chapterTitle: "Chapter One",
     sceneId: "scene-1",
     sceneTitle: "Arrival",
+    editorText: "The selected passage opens.",
   };
   const composer = {
     composerType: "passage-note",
@@ -79,6 +80,9 @@ export function runAnchoredRecordControllerTest() {
   assert.equal(task.sceneId, "scene-1");
   assert.equal(task.taskNumber, 3);
   assert.equal(task.body, "Fix this beat");
+  assert.equal(task.anchorStatus, "resolved");
+  assert.equal(task.nearbyBefore, "The ");
+  assert.ok(task.originalHash);
 
   const note = buildPassageNoteFromComposer({
     composer,
@@ -88,6 +92,8 @@ export function runAnchoredRecordControllerTest() {
   assert.equal(note.noteType, "inspiration");
   assert.equal(note.selectedText, "selected passage");
   assert.equal(note.body, "This inspires a later reveal");
+  assert.equal(note.anchorStatus, "resolved");
+  assert.equal(note.selectedTextPreview, "selected passage");
 
   assert.deepEqual(buildTaskTitleRequest(task, {
     projectContext: "Demo Project",

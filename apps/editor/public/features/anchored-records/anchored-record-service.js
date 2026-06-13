@@ -76,15 +76,32 @@ export function repairTaskAnchor(taskId, range, {
   }
 
   if (task.startOffset === range.startOffset && task.endOffset === range.endOffset) {
-    return task;
+    const existingPatch = createAnchorRepairPatch(task, range);
+    if (!Object.keys(existingPatch).length) {
+      return task;
+    }
+
+    const nextTasks = tasks.map((candidate) =>
+      candidate.id === taskId
+        ? {
+            ...candidate,
+            ...existingPatch,
+          }
+        : candidate,
+    );
+    writeCollection(dependencies.setTasks, nextTasks);
+    persist(dependencies.persistTasks, { dirtyReason, source });
+    return nextTasks.find((candidate) => candidate.id === taskId) ?? null;
   }
 
+  const patch = createAnchorRepairPatch(task, range);
   const nextTasks = tasks.map((candidate) =>
     candidate.id === taskId
       ? {
           ...candidate,
           startOffset: range.startOffset,
           endOffset: range.endOffset,
+          ...patch,
         }
       : candidate,
   );
@@ -153,15 +170,32 @@ export function repairPassageNoteAnchor(noteId, range, {
   }
 
   if (note.startOffset === range.startOffset && note.endOffset === range.endOffset) {
-    return note;
+    const existingPatch = createAnchorRepairPatch(note, range);
+    if (!Object.keys(existingPatch).length) {
+      return note;
+    }
+
+    const nextNotes = notes.map((candidate) =>
+      candidate.id === noteId
+        ? {
+            ...candidate,
+            ...existingPatch,
+          }
+        : candidate,
+    );
+    writeCollection(dependencies.setNotes, nextNotes);
+    persist(dependencies.persistNotes, { dirtyReason, source });
+    return nextNotes.find((candidate) => candidate.id === noteId) ?? null;
   }
 
+  const patch = createAnchorRepairPatch(note, range);
   const nextNotes = notes.map((candidate) =>
     candidate.id === noteId
       ? {
           ...candidate,
           startOffset: range.startOffset,
           endOffset: range.endOffset,
+          ...patch,
         }
       : candidate,
   );
@@ -220,4 +254,23 @@ function persist(writer, options) {
   if (typeof writer === "function") {
     writer(options);
   }
+}
+
+function createAnchorRepairPatch(record, range) {
+  const sourcePatch = range && typeof range.recordPatch === "object" ? range.recordPatch : {};
+  const patch = {
+    ...sourcePatch,
+  };
+
+  if (!Object.prototype.hasOwnProperty.call(patch, "startOffset")) {
+    patch.startOffset = range.startOffset;
+  }
+
+  if (!Object.prototype.hasOwnProperty.call(patch, "endOffset")) {
+    patch.endOffset = range.endOffset;
+  }
+
+  return Object.fromEntries(
+    Object.entries(patch).filter(([key, value]) => record?.[key] !== value),
+  );
 }

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import { createProjectFileAutosaveController } from "../apps/editor/public/adapters/storage/autosave.js";
 import { resolveProjectFileDisplayState } from "../apps/editor/public/adapters/storage/project-file-display.js";
+import { buildProjectAutosaveStatusModel } from "../apps/editor/public/shared/project-autosave-status.js";
 import {
   buildProjectFilePathFromRoot,
   ensureProjectFileHandleWritePermission,
@@ -217,6 +218,38 @@ export async function runProjectFileStorageAdaptersTest() {
   assert.equal(state.projectFileAutosaveDirty, false);
   assert.equal(state.projectFileAutosaveRevision, 0);
 
+  // Cache-only fallback must leave the project file dirty and visibly out of sync.
+  controller.markDirty({
+    domain: "passage-notes",
+    reason: "inspiration-note-edited",
+    source: "test",
+  });
+  controller.block({
+    reason: "write-permission-required",
+  });
+  assert.equal(state.projectFileAutosaveDirty, true);
+  assert.equal(state.projectFileAutosaveBlocked?.reason, "write-permission-required");
+  assert.equal(timer.scheduled, null);
+  assert.deepEqual(
+    buildProjectAutosaveStatusModel({
+      ...state,
+      editorPrefs: {
+        projectFileAutosaveEnabled: true,
+      },
+    }, {
+      connected: true,
+    }),
+    {
+      label: "Autosave",
+      statusKey: "permission-required",
+      statusLabel: "Needs permission",
+      note: "Project file is out of sync. Latest changes are preserved in browser cache; press Ctrl+S to re-authorize.",
+      tone: "waiting",
+      toneClass: "is-waiting",
+    },
+  );
+  controller.clearState();
+
   controller.beginSuppression();
   controller.markDirty();
   assert.equal(timer.scheduled, null);
@@ -254,6 +287,7 @@ export async function runProjectFileStorageAdaptersTest() {
 function createAutosaveState() {
   return {
     projectFileAutosaveDirty: false,
+    projectFileAutosaveBlocked: null,
     projectFileAutosaveTarget: null,
     projectFileAutosaveTimer: null,
     projectFileAutosaveRevision: 0,

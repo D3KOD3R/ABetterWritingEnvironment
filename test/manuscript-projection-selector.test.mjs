@@ -76,6 +76,132 @@ export function runManuscriptProjectionSelectorTest() {
   assert.equal(spellcheck[0].styleToken, "misspelled");
   assert.equal(spellcheck[0].persistence, "runtime-only");
 
+  const canonicalMarkText = "Alpha target.\n\nSecond block.";
+  const canonicalMarkBlocks = [{
+    blockId: "block-1",
+    paragraphId: "paragraph-1",
+    text: "Alpha target.",
+  }, {
+    blockId: "block-2",
+    paragraphId: "paragraph-2",
+    text: "Second block.",
+  }];
+  const derivedMarkProjections = selectManuscriptProjections({
+    projectId: "project-1",
+    sceneId: "scene-1",
+    text: canonicalMarkText,
+    sceneBlocks: canonicalMarkBlocks,
+    inlineFormatRanges: [{
+      id: "inline-italic-6-12",
+      formatId: "italic",
+      startOffset: 6,
+      endOffset: 12,
+    }],
+    includeDiagnostics: false,
+    includeAnchoredRecords: false,
+    includeRuntimeSelections: false,
+    includeSpellcheck: false,
+  });
+  assert.equal(derivedMarkProjections.length, 1);
+  assert.equal(derivedMarkProjections[0].styleToken, "italic");
+  assert.equal(derivedMarkProjections[0].startOffset, 6);
+  assert.equal(derivedMarkProjections[0].endOffset, 12);
+  assert.equal(derivedMarkProjections[0].sourceRef.recordType, "manuscriptMark");
+
+  const explicitMarkProjections = selectManuscriptProjections({
+    projectId: "project-1",
+    sceneId: "scene-1",
+    text: canonicalMarkText,
+    sceneBlocks: canonicalMarkBlocks,
+    manuscriptMarks: [{
+      id: "mark-bold-explicit",
+      kind: "bold",
+      anchorStatus: "resolved",
+      anchor: {
+        projectId: "project-1",
+        sceneId: "scene-1",
+        blockId: "block-1",
+        paragraphId: "paragraph-1",
+        startOffset: 0,
+        endOffset: 5,
+      },
+    }, {
+      id: "mark-explicit",
+      kind: "highlight",
+      anchorStatus: "resolved",
+      anchor: {
+        projectId: "project-1",
+        sceneId: "scene-1",
+        blockId: "block-2",
+        paragraphId: "paragraph-2",
+        startOffset: 0,
+        endOffset: 6,
+      },
+    }],
+    inlineFormatRanges: [{
+      id: "inline-italic-6-12",
+      formatId: "italic",
+      startOffset: 6,
+      endOffset: 12,
+    }],
+    includeDiagnostics: false,
+    includeAnchoredRecords: false,
+    includeRuntimeSelections: false,
+    includeSpellcheck: false,
+  });
+  assert.equal(explicitMarkProjections.length, 3);
+  assert.equal(explicitMarkProjections[0].styleToken, "bold");
+  assert.equal(explicitMarkProjections[0].startOffset, 0);
+  assert.equal(explicitMarkProjections[0].endOffset, 5);
+  assert.deepEqual(explicitMarkProjections[0].sourceRef, {
+    recordType: "manuscriptMark",
+    recordId: "mark-bold-explicit",
+  });
+  assert.equal(explicitMarkProjections[1].styleToken, "italic");
+  assert.equal(explicitMarkProjections[1].startOffset, 6);
+  assert.equal(explicitMarkProjections[1].endOffset, 12);
+  assert.equal(explicitMarkProjections[1].sourceRef.recordType, "manuscriptMark");
+  assert.equal(explicitMarkProjections[2].styleToken, "highlight");
+  assert.equal(explicitMarkProjections[2].startOffset, 15);
+  assert.equal(explicitMarkProjections[2].endOffset, 21);
+  assert.deepEqual(explicitMarkProjections[2].sourceRef, {
+    recordType: "manuscriptMark",
+    recordId: "mark-explicit",
+  });
+
+  const compatibilityMarkProjections = selectManuscriptProjections({
+    projectId: "project-1",
+    sceneId: "scene-1",
+    text: canonicalMarkText,
+    sceneBlocks: canonicalMarkBlocks,
+    manuscriptMarks: [{
+      id: "mark-inline-italic-6-12-block-1-6-12",
+      kind: "italic",
+      source: "author",
+      anchorStatus: "resolved",
+      anchor: {
+        projectId: "project-1",
+        sceneId: "scene-1",
+        blockId: "block-1",
+        paragraphId: "paragraph-1",
+        startOffset: 6,
+        endOffset: 12,
+      },
+    }],
+    inlineFormatRanges: [{
+      id: "inline-italic-6-12",
+      formatId: "italic",
+      startOffset: 6,
+      endOffset: 12,
+    }],
+    includeDiagnostics: false,
+    includeAnchoredRecords: false,
+    includeRuntimeSelections: false,
+    includeSpellcheck: false,
+  });
+  assert.equal(compatibilityMarkProjections.length, 1);
+  assert.equal(compatibilityMarkProjections[0].sourceRef.recordId, "mark-inline-italic-6-12-block-1-6-12");
+
   const diagnosticText = "Quiet.\n\nThe customs ring waits.";
   const diagnosticProjections = selectManuscriptProjections({
     projectId: "project-1",

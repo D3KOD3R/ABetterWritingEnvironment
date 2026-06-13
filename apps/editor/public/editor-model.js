@@ -252,6 +252,7 @@ export function buildSceneRecords(workspace, sceneDrafts = {}, structureDrafts =
 
     scene.blocks.push({
       blockId: line.blockId,
+      paragraphId: line.paragraphId ?? line.blockId,
       lineNumber: line.lineNumber,
       kind: line.kind,
       speakerLabel: line.speakerLabel,
@@ -318,6 +319,7 @@ export function buildSceneRecords(workspace, sceneDrafts = {}, structureDrafts =
         blocks: [
           {
             blockId: scene.blockId ?? `draft-block-${scene.sceneId ?? index + 1}-1`,
+            paragraphId: scene.paragraphId ?? scene.blockId ?? `draft-paragraph-${scene.sceneId ?? index + 1}-1`,
             lineNumber: null,
             kind: "narration",
             speakerLabel: "",
@@ -355,6 +357,7 @@ export function buildSceneRecords(workspace, sceneDrafts = {}, structureDrafts =
       blocks: draftBlocks
         ? draftBlocks.map((block, index) => ({
             blockId: block.blockId ?? `draft-block-${scene.sceneId}-${index + 1}`,
+            paragraphId: block.paragraphId ?? block.blockId ?? `draft-paragraph-${scene.sceneId}-${index + 1}`,
             lineNumber: block.lineNumber ?? null,
             kind: block.kind ?? "narration",
             speakerLabel: block.speakerLabel ?? "",
@@ -515,6 +518,13 @@ export function normalizeManuscriptTasks(candidate) {
         sourcePath: typeof task.sourcePath === "string" ? task.sourcePath : undefined,
         anchorMode: typeof task.anchorMode === "string" ? task.anchorMode : undefined,
         anchorStatus: typeof task.anchorStatus === "string" ? task.anchorStatus : undefined,
+        anchorDirtyReason: typeof task.anchorDirtyReason === "string" ? task.anchorDirtyReason : undefined,
+        anchorLastTouchedAt: typeof task.anchorLastTouchedAt === "string" ? task.anchorLastTouchedAt : undefined,
+        anchorLastTouchedByEditId: typeof task.anchorLastTouchedByEditId === "string" ? task.anchorLastTouchedByEditId : undefined,
+        evidenceMode: typeof task.evidenceMode === "string" ? task.evidenceMode : undefined,
+        originalHash: typeof task.originalHash === "string" ? task.originalHash : undefined,
+        originalLength: Number.isInteger(task.originalLength) ? task.originalLength : undefined,
+        selectedTextPreview: typeof task.selectedTextPreview === "string" ? task.selectedTextPreview : undefined,
         lineIndex: Number.isInteger(task.lineIndex) ? task.lineIndex : undefined,
         paragraphIndex: Number.isInteger(task.paragraphIndex) ? task.paragraphIndex : undefined,
         nearbyBefore: typeof task.nearbyBefore === "string" ? task.nearbyBefore : undefined,
@@ -556,6 +566,16 @@ export function normalizePassageNotes(candidate) {
       source: typeof note.source === "string" ? note.source : "manual",
       sourceDocumentId: typeof note.sourceDocumentId === "string" ? note.sourceDocumentId : undefined,
       sourcePath: typeof note.sourcePath === "string" ? note.sourcePath : undefined,
+      anchorStatus: typeof note.anchorStatus === "string" ? note.anchorStatus : undefined,
+      anchorDirtyReason: typeof note.anchorDirtyReason === "string" ? note.anchorDirtyReason : undefined,
+      anchorLastTouchedAt: typeof note.anchorLastTouchedAt === "string" ? note.anchorLastTouchedAt : undefined,
+      anchorLastTouchedByEditId: typeof note.anchorLastTouchedByEditId === "string" ? note.anchorLastTouchedByEditId : undefined,
+      evidenceMode: typeof note.evidenceMode === "string" ? note.evidenceMode : undefined,
+      originalHash: typeof note.originalHash === "string" ? note.originalHash : undefined,
+      originalLength: Number.isInteger(note.originalLength) ? note.originalLength : undefined,
+      selectedTextPreview: typeof note.selectedTextPreview === "string" ? note.selectedTextPreview : undefined,
+      nearbyBefore: typeof note.nearbyBefore === "string" ? note.nearbyBefore : undefined,
+      nearbyAfter: typeof note.nearbyAfter === "string" ? note.nearbyAfter : undefined,
       attachmentConfidence: Number.isFinite(Number(note.attachmentConfidence))
         ? Number(note.attachmentConfidence)
         : undefined,
