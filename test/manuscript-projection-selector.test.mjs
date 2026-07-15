@@ -138,6 +138,22 @@ export function runManuscriptProjectionSelectorTest() {
         endOffset: 6,
       },
     }],
+    draftProofing: {
+      activeRunId: "draft-proof-run-0001",
+      runs: [{
+        id: "draft-proof-run-0001",
+        label: "Draft proof 1",
+        iterationNumber: 1,
+        status: "active",
+        coverageByScene: {
+          "scene-1": [{
+            startOffset: 0,
+            endOffset: 5,
+            touchedAt: "2026-07-15T01:00:00.000Z",
+          }],
+        },
+      }],
+    },
     inlineFormatRanges: [{
       id: "inline-italic-6-12",
       formatId: "italic",
@@ -149,22 +165,31 @@ export function runManuscriptProjectionSelectorTest() {
     includeRuntimeSelections: false,
     includeSpellcheck: false,
   });
-  assert.equal(explicitMarkProjections.length, 3);
-  assert.equal(explicitMarkProjections[0].styleToken, "bold");
-  assert.equal(explicitMarkProjections[0].startOffset, 0);
-  assert.equal(explicitMarkProjections[0].endOffset, 5);
-  assert.deepEqual(explicitMarkProjections[0].sourceRef, {
+  const explicitDraftProof = selectProjectionChannel(explicitMarkProjections, MANUSCRIPT_PROJECTION_CHANNELS.DRAFT_PROOF);
+  const explicitAuthorMarks = selectProjectionChannel(explicitMarkProjections, MANUSCRIPT_PROJECTION_CHANNELS.AUTHOR_MARK);
+  assert.equal(explicitAuthorMarks.length, 3);
+  assert.equal(explicitDraftProof.length, 1);
+  assert.equal(explicitDraftProof[0].styleToken, "covered");
+  assert.equal(explicitDraftProof[0].persistence, "derived-durable");
+  assert.deepEqual(explicitDraftProof[0].sourceRef, {
+    recordType: "draftProofRun",
+    recordId: "draft-proof-run-0001",
+  });
+  assert.equal(explicitAuthorMarks[0].styleToken, "bold");
+  assert.equal(explicitAuthorMarks[0].startOffset, 0);
+  assert.equal(explicitAuthorMarks[0].endOffset, 5);
+  assert.deepEqual(explicitAuthorMarks[0].sourceRef, {
     recordType: "manuscriptMark",
     recordId: "mark-bold-explicit",
   });
-  assert.equal(explicitMarkProjections[1].styleToken, "italic");
-  assert.equal(explicitMarkProjections[1].startOffset, 6);
-  assert.equal(explicitMarkProjections[1].endOffset, 12);
-  assert.equal(explicitMarkProjections[1].sourceRef.recordType, "manuscriptMark");
-  assert.equal(explicitMarkProjections[2].styleToken, "highlight");
-  assert.equal(explicitMarkProjections[2].startOffset, 15);
-  assert.equal(explicitMarkProjections[2].endOffset, 21);
-  assert.deepEqual(explicitMarkProjections[2].sourceRef, {
+  assert.equal(explicitAuthorMarks[1].styleToken, "italic");
+  assert.equal(explicitAuthorMarks[1].startOffset, 6);
+  assert.equal(explicitAuthorMarks[1].endOffset, 12);
+  assert.equal(explicitAuthorMarks[1].sourceRef.recordType, "manuscriptMark");
+  assert.equal(explicitAuthorMarks[2].styleToken, "highlight");
+  assert.equal(explicitAuthorMarks[2].startOffset, 15);
+  assert.equal(explicitAuthorMarks[2].endOffset, 21);
+  assert.deepEqual(explicitAuthorMarks[2].sourceRef, {
     recordType: "manuscriptMark",
     recordId: "mark-explicit",
   });

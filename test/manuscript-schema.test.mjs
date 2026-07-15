@@ -145,6 +145,12 @@ export function runManuscriptSchemaTest() {
       metadata: {
         colorToken: "amber",
         purpose: "reference",
+        highlightColor: {
+          id: "rose",
+          label: "Rose",
+          color: "rgba(255, 148, 164, 0.34)",
+          outline: "rgba(216, 86, 112, 0.22)",
+        },
       },
     },
     "2026-04-21T03:07:00.000Z",
@@ -158,6 +164,12 @@ export function runManuscriptSchemaTest() {
   assert.match(project.marks[0].originalHash, /^fnv1a32:/);
   assert.equal(project.marks[0].anchorStatus, "resolved");
   assert.equal(project.marks[0].metadata.colorToken, "amber");
+  assert.deepEqual(project.marks[0].metadata.highlightColor, {
+    id: "rose",
+    label: "Rose",
+    color: "rgba(255, 148, 164, 0.34)",
+    outline: "rgba(216, 86, 112, 0.22)",
+  });
   assert.equal(project.sequences.mark, 1);
   assert.equal(project.updatedAt, "2026-04-21T03:07:00.000Z");
   assert.equal(resolveManuscriptAnchor(project, project.marks[0].anchor).excerpt, "frigate");

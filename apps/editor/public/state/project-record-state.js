@@ -16,6 +16,7 @@ export function createProjectRecordStateService({
   createDefaultLocalAiPrefs,
   normalizeManuscriptTasks,
   normalizePassageNotes,
+  normalizeDraftProofingState = () => ({ schemaVersion: 1, activeRunId: "", runs: [] }),
   normalizeProjectSelectionDefaults,
   normalizeProjectSettingsSnapshot,
   buildProjectSettingsCandidate,
@@ -130,6 +131,7 @@ export function createProjectRecordStateService({
         : legacyState?.templateDrafts ?? createTemplateDrafts(),
       manuscriptTasks: normalizeManuscriptTasks(candidate.manuscriptTasks ?? legacyState?.manuscriptTasks),
       passageNotes: normalizePassageNotes(candidate.passageNotes ?? legacyState?.passageNotes),
+      draftProofing: normalizeDraftProofingState(candidate.draftProofing ?? legacyState?.draftProofing),
       sourceArchive: Array.isArray(candidate.sourceArchive) ? clone(candidate.sourceArchive) : [],
       importReport: candidate.importReport && typeof candidate.importReport === "object"
         ? clone(candidate.importReport)
@@ -218,6 +220,7 @@ export function createProjectRecordStateService({
       templateDrafts: clone(options.templateDrafts ?? createTemplateDrafts()),
       manuscriptTasks: normalizeManuscriptTasks(options.manuscriptTasks),
       passageNotes: normalizePassageNotes(options.passageNotes),
+      draftProofing: normalizeDraftProofingState(options.draftProofing),
       sourceArchive: Array.isArray(options.sourceArchive) ? clone(options.sourceArchive) : [],
       importReport: options.importReport && typeof options.importReport === "object"
         ? clone(options.importReport)

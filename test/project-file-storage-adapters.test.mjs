@@ -127,6 +127,24 @@ export async function runProjectFileStorageAdaptersTest() {
   assert.equal(await ensureProjectFileHandleWritePermission(permissionedHandle), false);
   assert.equal(await requestProjectFileHandleWritePermission(permissionedHandle), "granted");
   assert.equal(await ensureProjectFileHandleWritePermission(permissionedHandle), true);
+  const directRequestHandle = {
+    name: "permissioned-project.abe-project.json",
+    permissionStatus: "prompt",
+    queryCount: 0,
+    requestCount: 0,
+    async queryPermission() {
+      this.queryCount += 1;
+      return this.permissionStatus;
+    },
+    async requestPermission() {
+      this.requestCount += 1;
+      this.permissionStatus = "granted";
+      return this.permissionStatus;
+    },
+  };
+  assert.equal(await requestProjectFileHandleWritePermission(directRequestHandle), "granted");
+  assert.equal(directRequestHandle.queryCount, 0);
+  assert.equal(directRequestHandle.requestCount, 1);
   assert.deepEqual(
     resolveProjectFileDisplayState({
       projectFilePath: "new-project.abe-project.json",
@@ -248,7 +266,107 @@ export async function runProjectFileStorageAdaptersTest() {
       toneClass: "is-waiting",
     },
   );
+  assert.deepEqual(
+    buildProjectAutosaveStatusModel({
+      ...state,
+      projectFileAutosaveDirty: true,
+      projectFileAutosaveBlocked: {
+        reason: "write-permission-required",
+      },
+      projectPersistenceDirtyDomains: {},
+      editorPrefs: {
+        projectFileAutosaveEnabled: true,
+      },
+    }, {
+      connected: true,
+    }),
+    {
+      label: "Autosave",
+      statusKey: "ready",
+      statusLabel: "Ready",
+      note: "Project file is in sync.",
+      tone: "ready",
+      toneClass: "is-ready",
+    },
+  );
+  assert.deepEqual(
+    buildProjectAutosaveStatusModel({
+      ...state,
+      projectFileAutosaveDirty: true,
+      projectFileAutosaveBlocked: {
+        reason: "manual-save-required",
+      },
+      projectPersistenceDirtyDomains: {
+        manuscript: {
+          reason: "browser-background-write-blocked",
+        },
+      },
+      editorPrefs: {
+        projectFileAutosaveEnabled: true,
+      },
+    }, {
+      connected: true,
+    }),
+    {
+      label: "Autosave",
+      statusKey: "manual-save-required",
+      statusLabel: "Manual save",
+      note: "Browser blocked background file writes. Latest changes are preserved in browser cache; press Ctrl+S to write the project file.",
+      tone: "waiting",
+      toneClass: "is-waiting",
+    },
+  );
   controller.clearState();
+
+  const staleBlockState = createAutosaveState();
+  const staleBlockController = createProjectFileAutosaveController({
+    state: staleBlockState,
+    delayMs: 250,
+    windowRef: createFakeTimer().windowRef,
+    getTarget: () => ({ projectId: "project-1", filePath: "C:\\Projects\\project.abe-project.json", fileHandle: null }),
+    hasDestination: () => true,
+    isBusy: () => false,
+    isEnabled: () => true,
+    save: async () => {},
+    setStatus: () => {},
+    renderStatus: () => {},
+  });
+  staleBlockController.block({
+    reason: "write-permission-required",
+  });
+  assert.equal(staleBlockState.projectFileAutosaveDirty, false);
+  assert.equal(staleBlockState.projectFileAutosaveBlocked, null);
+
+  const manualBlockState = createAutosaveState();
+  const manualBlockTimer = createFakeTimer();
+  const manualBlockController = createProjectFileAutosaveController({
+    state: manualBlockState,
+    delayMs: 250,
+    windowRef: manualBlockTimer.windowRef,
+    getTarget: () => ({ projectId: "project-1", filePath: "project.abe-project.json", fileHandle: browserHandle }),
+    hasDestination: () => true,
+    isBusy: () => false,
+    isEnabled: () => true,
+    save: async () => {},
+    setStatus: () => {},
+    renderStatus: () => {},
+  });
+  manualBlockController.markDirty({
+    domain: "manuscript",
+    reason: "first-edit",
+    source: "test",
+  });
+  manualBlockController.block({
+    reason: "manual-save-required",
+  });
+  assert.equal(manualBlockState.projectFileAutosaveBlocked?.reason, "manual-save-required");
+  manualBlockController.markDirty({
+    domain: "manuscript",
+    reason: "second-edit",
+    source: "test",
+  });
+  assert.equal(manualBlockState.projectFileAutosaveBlocked, null);
+  assert.equal(manualBlockTimer.scheduled?.delayMs, 250);
 
   controller.beginSuppression();
   controller.markDirty();

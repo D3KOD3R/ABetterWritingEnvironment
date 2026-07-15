@@ -12,10 +12,10 @@ import {
   canUseBrowserOpenPicker,
   canUseBrowserSavePicker,
   downloadProjectLibrarySnapshot,
-  ensureProjectFileHandleWritePermission,
   getProjectFilePickerTypes,
   getProjectFileIdentity,
   getProjectRecordFilePath,
+  getProjectFileWriteProgress,
   getSuggestedProjectFileName,
   hasProjectFileDestination,
   hasProjectFilePath,
@@ -50,7 +50,15 @@ function isBrowserHandlePermissionError(error) {
   const message = toErrorMessage(error).toLowerCase();
   return message.includes("write permission")
     || message.includes("re-authorize")
-    || (errorName === "AbortError" && message.includes("security policy"));
+    || (message.includes("permission") && message.includes("denied"))
+    || errorName === "NotAllowedError"
+    || errorName === "SecurityError";
+}
+
+function isBrowserHandleBackgroundWritePolicyError(error) {
+  const errorName = typeof error?.name === "string" ? error.name : "";
+  const message = toErrorMessage(error).toLowerCase();
+  return errorName === "AbortError" && message.includes("security policy");
 }
 
 function createNoopLogger() {
@@ -180,6 +188,13 @@ function buildDomainComparablePayload(projectRecord, {
     return {
       id: projectRecord.id ?? "",
       passageNotes: projectRecord.passageNotes ?? [],
+    };
+  }
+
+  if (normalizedDomain === "draft-proofing" || normalizedDomain === "draftproofing") {
+    return {
+      id: projectRecord.id ?? "",
+      draftProofing: projectRecord.draftProofing ?? null,
     };
   }
 
@@ -341,6 +356,9 @@ function resolveMutationDomain(options = {}) {
   }
   if (classifier.includes("passage-note") || classifier.includes("passage note") || classifier.includes("inspiration") || classifier.includes("research")) {
     return "passage-notes";
+  }
+  if (classifier.includes("draft-proof") || classifier.includes("draft proof") || classifier.includes("proof-read") || classifier.includes("proofread")) {
+    return "draft-proofing";
   }
   if (classifier.includes("manuscript") || classifier.includes("scene") || classifier.includes("chapter")) {
     return "manuscript";
@@ -820,6 +838,19 @@ export function createProjectPersistenceService({
     }
   }
 
+  function hasProjectAutosaveDirtyDomains() {
+    return Boolean(
+      state.projectPersistenceDirtyDomains &&
+      typeof state.projectPersistenceDirtyDomains === "object" &&
+      Object.keys(state.projectPersistenceDirtyDomains).length > 0,
+    );
+  }
+
+  // Intent: clear stale permission blocks after a successful file write without dropping fresh edits made during that write.
+  function shouldClearProjectAutosaveAfterSuccessfulSave(saveRevision) {
+    return state.projectFileAutosaveRevision === saveRevision || !hasProjectAutosaveDirtyDomains();
+  }
+
   // Intent: preserve refresh safety even when the external file target rejects the write.
   function persistProjectSnapshotFallbackAfterFileSaveFailure(snapshot, context = {}) {
     const persisted = persistProjectSnapshotToBrowserCache(snapshot, {
@@ -833,6 +864,25 @@ export function createProjectPersistenceService({
       state.projectFileStatus = `Save failed: ${toErrorMessage(context.error)} Browser cache is also unavailable; press Ctrl+S or Save as file before refreshing.`;
     }
     return persisted;
+  }
+
+  // Intent: verify browser-handle writes because Chromium can report a background-write block after the file was updated.
+  async function isBrowserHandleSnapshotSynced(handle, snapshot) {
+    if (!handle) {
+      return false;
+    }
+
+    try {
+      const writtenSnapshot = await readProjectLibraryFromBrowserHandle(handle);
+      return stableSerialize(writtenSnapshot) === stableSerialize(snapshot);
+    } catch (error) {
+      desktopFileSystemLog.warn("persistence", "project.save.browser-handle-verify-failed", "Unable to verify project file contents after browser-handle write failure.", {
+        projectId: state.activeProjectId ?? state.workspace?.project?.id ?? "",
+        filePath: handle?.name ?? state.projectFilePath ?? "",
+        error,
+      });
+      return false;
+    }
   }
 
   // Intent: keep project save result logs consistent across file-backed and browser-cache fallback paths.
@@ -861,17 +911,17 @@ export function createProjectPersistenceService({
     renderHeader();
 
     try {
-      const writePermissionGranted = await ensureProjectFileHandleWritePermission(handle, {
-        requestPermission: options.requestPermission === true,
-      });
-      state.projectFileHandlePermission = writePermissionGranted ? "granted" : "prompt";
-      if (!writePermissionGranted) {
+      const writePermissionStatus = options.requestPermission === true
+        ? await requestProjectFileHandleWritePermission(handle)
+        : await queryProjectFileHandleWritePermission(handle);
+      state.projectFileHandlePermission = writePermissionStatus;
+      if (writePermissionStatus !== "granted") {
         throw new Error("Project file write permission is unavailable. Use Ctrl+S or Save as file to re-authorize this file.");
       }
 
       const savedLabel = await writeProjectLibraryToBrowserHandle(handle, snapshot, {
         fallbackFileName: resolveSuggestedProjectFileName(),
-        requestPermission: false,
+        skipPermissionCheck: true,
       });
       const activeProjectId = state.activeProjectId ?? state.workspace?.project?.id ?? "";
       if (activeProjectId !== saveProjectId) {
@@ -907,7 +957,7 @@ export function createProjectPersistenceService({
         title: state.projectTitle,
         mode: "browser-handle",
       });
-      if (state.projectFileAutosaveRevision === saveRevision) {
+      if (options.clearAutosaveStateOnSuccess === true || shouldClearProjectAutosaveAfterSuccessfulSave(saveRevision)) {
         clearProjectAutosaveState();
         clearEditorWorkingDirtyState("project-save-succeeded");
       }
@@ -915,19 +965,63 @@ export function createProjectPersistenceService({
       return savedLabel;
     } catch (error) {
       const activeProjectId = state.activeProjectId ?? state.workspace?.project?.id ?? "";
+      const isBackgroundWritePolicyError = isBrowserHandleBackgroundWritePolicyError(error);
+      const isPermissionError = !isBackgroundWritePolicyError && isBrowserHandlePermissionError(error);
+      const writeProgress = getProjectFileWriteProgress(error);
+      const browserAcceptedSnapshotWrite = writeProgress?.writeCompleted === true;
+      if (isBackgroundWritePolicyError && activeProjectId === saveProjectId) {
+        const verifiedSynced = await isBrowserHandleSnapshotSynced(handle, snapshot);
+        if (verifiedSynced || browserAcceptedSnapshotWrite) {
+          const savedLabel = handle?.name || browserHandleProjectFilePath || resolveSuggestedProjectFileName();
+          setActiveProjectFileDestination(browserHandleProjectFilePath || savedLabel, handle, {
+            skipProjectFileAutosave: true,
+            handlePermission: "granted",
+            persistBrowserFileHandle: true,
+            persistDesktopProjectFilePath: hasProjectFilePath(browserHandleProjectFilePath),
+            clearDesktopProjectFilePath: !hasProjectFilePath(browserHandleProjectFilePath),
+            source: "saveProjectSnapshotToBrowserHandleVerified",
+          });
+          persistProjectSnapshotToBrowserCache(snapshot, {
+            target: "browser-handle",
+            reason: "save-project",
+            filePath: savedLabel,
+          });
+          state.projectFileStatus = `Saved to ${savedLabel}`;
+          reportBrowserLog("info", "project-file", verifiedSynced
+            ? "Verified project file write after browser reported a background-write block."
+            : "Accepted project file write after browser reported a post-write background block.", {
+            filePath: savedLabel,
+            projectId: state.activeProjectId ?? state.workspace?.project?.id ?? null,
+            title: state.projectTitle,
+            mode: "browser-handle",
+            saveProjectId,
+            activeProjectId,
+            writeProgress,
+          });
+          if (options.clearAutosaveStateOnSuccess === true || shouldClearProjectAutosaveAfterSuccessfulSave(saveRevision)) {
+            clearProjectAutosaveState();
+            clearEditorWorkingDirtyState("project-save-succeeded");
+          }
+          renderHeader();
+          return savedLabel;
+        }
+      }
       if (activeProjectId === saveProjectId) {
         state.projectFileStatus = `Save failed: ${toErrorMessage(error)}`;
       }
-      const isPermissionError = isBrowserHandlePermissionError(error);
       if (isPermissionError) {
         state.projectFileHandlePermission = "prompt";
       }
+      const reportAsRecoverableBrowserWriteBlock =
+        (isPermissionError || isBackgroundWritePolicyError) && options.requestPermission !== true;
       reportBrowserLog(
-        isPermissionError && options.requestPermission !== true ? "warn" : "error",
+        reportAsRecoverableBrowserWriteBlock ? "warn" : "error",
         "project-file",
-        isPermissionError && options.requestPermission !== true
-          ? "Project file save needs browser write permission."
-          : "Project file save failed.",
+        isBackgroundWritePolicyError
+          ? "Browser blocked background project file write."
+          : isPermissionError && options.requestPermission !== true
+            ? "Project file save needs browser write permission."
+            : "Project file save failed.",
         {
           filePath: handle?.name ?? null,
           error,
@@ -945,7 +1039,7 @@ export function createProjectPersistenceService({
     }
   }
 
-  async function saveProjectSnapshotToFilePath(filePath, snapshot = buildProjectSnapshotForSaveFile()) {
+  async function saveProjectSnapshotToFilePath(filePath, snapshot = buildProjectSnapshotForSaveFile(), options = {}) {
     const resolvedPath = normalizeProjectFilePath(filePath);
     if (!resolvedPath) {
       throw new Error("A project file path is required.");
@@ -994,7 +1088,7 @@ export function createProjectPersistenceService({
         title: state.projectTitle,
         mode: "desktop-path",
       });
-      if (state.projectFileAutosaveRevision === saveRevision) {
+      if (options.clearAutosaveStateOnSuccess === true || shouldClearProjectAutosaveAfterSuccessfulSave(saveRevision)) {
         clearProjectAutosaveState();
         clearEditorWorkingDirtyState("project-save-succeeded");
       }
@@ -1381,8 +1475,8 @@ export function createProjectPersistenceService({
       await prepareProjectSnapshotForSave({ reason });
       const snapshot = buildProjectSnapshotForSaveFile();
       const filePath = normalizeProjectFilePath(state.projectFilePath);
-      const shouldUseDesktopPath = hasProjectFilePath(filePath) && state.projectFileHandlePermission !== "granted";
-      const shouldUseBrowserHandle = Boolean(state.projectFileHandle && !shouldUseDesktopPath);
+      const shouldUseBrowserHandle = Boolean(state.projectFileHandle);
+      const shouldUseDesktopPath = !shouldUseBrowserHandle && hasProjectFilePath(filePath);
       if (shouldUseBrowserHandle) {
         // Intent: autosave cannot request browser write permission, so preserve to cache and wait for Ctrl+S.
         if (reason === "autosave" && state.projectFileHandlePermission !== "granted") {
@@ -1425,6 +1519,7 @@ export function createProjectPersistenceService({
         try {
           await saveProjectSnapshotToBrowserHandle(state.projectFileHandle, snapshot, {
             requestPermission: reason !== "autosave",
+            clearAutosaveStateOnSuccess: reason !== "autosave",
           });
           browserHandleSaved = true;
           desktopFileSystemLog.info("persistence", "project.save.browser-handle", "Saved project library to browser file handle.", {
@@ -1445,9 +1540,11 @@ export function createProjectPersistenceService({
           });
           if (browserHandleFallbackPersisted) {
             blockProjectAutosave({
-              reason: isBrowserHandlePermissionError(error)
-                ? "write-permission-required"
-                : "write-failed",
+              reason: reason === "autosave" && isBrowserHandleBackgroundWritePolicyError(error)
+                ? "manual-save-required"
+                : isBrowserHandlePermissionError(error)
+                  ? "write-permission-required"
+                  : "write-failed",
             });
           }
         }
@@ -1472,7 +1569,9 @@ export function createProjectPersistenceService({
       let projectSnapshotReportMessage;
       if (filePath) {
         try {
-          await saveProjectSnapshotToFilePath(filePath, snapshot);
+          await saveProjectSnapshotToFilePath(filePath, snapshot, {
+            clearAutosaveStateOnSuccess: reason !== "autosave",
+          });
           projectSnapshotPersisted = true;
           desktopFileSystemLog.info("persistence", "project.save.file-path", "Saved project library to file path.", {
             projectId: state.activeProjectId ?? state.workspace?.project?.id ?? "",
@@ -1557,7 +1656,9 @@ export function createProjectPersistenceService({
         });
         const snapshot = buildProjectSnapshotForSaveFile();
         try {
-          await saveProjectSnapshotToFilePath(typedPath, snapshot);
+          await saveProjectSnapshotToFilePath(typedPath, snapshot, {
+            clearAutosaveStateOnSuccess: true,
+          });
           projectSaveGateLog.info("persistence", "project.save-as.file-path", "Saved project snapshot using typed file path.", {
             projectId: state.activeProjectId ?? state.workspace?.project?.id ?? "",
             filePath: typedPath,
@@ -1605,7 +1706,8 @@ export function createProjectPersistenceService({
           });
           const snapshot = buildProjectSnapshotForSaveFile();
           await saveProjectSnapshotToBrowserHandle(handle, snapshot, {
-            requestPermission: handlePermission !== "granted",
+            requestPermission: false,
+            clearAutosaveStateOnSuccess: true,
           });
           return;
         } catch (error) {

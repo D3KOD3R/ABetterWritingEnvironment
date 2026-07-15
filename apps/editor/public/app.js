@@ -1,5 +1,6 @@
 // Intent: bootstrap and orchestrate the browser editor while refactor slices move feature logic outward.
 import {
+  CUSTOM_HIGHLIGHT_COLOR_ID,
   EDITOR_DRAFTS_KEY,
   EDITOR_ACTIVE_PROJECT_ID_KEY,
   EDITOR_LOCAL_AI_PREFS_KEY,
@@ -30,6 +31,7 @@ import {
   normalizeLocalAiPrefs,
   normalizePassageNotes,
   normalizeSpellcheckProjectSettings,
+  resolveHighlightColorOption,
   resolveManuscriptTaskRange,
 } from "./editor-model.js";
 import {
@@ -51,10 +53,20 @@ import {
   selectManuscriptProjections,
 } from "./features/manuscript-editor/projection-selector.js";
 import {
+  addDraftProofCoverageRange,
+  completeDraftProofRun,
+  createDefaultDraftProofingState,
+  normalizeDraftProofingState,
+  pauseDraftProofRun,
+  pruneDraftProofCoverageForScenes,
+  startOrResumeDraftProofRun,
+  updateDraftProofCoverageForTextEdit,
+} from "./features/draft-proofing/draft-proofing-service.js";
+import {
+  applyManuscriptMarksForSceneSelection,
   createAuthorMarkProjectionFromManuscriptMark,
   promoteCompatibilityManuscriptMarksForSceneFormat,
   syncCompatibilityManuscriptMarksForScene as syncCompatibilityManuscriptMarksForSceneState,
-  toggleManuscriptMarksForSceneSelection,
   updateManuscriptMarksForSceneTextEdit,
 } from "./features/manuscript-editor/manuscript-mark-service.js";
 import { createManuscriptFindController } from "./features/manuscript-editor/manuscript-find-controller.js";
@@ -110,10 +122,6 @@ import {
 } from "./features/anchored-records/anchored-record-controller.js";
 import { renderPassageNotePanelHTML } from "./features/anchored-records/passage-note-panel.js";
 import { renderTaskPanelHTML } from "./features/anchored-records/task-panel.js";
-import {
-  buildUserHighlightPanelModel,
-  renderUserHighlightPanelHTML,
-} from "./features/manuscript-decorations/user-highlight-panel.js";
 import {
   USER_MARK_COMMAND_MODE,
   resolveUserMarkCommandIntent,
@@ -202,6 +210,7 @@ import {
   readTextareaEditorHostSelection,
   renderTextareaAuthorMarkLayer,
   renderTextareaDiagnosticLayer,
+  renderTextareaDraftProofLayer,
   renderTextareaSpellcheckLayer,
   resolveTextareaEditorHost,
   restoreTextareaEditorHostBookmark,
@@ -251,6 +260,11 @@ import { createVoiceRecordingService } from "./features/voice/voice-recording-se
 
 // Intent: keep shell-wide constants and state visible until each concern moves into its roadmap owner.
 const AUTHOR_MARK_DECORATION_FORMAT_IDS = new Set(["bold", "highlight"]);
+const MANUSCRIPT_INLINE_FORMAT_SHORTCUTS = Object.freeze({
+  b: "bold",
+  h: "highlight",
+  i: "italic",
+});
 const appRoot = document.querySelector("#app");
 const EDITOR_RIGHT_DOCK_COLLAPSED_KEY = "abe-right-dock-collapsed-v1";
 const EDITOR_BINDER_WIDTH_KEY = "abe-binder-width-v1";
@@ -391,15 +405,17 @@ const state = {
   templateDrafts: createTemplateDrafts(),
   manuscriptTasks: [],
   passageNotes: [],
+  draftProofing: createDefaultDraftProofingState(),
   spellcheckProjectSettings: createDefaultSpellcheckProjectSettings(),
   sidePanelMode: "issues",
   selectedTaskId: null,
   selectedPassageNoteId: null,
-  selectedUserHighlightId: null,
   inlinePassageDraft: null,
   taskContextMenu: null,
   binderContextMenu: null,
   spellcheckContextMenu: null,
+  highlightColorPaletteOpen: false,
+  highlightColorPalettePosition: null,
   grammarCheckPanel: {
     open: false,
     position: null,
@@ -466,6 +482,8 @@ let writingTargetDebugLastSceneTypingWordCount = null;
 let binderTitleClickState = null;
 let binderSceneDragState = null;
 let manuscriptFindDragState = null;
+let manuscriptPendingFormatDragSelectionSession = null;
+let highlightColorHoverTimer = null;
 let spellcheckBaseLexicon = null;
 let spellcheckReferenceLexicon = null;
 let narrationRecordingRuntime = null;
@@ -490,6 +508,9 @@ const manuscriptInputController = createManuscriptInputController({
   getSceneText: (sceneId) => getScene(sceneId)?.editorText ?? "",
   getSceneInlineFormatRanges,
   getInlineFormattingState: () => state.manuscriptInlineFormatting,
+  getPendingFormatMetadata: () => ({
+    highlight: getAuthorMarkDecorationMetadata("highlight"),
+  }),
   recordRevisionTextEdit: (sceneId, previousText, nextText) => recordRevisionSceneTextEdit(sceneId, previousText, nextText),
   trackInlinePassageTyping: (sceneId, previousText, editorSurface) => trackInlinePassageDraftTyping(sceneId, previousText, editorSurface),
   updateAnchoredRecordsForTextEdit: (sceneId, previousText, nextText, options) =>
@@ -627,6 +648,7 @@ const projectRecordStateService = createProjectRecordStateService({
   createDefaultLocalAiPrefs,
   normalizeManuscriptTasks,
   normalizePassageNotes,
+  normalizeDraftProofingState,
   normalizeProjectSelectionDefaults,
   normalizeProjectSettingsSnapshot,
   buildProjectSettingsCandidate,
@@ -1003,6 +1025,7 @@ const projectActivationStateService = createProjectActivationStateService({
   createTemplateDrafts,
   normalizeManuscriptTasks,
   normalizePassageNotes,
+  normalizeDraftProofingState,
   readRevisionState: (record) => revisionStorageService.readRevisionState(record),
   createRevisionPanelStateForProject,
   normalizeProjectSettingsSnapshot,
@@ -1253,6 +1276,9 @@ function wireEvents() {
     }
     if (clickTarget instanceof HTMLTextAreaElement && clickTarget.classList.contains("editor-document-input")) {
       markSceneEditorAsCurrent(clickTarget);
+      beginPendingFormatDragSelection(clickTarget, event);
+    } else {
+      manuscriptPendingFormatDragSelectionSession = null;
     }
     writingTargetPointerDownStartedInsideWindow = Boolean(clickTarget?.closest(".writing-target-window"));
     revisionWindowPointerDownStartedInsideWindow = Boolean(clickTarget?.closest(".revision-window"));
@@ -1276,12 +1302,12 @@ function wireEvents() {
   document.addEventListener("pointermove", handleLayoutResizePointerMove);
   document.addEventListener("pointerup", endLayoutResize);
   document.addEventListener("pointercancel", endLayoutResize);
+  document.addEventListener("pointercancel", cancelPendingFormatDragSelection);
   document.addEventListener("pointerup", (event) => {
-    const pointerTarget = event.target instanceof Element ? event.target : null;
-    refreshSceneEditorSelectionStateFromActiveTextarea({
-      renderDecorationsPanel: !isManuscriptSelectionCommandTarget(pointerTarget),
-    });
+    const pendingFormatDragSession = consumePendingFormatDragSelection(event);
+    refreshSceneEditorSelectionStateFromActiveTextarea();
     window.setTimeout(() => {
+      applyPendingFormatDragSelection(pendingFormatDragSession, refreshSceneEditorSelectionStateFromActiveTextarea());
       writingTargetPointerDownStartedInsideWindow = false;
       revisionWindowPointerDownStartedInsideWindow = false;
     }, 0);
@@ -1297,6 +1323,10 @@ function wireEvents() {
   document.addEventListener("wheel", handleManuscriptFindWheel, { passive: false });
   document.addEventListener("selectionchange", () => {
     const activeElement = refreshSceneEditorSelectionStateFromActiveTextarea();
+    recordDraftProofCoverageFromTextarea(activeElement, {
+      source: "selectionchange",
+      persist: true,
+    });
 
     if (state.activePane !== "narration" || state.narrationTakeSession?.status === "recording") {
       return;
@@ -1312,6 +1342,7 @@ function wireEvents() {
   document.addEventListener("dragover", handleBinderSceneDragOver);
   document.addEventListener("drop", handleBinderSceneDrop);
   document.addEventListener("dragend", handleBinderSceneDragEnd);
+  document.addEventListener("scroll", handleDraftProofCoverageScroll, true);
   window.addEventListener("resize", syncLayoutWidths);
 
   document.addEventListener("click", (event) => {
@@ -1339,6 +1370,14 @@ function wireEvents() {
       !revisionWindowPointerDownStartedInsideWindow
     ) {
       closeRevisionWindow();
+    }
+    if (
+      state.highlightColorPaletteOpen &&
+      clickTarget &&
+      !clickTarget.closest("[data-highlight-color-palette]") &&
+      !clickTarget.closest('[data-action="toggle-inline-format"][data-inline-format="highlight"]')
+    ) {
+      closeHighlightColorPalette();
     }
     if (clickTarget?.closest("[data-title-input], [data-passage-note-body-input]")) {
       hideTaskSurfaces();
@@ -1509,8 +1548,18 @@ function wireEvents() {
       return;
     }
 
-    if (action === "create-user-highlight-from-selection") {
-      toggleUserHighlightDecoration();
+    if (action === "toggle-draft-proof-run") {
+      toggleDraftProofRun();
+      return;
+    }
+
+    if (action === "complete-draft-proof-run") {
+      finishDraftProofRun();
+      return;
+    }
+
+    if (action === "set-highlight-color") {
+      setHighlightColorPreference(target.dataset.highlightColorId);
       return;
     }
 
@@ -1778,18 +1827,6 @@ function wireEvents() {
       return;
     }
 
-    if (action === "select-user-highlight") {
-      hideFileMenu();
-      selectUserHighlight(target.dataset.highlightId);
-      return;
-    }
-
-    if (action === "delete-user-highlight") {
-      hideFileMenu();
-      deleteUserHighlight(target.dataset.highlightId);
-      return;
-    }
-
     if (action === "select-passage-note") {
       hideFileMenu();
       togglePassageNoteSelection(target.dataset.noteId);
@@ -2046,6 +2083,13 @@ function wireEvents() {
       return;
     }
 
+    const highlightButtonTarget = getHighlightColorButtonTarget(clickTarget);
+    if (highlightButtonTarget instanceof HTMLElement) {
+      event.preventDefault();
+      toggleHighlightColorPalette(highlightButtonTarget);
+      return;
+    }
+
     const binderSceneTarget = clickTarget?.closest("[data-binder-scene-id]");
     if (binderSceneTarget instanceof HTMLElement) {
       const sceneId = binderSceneTarget.dataset.binderSceneId;
@@ -2132,6 +2176,14 @@ function wireEvents() {
   });
 
   document.addEventListener("pointerover", (event) => {
+    const highlightButtonTarget = getHighlightColorButtonTarget(event.target instanceof Element ? event.target : null);
+    if (highlightButtonTarget instanceof HTMLElement) {
+      const related = event.relatedTarget instanceof Element ? event.relatedTarget : null;
+      if (!related || !highlightButtonTarget.contains(related)) {
+        scheduleHighlightColorPaletteHoverOpen(highlightButtonTarget);
+      }
+    }
+
     const target = event.target instanceof Element
       ? event.target.closest("[data-task-preview-trigger]")
       : null;
@@ -2143,6 +2195,14 @@ function wireEvents() {
   });
 
   document.addEventListener("pointerout", (event) => {
+    const highlightButtonTarget = getHighlightColorButtonTarget(event.target instanceof Element ? event.target : null);
+    if (highlightButtonTarget instanceof HTMLElement) {
+      const related = event.relatedTarget instanceof Element ? event.relatedTarget : null;
+      if (!related || !highlightButtonTarget.contains(related)) {
+        clearHighlightColorHoverTimer();
+      }
+    }
+
     const target = event.target instanceof Element
       ? event.target.closest("[data-task-preview-id]")
       : null;
@@ -2163,6 +2223,10 @@ function wireEvents() {
   document.addEventListener("focusin", (event) => {
     if (event.target instanceof HTMLTextAreaElement && event.target.classList.contains("editor-document-input")) {
       markSceneEditorAsCurrent(event.target);
+      recordDraftProofCoverageFromTextarea(event.target, {
+        source: "focusin",
+        persist: true,
+      });
     }
 
     const target = event.target instanceof Element
@@ -2314,6 +2378,11 @@ function wireEvents() {
 
     if (target instanceof HTMLInputElement && target.dataset.revisionSearch !== undefined) {
       updateRevisionPanelSearch(target.value);
+      return;
+    }
+
+    if (target instanceof HTMLInputElement && target.dataset.highlightRgbChannel) {
+      setHighlightCustomRgbPreference(target.dataset.highlightRgbChannel, target.value);
       return;
     }
 
@@ -2631,6 +2700,10 @@ function wireEvents() {
         closeWritingTargetWindow();
         return;
       }
+      if (state.highlightColorPaletteOpen) {
+        closeHighlightColorPalette({ renderAfter: true });
+        return;
+      }
       hideFileMenu();
       hideTaskSurfaces();
     }
@@ -2641,14 +2714,170 @@ function wireEvents() {
 function isManuscriptSelectionCommandTarget(target) {
   return Boolean(
     target instanceof Element &&
-    target.closest('[data-action="toggle-inline-format"], [data-action="create-user-highlight-from-selection"]')
+    target.closest('[data-action="toggle-inline-format"]')
   );
 }
 
-// Intent: keep drag-selected manuscript ranges available to toolbar and Decorations-panel commands.
-function refreshSceneEditorSelectionStateFromActiveTextarea({
-  renderDecorationsPanel = false,
-} = {}) {
+// Intent: make pending decoration buttons behave like paint tools over mouse-dragged manuscript text.
+function beginPendingFormatDragSelection(textarea, event) {
+  if (
+    !(textarea instanceof HTMLTextAreaElement) ||
+    !textarea.classList.contains("editor-document-input") ||
+    event?.button !== 0
+  ) {
+    manuscriptPendingFormatDragSelectionSession = null;
+    return;
+  }
+
+  const sceneId = String(textarea.dataset.sceneId ?? "").trim();
+  const pendingFormatIds = getPendingManuscriptInlineFormatIds();
+  if (!sceneId) {
+    manuscriptPendingFormatDragSelectionSession = null;
+    return;
+  }
+
+  if (!pendingFormatIds.length) {
+    manuscriptPendingFormatDragSelectionSession = null;
+    return;
+  }
+
+  const selectionStart = Number.isInteger(textarea.selectionStart) ? textarea.selectionStart : 0;
+  const selectionEnd = Number.isInteger(textarea.selectionEnd) ? textarea.selectionEnd : selectionStart;
+  manuscriptPendingFormatDragSelectionSession = {
+    pointerId: Number.isInteger(event.pointerId) ? event.pointerId : null,
+    sceneId,
+    formatIds: pendingFormatIds,
+    startOffset: Math.min(selectionStart, selectionEnd),
+    endOffset: Math.max(selectionStart, selectionEnd),
+  };
+}
+
+function consumePendingFormatDragSelection(event) {
+  const session = manuscriptPendingFormatDragSelectionSession;
+  if (!session) {
+    return null;
+  }
+
+  const pointerId = Number.isInteger(event?.pointerId) ? event.pointerId : null;
+  if (session.pointerId !== null && pointerId !== null && session.pointerId !== pointerId) {
+    return null;
+  }
+
+  manuscriptPendingFormatDragSelectionSession = null;
+  return session;
+}
+
+function cancelPendingFormatDragSelection(event = null) {
+  if (!manuscriptPendingFormatDragSelectionSession) {
+    return;
+  }
+
+  const pointerId = Number.isInteger(event?.pointerId) ? event.pointerId : null;
+  if (
+    manuscriptPendingFormatDragSelectionSession.pointerId !== null &&
+    pointerId !== null &&
+    manuscriptPendingFormatDragSelectionSession.pointerId !== pointerId
+  ) {
+    return;
+  }
+
+  manuscriptPendingFormatDragSelectionSession = null;
+}
+
+function applyPendingFormatDragSelection(session, activeTextarea = null) {
+  const formatIds = Array.isArray(session?.formatIds)
+    ? session.formatIds.filter((formatId) => isPendingManuscriptInlineFormat(formatId))
+    : [];
+  if (!session || !formatIds.length) {
+    return false;
+  }
+
+  const textarea = resolvePendingFormatDragSelectionTextarea(session, activeTextarea);
+  if (!(textarea instanceof HTMLTextAreaElement)) {
+    return false;
+  }
+
+  const selectionStart = Number.isInteger(textarea.selectionStart) ? textarea.selectionStart : 0;
+  const selectionEnd = Number.isInteger(textarea.selectionEnd) ? textarea.selectionEnd : selectionStart;
+  const startOffset = Math.min(selectionStart, selectionEnd);
+  const endOffset = Math.max(selectionStart, selectionEnd);
+  if (
+    endOffset <= startOffset ||
+    (startOffset === session.startOffset && endOffset === session.endOffset)
+  ) {
+    return false;
+  }
+
+  updateSceneEditorSelectionSnapshotFromTextarea(textarea);
+  const text = String(textarea.value ?? "");
+  const sceneId = String(textarea.dataset.sceneId ?? "");
+  const createSelection = () => ({
+    sceneId,
+    text,
+    formatRanges: getSceneInlineFormatRanges(sceneId, text.length),
+    startOffset,
+    endOffset,
+    collapsed: false,
+    selectionSource: "drag",
+  });
+  let applied = false;
+  for (const formatId of formatIds) {
+    const selection = createSelection();
+    if (AUTHOR_MARK_DECORATION_FORMAT_IDS.has(formatId)) {
+      const result = toggleAuthorMarkDecoration(formatId, {
+        textarea,
+        selectionOverride: selection,
+        applyOnly: true,
+      });
+      applied = result?.changed === true || applied;
+      continue;
+    }
+
+    const result = executeManuscriptInlineFormatCommand(formatId, {
+      textarea,
+      selectionOverride: selection,
+      applyOnly: true,
+    });
+    applied = result?.applied === true || applied;
+  }
+  return applied;
+}
+
+function resolvePendingFormatDragSelectionTextarea(session, activeTextarea = null) {
+  const sceneId = String(session?.sceneId ?? "").trim();
+  if (!sceneId) {
+    return null;
+  }
+
+  if (
+    activeTextarea instanceof HTMLTextAreaElement &&
+    activeTextarea.classList.contains("editor-document-input") &&
+    String(activeTextarea.dataset.sceneId ?? "").trim() === sceneId
+  ) {
+    return activeTextarea;
+  }
+
+  return document.querySelector(`.editor-document-input[data-scene-id="${CSS.escape(sceneId)}"]`);
+}
+
+function getPendingManuscriptInlineFormatIds() {
+  const inlineFormattingState = normalizeManuscriptInlineFormattingState(state.manuscriptInlineFormatting);
+  return Object.keys(INLINE_FORMATS).filter((formatId) => inlineFormattingState.pendingFormats[formatId] === true);
+}
+
+function isPendingManuscriptInlineFormat(formatId) {
+  const normalizedFormatId = String(formatId ?? "").trim();
+  if (!INLINE_FORMATS[normalizedFormatId]) {
+    return false;
+  }
+
+  return normalizeManuscriptInlineFormattingState(
+    state.manuscriptInlineFormatting,
+  ).pendingFormats[normalizedFormatId] === true;
+}
+
+// Intent: keep drag-selected manuscript ranges available to toolbar commands.
+function refreshSceneEditorSelectionStateFromActiveTextarea() {
   const activeElement = document.activeElement;
   if (!(activeElement instanceof HTMLTextAreaElement) || !activeElement.classList.contains("editor-document-input")) {
     return null;
@@ -2657,9 +2886,6 @@ function refreshSceneEditorSelectionStateFromActiveTextarea({
   updateSceneEditorSelectionSnapshotFromTextarea(activeElement);
   syncSceneEditorWordCountReadouts(activeElement);
   updateInlineFormatToolbarState(activeElement);
-  if (renderDecorationsPanel && state.sidePanelMode === "decorations") {
-    renderConsolePanel();
-  }
   return activeElement;
 }
 
@@ -2996,6 +3222,10 @@ function handleGlobalKeyboardShortcut(event) {
     return;
   }
 
+  if (handleManuscriptInlineFormatKeyboardShortcut(event, key)) {
+    return;
+  }
+
   if (!event.altKey && !isTextEditingTarget(event.target) && (key === "z" || key === "y")) {
     const handled = key === "z"
       ? (event.shiftKey ? redoBinderSceneMove() : undoBinderSceneMove())
@@ -3088,6 +3318,48 @@ function handleGlobalKeyboardShortcut(event) {
     }[key]);
   }
 }
+
+// Intent: make manuscript decoration shortcuts behave like pressing the matching toolbar control.
+function handleManuscriptInlineFormatKeyboardShortcut(event, key) {
+  if (event.altKey || event.shiftKey) {
+    return false;
+  }
+
+  const formatId = MANUSCRIPT_INLINE_FORMAT_SHORTCUTS[key];
+  if (!formatId) {
+    return false;
+  }
+
+  const textarea = resolveManuscriptShortcutTextarea(event.target);
+  if (!(textarea instanceof HTMLTextAreaElement)) {
+    return false;
+  }
+
+  event.preventDefault();
+  hideFileMenu();
+  toggleManuscriptInlineFormat(formatId);
+  return true;
+}
+
+function resolveManuscriptShortcutTextarea(target) {
+  if (
+    target instanceof HTMLTextAreaElement &&
+    target.classList.contains("editor-document-input")
+  ) {
+    return target;
+  }
+
+  const activeElement = document.activeElement;
+  if (
+    activeElement instanceof HTMLTextAreaElement &&
+    activeElement.classList.contains("editor-document-input")
+  ) {
+    return activeElement;
+  }
+
+  return null;
+}
+
 function toggleConsoleCollapse() {
   state.consoleDockCollapsed = !state.consoleDockCollapsed;
   persistConsoleDockCollapsedState(state.consoleDockCollapsed);
@@ -3406,7 +3678,6 @@ function renderManuscriptPanel() {
     selectedScene,
     editorMode,
     grammarCheckSummary: buildGrammarCheckSummary(selectedScene, getCurrentSpellcheckLexicons()),
-    projectFileDisplay: getProjectFileDisplayState(),
     projectIndex: getActiveProjectRecord()?.projectIndex ?? null,
     buildEditorStyle,
     getInlinePassageDraftAnchor,
@@ -3424,7 +3695,7 @@ function renderConsolePanel() {
 
   slot.classList.toggle("is-collapsed", state.consoleDockCollapsed);
   appRoot.classList.toggle("is-console-dock-collapsed", state.consoleDockCollapsed);
-  if (!["issues", "inspiration", "research", "decorations"].includes(state.sidePanelMode)) {
+  if (!["issues", "inspiration", "research"].includes(state.sidePanelMode)) {
     state.sidePanelMode = "issues";
   }
   slot.innerHTML = `
@@ -3444,9 +3715,7 @@ function renderConsolePanel() {
         ${renderSidePanelTabs()}
         ${state.sidePanelMode === "issues"
           ? renderIssuePanelBody()
-          : state.sidePanelMode === "decorations"
-            ? renderUserHighlightPanel()
-            : renderPassageNotePanel(state.sidePanelMode)}
+          : renderPassageNotePanel(state.sidePanelMode)}
       </div>
     </div>
   `;
@@ -3760,15 +4029,14 @@ function clearGrammarCheckPanelSelection() {
 }
 
 function syncGrammarCheckPanelHeaderState() {
-  const heading = document.querySelector(".scene-editor-heading");
-  if (!(heading instanceof HTMLElement)) {
+  const grammarControl = document.querySelector(".grammar-check-compact");
+  if (!(grammarControl instanceof HTMLElement)) {
     return;
   }
 
-  const button = heading.querySelector(".grammar-check-status");
-  const toggle = heading.querySelector(".grammar-check-toggle");
-  const checkbox = heading.querySelector("[data-editor-pref='grammarCheckEnabled']");
-  if (!(button instanceof HTMLButtonElement) || !(toggle instanceof HTMLElement)) {
+  const button = grammarControl.querySelector(".grammar-check-compact__status");
+  const checkbox = grammarControl.querySelector("[data-editor-pref='grammarCheckEnabled']");
+  if (!(button instanceof HTMLButtonElement)) {
     return;
   }
 
@@ -3776,23 +4044,15 @@ function syncGrammarCheckPanelHeaderState() {
   const grammarCheckPanelOpen = Boolean(state.grammarCheckPanel?.open);
   const selectedScene = getSelectedScene() ?? state.scenes[0] ?? null;
   const summary = grammarCheckEnabled
-    ? (buildGrammarCheckSummary(selectedScene, getCurrentSpellcheckLexicons())?.label ?? "Grammar check")
+    ? (buildGrammarCheckSummary(selectedScene, getCurrentSpellcheckLexicons())?.label ?? "0 flagged words")
     : "Live off";
 
   button.setAttribute("aria-pressed", grammarCheckPanelOpen ? "true" : "false");
   button.title = grammarCheckPanelOpen ? "Close grammar check list" : "Open grammar check list";
-  const buttonLabel = button.querySelector("span");
-  if (buttonLabel instanceof HTMLElement) {
-    buttonLabel.textContent = summary;
-  }
+  button.textContent = summary;
 
   if (checkbox instanceof HTMLInputElement) {
     checkbox.checked = grammarCheckEnabled;
-  }
-
-  const toggleLabel = toggle.querySelector("strong");
-  if (toggleLabel instanceof HTMLElement) {
-    toggleLabel.textContent = grammarCheckEnabled ? "On" : "Off";
   }
 }
 
@@ -3977,6 +4237,8 @@ function focusManuscriptFindMatchProjection(match, options = {}) {
       endOffset: match.endOffset,
     }],
     includeAuthorMarks: false,
+    includeDraftProofing: false,
+    includeDiagnostics: false,
     includeAnchoredRecords: false,
     includeSpellcheck: false,
   }).find((candidate) => candidate.channel === MANUSCRIPT_PROJECTION_CHANNELS.SEARCH) ?? null;
@@ -4241,13 +4503,11 @@ function renderSidePanelTabs() {
   const taskCount = getOpenManuscriptTasks().length;
   const inspirationCount = state.passageNotes.filter((note) => note.noteType === "inspiration").length;
   const researchCount = state.passageNotes.filter((note) => note.noteType === "research").length;
-  const highlightCount = getUserHighlightMarks().length;
   return `
     <div class="side-panel-tabs" aria-label="Editor side panel modes">
       ${renderSidePanelTab("issues", "Tasks", taskCount)}
       ${renderSidePanelTab("inspiration", "Inspiration", inspirationCount)}
       ${renderSidePanelTab("research", "Research", researchCount)}
-      ${renderSidePanelTab("decorations", "Decorations", highlightCount)}
     </div>
   `;
 }
@@ -4292,11 +4552,6 @@ function getOpenManuscriptTasks() {
   return selectOpenManuscriptTasks(state.manuscriptTasks);
 }
 
-function getUserHighlightMarks() {
-  return (Array.isArray(state.workspace?.project?.marks) ? state.workspace.project.marks : [])
-    .filter((mark) => mark?.kind === "highlight" && mark?.source === "author");
-}
-
 function renderPassageNotePanel(noteType) {
   const panelModel = buildPassageNotePanelModel(
     state.passageNotes,
@@ -4309,61 +4564,6 @@ function renderPassageNotePanel(noteType) {
     collapsedChapterIds: state.collapsedConsoleChapterIds?.[noteType],
     formatChapterTitle: formatChapterDisplayTitle,
   });
-}
-
-function renderUserHighlightPanel() {
-  const model = buildUserHighlightPanelModel({
-    marks: state.workspace?.project?.marks,
-    scenes: state.scenes,
-    selectedHighlightId: state.selectedUserHighlightId,
-    activeSelection: getActiveUserHighlightSelectionForPanel(),
-  });
-  return renderUserHighlightPanelHTML(model, {
-    collapsedChapterIds: state.collapsedConsoleChapterIds?.decorations,
-    formatChapterTitle: formatChapterDisplayTitle,
-  });
-}
-
-function getActiveUserHighlightSelectionForPanel() {
-  const snapshotSceneId =
-    state.sceneEditorSelectionSnapshot && typeof state.sceneEditorSelectionSnapshot.sceneId === "string"
-      ? state.sceneEditorSelectionSnapshot.sceneId.trim()
-      : "";
-  const activeElement = document.activeElement;
-  const activeTextarea = activeElement instanceof HTMLTextAreaElement && activeElement.classList.contains("editor-document-input")
-    ? activeElement
-    : null;
-  const textarea = activeTextarea
-    ?? (snapshotSceneId
-      ? document.querySelector(`.editor-document-input[data-scene-id="${CSS.escape(snapshotSceneId)}"]`)
-      : null);
-  const sceneId = String(textarea?.dataset?.sceneId ?? snapshotSceneId);
-  const scene = getScene(sceneId);
-  if (!scene) {
-    return null;
-  }
-
-  const text = textarea instanceof HTMLTextAreaElement ? textarea.value : String(scene.editorText ?? "");
-  const inlineFormatRanges = getSceneInlineFormatRanges(sceneId, text.length);
-  const editorHost = textarea instanceof HTMLTextAreaElement ? resolveTextareaEditorHost(textarea) : null;
-  const selection = resolveUserMarkCommandSelection({
-    liveSelection: editorHost?.readSelection(inlineFormatRanges) ?? null,
-    cachedSelection: state.sceneEditorSelectionSnapshot,
-    sceneId,
-    text,
-    formatRanges: inlineFormatRanges,
-  });
-  if (!selection) {
-    return null;
-  }
-
-  return {
-    sceneId,
-    sceneTitle: scene.sceneTitle ?? "Untitled scene",
-    selectedText: text.slice(selection.startOffset, selection.endOffset).trim(),
-    startOffset: selection.startOffset,
-    endOffset: selection.endOffset,
-  };
 }
 
 function buildRevisionPanelModel() {
@@ -5012,6 +5212,8 @@ function syncNarrationTakeSelectionPreview() {
     text: textarea.value,
     narrationSelection: selection,
     includeAuthorMarks: false,
+    includeDraftProofing: false,
+    includeDiagnostics: false,
     includeAnchoredRecords: false,
     includeSpellcheck: false,
   }).find((candidate) => candidate.channel === MANUSCRIPT_PROJECTION_CHANNELS.NARRATION_FOLLOW) ?? null;
@@ -5203,13 +5405,210 @@ function goToVoiceRecordingVerse(recordingId) {
   render();
 }
 
+// Intent: keep the highlight colour picker as a floating editor menu while the selected colour remains a user preference.
+function getHighlightColorButtonTarget(target) {
+  return target instanceof Element
+    ? target.closest('[data-highlight-color-trigger], [data-action="toggle-inline-format"][data-inline-format="highlight"]')
+    : null;
+}
+
+function scheduleHighlightColorPaletteHoverOpen(button) {
+  clearHighlightColorHoverTimer();
+  if (!(button instanceof HTMLElement)) {
+    return;
+  }
+
+  highlightColorHoverTimer = window.setTimeout(() => {
+    openHighlightColorPalette(button);
+  }, 1000);
+}
+
+function clearHighlightColorHoverTimer() {
+  if (highlightColorHoverTimer === null) {
+    return;
+  }
+
+  window.clearTimeout(highlightColorHoverTimer);
+  highlightColorHoverTimer = null;
+}
+
+function toggleHighlightColorPalette(button) {
+  clearHighlightColorHoverTimer();
+  if (state.highlightColorPaletteOpen) {
+    closeHighlightColorPalette({ renderAfter: true });
+    return;
+  }
+
+  openHighlightColorPalette(button);
+}
+
+function openHighlightColorPalette(button = null) {
+  clearHighlightColorHoverTimer();
+  state.highlightColorPaletteOpen = true;
+  state.highlightColorPalettePosition = resolveHighlightColorPalettePosition(button);
+  hideTaskContextMenu();
+  renderManuscriptPanel();
+  syncSceneDocumentLayout();
+}
+
+function closeHighlightColorPalette(options = {}) {
+  if (!state.highlightColorPaletteOpen) {
+    return;
+  }
+
+  state.highlightColorPaletteOpen = false;
+  state.highlightColorPalettePosition = null;
+  if (options.renderAfter === true) {
+    renderManuscriptPanel();
+    syncSceneDocumentLayout();
+    return;
+  }
+
+  document.querySelector("[data-highlight-color-palette]")?.remove();
+  const highlightButton = document.querySelector('[data-action="toggle-inline-format"][data-inline-format="highlight"]');
+  if (highlightButton instanceof HTMLButtonElement) {
+    highlightButton.setAttribute("aria-expanded", "false");
+  }
+}
+
+function resolveHighlightColorPalettePosition(button) {
+  const sceneShell = button instanceof HTMLElement
+    ? button.closest(".scene-editor-shell")
+    : null;
+  if (!(button instanceof HTMLElement) || !(sceneShell instanceof HTMLElement)) {
+    return { left: 12, top: 84 };
+  }
+
+  const buttonRect = button.getBoundingClientRect();
+  const shellRect = sceneShell.getBoundingClientRect();
+  const estimatedPaletteWidth = Math.min(360, Math.max(280, shellRect.width - 24));
+  const leftLimit = Math.max(12, shellRect.width - estimatedPaletteWidth - 12);
+  const left = Math.max(12, Math.min(buttonRect.left - shellRect.left, leftLimit));
+  const top = Math.max(12, buttonRect.bottom - shellRect.top + 8);
+  return {
+    left,
+    top,
+  };
+}
+
+function setHighlightColorPreference(colorId) {
+  const previousHighlightColorId = state.editorPrefs.highlightColorId;
+  state.editorPrefs = normalizeEditorPrefs({
+    ...state.editorPrefs,
+    highlightColorId: String(colorId ?? ""),
+  });
+  closeHighlightColorPalette();
+  persistHighlightColorPreference("highlight-colour-updated", "setHighlightColorPreference");
+  renderManuscriptPanel();
+  syncSceneDocumentLayout();
+  editorInteractionLog.info("user-action", "manuscript.highlight-colour.changed", "Changed user highlight colour.", {
+    highlightColorId: state.editorPrefs.highlightColorId,
+    changed: previousHighlightColorId !== state.editorPrefs.highlightColorId,
+  });
+}
+
+function setHighlightCustomRgbPreference(channel, value) {
+  const normalizedChannel = ["red", "green", "blue"].includes(channel)
+    ? channel
+    : "";
+  if (!normalizedChannel) {
+    return;
+  }
+
+  state.editorPrefs = normalizeEditorPrefs({
+    ...state.editorPrefs,
+    highlightColorId: CUSTOM_HIGHLIGHT_COLOR_ID,
+    highlightCustomRgb: {
+      ...state.editorPrefs.highlightCustomRgb,
+      [normalizedChannel]: value,
+    },
+  });
+  persistHighlightColorPreference("highlight-custom-rgb-updated", "setHighlightCustomRgbPreference");
+  syncHighlightColorPreferenceDom();
+}
+
+function persistHighlightColorPreference(dirtyReason, source) {
+  writeStoredJson(EDITOR_PREFS_KEY, state.editorPrefs);
+  persistCurrentProjectRecord({
+    domain: "app-settings",
+    dirtyReason,
+    source,
+  });
+}
+
+function syncHighlightColorPreferenceDom() {
+  const highlightColor = resolveHighlightColorOption(
+    state.editorPrefs.highlightColorId,
+    state.editorPrefs.highlightCustomRgb,
+  );
+  for (const editorFrame of document.querySelectorAll("[data-scene-editor]")) {
+    if (editorFrame instanceof HTMLElement) {
+      editorFrame.setAttribute("style", buildEditorStyle());
+    }
+  }
+
+  const highlightButton = document.querySelector('[data-highlight-color-trigger]');
+  if (highlightButton instanceof HTMLElement) {
+    highlightButton.style.setProperty("--highlight-button-color", highlightColor.color);
+    highlightButton.style.setProperty("--highlight-button-outline", highlightColor.outline);
+    highlightButton.setAttribute("aria-expanded", state.highlightColorPaletteOpen ? "true" : "false");
+  }
+
+  const palette = document.querySelector("[data-highlight-color-palette]");
+  if (!(palette instanceof HTMLElement)) {
+    return;
+  }
+
+  const customColor = resolveHighlightColorOption(CUSTOM_HIGHLIGHT_COLOR_ID, state.editorPrefs.highlightCustomRgb);
+  for (const swatch of palette.querySelectorAll("[data-highlight-color-id]")) {
+    if (!(swatch instanceof HTMLElement)) {
+      continue;
+    }
+    const isActive = swatch.dataset.highlightColorId === state.editorPrefs.highlightColorId;
+    swatch.classList.toggle("is-active", isActive);
+    swatch.setAttribute("aria-checked", isActive ? "true" : "false");
+    if (swatch.dataset.highlightColorId === CUSTOM_HIGHLIGHT_COLOR_ID) {
+      swatch.style.setProperty("--highlight-swatch-color", customColor.color);
+      swatch.style.setProperty("--highlight-swatch-outline", customColor.outline);
+    }
+  }
+
+  for (const [channel, value] of Object.entries(customColor.rgb)) {
+    const input = palette.querySelector(`[data-highlight-rgb-channel="${CSS.escape(channel)}"]`);
+    if (input instanceof HTMLInputElement) {
+      input.value = String(value);
+    }
+    const output = palette.querySelector(`[data-highlight-rgb-output="${CSS.escape(channel)}"]`);
+    if (output instanceof HTMLOutputElement) {
+      output.value = String(value);
+      output.textContent = String(value);
+    }
+  }
+
+  const preview = palette.querySelector("[data-highlight-rgb-preview]");
+  if (preview instanceof HTMLElement) {
+    preview.style.setProperty("--highlight-swatch-color", customColor.color);
+    preview.style.setProperty("--highlight-swatch-outline", customColor.outline);
+  }
+  const label = palette.querySelector("[data-highlight-rgb-label]");
+  if (label instanceof HTMLElement) {
+    label.textContent = `rgb(${customColor.rgb.red}, ${customColor.rgb.green}, ${customColor.rgb.blue})`;
+  }
+}
+
 // Intent: translate editor preferences into CSS variables without mutating manuscript data.
 function buildEditorStyle() {
+  const highlightColor = resolveHighlightColorOption(
+    state.editorPrefs.highlightColorId,
+    state.editorPrefs.highlightCustomRgb,
+  );
   return [
     `--editor-content-width:${state.editorPrefs.editorWidth}px`,
     `--editor-font-size:${state.editorPrefs.fontSize}px`,
     `--editor-line-height:${state.editorPrefs.lineHeight}`,
     `--editor-font-stack:${getFontStack()}`,
+    `--editor-highlight-color:${highlightColor.color}`,
+    `--editor-highlight-outline:${highlightColor.outline}`,
   ].join("; ");
 }
 
@@ -5265,6 +5664,7 @@ function syncSceneDocumentLayout(options = {}) {
   gutter.innerHTML = Array.from({ length: visualLineCount }, (_, index) => `
     <span class="editor-gutter-line">${lineStartNumber + index}</span>
   `).join("");
+  syncDraftProofLayer(editorHost, selectedSceneId);
   syncInlineFormatLayer(editorHost);
   syncDiagnosticLayer(editorHost, selectedSceneId);
   if (state.editorPrefs.grammarCheckEnabled === false) {
@@ -5275,6 +5675,30 @@ function syncSceneDocumentLayout(options = {}) {
     syncSpellcheckLayer(editorHost, selectedSceneId, options);
   }
   syncInlinePassageDraftLayout();
+}
+
+// Intent: rebuild draft proof-read coverage visuals from durable run coverage without persisting overlays.
+function syncDraftProofLayer(editorHost, sceneId) {
+  const scene = getScene(sceneId);
+  if (!scene || !(editorHost?.textarea instanceof HTMLTextAreaElement)) {
+    clearTextareaProjectionLayer(editorHost, MANUSCRIPT_PROJECTION_CHANNELS.DRAFT_PROOF);
+    return;
+  }
+
+  renderTextareaDraftProofLayer(editorHost, {
+    sceneId,
+    text: editorHost.textarea.value,
+    projections: selectManuscriptProjections({
+      sceneId,
+      text: editorHost.textarea.value,
+      draftProofing: state.draftProofing,
+      includeAuthorMarks: false,
+      includeDiagnostics: false,
+      includeAnchoredRecords: false,
+      includeRuntimeSelections: false,
+      includeSpellcheck: false,
+    }),
+  });
 }
 
 // Intent: defer the current overlay limitation to the textarea host while richer hosts remain possible.
@@ -5296,6 +5720,7 @@ function syncInlineFormatLayer(editorHost) {
       sceneBlocks: scene.blocks,
       manuscriptMarks: state.workspace?.project?.marks,
       inlineFormatRanges: getSceneInlineFormatRanges(sceneId, editorHost.textarea.value.length),
+      includeDraftProofing: false,
       includeDiagnostics: false,
       includeAnchoredRecords: false,
       includeRuntimeSelections: false,
@@ -5322,6 +5747,7 @@ function syncDiagnosticLayer(editorHost, sceneId) {
       sceneBlocks: scene.blocks,
       diagnosticIssues: state.workspace?.project?.issues,
       includeAuthorMarks: false,
+      includeDraftProofing: false,
       includeAnchoredRecords: false,
       includeRuntimeSelections: false,
       includeSpellcheck: false,
@@ -5638,6 +6064,7 @@ function loadLegacyProjectState(projectId = null) {
     templateDrafts: loadTemplateDrafts(),
     manuscriptTasks: loadManuscriptTasks(),
     passageNotes: loadPassageNotes(),
+    draftProofing: createDefaultDraftProofingState(),
     editorPrefs: loadEditorPrefs(),
     localAiPrefs: loadLocalAiPrefs(),
     projectTitle: loadProjectTitle(state.workspace?.project?.title ?? ""),
@@ -5705,6 +6132,7 @@ function mergeProjectRecords(storedRecord, seedRecord, legacyState = null) {
     templateDrafts: storedRecord.templateDrafts ?? seedRecord.templateDrafts ?? legacyState?.templateDrafts ?? createTemplateDrafts(),
     manuscriptTasks: mergeProjectLibraryItemsById(storedRecord.manuscriptTasks, seedRecord.manuscriptTasks, { clone: cloneValue }),
     passageNotes: mergeProjectLibraryItemsById(storedRecord.passageNotes, seedRecord.passageNotes, { clone: cloneValue }),
+    draftProofing: normalizeDraftProofingState(storedRecord.draftProofing ?? seedRecord.draftProofing ?? legacyState?.draftProofing),
     sourceArchive: cloneValue(seedRecord.sourceArchive ?? storedRecord.sourceArchive ?? []),
     importReport: cloneValue(seedRecord.importReport ?? storedRecord.importReport ?? {}),
     editorPrefs: normalizeEditorPrefs(storedRecord.editorPrefs ?? seedRecord.editorPrefs ?? legacyState?.editorPrefs),
@@ -6448,6 +6876,267 @@ function persistPassageNotesState(options = {}) {
   });
 }
 
+// Intent: persist proof-read coverage as project workflow state rather than editor-only decoration.
+function persistDraftProofingState(options = {}) {
+  persistCurrentProjectRecord({
+    domain: "draft-proofing",
+    dirtyReason: options.dirtyReason ?? "draft-proofing-updated",
+    source: options.source ?? "persistDraftProofingState",
+    skipProjectFileAutosave: options.skipProjectFileAutosave === true,
+    markWorkingState: options.markWorkingState,
+  });
+}
+
+function getActiveDraftProofRunRecord() {
+  const draftProofing = normalizeDraftProofingState(state.draftProofing);
+  return draftProofing.activeRunId
+    ? draftProofing.runs.find((run) => run.id === draftProofing.activeRunId && run.status === "active") ?? null
+    : null;
+}
+
+function applyDraftProofingResult(result, {
+  dirtyReason = "draft-proofing-updated",
+  source = "draftProofing",
+  persist = true,
+  renderPanel = false,
+  syncLayer = true,
+} = {}) {
+  if (!result?.changed) {
+    return false;
+  }
+
+  state.draftProofing = normalizeDraftProofingState(result.state);
+  if (persist) {
+    persistDraftProofingState({
+      dirtyReason,
+      source,
+    });
+  }
+  if (renderPanel) {
+    renderManuscriptPanel();
+    syncSceneDocumentLayout();
+  } else if (syncLayer) {
+    syncDraftProofLayerForActiveEditor();
+  }
+  return true;
+}
+
+function toggleDraftProofRun() {
+  const activeRun = getActiveDraftProofRunRecord();
+  const now = new Date().toISOString();
+  const result = activeRun
+    ? pauseDraftProofRun(state.draftProofing, { runId: activeRun.id, now })
+    : startOrResumeDraftProofRun(state.draftProofing, { now });
+  const changed = applyDraftProofingResult(result, {
+    dirtyReason: activeRun ? "draft-proof-run-paused" : "draft-proof-run-activated",
+    source: "toggleDraftProofRun",
+    renderPanel: true,
+  });
+  editorInteractionLog.info("user-action", "draft-proof.toggle", "Toggled draft proof-read run.", {
+    changed,
+    reason: result.reason,
+    runId: result.run?.id ?? "",
+    active: !activeRun,
+  });
+
+  if (!activeRun) {
+    window.requestAnimationFrame(() => {
+      recordDraftProofCoverageFromActiveViewport({
+        source: "draft-proof-start",
+      });
+      const textarea = getEditorTextareaForScene(state.selectedSceneId);
+      recordDraftProofCoverageFromTextarea(textarea, {
+        source: "draft-proof-start-selection",
+        persist: true,
+      });
+    });
+  }
+}
+
+function finishDraftProofRun() {
+  const now = new Date().toISOString();
+  const result = completeDraftProofRun(state.draftProofing, { now });
+  const changed = applyDraftProofingResult(result, {
+    dirtyReason: "draft-proof-run-completed",
+    source: "finishDraftProofRun",
+    renderPanel: true,
+  });
+  editorInteractionLog.info("user-action", "draft-proof.complete", "Completed draft proof-read run.", {
+    changed,
+    reason: result.reason,
+    runId: result.run?.id ?? "",
+  });
+}
+
+function handleDraftProofCoverageScroll(event) {
+  if (!getActiveDraftProofRunRecord()) {
+    return;
+  }
+
+  const target = event.target instanceof HTMLElement ? event.target : null;
+  if (!(target instanceof HTMLElement) || !target.classList.contains("scene-editor-codeframe")) {
+    return;
+  }
+
+  recordDraftProofCoverageFromViewport(target, {
+    source: "scroll",
+  });
+}
+
+function recordDraftProofCoverageFromActiveViewport(options = {}) {
+  const sceneId = state.selectedSceneId;
+  const codeframe = sceneId
+    ? document.querySelector(`.scene-editor-codeframe[data-scene-editor="${CSS.escape(sceneId)}"]`)
+    : document.querySelector(".scene-editor-codeframe");
+  return recordDraftProofCoverageFromViewport(codeframe, options);
+}
+
+function recordDraftProofCoverageFromViewport(codeframe, {
+  source = "viewport",
+} = {}) {
+  if (!getActiveDraftProofRunRecord() || !(codeframe instanceof HTMLElement)) {
+    return false;
+  }
+
+  const textarea = codeframe.querySelector(".editor-document-input");
+  const editorHost = resolveTextareaEditorHost(textarea);
+  if (!(textarea instanceof HTMLTextAreaElement) || !editorHost) {
+    return false;
+  }
+
+  const text = String(textarea.value ?? "");
+  if (!text.length) {
+    return false;
+  }
+
+  const metrics = getTextareaEditorHostWrapMetrics(editorHost);
+  const firstVisualLineIndex = Math.max(0, Math.floor(codeframe.scrollTop / Math.max(1, metrics.lineHeight)) - 1);
+  const visibleLineCount = Math.max(1, Math.ceil(codeframe.clientHeight / Math.max(1, metrics.lineHeight)) + 2);
+  const startOffset = firstVisualLineIndex <= 0
+    ? 0
+    : findTextareaOffsetForVisualLineEnd(text, firstVisualLineIndex - 1, metrics.charactersPerLine);
+  const endOffset = findTextareaOffsetForVisualLineEnd(
+    text,
+    firstVisualLineIndex + visibleLineCount,
+    metrics.charactersPerLine,
+  );
+
+  return recordDraftProofCoverageRange({
+    sceneId: editorHost.sceneId,
+    startOffset,
+    endOffset,
+    textLength: text.length,
+    dirtyReason: "draft-proof-coverage-viewport",
+    source: `draftProof.${source}`,
+  });
+}
+
+function recordDraftProofCoverageFromTextarea(textarea, {
+  source = "textarea",
+  persist = true,
+} = {}) {
+  if (!getActiveDraftProofRunRecord() || !(textarea instanceof HTMLTextAreaElement) || !textarea.classList.contains("editor-document-input")) {
+    return false;
+  }
+
+  const editorHost = resolveTextareaEditorHost(textarea);
+  if (!editorHost) {
+    return false;
+  }
+
+  const text = String(textarea.value ?? "");
+  if (!text.length) {
+    return false;
+  }
+
+  const selectionStart = Number.isInteger(textarea.selectionStart) ? textarea.selectionStart : 0;
+  const selectionEnd = Number.isInteger(textarea.selectionEnd) ? textarea.selectionEnd : selectionStart;
+  const startOffset = Math.min(selectionStart, selectionEnd);
+  const endOffset = Math.max(selectionStart, selectionEnd);
+  const range = endOffset > startOffset
+    ? { startOffset, endOffset }
+    : resolveDraftProofCaretCoverageRange(editorHost, startOffset);
+  if (!range) {
+    return false;
+  }
+
+  return recordDraftProofCoverageRange({
+    sceneId: editorHost.sceneId,
+    startOffset: range.startOffset,
+    endOffset: range.endOffset,
+    textLength: text.length,
+    dirtyReason: "draft-proof-coverage-activity",
+    source: `draftProof.${source}`,
+    persist,
+  });
+}
+
+function recordDraftProofCoverageRange({
+  sceneId = "",
+  startOffset = 0,
+  endOffset = 0,
+  textLength = 0,
+  dirtyReason = "draft-proof-coverage-updated",
+  source = "recordDraftProofCoverageRange",
+  persist = true,
+} = {}) {
+  const result = addDraftProofCoverageRange(state.draftProofing, {
+    sceneId,
+    startOffset,
+    endOffset,
+    textLength,
+    now: new Date().toISOString(),
+  });
+  return applyDraftProofingResult(result, {
+    dirtyReason,
+    source,
+    persist,
+    syncLayer: true,
+  });
+}
+
+function resolveDraftProofCaretCoverageRange(editorHost, caretOffset) {
+  if (!(editorHost?.textarea instanceof HTMLTextAreaElement)) {
+    return null;
+  }
+
+  const text = String(editorHost.textarea.value ?? "");
+  if (!text.length) {
+    return null;
+  }
+
+  const metrics = getTextareaEditorHostWrapMetrics(editorHost);
+  const visualLineIndex = estimateTextareaVisualLineBeforeOffset(
+    text,
+    caretOffset,
+    metrics.charactersPerLine,
+  );
+  const startOffset = visualLineIndex <= 0
+    ? 0
+    : findTextareaOffsetForVisualLineEnd(text, visualLineIndex - 1, metrics.charactersPerLine);
+  const endOffset = findTextareaOffsetForVisualLineEnd(text, visualLineIndex, metrics.charactersPerLine);
+  if (endOffset > startOffset) {
+    return {
+      startOffset,
+      endOffset,
+    };
+  }
+
+  const safeOffset = Math.max(0, Math.min(caretOffset, text.length - 1));
+  return {
+    startOffset: safeOffset,
+    endOffset: Math.min(text.length, safeOffset + 1),
+  };
+}
+
+function syncDraftProofLayerForActiveEditor() {
+  const textarea = getEditorTextareaForScene(state.selectedSceneId);
+  const editorHost = resolveTextareaEditorHost(textarea);
+  if (editorHost) {
+    syncDraftProofLayer(editorHost, editorHost.sceneId);
+  }
+}
+
 // Intent: update durable task/note anchors from the live edit transaction before scene projections rerender.
 function updateAnchoredRecordsForSceneTextEdit(sceneId, previousText, nextText, {
   selectionStart = null,
@@ -6503,6 +7192,14 @@ function updateAnchoredRecordsForSceneTextEdit(sceneId, previousText, nextText, 
     selectionStart,
     selectionEnd,
   });
+  const draftProofResult = updateDraftProofCoverageForTextEdit(state.draftProofing, {
+    sceneId: normalizedSceneId,
+    previousText,
+    nextText,
+    now,
+    selectionStart,
+    selectionEnd,
+  });
 
   if (taskResult.changedRecords.length) {
     state.manuscriptTasks = taskResult.records;
@@ -6523,12 +7220,16 @@ function updateAnchoredRecordsForSceneTextEdit(sceneId, previousText, nextText, 
       eventTags: eventTagResult.records,
     };
   }
+  if (draftProofResult.changed) {
+    state.draftProofing = normalizeDraftProofingState(draftProofResult.state);
+  }
   if (
     taskResult.changedRecords.length ||
     noteResult.changedRecords.length ||
     issueResult.changedRecords.length ||
     eventTagResult.changedRecords.length ||
-    narrationResult.changedCount
+    narrationResult.changedCount ||
+    draftProofResult.changed
   ) {
     manuscriptStateLog.debug("state-change", "manuscript.anchors.updated", "Updated anchored record ranges from scene edit.", {
       sceneId: normalizedSceneId,
@@ -6538,6 +7239,7 @@ function updateAnchoredRecordsForSceneTextEdit(sceneId, previousText, nextText, 
       eventTagCount: eventTagResult.changedRecords.length,
       markCount: 0,
       narrationCount: narrationResult.changedCount,
+      draftProofingChanged: draftProofResult.changed,
     });
   }
 
@@ -7200,6 +7902,7 @@ function createProject() {
     templateDrafts: createTemplateDrafts(),
     manuscriptTasks: [],
     passageNotes: [],
+    draftProofing: createDefaultDraftProofingState(),
     editorPrefs: createDefaultEditorPrefs(),
     localAiPrefs: createDefaultLocalAiPrefs(),
   });
@@ -7923,7 +8626,7 @@ function renderPaneVisibility() {
 }
 
 function selectSidePanel(panelId) {
-  if (!["issues", "inspiration", "research", "decorations"].includes(panelId)) {
+  if (!["issues", "inspiration", "research"].includes(panelId)) {
     return;
   }
 
@@ -7931,16 +8634,7 @@ function selectSidePanel(panelId) {
   if (panelId === "issues") {
     state.selectedPassageNoteId = null;
     state.selectedIssueId = null;
-    state.selectedUserHighlightId = null;
-  } else if (panelId === "decorations") {
-    state.selectedPassageNoteId = null;
-    state.selectedIssueId = null;
-    state.selectedUserHighlightId =
-      getUserHighlightMarks().some((mark) => mark.id === state.selectedUserHighlightId)
-        ? state.selectedUserHighlightId
-        : getUserHighlightMarks()[0]?.id ?? null;
   } else {
-    state.selectedUserHighlightId = null;
     const selectedNote = state.passageNotes.find((note) =>
       note.noteType === panelId && note.id === state.selectedPassageNoteId,
     );
@@ -9615,6 +10309,7 @@ function toggleManuscriptInlineFormat(formatId) {
 function executeManuscriptInlineFormatCommand(formatId, {
   textarea = null,
   selectionOverride = null,
+  applyOnly = false,
 } = {}) {
   const activeElement = document.activeElement;
   const targetTextarea = textarea instanceof HTMLTextAreaElement && textarea.classList.contains("editor-document-input")
@@ -9650,6 +10345,7 @@ function executeManuscriptInlineFormatCommand(formatId, {
   });
   const result = controller.execute("toggleInlineFormat", {
     format: formatId,
+    applyOnly,
   });
 
   if (!result.applied) {
@@ -10050,7 +10746,11 @@ function shouldSyncLiveSceneDraftForAuthorMark(scene, liveText, liveBlocks) {
 }
 
 // Intent: apply author mark buttons to selected manuscript spans or toggle pending styling for incoming text.
-function toggleAuthorMarkDecoration(formatId) {
+function toggleAuthorMarkDecoration(formatId, {
+  textarea: requestedTextarea = null,
+  selectionOverride = null,
+  applyOnly = false,
+} = {}) {
   const normalizedFormatId = normalizeAuthorMarkDecorationFormat(formatId);
   const formatLabel = INLINE_FORMATS[normalizedFormatId]?.label ?? normalizedFormatId;
   if (!normalizedFormatId) {
@@ -10066,11 +10766,13 @@ function toggleAuthorMarkDecoration(formatId) {
     state.sceneEditorSelectionSnapshot && typeof state.sceneEditorSelectionSnapshot.sceneId === "string"
       ? state.sceneEditorSelectionSnapshot.sceneId.trim()
       : "";
-  const textarea = activeElement instanceof HTMLTextAreaElement && activeElement.classList.contains("editor-document-input")
-    ? activeElement
-    : cachedSceneId
-      ? document.querySelector(`.editor-document-input[data-scene-id="${CSS.escape(cachedSceneId)}"]`)
-      : document.querySelector(".editor-document-input");
+  const textarea = requestedTextarea instanceof HTMLTextAreaElement && requestedTextarea.classList.contains("editor-document-input")
+    ? requestedTextarea
+    : activeElement instanceof HTMLTextAreaElement && activeElement.classList.contains("editor-document-input")
+      ? activeElement
+      : cachedSceneId
+        ? document.querySelector(`.editor-document-input[data-scene-id="${CSS.escape(cachedSceneId)}"]`)
+        : document.querySelector(".editor-document-input");
   const editorHost = resolveTextareaEditorHost(textarea);
   const sceneId = String(textarea?.dataset?.sceneId ?? "");
   let scene = getScene(sceneId);
@@ -10096,7 +10798,7 @@ function toggleAuthorMarkDecoration(formatId) {
   const liveText = liveSceneContext.text;
   const liveSceneBlocks = liveSceneContext.blocks;
   const inlineFormatRanges = getSceneInlineFormatRanges(sceneId, liveText.length);
-  const liveSelection = editorHost.readSelection(inlineFormatRanges);
+  const liveSelection = selectionOverride ?? editorHost.readSelection(inlineFormatRanges);
   const formatPending = normalizeManuscriptInlineFormattingState(
     state.manuscriptInlineFormatting,
   ).pendingFormats[normalizedFormatId] === true;
@@ -10114,19 +10816,37 @@ function toggleAuthorMarkDecoration(formatId) {
         mode: USER_MARK_COMMAND_MODE.SELECTION,
         selection: selectedWhilePending,
       };
-    } else {
+    } else if (!applyOnly) {
       stopPendingAuthorMarkDecoration(normalizedFormatId, textarea, sceneId);
       return;
     }
   }
 
-  commandIntent ??= resolveUserMarkCommandIntent({
-    liveSelection,
-    cachedSelection: state.sceneEditorSelectionSnapshot,
-    sceneId,
-    text: liveText,
-    formatRanges: inlineFormatRanges,
-  });
+  if (!commandIntent && applyOnly) {
+    const selectedForApply = resolveUserMarkCommandSelection({
+      liveSelection,
+      cachedSelection: state.sceneEditorSelectionSnapshot,
+      sceneId,
+      text: liveText,
+      formatRanges: inlineFormatRanges,
+    });
+    commandIntent = selectedForApply
+      ? {
+          mode: USER_MARK_COMMAND_MODE.SELECTION,
+          selection: selectedForApply,
+        }
+      : null;
+  }
+
+  if (!commandIntent && !applyOnly) {
+    commandIntent = resolveUserMarkCommandIntent({
+      liveSelection,
+      cachedSelection: state.sceneEditorSelectionSnapshot,
+      sceneId,
+      text: liveText,
+      formatRanges: inlineFormatRanges,
+    });
+  }
   if (!commandIntent) {
     editorInteractionLog.warn("user-action", `manuscript.${normalizedFormatId}.skipped`, `Skipped ${formatLabel.toLowerCase()} author mark command.`, {
       sceneId,
@@ -10155,7 +10875,7 @@ function toggleAuthorMarkDecoration(formatId) {
     ...state.manuscriptInlineFormatting,
     pendingFormats: {
       ...state.manuscriptInlineFormatting?.pendingFormats,
-      [normalizedFormatId]: formatPending === true,
+      [normalizedFormatId]: applyOnly ? formatPending === true : true,
     },
   });
 
@@ -10164,7 +10884,8 @@ function toggleAuthorMarkDecoration(formatId) {
   });
 
   const now = new Date().toISOString();
-  const result = toggleManuscriptMarksForSceneSelection({
+  const mutateMarksForSceneSelection = applyManuscriptMarksForSceneSelection;
+  const result = mutateMarksForSceneSelection({
     marks: project.marks,
     sequences: project.sequences,
     projectId: project.id ?? state.activeProjectId ?? "",
@@ -10197,9 +10918,6 @@ function toggleAuthorMarkDecoration(formatId) {
   });
   project.marks = promotedResult.marks;
   project.sequences = promotedResult.sequences;
-  if (normalizedFormatId === "highlight") {
-    state.selectedUserHighlightId = result.addedMarks[0]?.id ?? null;
-  }
   updateSceneDraft(sceneId, (draft) => {
     draft.editorText = liveText;
     draft.blocks = liveSceneBlocks;
@@ -10212,15 +10930,17 @@ function toggleAuthorMarkDecoration(formatId) {
     reason: "manuscript-author-mark",
     markSessionActivity: false,
   });
-  if (normalizedFormatId === "highlight") {
-    renderConsolePanel();
-  }
   syncSceneDocumentLayout({ skipSpellcheck: true });
   takeToSceneRange(sceneId, selection.startOffset, selection.endOffset, { behavior: "smooth" });
   updateInlineFormatToolbarState(textarea);
   editorInteractionLog.info("user-action", `manuscript.${normalizedFormatId}.toggled`, `Toggled ${formatLabel.toLowerCase()} author mark.`, {
     sceneId,
     format: normalizedFormatId,
+    applyOnly,
+    startOffset: selection.startOffset,
+    endOffset: selection.endOffset,
+    selectedTextLength: Math.max(0, selection.endOffset - selection.startOffset),
+    selectedTextPreview: liveText.slice(selection.startOffset, selection.endOffset).slice(0, 80),
     addedCount: result.addedMarks.length,
     removedCount: result.removedMarkIds.length,
     promotedCompatibilityCount: promotedResult.promotedMarkIds.length,
@@ -10228,6 +10948,7 @@ function toggleAuthorMarkDecoration(formatId) {
     toggledOff: result.toggledOff,
     pending: normalizeManuscriptInlineFormattingState(state.manuscriptInlineFormatting).pendingFormats[normalizedFormatId] === true,
   });
+  return result;
 }
 
 function stopPendingUserHighlightDecoration(textarea, sceneId = "") {
@@ -10262,85 +10983,25 @@ function normalizeAuthorMarkDecorationFormat(formatId) {
 
 function getAuthorMarkDecorationMetadata(formatId) {
   if (formatId === "highlight") {
+    const highlightColor = resolveHighlightColorOption(
+      state.editorPrefs.highlightColorId,
+      state.editorPrefs.highlightCustomRgb,
+    );
     return {
       purpose: "reference",
       colorToken: "user-highlight",
+      highlightColor: {
+        id: highlightColor.id,
+        label: highlightColor.label,
+        color: highlightColor.color,
+        outline: highlightColor.outline,
+        ...(highlightColor.rgb ? { rgb: highlightColor.rgb } : {}),
+      },
     };
   }
 
   return {
     purpose: "emphasis",
-  };
-}
-
-function selectUserHighlight(highlightId) {
-  const mark = getUserHighlightMarks().find((candidate) => candidate.id === highlightId);
-  if (!mark) {
-    return;
-  }
-
-  const range = resolveUserHighlightSceneRange(mark);
-  state.sidePanelMode = "decorations";
-  state.selectedUserHighlightId = mark.id;
-  state.selectedBlockId = mark.anchor?.blockId ?? state.selectedBlockId;
-  renderConsolePanel();
-  if (range) {
-    takeToSceneRange(mark.anchor.sceneId, range.startOffset, range.endOffset, { behavior: "smooth" });
-  }
-}
-
-function deleteUserHighlight(highlightId) {
-  const project = state.workspace?.project;
-  const marks = Array.isArray(project?.marks) ? project.marks : [];
-  const mark = marks.find((candidate) => candidate?.id === highlightId && candidate.kind === "highlight");
-  if (!project || !mark) {
-    return;
-  }
-
-  project.marks = marks.filter((candidate) => candidate?.id !== mark.id);
-  if (state.selectedUserHighlightId === mark.id) {
-    state.selectedUserHighlightId = getUserHighlightMarks()[0]?.id ?? null;
-  }
-  updateSceneDraft(mark.anchor?.sceneId, (draft) => {
-    draft.inlineFormatRanges = removeInlineFormatRangesByFormat(
-      draft.inlineFormatRanges,
-      "highlight",
-      getScene(mark.anchor?.sceneId)?.editorText?.length ?? Number.POSITIVE_INFINITY,
-    );
-  }, {
-    reason: "manuscript-user-highlight-delete",
-    markSessionActivity: false,
-  });
-  persistCurrentProjectRecord({
-    domain: "manuscript-decorations",
-    dirtyReason: "user-highlight-deleted",
-    source: "deleteUserHighlight",
-    markWorkingState: false,
-  });
-  renderConsolePanel();
-  if (mark.anchor?.sceneId === state.selectedSceneId) {
-    syncSceneDocumentLayout({ skipSpellcheck: true });
-  }
-}
-
-function resolveUserHighlightSceneRange(mark) {
-  const scene = getScene(mark?.anchor?.sceneId);
-  if (!scene) {
-    return null;
-  }
-
-  const projection = createAuthorMarkProjectionFromManuscriptMark(mark, {
-    sceneId: scene.sceneId,
-    sceneBlocks: scene.blocks,
-    text: scene.editorText ?? "",
-  });
-  if (!projection) {
-    return null;
-  }
-
-  return {
-    startOffset: projection.startOffset,
-    endOffset: projection.endOffset,
   };
 }
 
@@ -10695,6 +11356,10 @@ function syncSpellcheckLayer(editorHost, sceneId, options = {}) {
         excludeRange: options.activeTypingWordRange ?? options.excludeRange ?? null,
       }),
       includeAuthorMarks: false,
+      includeDraftProofing: false,
+      includeDiagnostics: false,
+      includeAnchoredRecords: false,
+      includeRuntimeSelections: false,
     }),
   };
   renderTextareaSpellcheckLayer(editorHost, snapshot);
@@ -11474,6 +12139,15 @@ function removeScenesFromProject(removedSceneIds) {
     state.passageNotes.filter((note) => remainingSceneIds.has(note.sceneId)),
     rebuilt.sceneMetaBySceneId,
   );
+
+  // Intent: keep proof-read run coverage anchored only to scenes that still exist.
+  const draftProofPruneResult = pruneDraftProofCoverageForScenes(state.draftProofing, {
+    remainingSceneIds,
+    now: new Date().toISOString(),
+  });
+  if (draftProofPruneResult.changed) {
+    state.draftProofing = draftProofPruneResult.state;
+  }
 
   if (state.workspace.narration && typeof state.workspace.narration === "object") {
     state.workspace.narration.alignmentJobs = syncNarrationAlignmentJobsMetadata(

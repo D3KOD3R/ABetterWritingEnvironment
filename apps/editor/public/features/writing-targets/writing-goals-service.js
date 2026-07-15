@@ -387,12 +387,12 @@ function syncHeaderLiveState() {
   }
 
   const debugTerminalSummary = buildWritingTargetDebugTerminalSummary();
-  const debugToggleButton = heroSlot.querySelector(".writing-target-debug-toggle");
+  const debugToggleButton = heroSlot.querySelector(".developer-log-chip__button");
   if (debugToggleButton instanceof HTMLElement) {
     debugToggleButton.classList.toggle("is-open", debugTerminalSummary.open === true);
     debugToggleButton.setAttribute("aria-pressed", debugTerminalSummary.open ? "true" : "false");
   }
-  const debugMeta = heroSlot.querySelector(".desktop-target-strip__tools-meta");
+  const debugMeta = heroSlot.querySelector(".developer-log-chip__meta");
   if (debugMeta instanceof HTMLElement) {
     const debugMetaLabel = [
       `${formatDisplayNumber(debugTerminalSummary.entryCount)} events`,

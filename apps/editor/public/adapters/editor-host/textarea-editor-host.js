@@ -78,7 +78,17 @@ export function renderTextareaEditorHostHTML({
   inputClassName = "",
 } = {}) {
   const snapshot = createManuscriptEditorHostSnapshot({ sceneId, text, projections });
+  const hasAuthorMarks = selectManuscriptEditorHostChannel(snapshot, MANUSCRIPT_PROJECTION_CHANNELS.AUTHOR_MARK).length > 0;
+  const inputClassNames = [
+    inputClassName,
+    hasAuthorMarks ? "has-inline-format-projection" : "",
+  ].filter(Boolean).join(" ");
   return `
+    <div class="editor-draft-proof-layer" data-draft-proof-layer aria-hidden="true">
+      <div class="editor-draft-proof-layer__content">
+        ${renderTextareaDraftProofContent(snapshot)}
+      </div>
+    </div>
     <div class="editor-inline-format-layer" data-inline-format-layer aria-hidden="true">
       ${renderTextareaAuthorMarkContent(snapshot)}
     </div>
@@ -89,7 +99,7 @@ export function renderTextareaEditorHostHTML({
     </div>
     <div class="editor-spellcheck-layer" data-spellcheck-layer aria-hidden="true"></div>
     <textarea
-      class="editor-document-input ${escapeHtml(inputClassName)}"
+      class="editor-document-input ${escapeHtml(inputClassNames)}"
       data-edit-field="editor-text"
       data-scene-id="${escapeHtml(snapshot.sceneId)}"
       spellcheck="false"
@@ -111,6 +121,7 @@ export function resolveTextareaEditorHost(target) {
     kind: MANUSCRIPT_EDITOR_HOST_KIND.TEXTAREA_OVERLAY,
     textarea,
     sceneId: String(textarea.dataset.sceneId ?? ""),
+    draftProofLayer: body?.querySelector("[data-draft-proof-layer]") ?? null,
     inlineFormatLayer: body?.querySelector("[data-inline-format-layer]") ?? null,
     diagnosticLayer: body?.querySelector("[data-diagnostic-layer]") ?? null,
     spellcheckLayer: body?.querySelector("[data-spellcheck-layer]") ?? null,
@@ -329,6 +340,26 @@ export function getTextareaEditorHostWrapMetrics(host) {
   };
 }
 
+// Intent: paint active draft proof-read coverage as a low-strength underlay below author marks.
+export function renderTextareaDraftProofLayer(host, snapshot) {
+  const layer = getTextareaProjectionLayer(host, MANUSCRIPT_PROJECTION_CHANNELS.DRAFT_PROOF);
+  if (!(layer instanceof HTMLElement) || !(host?.textarea instanceof HTMLTextAreaElement)) {
+    return false;
+  }
+
+  const normalizedSnapshot = createManuscriptEditorHostSnapshot(snapshot);
+  layer.innerHTML = `
+    <div class="editor-draft-proof-layer__content">
+      ${renderTextareaDraftProofContent(normalizedSnapshot)}
+    </div>
+  `;
+  const content = layer.querySelector(".editor-draft-proof-layer__content");
+  if (content instanceof HTMLElement) {
+    syncTextareaMirroredLayerStyle(content, host.textarea);
+  }
+  return true;
+}
+
 // Intent: repaint durable author marks as a disposable textarea overlay after shell layout changes.
 export function renderTextareaAuthorMarkLayer(host, snapshot) {
   const layer = getTextareaProjectionLayer(host, MANUSCRIPT_PROJECTION_CHANNELS.AUTHOR_MARK);
@@ -340,8 +371,11 @@ export function renderTextareaAuthorMarkLayer(host, snapshot) {
   layer.innerHTML = renderTextareaAuthorMarkContent(normalizedSnapshot);
   const content = layer.querySelector(".editor-inline-format-layer__content");
   if (content instanceof HTMLElement) {
+    const hasAuthorMarks = selectManuscriptEditorHostChannel(normalizedSnapshot, MANUSCRIPT_PROJECTION_CHANNELS.AUTHOR_MARK).length > 0;
     syncTextareaMirroredLayerStyle(content, host.textarea);
-    content.style.color = "transparent";
+    content.classList.toggle("has-inline-format-projection", hasAuthorMarks);
+    content.style.color = "";
+    host.textarea.classList.toggle("has-inline-format-projection", hasAuthorMarks);
   }
   return true;
 }
@@ -534,6 +568,7 @@ export function clearTextareaAnchoredRecordPreview(host) {
 export function renderTextareaAuthorMarkContent(snapshot) {
   const text = String(snapshot?.text ?? "");
   const projections = selectManuscriptEditorHostChannel(snapshot, MANUSCRIPT_PROJECTION_CHANNELS.AUTHOR_MARK);
+  const hasAuthorMarks = projections.length > 0;
   const boundaries = new Set([0, text.length]);
   for (const projection of projections) {
     boundaries.add(projection.startOffset);
@@ -550,16 +585,87 @@ export function renderTextareaAuthorMarkContent(snapshot) {
       continue;
     }
 
-    const activeTokens = projections
-      .filter((projection) => projection.startOffset <= startOffset && projection.endOffset >= endOffset)
-      .map((projection) => projection.styleToken);
+    const activeProjections = projections
+      .filter((projection) => projection.startOffset <= startOffset && projection.endOffset >= endOffset);
+    const activeTokens = activeProjections.map((projection) => projection.styleToken);
     const className = activeTokens.length
       ? ` class="${activeTokens.map((token) => `editor-inline-format-${escapeHtml(token)}`).join(" ")}"`
       : "";
-    parts.push(`<span${className}>${escapeHtml(segment)}</span>`);
+    const inlineStyle = createAuthorMarkSegmentStyle(activeProjections);
+    const styleAttribute = inlineStyle ? ` style="${escapeHtml(inlineStyle)}"` : "";
+    parts.push(`<span${className}${styleAttribute}>${renderAuthorMarkSegmentText(segment, activeTokens)}</span>`);
   }
 
-  return `<div class="editor-inline-format-layer__content">${parts.join("")}</div>`;
+  return `<div class="editor-inline-format-layer__content${hasAuthorMarks ? " has-inline-format-projection" : ""}">${parts.join("")}</div>`;
+}
+
+export function renderTextareaDraftProofContent(snapshot) {
+  const text = String(snapshot?.text ?? "");
+  const projections = selectManuscriptEditorHostChannel(snapshot, MANUSCRIPT_PROJECTION_CHANNELS.DRAFT_PROOF);
+  const boundaries = new Set([0, text.length]);
+  for (const projection of projections) {
+    boundaries.add(projection.startOffset);
+    boundaries.add(projection.endOffset);
+  }
+
+  const offsets = [...boundaries].sort((left, right) => left - right);
+  const parts = [];
+  for (let index = 0; index < offsets.length - 1; index += 1) {
+    const startOffset = offsets[index];
+    const endOffset = offsets[index + 1];
+    const segment = text.slice(startOffset, endOffset);
+    if (!segment) {
+      continue;
+    }
+
+    const activeProjection = projections.find((projection) =>
+      projection.startOffset <= startOffset && projection.endOffset >= endOffset
+    );
+    if (!activeProjection) {
+      parts.push(escapeHtml(segment));
+      continue;
+    }
+
+    parts.push(`<span class="editor-draft-proof-range">${escapeHtml(segment)}</span>`);
+  }
+
+  return parts.join("");
+}
+
+function createAuthorMarkSegmentStyle(activeProjections) {
+  const highlightProjection = activeProjections.find((projection) =>
+    projection?.styleToken === "highlight" &&
+    typeof projection?.visualStyle?.highlightColor === "string" &&
+    typeof projection?.visualStyle?.highlightOutline === "string",
+  );
+  if (!highlightProjection) {
+    return "";
+  }
+
+  return [
+    `--editor-mark-highlight-color:${highlightProjection.visualStyle.highlightColor}`,
+    `--editor-mark-highlight-outline:${highlightProjection.visualStyle.highlightOutline}`,
+  ].join("; ");
+}
+
+// Intent: render italic marks with a normal-width layout token and a true italic paint layer.
+function renderAuthorMarkSegmentText(segment, activeTokens = []) {
+  const value = String(segment ?? "");
+  if (!activeTokens.includes("italic")) {
+    return escapeHtml(value);
+  }
+
+  return value
+    .split(/(\s+)/)
+    .map((token) => {
+      if (!token || /^\s+$/.test(token)) {
+        return escapeHtml(token);
+      }
+
+      const escapedToken = escapeHtml(token);
+      return `<span class="editor-inline-format-italic-token" data-italic-text="${escapedToken}">${escapedToken}</span>`;
+    })
+    .join("");
 }
 
 export function renderTextareaDiagnosticContent(snapshot) {
@@ -630,6 +736,9 @@ export function renderTextareaSpellcheckContent(snapshot) {
 }
 
 function getTextareaProjectionLayer(host, channel) {
+  if (channel === MANUSCRIPT_PROJECTION_CHANNELS.DRAFT_PROOF) {
+    return host?.draftProofLayer ?? null;
+  }
   if (channel === MANUSCRIPT_PROJECTION_CHANNELS.AUTHOR_MARK) {
     return host?.inlineFormatLayer ?? null;
   }

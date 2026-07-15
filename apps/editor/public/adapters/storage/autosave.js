@@ -172,6 +172,7 @@ export function createProjectFileAutosaveController({
     const dirtyDomains = ensureDirtyDomainState();
     const nextTarget = getTarget();
     const blockedTarget = state.projectFileAutosaveBlocked?.target;
+    const blockedReason = state.projectFileAutosaveBlocked?.reason ?? "";
     if (
       blockedTarget &&
       (
@@ -181,6 +182,15 @@ export function createProjectFileAutosaveController({
       )
     ) {
       state.projectFileAutosaveBlocked = null;
+    }
+    if (state.projectFileAutosaveBlocked && blockedReason === "manual-save-required") {
+      state.projectFileAutosaveBlocked = null;
+      lastQueueSkipReason = "";
+      logDebug("autosave.block-cleared-by-new-edit", "Cleared stale manual-save autosave block after a new edit.", {
+        projectId: nextTarget?.projectId ?? "",
+        filePath: nextTarget?.filePath ?? "",
+        domain,
+      });
     }
     dirtyDomains[domain] = {
       markedAt: new Date().toISOString(),
@@ -204,6 +214,17 @@ export function createProjectFileAutosaveController({
 
   // Intent: retain dirty truth after cache-only fallback without repeatedly retrying a blocked file target.
   const block = (context = {}) => {
+    const dirtyDomainNames = getDirtyDomainNames();
+    if (!dirtyDomainNames.length) {
+      clearState();
+      logDebug("autosave.block-skipped", "Skipped autosave block because no dirty domains remain.", {
+        reason: typeof context.reason === "string" && context.reason.trim()
+          ? context.reason.trim()
+          : "write-failed",
+      });
+      return;
+    }
+
     clearTimer("blocked");
     state.projectFileAutosaveDirty = true;
     state.projectFileAutosaveTarget = getTarget();
@@ -219,7 +240,7 @@ export function createProjectFileAutosaveController({
       reason: state.projectFileAutosaveBlocked.reason,
       projectId: state.projectFileAutosaveTarget?.projectId ?? "",
       filePath: state.projectFileAutosaveTarget?.filePath ?? "",
-      dirtyDomains: getDirtyDomainNames(),
+      dirtyDomains: dirtyDomainNames,
     });
   };
 

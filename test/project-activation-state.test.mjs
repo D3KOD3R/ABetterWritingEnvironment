@@ -1,6 +1,7 @@
 // Intent: verify project activation state hydration is isolated from shell-owned effects.
 import assert from "node:assert/strict";
 
+import { normalizeDraftProofingState } from "../apps/editor/public/features/draft-proofing/draft-proofing-service.js";
 import { createProjectActivationStateService } from "../apps/editor/public/state/project-activation-state.js";
 
 export function runProjectActivationStateTest() {
@@ -16,6 +17,7 @@ export function runProjectActivationStateTest() {
     createTemplateDrafts: () => [],
     normalizeManuscriptTasks: (tasks) => Array.isArray(tasks) ? tasks : [],
     normalizePassageNotes: (notes) => Array.isArray(notes) ? notes : [],
+    normalizeDraftProofingState,
     readRevisionState: () => ({ sessions: [{ id: "revision-1" }] }),
     createRevisionPanelStateForProject: (revisionState) => ({
       selectedSessionId: revisionState.sessions[0].id,
@@ -54,6 +56,16 @@ export function runProjectActivationStateTest() {
     sceneDrafts: { "scene-1": { editorText: "Active text." } },
     manuscriptTasks: [{ id: "task-1" }],
     passageNotes: [{ id: "note-1" }],
+    draftProofing: {
+      activeRunId: "draft-proof-run-0001",
+      runs: [{
+        id: "draft-proof-run-0001",
+        status: "active",
+        coverageByScene: {
+          "scene-1": [{ startOffset: 0, endOffset: 10 }],
+        },
+      }],
+    },
   });
 
   assert.equal(state.activeProjectId, "project-1");
@@ -63,6 +75,8 @@ export function runProjectActivationStateTest() {
   assert.equal(state.sceneDrafts["scene-1"].editorText, "Active text.");
   assert.equal(state.manuscriptTasks[0].id, "task-1");
   assert.equal(state.passageNotes[0].id, "note-1");
+  assert.equal(state.draftProofing.activeRunId, "draft-proof-run-0001");
+  assert.equal(state.draftProofing.runs[0].coverageByScene["scene-1"][0].endOffset, 10);
   assert.equal(state.revisionPanelState.selectedSessionId, "revision-1");
   assert.deepEqual(state.binderSceneMoveHistory, { undoStack: [], redoStack: [] });
   assert.equal(state.selectedTaskId, null);

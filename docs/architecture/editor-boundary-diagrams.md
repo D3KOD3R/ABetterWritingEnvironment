@@ -29,7 +29,8 @@ flowchart LR
   Editor --> Narration
   Editor --> World
 
-  Manuscript --> HostAdapter[editor-host adapter<br/>textarea now / CodeMirror experiment later]
+  Manuscript --> HostAdapter[editor-host adapter<br/>textarea fallback / ProseMirror target]
+  HostAdapter --> PMRuntime[ProseMirror runtime<br/>document, selection, history, decorations]
   Spellcheck --> Manuscript
   Records --> Manuscript
 
@@ -48,6 +49,37 @@ flowchart LR
   Manuscript --> Analysis[services/analysis]
   Analysis --> ManuscriptSchema
 ```
+
+ProseMirror runtime objects remain inside the editor-host adapter. Canonical scene data, marks, anchors, and feature records cross the boundary only through repository-owned DTOs.
+
+## ProseMirror Transaction And Persistence Sequence
+
+The runtime editor supplies precise transactions, but application services remain responsible for canonical mutations and persistence.
+
+```mermaid
+sequenceDiagram
+  actor Author
+  participant PM as ProseMirror EditorView
+  participant Host as ProseMirror Host Adapter
+  participant Command as Manuscript Command Controller
+  participant Anchors as Anchor Services
+  participant Store as Canonical Project State
+  participant Persistence as ProjectPersistenceService
+
+  Author->>PM: type, paste, format, undo, or redo
+  PM->>Host: dispatchTransaction(transaction)
+  Host->>Host: map ProseMirror steps to repository DTO
+  Host->>Command: apply ManuscriptHostTransaction
+  Command->>Anchors: update durable block-local anchors
+  Anchors-->>Command: anchor and mark mutations
+  Command->>Store: commit canonical scene, marks, and records
+  Store-->>Host: accepted canonical scene snapshot
+  Host->>PM: update EditorState without recreating EditorView
+  Command->>Persistence: mark canonical domains dirty
+  Persistence->>Persistence: autosave canonical project snapshot
+```
+
+ProseMirror transactions, selections, steps, DOM nodes, and decoration sets do not cross into persistence.
 
 ## Durable Edit And Persistence Sequence
 

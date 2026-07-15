@@ -109,6 +109,13 @@ function migrateProjectRecord(record, targetSchemaVersion) {
   const migratedRecord = {
     ...record,
     schemaVersion,
+    draftProofing: record.draftProofing && typeof record.draftProofing === "object" && !Array.isArray(record.draftProofing)
+      ? cloneValue(record.draftProofing)
+      : {
+          schemaVersion: 1,
+          activeRunId: "",
+          runs: [],
+        },
     projectSettings: {
       ...projectSettings,
       assetRegistry: normalizedAssetRegistry,

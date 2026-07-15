@@ -12,6 +12,7 @@ export function createManuscriptInputController({
   getSceneText,
   getSceneInlineFormatRanges,
   getInlineFormattingState,
+  getPendingFormatMetadata,
   recordRevisionTextEdit,
   trackInlinePassageTyping,
   updateAnchoredRecordsForTextEdit,
@@ -49,6 +50,7 @@ export function createManuscriptInputController({
       previousText,
       nextText,
       pendingFormats,
+      pendingFormatMetadata: getPendingFormatMetadata?.() ?? {},
       selectionStart: editorSurface.selectionStart,
       selectionEnd: editorSurface.selectionEnd,
     });

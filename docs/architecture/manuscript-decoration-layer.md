@@ -2,7 +2,7 @@
 
 ## Decision Status
 
-Status: active staged architecture. Compatibility range persistence, canonical mark schema/projection, compatibility mark save-sync, the projection selector, the textarea-host boundary, and the accepted-issue `diagnostic` projection source are implemented. A shared anchored manuscript-suggestion DTO is staged, but no `suggestion` projection channel exists yet.
+Status: active staged architecture. Compatibility range persistence, canonical mark schema/projection, compatibility mark save-sync, the projection selector, the textarea-host boundary, the accepted-issue `diagnostic` projection source, draft proof-read coverage projection, and the anchor drift pipeline are implemented. ProseMirror is now the selected target manuscript host, while a shared anchored manuscript-suggestion DTO remains staged without a `suggestion` projection channel.
 
 This document defines how manuscript styling, anchored author records, AI suggestions, and runtime editor visuals must integrate without making the editor rendering engine the owner of project data.
 
@@ -17,9 +17,9 @@ The application must maintain four separate concepts:
 
 The editor canvas may render all four as visual decoration ranges, but they must not share one persistence model or lifecycle.
 
-For the current plain-text, IDE-like manuscript surface, the next implementation step is not an editor-library swap. The application must first own anchor drift handling: live edit transactions update durable anchors, hashes validate saved anchors on load, and bounded context recovers stale offsets. A future editor adapter can improve rendering mechanics, but it must not become the source of truth for anchors or decorations.
+The application now owns the required anchor drift handling: live edit transactions update durable anchors, hashes validate saved anchors on load, and bounded context recovers stale offsets. That removes the main prerequisite that previously deferred an editor-engine migration.
 
-ProseMirror remains a valid later option only if product requirements intentionally change the canonical manuscript into a rich document tree whose marks and block structure are owned by a schema. That is a more invasive domain decision and should not be made to solve highlighting alone.
+ProseMirror is selected because the product already has schema-governed narration/dialogue blocks, stable block and paragraph identities, canonical author marks, and multiple anchored workflow channels. It will replace the textarea overlay as the runtime editing engine without becoming the source of truth for project identity, durable anchors, records, or persistence. The detailed migration and cutover barriers are defined in [ProseMirror Manuscript Editor Roadmap](./prosemirror-editor-roadmap.md).
 
 ## Why This Boundary Matters
 
@@ -41,6 +41,7 @@ Those visuals overlap in the editor, but their meanings differ:
 | Author formatting marks | Yes | manuscript schema / scene content record | Yes | No |
 | Author note or task | Yes | anchored record schema / project persistence | Yes | No |
 | Accepted issue or event record | Yes | anchored record schema | Yes | No |
+| Draft proof-read run coverage | Yes | draft-proofing feature state / project persistence | Not as manuscript content | No |
 | AI suggestion queue item | Persistable workflow state | analysis service contracts | Yes | It creates proposals only |
 | Spellcheck underline | No | editor projection feature | Not as project truth | No |
 | Search/selection/hover highlight | No | editor runtime state | No | No |
@@ -57,7 +58,7 @@ The current repository already contains useful parts of this design:
 - `ProjectPersistenceService` owns save/load/autosave workflow boundaries.
 - `apps/editor/public/features/manuscript-editor/manuscript-command-controller.js` models inline formatting as ranges rather than inserting HTML into manuscript text.
 - `apps/editor/public/features/manuscript-editor/editor-host-interface.js` now normalizes scene text and render-only projections before an editor implementation receives them.
-- `apps/editor/public/adapters/editor-host/textarea-editor-host.js` now contains the existing textarea-overlay markup and paints author-mark, accepted diagnostic, active anchored-record preview, spellcheck, search, and narration-follow projections without persisting them.
+- `apps/editor/public/adapters/editor-host/textarea-editor-host.js` now contains the existing textarea-overlay markup and paints author-mark, draft-proof, accepted diagnostic, active anchored-record preview, spellcheck, search, and narration-follow projections without persisting them.
 
 The interrupted implementation also revealed a gap:
 
@@ -140,7 +141,7 @@ interface ManuscriptMark {
 }
 ```
 
-The mark uses `ManuscriptAnchor`, not a DOM range or editor-library position. For the browser prototype, `sceneDrafts[sceneId].inlineFormatRanges` remains a compatibility representation for inline formatting that has not yet moved to direct mark writes. Scene edit persistence now synchronizes those ranges into `workspace.project.marks` as `mark-inline-*` compatibility marks, and older project JSON normalizes missing `marks` to an empty canonical collection. The direct mutation planner is staged in the browser mark service: it can turn a scene selection into canonical `ManuscriptMark` additions, removals, or split fragments while preserving mark sequence state. User highlights and selected Bold marks now use that planner directly, render through author-mark projections, and user highlights appear in the Decorations side panel. The remaining migration is to move italic, underline, and strikethrough commands to the same direct mark path and keep legacy ranges only as a read fallback.
+The mark uses `ManuscriptAnchor`, not a DOM range or editor-library position. For the browser prototype, `sceneDrafts[sceneId].inlineFormatRanges` remains a compatibility representation for inline formatting that has not yet moved to direct mark writes. Scene edit persistence now synchronizes those ranges into `workspace.project.marks` as `mark-inline-*` compatibility marks, and older project JSON normalizes missing `marks` to an empty canonical collection. The direct mutation planner is staged in the browser mark service: it can turn a scene selection into canonical `ManuscriptMark` additions, removals, or split fragments while preserving mark sequence state. User highlights and selected Bold marks now use that planner directly and render through author-mark projections without a separate Decorations right-panel tab. The remaining migration is to move italic, underline, and strikethrough commands to the same direct mark path and keep legacy ranges only as a read fallback.
 
 Durable author records should converge on a consistent anchor envelope:
 
@@ -240,6 +241,7 @@ interface ManuscriptProjection {
     | "author-mark"
     | "task"
     | "note"
+    | "draft-proof"
     | "diagnostic"
     | "suggestion"
     | "spellcheck"
@@ -260,6 +262,7 @@ Projection rules:
 
 - The adapter accepts projections; it never persists them.
 - Projection IDs refer back to marks or records where they are durable.
+- The `draft-proof` channel derives from durable proof-read run coverage, shows active/paused runs or the latest completed run when nothing is active, but its underlay spans are rebuilt and never saved as projection objects.
 - Runtime-only projections are discarded on editor teardown, scene switch, or refresh.
 - Overlap resolution is deterministic by channel and priority, not by whichever feature most recently wrote CSS.
 - Offset mapping after edits is handled by the editor transaction adapter for rendering continuity, while durable updates are committed through domain commands and `ProjectPersistenceService`.
@@ -357,7 +360,7 @@ For the desktop port, the storage container may later become `project.json` plus
 
 ### Continue The Textarea Overlay
 
-Use only as the short-term compatibility implementation.
+Use only as the compatibility and rollback implementation during the ProseMirror migration.
 
 Benefits:
 
@@ -371,34 +374,44 @@ Limitations:
 - selection, composition input, accessibility, large documents, and edit remapping require custom handling
 - adding AI diagnostics multiplies synchronization risk
 
-Conclusion: retain only while establishing schema and adapter contracts.
+Conclusion: retain behind the editor-host boundary until ProseMirror passes persistence, transaction, IME, clipboard, selection, navigation, and workflow parity gates.
 
 ### CodeMirror 6 Adapter
 
-Optional later editor-host experiment.
+Not selected for the primary manuscript surface.
 
 Reasons:
 
-- the present manuscript surface is fundamentally text-first and IDE-like
-- state, transactions, ranges, and decoration channels align with the proposed projection contract
-- extensions can compose spellcheck, diagnostics, author marks, search, and narration visuals without embedding them in text
-- the editor remains a projection/runtime host; canonical project records stay application-owned
+- CodeMirror remains appropriate for future flat-text technical surfaces such as logs, scripts, raw data, or prompt editors
+- its transaction and decoration model aligns well with those surfaces
 
-Constraint:
+Reason it is not the manuscript target:
 
-- CodeMirror addresses a flat text document. The adapter must translate between scene-local offsets and canonical `ManuscriptAnchor` identities rather than replacing the manuscript schema with editor offsets.
-- Do not introduce it merely to test revision-pass or decoration workflows. Those workflows should first run against the app-owned anchor pipeline and current textarea host.
+- the manuscript already has stable structured block types and author marks
+- adopting CodeMirror would preserve a flat-string runtime and continue requiring a parallel structural translation layer for block semantics
+- the product direction benefits from schema-enforced editable narration/dialogue nodes rather than treating structure only as external metadata
 
 ### ProseMirror Adapter
 
-Do not adopt merely for decorations.
+Selected for the primary manuscript surface.
 
-It becomes appropriate if the product chooses a canonical rich structural manuscript with schema-governed paragraphs and marks, where editing/export is centered on rich document operations. It would then naturally own runtime editing transactions, while the application still owns project identity, domain records, AI review policy, and persistence boundaries.
+ProseMirror should own:
 
-Cost now:
+- runtime scene document state
+- editable DOM rendering
+- selection, stored marks, keyboard input, IME, clipboard, and history
+- transaction steps and runtime position mapping
+- runtime decoration sets and editor plugin state
 
-- it would force a broader content-model decision before the present plain-text/chunk/anchor migration is complete
-- it risks conflating rich-content marks with diagnostics and workflow records
+ProseMirror must not own:
+
+- durable project/chapter/scene/block/paragraph IDs
+- canonical manuscript records or project persistence
+- anchor validation, evidence, recovery, or orphan state
+- task, note, issue, event, suggestion, narration, revision, or voice lifecycle
+- accepted mark identity outside the runtime document
+
+The ProseMirror schema is an adapter-level representation of the repository-owned manuscript schema. ProseMirror nodes, marks, steps, selections, and plugin state are never persisted directly.
 
 ### Lexical Adapter
 
@@ -510,7 +523,7 @@ Implemented evidence:
 - Add a direct mark mutation planner for selected manuscript ranges. Implemented in `toggleManuscriptMarksForSceneSelection`, including sequence allocation, cross-block mark creation, full toggle-off removal, partial split fragments, and bounded evidence refresh.
 - Move author highlight and Bold writes from scene compatibility ranges to canonical marks by wiring the toolbar commands to the planner. Implemented for user highlights and selected Bold marks.
 - Render user highlights from author-mark projections after textarea layout refresh. Implemented in the textarea host boundary.
-- Add a Decorations side-panel list for canonical user highlights with jump and delete actions. Implemented in `features/manuscript-decorations/user-highlight-panel.js`.
+- Keep canonical user highlights as manuscript marks rendered through author-mark projections. A separate Decorations side-panel list is not part of the accepted workflow.
 - Move the remaining italic, underline, and strikethrough author formatting writes from scene compatibility ranges to canonical marks. Remaining.
 
 ### Slice 3: Durable Record Alignment
@@ -552,12 +565,15 @@ Implemented evidence:
 - `test/anchored-record-service.test.mjs`
 - `test/anchored-record-controller.test.mjs`
 
-### Slice 5: CodeMirror Experiment - Deferred
+### Slice 5: ProseMirror Host Migration - Approved
 
-- Extend the established editor-host interface with a CodeMirror-backed implementation for one scene.
-- Map application projections into CodeMirror decoration extensions.
-- Route edits back through manuscript commands and persistence services.
-- Keep the textarea host as fallback until save/load, IME, navigation, spellcheck, and autosave behavior are validated.
+- Follow [ProseMirror Manuscript Editor Roadmap](./prosemirror-editor-roadmap.md).
+- Add a deterministic canonical scene and mark mapping before mounting an editable host.
+- Extend the editor-host interface with a ProseMirror implementation for one scene.
+- Translate ProseMirror transactions into repository-owned manuscript transaction DTOs.
+- Route canonical block, mark, anchor, revision, and persistence mutations through existing application services.
+- Map application projections into ProseMirror decorations.
+- Keep the textarea host as fallback until save/load, IME, clipboard, navigation, spellcheck, narration, revision, and autosave behavior are validated.
 
 ### Slice 6: AI Consumption
 
@@ -567,12 +583,14 @@ Implemented evidence:
 
 ## Architecture Review
 
-This design improves on simply adopting an editor library because it makes domain ownership explicit before swapping renderers. It improves on the present overlay because it prevents every new feature from inventing its own offset lifecycle and persistence policy.
+This design makes domain ownership explicit before replacing the editor host. The existing anchor and projection work is not discarded: it becomes the contract that prevents ProseMirror from taking ownership of project data while allowing ProseMirror transactions and decorations to replace fragile textarea overlays.
 
 The remaining deliberate limitation is staged migration: the current browser implementation still writes `inlineFormatRanges` until the editor command path and project JSON migration write canonical marks. The projection path now consumes explicit `ManuscriptMark` records when present and otherwise derives schema-shaped marks from legacy ranges, so new durable decoration creation should target `ManuscriptMark` or another domain record rather than a generic editor-owned decoration collection.
 
 ## Reference Material
 
-- CodeMirror System Guide: `https://codemirror.net/docs/guide/`
+- ProseMirror Guide: `https://prosemirror.net/docs/guide/`
 - ProseMirror Reference Manual: `https://prosemirror.net/docs/ref/`
+- ProseMirror Examples: `https://prosemirror.net/examples/`
+- CodeMirror System Guide: `https://codemirror.net/docs/guide/`
 - Lexical Editor State: `https://facebook-lexical.mintlify.app/concepts/editor-state`

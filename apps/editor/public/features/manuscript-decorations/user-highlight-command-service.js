@@ -87,7 +87,7 @@ export function resolveUserHighlightCommandSelection({
   });
 }
 
-// Intent: keep the selection resolver reusable while the Decorations panel remains highlight-specific.
+// Intent: keep the selection resolver reusable for toolbar author-mark commands.
 export const resolveUserMarkCommandIntent = resolveUserHighlightCommandIntent;
 export const resolveUserMarkCommandSelection = resolveUserHighlightCommandSelection;
 

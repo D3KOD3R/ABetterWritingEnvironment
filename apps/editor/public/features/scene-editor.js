@@ -1,9 +1,12 @@
 // Intent: render the manuscript scene editor surface from editor state and feature-owned display inputs.
 import {
+  CUSTOM_HIGHLIGHT_COLOR_ID,
   EDITOR_WIDTH_OPTIONS,
   FONT_OPTIONS,
   FONT_SIZE_OPTIONS,
+  HIGHLIGHT_COLOR_OPTIONS,
   LINE_HEIGHT_OPTIONS,
+  resolveHighlightColorOption,
 } from "../editor-model.js";
 import {
   INLINE_FORMATS,
@@ -78,61 +81,18 @@ function countSceneEditorWords(value) {
   return normalizedValue.split(/\s+/).filter(Boolean).length;
 }
 
-// Intent: compose the manuscript panel around shared project-file display data and selected scene content.
+// Intent: compose the manuscript panel around the selected scene content and feature-owned editor controls.
 export function renderManuscriptPanelHTML({
   state,
   selectedScene,
   editorMode,
   grammarCheckSummary,
-  projectFileDisplay,
   projectIndex,
   buildEditorStyle,
   getInlinePassageDraftAnchor,
   formatChapterDisplayTitle = (value) => String(value ?? "").trim() || "Untitled chapter",
 }) {
-  const safeProjectFileDisplay = projectFileDisplay ?? {
-    displayName: "Untitled project file",
-    tooltip: "No project file selected",
-  };
-  const grammarCheckEnabled = state?.editorPrefs?.grammarCheckEnabled !== false;
-  const grammarCheckLabel = grammarCheckSummary?.label
-    ? String(grammarCheckSummary.label)
-    : "Grammar check";
-  const grammarCheckPanelOpen = Boolean(state?.grammarCheckPanel?.open);
-  const grammarCheckButtonTitle = grammarCheckPanelOpen
-    ? "Close grammar check list"
-    : "Open grammar check list";
-  const grammarCheckToggleLabel = grammarCheckEnabled ? "On" : "Off";
-
   return `
-    <div class="panel-heading scene-editor-heading">
-      <p class="panel-kicker">Scene Editor</p>
-      <p class="scene-editor-project-title project-file-tooltip" data-file-path-tooltip="${escapeHtml(safeProjectFileDisplay.tooltip)}">
-        <span class="scene-editor-project-title__text">${escapeHtml(safeProjectFileDisplay.displayName)}</span>
-      </p>
-      <div class="scene-editor-heading__grammar">
-        <label class="grammar-check-toggle">
-          <input
-            type="checkbox"
-            data-editor-pref="grammarCheckEnabled"
-            ${grammarCheckEnabled ? "checked" : ""}
-            aria-label="Enable live grammar checking"
-          />
-          <span>Grammar check</span>
-          <strong>${escapeHtml(grammarCheckToggleLabel)}</strong>
-        </label>
-        <button
-          class="grammar-check-status"
-          type="button"
-          data-action="toggle-grammar-check-panel"
-          aria-pressed="${grammarCheckPanelOpen ? "true" : "false"}"
-          title="${escapeHtml(grammarCheckButtonTitle)}"
-        >
-          <strong>Grammar check</strong>
-          <span>${escapeHtml(grammarCheckEnabled ? grammarCheckLabel : "Live off")}</span>
-        </button>
-      </div>
-    </div>
     ${selectedScene ? renderSceneEditorHTML(selectedScene, {
       state,
       editorMode,
@@ -142,6 +102,39 @@ export function renderManuscriptPanelHTML({
       getInlinePassageDraftAnchor,
       formatChapterDisplayTitle,
     }) : ""}
+  `;
+}
+
+// Intent: keep grammar checking as one compact manuscript-control cluster in the scene masthead.
+function renderCompactGrammarCheck(state, grammarCheckSummary) {
+  const grammarCheckEnabled = state?.editorPrefs?.grammarCheckEnabled !== false;
+  const grammarCheckLabel = grammarCheckSummary?.label
+    ? String(grammarCheckSummary.label)
+    : "0 flagged words";
+  const grammarCheckPanelOpen = Boolean(state?.grammarCheckPanel?.open);
+  const grammarCheckButtonTitle = grammarCheckPanelOpen
+    ? "Close grammar check list"
+    : "Open grammar check list";
+
+  return `
+    <div class="grammar-check-compact" aria-label="Grammar check">
+      <label class="grammar-check-compact__toggle">
+        <input
+          type="checkbox"
+          data-editor-pref="grammarCheckEnabled"
+          ${grammarCheckEnabled ? "checked" : ""}
+          aria-label="Enable live grammar checking"
+        />
+        <span>Grammar check</span>
+      </label>
+      <button
+        class="grammar-check-compact__status"
+        type="button"
+        data-action="toggle-grammar-check-panel"
+        aria-pressed="${grammarCheckPanelOpen ? "true" : "false"}"
+        title="${escapeHtml(grammarCheckButtonTitle)}"
+      >${escapeHtml(grammarCheckEnabled ? grammarCheckLabel : "Live off")}</button>
+    </div>
   `;
 }
 
@@ -176,6 +169,7 @@ export function renderSceneEditorHTML(scene, {
     sceneBlocks: scene.blocks,
     inlineFormatRanges: state.sceneDrafts?.[scene.sceneId]?.inlineFormatRanges,
     manuscriptMarks: state.workspace?.project?.marks,
+    draftProofing: state.draftProofing,
     diagnosticIssues: state.workspace?.project?.issues,
     includeSpellcheck: false,
   });
@@ -200,32 +194,22 @@ export function renderSceneEditorHTML(scene, {
       data-scene-editor-scene-id="${escapeHtml(scene.sceneId)}"
     >
       <div class="scene-editor-context">
-        <div class="scene-editor-context__chapter">
-          <span>Chapter</span>
-          <strong data-scene-editor-chapter-title="${escapeHtml(scene.chapterId)}">${escapeHtml(chapterTitle)}</strong>
-        </div>
+        <strong data-scene-editor-chapter-title="${escapeHtml(scene.chapterId)}">${escapeHtml(chapterTitle)}</strong>
+      </div>
+      <div class="scene-editor-masthead">
+        ${renderCompactGrammarCheck(state, grammarCheckSummary)}
+        <input
+          class="editor-title-input scene-editor-title-input"
+          type="text"
+          value="${escapeHtml(scene.sceneTitle)}"
+          data-edit-field="scene-title"
+          data-scene-id="${escapeHtml(scene.sceneId)}"
+          data-scene-title-id="${escapeHtml(scene.sceneId)}"
+          aria-label="Scene title"
+        />
         <span class="scene-editor-context__count" data-scene-editor-chapter-word-count="${escapeHtml(scene.chapterId)}">${escapeHtml(`Chapter words: ${formatSceneEditorWordCount(chapterWordCount)}`)}</span>
       </div>
       <div class="scene-editor-header">
-        <div class="editor-title-row">
-          <input
-            class="editor-title-input"
-            type="text"
-            value="${escapeHtml(scene.sceneTitle)}"
-            data-edit-field="scene-title"
-            data-scene-id="${escapeHtml(scene.sceneId)}"
-            data-scene-title-id="${escapeHtml(scene.sceneId)}"
-            aria-label="Scene title"
-          />
-          <button
-            class="tag-button editor-action-button ai-title-button"
-            type="button"
-            data-action="suggest-scene-title"
-            data-scene-id="${escapeHtml(scene.sceneId)}"
-            ${state.localAiPrefs.enabled ? "" : "disabled"}
-          >${localAiStatus === "loading" ? "Thinking..." : "Suggest title"}</button>
-          ${localAiStatus && localAiStatus !== "loading" ? `<span class="local-ai-status">${escapeHtml(localAiStatus)}</span>` : ""}
-        </div>
         <div class="scene-editor-tools ${mode === "narration" ? "narration-recording-tools" : ""}">
           ${mode === "narration"
             ? renderNarrationRecordingTools(scene, narrationSelection, narrationSession)
@@ -252,9 +236,11 @@ export function renderSceneEditorHTML(scene, {
               ${renderInlineFormatButton("strikethrough", "S", state)}
               ${renderInlineFormatButton("highlight", "H", state)}
             `}
+          ${localAiStatus && localAiStatus !== "loading" ? `<span class="local-ai-status">${escapeHtml(localAiStatus)}</span>` : ""}
           ${hasDraft ? `<button class="tag-button editor-action-button" data-action="reset-scene-draft" data-scene-id="${escapeHtml(scene.sceneId)}">Revert local draft</button>` : ""}
         </div>
       </div>
+      ${renderHighlightColorPalette(state)}
       ${REVISION_DRAFTING_UI_ENABLED ? renderRevisionPanel(scene, state, revisionStats) : ""}
 
       <div
@@ -452,15 +438,126 @@ function renderEditorSetting(label, prefKey, options, selectedValue) {
 
 function renderInlineFormatButton(formatId, label, state) {
   const isActive = state.manuscriptInlineFormatting?.pendingFormats?.[formatId] === true;
-  const title = INLINE_FORMATS[formatId]?.label ?? label;
+  const isHighlightButton = formatId === "highlight";
+  const highlightColor = resolveHighlightColorOption(
+    state?.editorPrefs?.highlightColorId,
+    state?.editorPrefs?.highlightCustomRgb,
+  );
+  const title = isHighlightButton
+    ? "Highlight (right-click for colour)"
+    : INLINE_FORMATS[formatId]?.label ?? label;
+  const buttonStyle = isHighlightButton
+    ? ` style="--highlight-button-color:${escapeHtml(highlightColor.color)}; --highlight-button-outline:${escapeHtml(highlightColor.outline)}"`
+    : "";
+  const menuAttributes = isHighlightButton
+    ? ` aria-haspopup="menu" aria-expanded="${state?.highlightColorPaletteOpen ? "true" : "false"}"`
+    : "";
+  const buttonContent = isHighlightButton
+    ? `${escapeHtml(label)}<span class="inline-format-highlight-swatch" aria-hidden="true"></span>`
+    : escapeHtml(label);
   return `
     <button
-      class="tag-button editor-action-button editor-toggle-button inline-format-button inline-format-${escapeHtml(formatId)}"
+      class="tag-button editor-action-button editor-toggle-button inline-format-button inline-format-${escapeHtml(formatId)}${isHighlightButton ? " has-highlight-palette" : ""}"
       type="button"
       data-action="toggle-inline-format"
       data-inline-format="${escapeHtml(formatId)}"
+      ${isHighlightButton ? "data-highlight-color-trigger" : ""}
       aria-pressed="${isActive ? "true" : "false"}"
       title="${escapeHtml(title)}"
-    >${escapeHtml(label)}</button>
+      ${menuAttributes}
+      ${buttonStyle}
+    >${buttonContent}</button>
+  `;
+}
+
+function renderHighlightColorPalette(state) {
+  // Intent: expose the user-level highlight colour preference without introducing a separate decorations panel.
+  if (!state?.highlightColorPaletteOpen) {
+    return "";
+  }
+
+  const activeColor = resolveHighlightColorOption(
+    state?.editorPrefs?.highlightColorId,
+    state?.editorPrefs?.highlightCustomRgb,
+  );
+  const customColor = resolveHighlightColorOption(
+    CUSTOM_HIGHLIGHT_COLOR_ID,
+    state?.editorPrefs?.highlightCustomRgb,
+  );
+  const customRgb = customColor.rgb;
+  const position = state?.highlightColorPalettePosition && typeof state.highlightColorPalettePosition === "object"
+    ? state.highlightColorPalettePosition
+    : {};
+  const left = Number.isFinite(Number(position.left)) ? Math.round(Number(position.left)) : 12;
+  const top = Number.isFinite(Number(position.top)) ? Math.round(Number(position.top)) : 84;
+  return `
+    <div
+      class="highlight-color-palette"
+      data-highlight-color-palette
+      role="menu"
+      aria-label="Highlight colour"
+      style="--highlight-palette-left:${left}px; --highlight-palette-top:${top}px;"
+    >
+      <div class="highlight-color-palette__swatches">
+        ${HIGHLIGHT_COLOR_OPTIONS.map((option) => {
+          const isActive = option.id === activeColor.id;
+          return `
+            <button
+              class="highlight-color-swatch ${isActive ? "is-active" : ""}"
+              type="button"
+              data-action="set-highlight-color"
+              data-highlight-color-id="${escapeHtml(option.id)}"
+              role="menuitemradio"
+              aria-checked="${isActive ? "true" : "false"}"
+              aria-label="${escapeHtml(`${option.label} highlight`)}"
+              title="${escapeHtml(option.label)}"
+              style="--highlight-swatch-color:${escapeHtml(option.color)}; --highlight-swatch-outline:${escapeHtml(option.outline)}"
+            ><span aria-hidden="true"></span></button>
+          `;
+        }).join("")}
+        <button
+          class="highlight-color-swatch highlight-color-custom-swatch ${activeColor.id === CUSTOM_HIGHLIGHT_COLOR_ID ? "is-active" : ""}"
+          type="button"
+          data-action="set-highlight-color"
+          data-highlight-color-id="${CUSTOM_HIGHLIGHT_COLOR_ID}"
+          role="menuitemradio"
+          aria-checked="${activeColor.id === CUSTOM_HIGHLIGHT_COLOR_ID ? "true" : "false"}"
+          aria-label="Custom highlight"
+          title="Custom"
+          style="--highlight-swatch-color:${escapeHtml(customColor.color)}; --highlight-swatch-outline:${escapeHtml(customColor.outline)}"
+        ><span aria-hidden="true"></span></button>
+      </div>
+      <div class="highlight-color-rgb-controls" data-highlight-rgb-controls>
+        ${renderHighlightRgbSlider("red", "R", customRgb.red)}
+        ${renderHighlightRgbSlider("green", "G", customRgb.green)}
+        ${renderHighlightRgbSlider("blue", "B", customRgb.blue)}
+        <div
+          class="highlight-color-rgb-preview"
+          data-highlight-rgb-preview
+          style="--highlight-swatch-color:${escapeHtml(customColor.color)}; --highlight-swatch-outline:${escapeHtml(customColor.outline)}"
+        >
+          <span aria-hidden="true"></span>
+          <strong data-highlight-rgb-label>${escapeHtml(`rgb(${customRgb.red}, ${customRgb.green}, ${customRgb.blue})`)}</strong>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderHighlightRgbSlider(channel, label, value) {
+  return `
+    <label class="highlight-color-rgb-row">
+      <span>${escapeHtml(label)}</span>
+      <input
+        type="range"
+        min="0"
+        max="255"
+        step="1"
+        value="${escapeHtml(String(value))}"
+        data-highlight-rgb-channel="${escapeHtml(channel)}"
+        aria-label="${escapeHtml(`${label} highlight channel`)}"
+      />
+      <output data-highlight-rgb-output="${escapeHtml(channel)}">${escapeHtml(String(value))}</output>
+    </label>
   `;
 }

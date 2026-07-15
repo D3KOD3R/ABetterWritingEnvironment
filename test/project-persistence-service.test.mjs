@@ -304,12 +304,123 @@ export async function runProjectPersistenceServiceTest() {
     browserLogs.some((entry) => entry.level === "error" && entry.message === "Project file save failed."),
     false,
   );
+  operationLog.length = 0;
+  browserCacheWrites.length = 0;
+  state.projectFileHandle = createFakeWritableHandle("project-1.abe-project.json", operationLog, {
+    abortWriteWithSecurityPolicy: true,
+  });
+  state.projectFileHandlePermission = "granted";
+  state.projectFilePath = "project-1.abe-project.json";
+  projectPersistenceService.clearProjectAutosaveState();
+  projectPersistenceService.markProjectAutosaveDirty({
+    domain: "manuscript",
+    reason: "test-browser-background-write-policy",
+    source: "test",
+  });
+  await projectPersistenceService.flushProjectAutosave();
+  assert.equal(browserCacheWrites.length >= 1, true);
+  assert.equal(state.projectFileAutosaveDirty, true);
+  assert.equal(state.projectFileAutosaveBlocked?.reason, "manual-save-required");
+  assert.equal(state.projectFileHandlePermission, "granted");
+
+  operationLog.length = 0;
+  browserCacheWrites.length = 0;
+  state.projectFileHandle = createFakeWritableHandle("project-1.abe-project.json", operationLog, {
+    abortCloseWithSecurityPolicy: true,
+  });
+  state.projectFileHandlePermission = "granted";
+  state.projectFilePath = "project-1.abe-project.json";
+  projectPersistenceService.clearProjectAutosaveState();
+  projectPersistenceService.markProjectAutosaveDirty({
+    domain: "manuscript",
+    reason: "test-browser-write-verified-after-policy-error",
+    source: "test",
+  });
+  await projectPersistenceService.flushProjectAutosave();
+  assert.equal(operationLog.some((entry) => String(entry).startsWith("write:")), true);
+  assert.equal(operationLog.includes("get-file"), true);
+  assert.equal(browserCacheWrites.length >= 1, true);
+  assert.equal(state.projectFileAutosaveDirty, false);
+  assert.equal(state.projectFileAutosaveBlocked, null);
+  assert.equal(state.projectFileHandlePermission, "granted");
+
+  operationLog.length = 0;
+  browserLogs.length = 0;
+  state.projectFileHandle = createFakeWritableHandle("project-1.abe-project.json", operationLog, {
+    abortCloseWithSecurityPolicy: true,
+    returnStaleTextOnGetFile: true,
+  });
+  state.projectFileHandlePermission = "granted";
+  state.projectFilePath = "project-1.abe-project.json";
+  projectPersistenceService.clearProjectAutosaveState();
+  projectPersistenceService.markProjectAutosaveDirty({
+    domain: "manuscript",
+    reason: "test-browser-write-accepted-after-policy-error",
+    source: "test",
+  });
+  await projectPersistenceService.flushProjectAutosave();
+  assert.equal(operationLog.some((entry) => String(entry).startsWith("write:")), true);
+  assert.equal(state.projectFileAutosaveDirty, false);
+  assert.equal(state.projectFileAutosaveBlocked, null);
+  assert.equal(
+    browserLogs.some((entry) => entry.message === "Accepted project file write after browser reported a post-write background block."),
+    true,
+  );
+
+  operationLog.length = 0;
+  state.projectFileHandle = createFakeWritableHandle("project-1.abe-project.json", operationLog, {
+    permissionStatus: "prompt",
+    logPermissionEvents: true,
+  });
+  state.projectFileHandlePermission = "granted";
+  state.projectFilePath = "project-1.abe-project.json";
+  await projectPersistenceService.saveProjectSnapshot({ reason: "manual-save" });
+  const requestPermissionIndex = operationLog.indexOf("request-permission");
+  const prepareSaveIndex = operationLog.indexOf("prepare-save");
+  const createWritableIndex = operationLog.indexOf("create-writable");
+  const writeIndex = operationLog.findIndex((entry) => String(entry).startsWith("write:"));
+  assert.notEqual(requestPermissionIndex, -1);
+  assert.notEqual(prepareSaveIndex, -1);
+  assert.notEqual(createWritableIndex, -1);
+  assert.notEqual(writeIndex, -1);
+  assert.equal(prepareSaveIndex < requestPermissionIndex, true);
+  assert.equal(requestPermissionIndex < createWritableIndex, true);
+  assert.equal(createWritableIndex < writeIndex, true);
+  assert.equal(operationLog.slice(requestPermissionIndex, createWritableIndex).includes("query-permission"), false);
+  assert.equal(operationLog.some((entry) => String(entry).startsWith("write:")), true);
+  assert.equal(state.projectFileHandlePermission, "granted");
+  assert.equal(state.projectFileAutosaveDirty, false);
+  assert.equal(state.projectFileAutosaveBlocked, null);
+
   state.projectFileHandle = createFakeWritableHandle("project-1.abe-project.json", operationLog);
   state.projectFileHandlePermission = "granted";
   state.projectFilePath = "project-1.abe-project.json";
   await projectPersistenceService.saveProjectSnapshot({ reason: "manual-save" });
   assert.equal(state.projectFileAutosaveDirty, false);
   assert.equal(state.projectFileAutosaveBlocked, null);
+
+  operationLog.length = 0;
+  state.projectFileHandle = createFakeWritableHandle("project-1.abe-project.json", operationLog, {
+    onWrite: () => {
+      state.projectFileAutosaveRevision += 1;
+    },
+  });
+  state.projectFileHandlePermission = "granted";
+  state.projectFilePath = "project-1.abe-project.json";
+  state.projectFileAutosaveDirty = true;
+  state.projectFileAutosaveBlocked = {
+    reason: "write-permission-required",
+  };
+  state.projectPersistenceDirtyDomains = {
+    manuscript: {
+      reason: "stale-blocked-save",
+    },
+  };
+  await projectPersistenceService.saveProjectSnapshot({ reason: "manual-save" });
+  assert.equal(operationLog.some((entry) => String(entry).startsWith("write:")), true);
+  assert.equal(state.projectFileAutosaveDirty, false);
+  assert.equal(state.projectFileAutosaveBlocked, null);
+  assert.deepEqual(state.projectPersistenceDirtyDomains, {});
 
   // Project-file loads must flush pending passage-note mutations before reading a possibly stale file.
   operationLog.length = 0;
@@ -825,23 +936,38 @@ function createLoadedProjectRecord() {
 }
 
 function createFakeWritableHandle(name, operationLog, options = {}) {
+  let writtenText = typeof options.fileText === "string" ? options.fileText : "";
   return {
     name,
     permissionStatus: options.permissionStatus ?? "granted",
     async queryPermission() {
+      if (options.logPermissionEvents === true) {
+        operationLog.push("query-permission");
+      }
       return this.permissionStatus;
     },
     async requestPermission() {
-      this.permissionStatus = "granted";
+      if (options.logPermissionEvents === true) {
+        operationLog.push("request-permission");
+      }
+      this.permissionStatus = options.requestPermissionStatus ?? "granted";
       return this.permissionStatus;
     },
     async createWritable() {
+      operationLog.push("create-writable");
+      if (options.abortWriteWithSecurityPolicy === true) {
+        throw new DOMException("Aborted due to security policy.", "AbortError");
+      }
       if (options.failWrite === true) {
         throw new Error("Simulated project file write failure.");
       }
 
       return {
         async write(value) {
+          if (typeof options.onWrite === "function") {
+            options.onWrite(value);
+          }
+          writtenText = String(value);
           operationLog.push(`write:${String(value).length}`);
           if (Array.isArray(options.writtenValues)) {
             options.writtenValues.push(String(value));
@@ -849,13 +975,26 @@ function createFakeWritableHandle(name, operationLog, options = {}) {
         },
         async close() {
           operationLog.push("close");
+          if (options.abortCloseWithSecurityPolicy === true) {
+            throw new DOMException("Aborted due to security policy.", "AbortError");
+          }
         },
       };
     },
     async getFile() {
+      operationLog.push("get-file");
       return {
         name,
         async text() {
+          if (options.returnStaleTextOnGetFile === true) {
+            return JSON.stringify({
+              activeProjectId: "stale-project",
+              projects: [],
+            });
+          }
+          if (writtenText) {
+            return writtenText;
+          }
           return JSON.stringify({
             activeProjectId: "project-loaded",
             projects: [createLoadedProjectRecord()],

@@ -108,9 +108,8 @@ export async function requestProjectFileHandleWritePermission(fileHandle) {
     return "denied";
   }
 
-  const currentStatus = await queryProjectFileHandleWritePermission(fileHandle);
-  if (currentStatus === "granted" || typeof fileHandle.requestPermission !== "function") {
-    return currentStatus;
+  if (typeof fileHandle.requestPermission !== "function") {
+    return queryProjectFileHandleWritePermission(fileHandle);
   }
 
   try {
@@ -284,23 +283,76 @@ export async function persistDesktopProjectFilePathPreference(filePath, {
 export async function writeProjectLibraryToBrowserHandle(handle, snapshot, {
   fallbackFileName = getSuggestedProjectFileName(),
   requestPermission = false,
+  skipPermissionCheck = false,
 } = {}) {
   if (!handle) {
     throw new Error("A browser file handle is required.");
   }
 
-  const hasWritePermission = await ensureProjectFileHandleWritePermission(handle, {
-    requestPermission,
-  });
-  if (!hasWritePermission) {
-    throw new Error("Project file write permission is unavailable. Use Ctrl+S or Save as file to re-authorize this file.");
+  if (!skipPermissionCheck) {
+    const hasWritePermission = await ensureProjectFileHandleWritePermission(handle, {
+      requestPermission,
+    });
+    if (!hasWritePermission) {
+      throw new Error("Project file write permission is unavailable. Use Ctrl+S or Save as file to re-authorize this file.");
+    }
   }
 
-  const writable = await handle.createWritable();
-  await writable.write(JSON.stringify(snapshot, null, 2));
-  await writable.close();
+  const writeProgress = {
+    writableOpened: false,
+    writeCompleted: false,
+    closeCompleted: false,
+  };
+  try {
+    const writable = await handle.createWritable();
+    writeProgress.writableOpened = true;
+    await writable.write(JSON.stringify(snapshot, null, 2));
+    writeProgress.writeCompleted = true;
+    await writable.close();
+    writeProgress.closeCompleted = true;
+  } catch (error) {
+    attachProjectFileWriteProgress(error, writeProgress);
+    throw error;
+  }
 
   return handle.name || fallbackFileName;
+}
+
+export function getProjectFileWriteProgress(error) {
+  const progress = error && typeof error === "object" ? error.projectFileWriteProgress : null;
+  if (!progress || typeof progress !== "object" || Array.isArray(progress)) {
+    return null;
+  }
+
+  return {
+    writableOpened: progress.writableOpened === true,
+    writeCompleted: progress.writeCompleted === true,
+    closeCompleted: progress.closeCompleted === true,
+  };
+}
+
+function attachProjectFileWriteProgress(error, progress) {
+  if (!error || typeof error !== "object") {
+    return;
+  }
+
+  try {
+    Object.defineProperty(error, "projectFileWriteProgress", {
+      configurable: true,
+      enumerable: false,
+      value: {
+        writableOpened: progress.writableOpened === true,
+        writeCompleted: progress.writeCompleted === true,
+        closeCompleted: progress.closeCompleted === true,
+      },
+    });
+  } catch {
+    error.projectFileWriteProgress = {
+      writableOpened: progress.writableOpened === true,
+      writeCompleted: progress.writeCompleted === true,
+      closeCompleted: progress.closeCompleted === true,
+    };
+  }
 }
 
 export async function writeProjectLibraryToDesktopPath(filePath, snapshot, {

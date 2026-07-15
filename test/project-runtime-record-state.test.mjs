@@ -31,6 +31,16 @@ export function runProjectRuntimeRecordStateTest() {
     templateDrafts: [{ id: "template-1" }],
     manuscriptTasks: [{ id: "task-1" }],
     passageNotes: [{ id: "note-1" }],
+    draftProofing: {
+      activeRunId: "draft-proof-run-0001",
+      runs: [{
+        id: "draft-proof-run-0001",
+        status: "active",
+        coverageByScene: {
+          "scene-1": [{ startOffset: 0, endOffset: 12 }],
+        },
+      }],
+    },
     revisionState: { sessions: [] },
     editorPrefs: { grammarCheckEnabled: true },
     localAiPrefs: { localOnly: true },
@@ -76,6 +86,8 @@ export function runProjectRuntimeRecordStateTest() {
   assert.equal(record.workspace.selectionDefaults.sceneId, "scene-1");
   assert.equal(record.workspace.selectionDefaults.sceneSelectionStart, 7);
   assert.equal(record.workspace.selectionDefaults.inlinePassageDraft.noteType, "research");
+  assert.equal(record.draftProofing.activeRunId, "draft-proof-run-0001");
+  assert.equal(record.draftProofing.runs[0].coverageByScene["scene-1"][0].endOffset, 12);
 
   const withoutWorkspace = createProjectRuntimeRecordStateService({
     state: { projectLibrary: [] },

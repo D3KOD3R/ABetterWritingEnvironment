@@ -67,6 +67,7 @@ export function createManuscriptCommandController({
 
       return executeToggleInlineFormat({
         formatId: payload.format,
+        applyOnly: payload.applyOnly === true,
         getInlineFormattingState,
         setInlineFormattingState,
         resolveSelection,
@@ -81,6 +82,7 @@ export function createManuscriptCommandController({
 // Intent: keep all inline formatting controls on one span metadata mutation path.
 export function executeToggleInlineFormat({
   formatId,
+  applyOnly = false,
   getInlineFormattingState,
   setInlineFormattingState,
   resolveSelection,
@@ -108,8 +110,8 @@ export function executeToggleInlineFormat({
     typeof getInlineFormattingState === "function" ? getInlineFormattingState() : null,
   );
   const mutation = selection.collapsed
-    ? createCollapsedInlineFormatMutation(selection, format, state)
-    : createSelectedInlineFormatMutation(selection, format);
+    ? applyOnly ? null : createCollapsedInlineFormatMutation(selection, format, state)
+    : createSelectedInlineFormatMutation(selection, format, state, { applyOnly });
 
   if (!mutation) {
     return {
@@ -128,10 +130,7 @@ export function executeToggleInlineFormat({
 
   const nextState = normalizeManuscriptInlineFormattingState({
     ...state,
-    pendingFormats: {
-      ...state.pendingFormats,
-      [format.id]: mutation.pending === true,
-    },
+    pendingFormats: createNextPendingFormatState(state.pendingFormats, format.id, mutation),
     lastCommand: `toggleInlineFormat:${format.id}`,
   });
 
@@ -146,6 +145,14 @@ export function executeToggleInlineFormat({
     format: format.id,
     mutation,
     state: nextState,
+  };
+}
+
+// Intent: preserve stacked active decoration tools while updating only the commanded tool.
+function createNextPendingFormatState(pendingFormats, formatId, mutation) {
+  return {
+    ...pendingFormats,
+    [formatId]: mutation?.pending === true,
   };
 }
 
@@ -219,6 +226,7 @@ export function normalizeInlineFormatRanges(candidate, textLength = Number.POSIT
         formatId,
         startOffset,
         endOffset,
+        ...normalizeInlineFormatMetadata(range.metadata),
       };
     })
     .filter(Boolean)
@@ -256,11 +264,36 @@ export function toggleInlineFormatRange(ranges, selection, formatId) {
   ], textLength);
 }
 
+export function applyInlineFormatRange(ranges, selection, formatId) {
+  const format = INLINE_FORMATS[formatId];
+  if (!format || !selection || selection.collapsed) {
+    return normalizeInlineFormatRanges(ranges, selection?.text?.length ?? Number.POSITIVE_INFINITY);
+  }
+
+  const textLength = typeof selection.text === "string" ? selection.text.length : Number.POSITIVE_INFINITY;
+  const startOffset = clampOffset(selection.startOffset, textLength);
+  const endOffset = clampOffset(selection.endOffset, textLength);
+  if (endOffset <= startOffset) {
+    return normalizeInlineFormatRanges(ranges, textLength);
+  }
+
+  return mergeInlineFormatRanges([
+    ...normalizeInlineFormatRanges(ranges, textLength),
+    {
+      id: createInlineFormatRangeId(format.id, startOffset, endOffset),
+      formatId: format.id,
+      startOffset,
+      endOffset,
+    },
+  ], textLength);
+}
+
 export function updateInlineFormatRangesForTextEdit({
   ranges,
   previousText,
   nextText,
   pendingFormats,
+  pendingFormatMetadata = {},
   selectionStart = null,
   selectionEnd = null,
 } = {}) {
@@ -343,6 +376,7 @@ export function updateInlineFormatRangesForTextEdit({
         formatId,
         startOffset: edit.startOffset,
         endOffset: edit.startOffset + edit.insertedLength,
+        ...normalizeInlineFormatMetadata(pendingFormatMetadata?.[formatId]),
       });
     }
   }
@@ -350,18 +384,20 @@ export function updateInlineFormatRangesForTextEdit({
   return mergeInlineFormatRanges(shiftedRanges, newText.length);
 }
 
-function createSelectedInlineFormatMutation(selection, format) {
+function createSelectedInlineFormatMutation(selection, format, state, {
+  applyOnly = false,
+} = {}) {
   const selectedText = selection.text.slice(selection.startOffset, selection.endOffset);
   if (!selectedText) {
     return null;
   }
 
   return {
-    kind: "toggle-format-range",
-    ranges: toggleInlineFormatRange(selection.formatRanges, selection, format.id),
+    kind: "apply-format-range",
+    ranges: applyInlineFormatRange(selection.formatRanges, selection, format.id),
     selectionStart: selection.startOffset,
     selectionEnd: selection.endOffset,
-    pending: false,
+    pending: applyOnly ? state?.pendingFormats?.[format.id] === true : true,
   };
 }
 
@@ -429,7 +465,12 @@ function mergeInlineFormatRanges(ranges, textLength = Number.POSITIVE_INFINITY) 
   const merged = [];
   for (const range of normalizedRanges) {
     const previous = merged[merged.length - 1];
-    if (previous && previous.formatId === range.formatId && previous.endOffset >= range.startOffset) {
+    if (
+      previous &&
+      previous.formatId === range.formatId &&
+      previous.endOffset >= range.startOffset &&
+      stableSerializeInlineFormatMetadata(previous.metadata) === stableSerializeInlineFormatMetadata(range.metadata)
+    ) {
       previous.endOffset = Math.max(previous.endOffset, range.endOffset);
       previous.id = createInlineFormatRangeId(previous.formatId, previous.startOffset, previous.endOffset);
       continue;
@@ -437,6 +478,45 @@ function mergeInlineFormatRanges(ranges, textLength = Number.POSITIVE_INFINITY) 
     merged.push({ ...range });
   }
   return merged;
+}
+
+function normalizeInlineFormatMetadata(metadata) {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return {};
+  }
+
+  try {
+    return {
+      metadata: JSON.parse(JSON.stringify(metadata)),
+    };
+  } catch {
+    return {};
+  }
+}
+
+function stableSerializeInlineFormatMetadata(metadata) {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return "";
+  }
+
+  return JSON.stringify(sortSerializableValue(metadata));
+}
+
+function sortSerializableValue(value) {
+  if (Array.isArray(value)) {
+    return value.map(sortSerializableValue);
+  }
+
+  if (value && typeof value === "object") {
+    return Object.keys(value)
+      .sort()
+      .reduce((result, key) => {
+        result[key] = sortSerializableValue(value[key]);
+        return result;
+      }, {});
+  }
+
+  return value;
 }
 
 function resolveTextEditSpan(previousText, nextText, {

@@ -23,6 +23,7 @@ import {
   normalizeLocalAiPrefs,
   normalizePassageNotes,
   normalizeSpellcheckProjectSettings,
+  resolveHighlightColorOption,
   resolveManuscriptTaskRange,
   updateManuscriptTaskTitle,
   updatePassageNoteBody,
@@ -259,11 +260,11 @@ export function runEditorModelTest() {
 
   const defaults = createDefaultEditorPrefs();
   assert.deepEqual(
-    normalizeEditorPrefs({ fontFamilyId: "bad", fontSize: 99, lineHeight: 3.1, editorWidth: 999 }),
+    normalizeEditorPrefs({ fontFamilyId: "bad", fontSize: 99, lineHeight: 3.1, editorWidth: 999, highlightColorId: "bad" }),
     defaults,
   );
   assert.deepEqual(
-    normalizeEditorPrefs({ fontFamilyId: "draft-sans", fontSize: 22, lineHeight: 1.9, editorWidth: 840 }),
+    normalizeEditorPrefs({ fontFamilyId: "draft-sans", fontSize: 22, lineHeight: 1.9, editorWidth: 840, highlightColorId: "sky" }),
     {
       fontFamilyId: "draft-sans",
       fontSize: 22,
@@ -273,7 +274,21 @@ export function runEditorModelTest() {
       grammarCheckEnabled: true,
       revisionOverlayEnabled: false,
       italicText: false,
+      highlightColorId: "sky",
+      highlightCustomRgb: {
+        red: 255,
+        green: 222,
+        blue: 99,
+      },
     },
+  );
+  assert.deepEqual(
+    normalizeEditorPrefs({ highlightColorId: "custom", highlightCustomRgb: { red: 12.4, green: 280, blue: -8 } }).highlightCustomRgb,
+    { red: 12, green: 255, blue: 0 },
+  );
+  assert.equal(
+    resolveHighlightColorOption("custom", { red: 10, green: 20, blue: 30 }).color,
+    "rgba(10, 20, 30, 0.36)",
   );
   assert.deepEqual(normalizeLocalAiPrefs({}), createDefaultLocalAiPrefs());
   assert.deepEqual(normalizeLocalAiPrefs({ enabled: false }), { enabled: false });

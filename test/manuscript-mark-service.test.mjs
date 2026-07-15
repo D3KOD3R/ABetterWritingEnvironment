@@ -12,6 +12,7 @@ import {
   updateCanonicalAnchorRecordForTextEdit,
 } from "../apps/editor/public/features/manuscript-anchors/manuscript-anchor-record-service.js";
 import {
+  applyManuscriptMarksForSceneSelection,
   createAuthorMarkProjectionFromManuscriptMark,
   deriveManuscriptMarksFromInlineFormatRanges,
   isCompatibilityManuscriptMark,
@@ -206,6 +207,12 @@ export function runManuscriptMarkServiceTest() {
     metadata: {
       purpose: "reference",
       colorToken: "amber",
+      highlightColor: {
+        id: "sky",
+        label: "Sky",
+        color: "rgba(125, 197, 255, 0.34)",
+        outline: "rgba(71, 148, 214, 0.24)",
+      },
     },
     now: "2026-06-04T00:00:00.000Z",
   });
@@ -231,6 +238,12 @@ export function runManuscriptMarkServiceTest() {
       source: "author",
       metadata: {
         colorToken: "amber",
+        highlightColor: {
+          id: "sky",
+          label: "Sky",
+          color: "rgba(125, 197, 255, 0.34)",
+          outline: "rgba(71, 148, 214, 0.24)",
+        },
         purpose: "reference",
       },
     },
@@ -243,10 +256,54 @@ export function runManuscriptMarkServiceTest() {
       source: "author",
       metadata: {
         colorToken: "amber",
+        highlightColor: {
+          id: "sky",
+          label: "Sky",
+          color: "rgba(125, 197, 255, 0.34)",
+          outline: "rgba(71, 148, 214, 0.24)",
+        },
         purpose: "reference",
       },
     },
   ]);
+  const coloredHighlightProjection = createAuthorMarkProjectionFromManuscriptMark(addedCanonicalMarks.addedMarks[0], {
+    sceneId: "scene-1",
+    text,
+    sceneBlocks,
+  });
+  assert.deepEqual(coloredHighlightProjection.visualStyle, {
+    highlightColor: "rgba(125, 197, 255, 0.34)",
+    highlightOutline: "rgba(71, 148, 214, 0.24)",
+    highlightColorId: "sky",
+  });
+
+  const appliedCoveredHighlight = applyManuscriptMarksForSceneSelection({
+    marks: addedCanonicalMarks.marks,
+    sequences: addedCanonicalMarks.sequences,
+    projectId: "project-1",
+    sceneId: "scene-1",
+    text,
+    sceneBlocks,
+    selection: {
+      startOffset: 6,
+      endOffset: 21,
+    },
+    kind: "highlight",
+    metadata: {
+      purpose: "reference",
+      highlightColor: {
+        id: "rose",
+        color: "rgba(255, 148, 164, 0.34)",
+        outline: "rgba(216, 86, 112, 0.22)",
+      },
+    },
+    now: "2026-06-04T00:01:00.000Z",
+  });
+  assert.equal(appliedCoveredHighlight.changed, true);
+  assert.equal(appliedCoveredHighlight.reason, "applied-mark");
+  assert.equal(appliedCoveredHighlight.toggledOff, false);
+  assert.deepEqual(appliedCoveredHighlight.removedMarkIds, ["mark-0004", "mark-0005"]);
+  assert.deepEqual(appliedCoveredHighlight.addedMarks.map((mark) => mark.metadata.highlightColor.id), ["rose", "rose"]);
 
   const singleNewlineText = "Alpha target.\nSecond block.";
   const tolerantCanonicalMarks = toggleManuscriptMarksForSceneSelection({
@@ -616,6 +673,50 @@ export function runManuscriptMarkServiceTest() {
   });
   assert.equal(pendingProjection.startOffset, 3);
   assert.equal(pendingProjection.endOffset, 4);
+
+  const coloredPendingHighlightSync = syncCompatibilityManuscriptMarksForScene({
+    marks: [],
+    projectId: "project-1",
+    chapterId: "chapter-1",
+    sceneId: "scene-1",
+    text: "color",
+    sceneBlocks: [{
+      blockId: "block-1",
+      paragraphId: "paragraph-1",
+      chapterId: "chapter-1",
+      sceneId: "scene-1",
+      text: "color",
+    }],
+    inlineFormatRanges: [{
+      id: "inline-highlight-0-5",
+      formatId: "highlight",
+      startOffset: 0,
+      endOffset: 5,
+      metadata: {
+        highlightColor: {
+          id: "mint",
+          color: "rgba(127, 220, 164, 0.38)",
+          outline: "rgba(73, 174, 112, 0.24)",
+        },
+      },
+    }],
+  });
+  assert.equal(coloredPendingHighlightSync.marks[0].metadata.highlightColor.id, "mint");
+  assert.deepEqual(createAuthorMarkProjectionFromManuscriptMark(coloredPendingHighlightSync.marks[0], {
+    sceneId: "scene-1",
+    text: "color",
+    sceneBlocks: [{
+      blockId: "block-1",
+      paragraphId: "paragraph-1",
+      chapterId: "chapter-1",
+      sceneId: "scene-1",
+      text: "color",
+    }],
+  }).visualStyle, {
+    highlightColor: "rgba(127, 220, 164, 0.38)",
+    highlightOutline: "rgba(73, 174, 112, 0.24)",
+    highlightColorId: "mint",
+  });
 
   // Intent: keep pending highlight typing and existing selected highlights adjacent through repeated text insertions.
   const repeatedBlock = (blockText) => [{

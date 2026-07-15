@@ -14,7 +14,7 @@ export async function runManuscriptCommandControllerTest() {
     endOffset: 14,
     format: "italic",
   });
-  assert.equal(selectedItalic.mutation.kind, "toggle-format-range");
+  assert.equal(selectedItalic.mutation.kind, "apply-format-range");
   assert.deepEqual(selectedItalic.ranges, [
     {
       id: "inline-italic-4-14",
@@ -25,15 +25,48 @@ export async function runManuscriptCommandControllerTest() {
   ]);
   assert.equal(selectedItalic.mutation.selectionStart, 4);
   assert.equal(selectedItalic.mutation.selectionEnd, 14);
+  assert.equal(selectedItalic.state.pendingFormats.italic, true);
 
-  const unwrappedItalic = runInlineFormatCommand({
+  const reappliedItalic = runInlineFormatCommand({
     text: "The quiet door opened.",
     startOffset: 4,
     endOffset: 14,
     format: "italic",
     ranges: selectedItalic.ranges,
   });
-  assert.deepEqual(unwrappedItalic.ranges, []);
+  assert.deepEqual(reappliedItalic.ranges, selectedItalic.ranges);
+  assert.equal(reappliedItalic.state.pendingFormats.italic, true);
+
+  const selectedItalicKeepsStackedBold = runInlineFormatCommand({
+    text: "The quiet door opened.",
+    startOffset: 4,
+    endOffset: 14,
+    format: "italic",
+    state: {
+      pendingFormats: {
+        bold: true,
+      },
+    },
+  });
+  assert.equal(selectedItalicKeepsStackedBold.state.pendingFormats.italic, true);
+  assert.equal(selectedItalicKeepsStackedBold.state.pendingFormats.bold, true);
+
+  const appliedCoveredItalic = runInlineFormatCommand({
+    text: "The quiet door opened.",
+    startOffset: 4,
+    endOffset: 14,
+    format: "italic",
+    ranges: selectedItalic.ranges,
+    state: {
+      pendingFormats: {
+        italic: true,
+      },
+    },
+    applyOnly: true,
+  });
+  assert.equal(appliedCoveredItalic.mutation.kind, "apply-format-range");
+  assert.deepEqual(appliedCoveredItalic.ranges, selectedItalic.ranges);
+  assert.equal(appliedCoveredItalic.state.pendingFormats.italic, true);
 
   const collapsedItalic = runInlineFormatCommand({
     text: "The door opened.",
@@ -60,6 +93,21 @@ export async function runManuscriptCommandControllerTest() {
   assert.equal(finishedItalic.mutation.selectionStart, 9);
   assert.equal(finishedItalic.state.pendingFormats.italic, false);
 
+  const finishedItalicKeepsStackedBold = runInlineFormatCommand({
+    text: "The quiet door opened.",
+    startOffset: 9,
+    endOffset: 9,
+    format: "italic",
+    state: {
+      pendingFormats: {
+        bold: true,
+        italic: true,
+      },
+    },
+  });
+  assert.equal(finishedItalicKeepsStackedBold.state.pendingFormats.italic, false);
+  assert.equal(finishedItalicKeepsStackedBold.state.pendingFormats.bold, true);
+
   const selectedHighlight = runInlineFormatCommand({
     text: "The quiet door opened.",
     startOffset: 4,
@@ -74,8 +122,9 @@ export async function runManuscriptCommandControllerTest() {
       endOffset: 14,
     },
   ]);
+  assert.equal(selectedHighlight.state.pendingFormats.highlight, true);
 
-  const selectedHighlightClearsPending = runInlineFormatCommand({
+  const selectedHighlightKeepsPending = runInlineFormatCommand({
     text: "The quiet door opened.",
     startOffset: 4,
     endOffset: 14,
@@ -83,10 +132,12 @@ export async function runManuscriptCommandControllerTest() {
     state: {
       pendingFormats: {
         highlight: true,
+        italic: true,
       },
     },
   });
-  assert.equal(selectedHighlightClearsPending.state.pendingFormats.highlight, false);
+  assert.equal(selectedHighlightKeepsPending.state.pendingFormats.highlight, true);
+  assert.equal(selectedHighlightKeepsPending.state.pendingFormats.italic, true);
 
   const collapsedHighlight = runInlineFormatCommand({
     text: "The door opened.",
@@ -111,6 +162,7 @@ export async function runManuscriptCommandControllerTest() {
       endOffset: 14,
     },
   ]);
+  assert.equal(selectedBold.state.pendingFormats.bold, true);
 
   const collapsedBold = runInlineFormatCommand({
     text: "The door opened.",
@@ -120,6 +172,22 @@ export async function runManuscriptCommandControllerTest() {
   });
   assert.equal(collapsedBold.mutation.kind, "start-pending-format");
   assert.equal(collapsedBold.state.pendingFormats.bold, true);
+
+  const selectedUnderline = runInlineFormatCommand({
+    text: "The quiet door opened.",
+    startOffset: 4,
+    endOffset: 14,
+    format: "underline",
+  });
+  assert.deepEqual(selectedUnderline.ranges, [
+    {
+      id: "inline-underline-4-14",
+      formatId: "underline",
+      startOffset: 4,
+      endOffset: 14,
+    },
+  ]);
+  assert.equal(selectedUnderline.state.pendingFormats.underline, true);
 
   const selectedStrikethrough = runInlineFormatCommand({
     text: "The quiet door opened.",
@@ -135,6 +203,7 @@ export async function runManuscriptCommandControllerTest() {
       endOffset: 14,
     },
   ]);
+  assert.equal(selectedStrikethrough.state.pendingFormats.strikethrough, true);
 
   const typedWithPendingHighlight = updateInlineFormatRangesForTextEdit({
     ranges: [],
@@ -152,6 +221,61 @@ export async function runManuscriptCommandControllerTest() {
       endOffset: 9,
     },
   ]);
+
+  const typedWithPendingHighlightColor = updateInlineFormatRangesForTextEdit({
+    ranges: [],
+    previousText: "The door opened.",
+    nextText: "The gold door opened.",
+    pendingFormats: {
+      highlight: true,
+    },
+    pendingFormatMetadata: {
+      highlight: {
+        highlightColor: {
+          id: "mint",
+          color: "rgba(127, 220, 164, 0.38)",
+          outline: "rgba(73, 174, 112, 0.24)",
+        },
+      },
+    },
+  });
+  assert.deepEqual(typedWithPendingHighlightColor, [
+    {
+      id: "inline-highlight-4-9",
+      formatId: "highlight",
+      startOffset: 4,
+      endOffset: 9,
+      metadata: {
+        highlightColor: {
+          id: "mint",
+          color: "rgba(127, 220, 164, 0.38)",
+          outline: "rgba(73, 174, 112, 0.24)",
+        },
+      },
+    },
+  ]);
+
+  const differentlyColoredAdjacentHighlights = updateInlineFormatRangesForTextEdit({
+    ranges: typedWithPendingHighlightColor,
+    previousText: "The gold door opened.",
+    nextText: "The gold red door opened.",
+    selectionStart: 13,
+    selectionEnd: 13,
+    pendingFormats: {
+      highlight: true,
+    },
+    pendingFormatMetadata: {
+      highlight: {
+        highlightColor: {
+          id: "rose",
+          color: "rgba(255, 148, 164, 0.34)",
+          outline: "rgba(216, 86, 112, 0.22)",
+        },
+      },
+    },
+  });
+  assert.equal(differentlyColoredAdjacentHighlights.length, 2);
+  assert.deepEqual(differentlyColoredAdjacentHighlights.map((range) => range.metadata.highlightColor.id), ["mint", "rose"]);
 
   const typedWithRepeatedPrefixHighlight = updateInlineFormatRangesForTextEdit({
     ranges: [],
@@ -308,11 +432,13 @@ function runInlineFormatCommand({
   format,
   state = createDefaultManuscriptInlineFormattingState(),
   ranges = [],
+  applyOnly = false,
 }) {
   let nextState = state;
   let nextRanges = null;
   const result = executeToggleInlineFormat({
     formatId: format,
+    applyOnly,
     getInlineFormattingState: () => nextState,
     setInlineFormattingState: (candidate) => {
       nextState = candidate;

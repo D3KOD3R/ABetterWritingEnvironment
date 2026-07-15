@@ -83,6 +83,8 @@ export function createAnchoredRecordNavigationController({
         endOffset: resolvedRange.endOffset,
       }],
       includeAuthorMarks: false,
+      includeDraftProofing: false,
+      includeDiagnostics: false,
       includeSpellcheck: false,
     }).find((candidate) => candidate.channel === channel) ?? null;
 

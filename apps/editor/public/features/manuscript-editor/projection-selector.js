@@ -1,5 +1,8 @@
 // Intent: select render-only manuscript projections without making the editor host a persistence owner.
 import {
+  createDraftProofCoverageProjections,
+} from "../draft-proofing/draft-proofing-service.js";
+import {
   createAnchorDecorationProjection,
   createSpellcheckDecorationProjections,
 } from "../manuscript-anchors/manuscript-decoration-projection-service.js";
@@ -13,6 +16,7 @@ import {
 
 export const MANUSCRIPT_PROJECTION_CHANNELS = Object.freeze({
   AUTHOR_MARK: "author-mark",
+  DRAFT_PROOF: "draft-proof",
   DIAGNOSTIC: "diagnostic",
   TASK: "task",
   NOTE: "note",
@@ -23,6 +27,7 @@ export const MANUSCRIPT_PROJECTION_CHANNELS = Object.freeze({
 
 const PROJECTION_PRIORITY = Object.freeze({
   [MANUSCRIPT_PROJECTION_CHANNELS.AUTHOR_MARK]: 100,
+  [MANUSCRIPT_PROJECTION_CHANNELS.DRAFT_PROOF]: 95,
   [MANUSCRIPT_PROJECTION_CHANNELS.DIAGNOSTIC]: 90,
   [MANUSCRIPT_PROJECTION_CHANNELS.TASK]: 80,
   [MANUSCRIPT_PROJECTION_CHANNELS.NOTE]: 80,
@@ -38,12 +43,15 @@ export function selectManuscriptProjections({
   sceneBlocks = [],
   inlineFormatRanges = [],
   manuscriptMarks = [],
+  draftProofing = null,
+  draftProofRunId = "",
   diagnosticIssues = [],
   anchoredRecordPreviews = [],
   searchPreviews = [],
   narrationSelection = null,
   spellcheckMisspellings = [],
   includeAuthorMarks = true,
+  includeDraftProofing = true,
   includeDiagnostics = true,
   includeAnchoredRecords = true,
   includeRuntimeSelections = true,
@@ -62,6 +70,17 @@ export function selectManuscriptProjections({
       sceneBlocks,
       manuscriptMarks,
       inlineFormatRanges,
+    }));
+  }
+
+  if (includeDraftProofing) {
+    projections.push(...createDraftProofCoverageProjections({
+      draftProofing,
+      sceneId: normalizedSceneId,
+      textLength: normalizedText.length,
+      runId: draftProofRunId,
+      channel: MANUSCRIPT_PROJECTION_CHANNELS.DRAFT_PROOF,
+      priority: PROJECTION_PRIORITY[MANUSCRIPT_PROJECTION_CHANNELS.DRAFT_PROOF],
     }));
   }
 

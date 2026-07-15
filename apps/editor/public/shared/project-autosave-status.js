@@ -3,6 +3,10 @@ export function buildProjectAutosaveStatusModel(state, {
   connected = false,
 } = {}) {
   const enabled = state?.editorPrefs?.projectFileAutosaveEnabled === true;
+  const dirtyDomains = state?.projectPersistenceDirtyDomains && typeof state.projectPersistenceDirtyDomains === "object"
+    ? Object.keys(state.projectPersistenceDirtyDomains)
+    : [];
+  const hasDirtyProjectFileState = state?.projectFileAutosaveDirty === true && dirtyDomains.length > 0;
   if (!enabled) {
     return createStatus({
       statusKey: "off",
@@ -49,19 +53,30 @@ export function buildProjectAutosaveStatusModel(state, {
   }
 
   const blocked = state?.projectFileAutosaveBlocked;
-  if (blocked && typeof blocked === "object") {
+  if (hasDirtyProjectFileState && blocked && typeof blocked === "object") {
     const permissionRequired = blocked.reason === "write-permission-required";
+    const manualSaveRequired = blocked.reason === "manual-save-required";
     return createStatus({
-      statusKey: permissionRequired ? "permission-required" : "out-of-sync",
-      statusLabel: permissionRequired ? "Needs permission" : "Out of sync",
+      statusKey: permissionRequired
+        ? "permission-required"
+        : manualSaveRequired
+          ? "manual-save-required"
+          : "out-of-sync",
+      statusLabel: permissionRequired
+        ? "Needs permission"
+        : manualSaveRequired
+          ? "Manual save"
+          : "Out of sync",
       note: permissionRequired
         ? "Project file is out of sync. Latest changes are preserved in browser cache; press Ctrl+S to re-authorize."
-        : "Project file is out of sync. Latest changes are preserved in browser cache; press Ctrl+S to retry.",
+        : manualSaveRequired
+          ? "Browser blocked background file writes. Latest changes are preserved in browser cache; press Ctrl+S to write the project file."
+          : "Project file is out of sync. Latest changes are preserved in browser cache; press Ctrl+S to retry.",
       tone: "waiting",
     });
   }
 
-  if (state?.projectFileAutosaveDirty === true) {
+  if (hasDirtyProjectFileState) {
     return createStatus({
       statusKey: "pending",
       statusLabel: "Pending",

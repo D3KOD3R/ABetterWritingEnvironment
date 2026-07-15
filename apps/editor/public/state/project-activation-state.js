@@ -30,6 +30,7 @@ export function createProjectActivationStateService({
   createTemplateDrafts,
   normalizeManuscriptTasks,
   normalizePassageNotes,
+  normalizeDraftProofingState = () => ({ schemaVersion: 1, activeRunId: "", runs: [] }),
   readRevisionState,
   createRevisionPanelStateForProject,
   normalizeProjectSettingsSnapshot,
@@ -80,6 +81,7 @@ export function createProjectActivationStateService({
     state.templateDrafts = clone(record.templateDrafts ?? createTemplateDrafts());
     state.manuscriptTasks = normalizeManuscriptTasks(record.manuscriptTasks);
     state.passageNotes = normalizePassageNotes(record.passageNotes);
+    state.draftProofing = normalizeDraftProofingState(record.draftProofing);
     state.revisionState = readRevisionState(record);
     state.revisionPanelState = createRevisionPanelStateForProject(state.revisionState);
     state.binderSceneMoveHistory = {

@@ -33,6 +33,69 @@ export const FONT_OPTIONS = [
 export const FONT_SIZE_OPTIONS = [16, 18, 20, 22];
 export const LINE_HEIGHT_OPTIONS = [1.5, 1.7, 1.9, 2.1];
 export const EDITOR_WIDTH_OPTIONS = [560, 680, 760, 840];
+export const CUSTOM_HIGHLIGHT_COLOR_ID = "custom";
+export const HIGHLIGHT_COLOR_OPTIONS = Object.freeze([
+  {
+    id: "amber",
+    label: "Amber",
+    color: "rgba(255, 222, 99, 0.44)",
+    outline: "rgba(255, 222, 99, 0.28)",
+  },
+  {
+    id: "lemon",
+    label: "Lemon",
+    color: "rgba(255, 241, 118, 0.42)",
+    outline: "rgba(218, 185, 36, 0.24)",
+  },
+  {
+    id: "mint",
+    label: "Mint",
+    color: "rgba(127, 220, 164, 0.38)",
+    outline: "rgba(73, 174, 112, 0.24)",
+  },
+  {
+    id: "teal",
+    label: "Teal",
+    color: "rgba(92, 213, 205, 0.34)",
+    outline: "rgba(40, 151, 148, 0.22)",
+  },
+  {
+    id: "sky",
+    label: "Sky",
+    color: "rgba(125, 197, 255, 0.34)",
+    outline: "rgba(71, 148, 214, 0.24)",
+  },
+  {
+    id: "cobalt",
+    label: "Cobalt",
+    color: "rgba(116, 149, 255, 0.28)",
+    outline: "rgba(63, 94, 202, 0.22)",
+  },
+  {
+    id: "rose",
+    label: "Rose",
+    color: "rgba(255, 148, 164, 0.34)",
+    outline: "rgba(216, 86, 112, 0.22)",
+  },
+  {
+    id: "coral",
+    label: "Coral",
+    color: "rgba(255, 156, 112, 0.34)",
+    outline: "rgba(206, 95, 54, 0.22)",
+  },
+  {
+    id: "violet",
+    label: "Violet",
+    color: "rgba(177, 151, 255, 0.32)",
+    outline: "rgba(126, 94, 218, 0.22)",
+  },
+  {
+    id: "graphite",
+    label: "Graphite",
+    color: "rgba(114, 124, 137, 0.24)",
+    outline: "rgba(71, 79, 91, 0.2)",
+  },
+]);
 
 // Intent: define safe editor preference defaults before user or project-specific settings are applied.
 export function createDefaultEditorPrefs() {
@@ -45,6 +108,12 @@ export function createDefaultEditorPrefs() {
     grammarCheckEnabled: true,
     revisionOverlayEnabled: false,
     italicText: false,
+    highlightColorId: "amber",
+    highlightCustomRgb: {
+      red: 255,
+      green: 222,
+      blue: 99,
+    },
   };
 }
 
@@ -118,6 +187,13 @@ export function normalizeEditorPrefs(candidate) {
     typeof candidate?.italicText === "boolean"
       ? candidate.italicText
       : defaults.italicText;
+  const highlightColorId = (
+    candidate?.highlightColorId === CUSTOM_HIGHLIGHT_COLOR_ID ||
+    HIGHLIGHT_COLOR_OPTIONS.some((option) => option.id === candidate?.highlightColorId)
+  )
+    ? candidate.highlightColorId
+    : defaults.highlightColorId;
+  const highlightCustomRgb = normalizeHighlightCustomRgb(candidate?.highlightCustomRgb, defaults.highlightCustomRgb);
 
   return {
     fontFamilyId,
@@ -128,7 +204,47 @@ export function normalizeEditorPrefs(candidate) {
     grammarCheckEnabled,
     revisionOverlayEnabled,
     italicText,
+    highlightColorId,
+    highlightCustomRgb,
   };
+}
+
+export function normalizeHighlightCustomRgb(candidate, fallback = createDefaultEditorPrefs().highlightCustomRgb) {
+  const source = candidate && typeof candidate === "object" && !Array.isArray(candidate)
+    ? candidate
+    : {};
+  return {
+    red: normalizeHighlightRgbChannel(source.red, fallback.red),
+    green: normalizeHighlightRgbChannel(source.green, fallback.green),
+    blue: normalizeHighlightRgbChannel(source.blue, fallback.blue),
+  };
+}
+
+export function resolveHighlightColorOption(colorId, customRgb = createDefaultEditorPrefs().highlightCustomRgb) {
+  if (colorId === CUSTOM_HIGHLIGHT_COLOR_ID) {
+    const rgb = normalizeHighlightCustomRgb(customRgb);
+    return {
+      id: CUSTOM_HIGHLIGHT_COLOR_ID,
+      label: "Custom",
+      color: `rgba(${rgb.red}, ${rgb.green}, ${rgb.blue}, 0.36)`,
+      outline: `rgba(${rgb.red}, ${rgb.green}, ${rgb.blue}, 0.24)`,
+      rgb,
+    };
+  }
+
+  return HIGHLIGHT_COLOR_OPTIONS.find((option) => option.id === colorId) ?? HIGHLIGHT_COLOR_OPTIONS[0];
+}
+
+function normalizeHighlightRgbChannel(value, fallback) {
+  const numericValue = Number(value);
+  const fallbackValue = Number.isFinite(Number(fallback))
+    ? Math.max(0, Math.min(255, Math.round(Number(fallback))))
+    : 0;
+  if (!Number.isFinite(numericValue)) {
+    return fallbackValue;
+  }
+
+  return Math.max(0, Math.min(255, Math.round(numericValue)));
 }
 
 function normalizeSpellcheckWordList(candidate) {

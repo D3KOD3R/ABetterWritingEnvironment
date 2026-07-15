@@ -194,8 +194,24 @@ export function updateManuscriptMarksForSceneTextEdit({
   };
 }
 
+// Intent: plan direct canonical mark writes that apply a mark without using toolbar toggle semantics.
+export function applyManuscriptMarksForSceneSelection(options = {}) {
+  return mutateManuscriptMarksForSceneSelection({
+    ...options,
+    mutationMode: "apply",
+  });
+}
+
 // Intent: plan direct canonical mark writes so toolbar and panel commands can leave legacy ranges behind.
-export function toggleManuscriptMarksForSceneSelection({
+export function toggleManuscriptMarksForSceneSelection(options = {}) {
+  return mutateManuscriptMarksForSceneSelection({
+    ...options,
+    mutationMode: "toggle",
+  });
+}
+
+// Intent: share anchor-backed mark creation while keeping paint-style apply separate from button toggles.
+function mutateManuscriptMarksForSceneSelection({
   marks = [],
   sequences = {},
   projectId = "",
@@ -207,6 +223,7 @@ export function toggleManuscriptMarksForSceneSelection({
   kind = "",
   source = "author",
   metadata = null,
+  mutationMode = "toggle",
   now = "",
 } = {}) {
   const normalizedText = String(text ?? "");
@@ -267,6 +284,7 @@ export function toggleManuscriptMarksForSceneSelection({
   const addedMarks = [];
   const removedMarkIds = [];
   const normalizedMetadata = normalizeManuscriptMarkMetadata(metadata);
+  const applySelectedSegments = mutationMode === "apply" || !fullyCovered;
 
   for (const mark of existingMarks) {
     const editableRange = createEditableMarkSceneRange(mark, blockSpans, {
@@ -296,7 +314,7 @@ export function toggleManuscriptMarksForSceneSelection({
     }
   }
 
-  if (!fullyCovered) {
+  if (applySelectedSegments) {
     for (const segment of selectedSegments) {
       addedMarks.push(createManuscriptMarkFromSpan({
         markId: allocateMarkId(),
@@ -321,10 +339,10 @@ export function toggleManuscriptMarksForSceneSelection({
     marks: nextMarks,
     sequences: updateMarkSequence(sequences, markSequence),
     changed: JSON.stringify(existingMarks) !== JSON.stringify(nextMarks),
-    reason: fullyCovered ? "removed-mark" : "added-mark",
+    reason: mutationMode === "apply" ? "applied-mark" : fullyCovered ? "removed-mark" : "added-mark",
     addedMarks,
     removedMarkIds,
-    toggledOff: fullyCovered,
+    toggledOff: mutationMode === "toggle" && fullyCovered,
   });
 }
 
@@ -421,6 +439,7 @@ export function createAuthorMarkProjectionFromManuscriptMark(mark, {
     styleToken: normalizedMark.kind,
     priority,
     persistence: "derived-durable",
+    ...createAuthorMarkProjectionStyle(normalizedMark),
     sourceRef: {
       recordType: "manuscriptMark",
       recordId: normalizedMark.id,
@@ -456,6 +475,7 @@ function createMarksForRange(range, kind, blockSpans, {
       projectId,
       sceneId,
       now,
+      metadata: range.metadata,
     }));
   }
   return marks;
@@ -542,6 +562,7 @@ function normalizeManuscriptMark(mark, {
     return null;
   }
 
+  const metadata = normalizeManuscriptMarkMetadata(mark.metadata);
   return {
     ...mark,
     id,
@@ -554,6 +575,7 @@ function normalizeManuscriptMark(mark, {
     },
     anchorStatus: normalizeAnchorStatus(mark.anchorStatus, MANUSCRIPT_ANCHOR_STATUS.RESOLVED),
     anchorDirtyReason: typeof mark.anchorDirtyReason === "string" ? mark.anchorDirtyReason : "",
+    ...(metadata ? { metadata } : {}),
   };
 }
 
@@ -1187,7 +1209,94 @@ function normalizeManuscriptMarkMetadata(metadata) {
     normalized.purpose = metadata.purpose;
   }
 
+  const highlightColor = normalizeHighlightColorMetadata(metadata.highlightColor);
+  if (highlightColor) {
+    normalized.highlightColor = highlightColor;
+  }
+
   return normalized;
+}
+
+function createAuthorMarkProjectionStyle(mark) {
+  if (mark?.kind !== MANUSCRIPT_MARK_KINDS.HIGHLIGHT) {
+    return {};
+  }
+
+  const metadata = normalizeManuscriptMarkMetadata(mark.metadata);
+  const highlightColor = metadata?.highlightColor;
+  if (!highlightColor) {
+    return {};
+  }
+
+  return {
+    visualStyle: {
+      highlightColor: highlightColor.color,
+      highlightOutline: highlightColor.outline,
+      highlightColorId: highlightColor.id ?? "",
+    },
+  };
+}
+
+function normalizeHighlightColorMetadata(candidate) {
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+    return null;
+  }
+
+  const color = normalizeRgbaColor(candidate.color);
+  const outline = normalizeRgbaColor(candidate.outline);
+  if (!color || !outline) {
+    return null;
+  }
+
+  const id = typeof candidate.id === "string" ? candidate.id.trim() : "";
+  const label = typeof candidate.label === "string" ? candidate.label.trim() : "";
+  const rgb = normalizeHighlightRgb(candidate.rgb);
+  return {
+    ...(id ? { id } : {}),
+    ...(label ? { label } : {}),
+    color,
+    outline,
+    ...(rgb ? { rgb } : {}),
+  };
+}
+
+function normalizeRgbaColor(value) {
+  const source = String(value ?? "").trim();
+  const match = /^rgba\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(0|1|0?\.\d+)\s*\)$/i.exec(source);
+  if (!match) {
+    return "";
+  }
+
+  const red = clampColorChannel(match[1]);
+  const green = clampColorChannel(match[2]);
+  const blue = clampColorChannel(match[3]);
+  const alpha = Math.max(0, Math.min(1, Number(match[4])));
+  return `rgba(${red}, ${green}, ${blue}, ${formatColorAlpha(alpha)})`;
+}
+
+function normalizeHighlightRgb(candidate) {
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+    return null;
+  }
+
+  return {
+    red: clampColorChannel(candidate.red),
+    green: clampColorChannel(candidate.green),
+    blue: clampColorChannel(candidate.blue),
+  };
+}
+
+function clampColorChannel(value) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.min(255, Math.round(numericValue)));
+}
+
+function formatColorAlpha(value) {
+  return Number(value.toFixed(3)).toString();
 }
 
 function normalizeManuscriptMarkKind(kind) {

@@ -1,5 +1,6 @@
 // Intent: render the top-level editor chrome without owning editor state or persistence.
 import { renderWritingTargetStrip } from "../features/progress-tracker.js";
+import { renderDraftProofPanel } from "../features/draft-proofing/draft-proofing-panel.js";
 import { buildProjectAutosaveStatusModel } from "../shared/project-autosave-status.js";
 import { escapeHtml, formatDisplayNumber } from "../shared/ui-utils.js";
 
@@ -27,7 +28,11 @@ export function renderEditorChrome({
     <header class="desktop-chrome">
       <div class="desktop-menubar">
         <div class="desktop-menu-cluster">
-          <div class="file-menu ${state.fileMenuOpen ? "is-open" : ""}" data-file-menu>
+          <div
+            class="file-menu project-file-tooltip ${state.fileMenuOpen ? "is-open" : ""}"
+            data-file-menu
+            data-file-path-tooltip="${escapeHtml(safeProjectFileDisplay.tooltip)}"
+          >
             <button
               class="menu-button"
               type="button"
@@ -47,15 +52,6 @@ export function renderEditorChrome({
         <div class="desktop-title-cluster">
           <span class="desktop-app-name">A Better Novel Authoring Environment</span>
           <span class="desktop-environment-badge" aria-label="Environment marker">Version: Test</span>
-          <span class="project-file-tooltip desktop-project-title-shell" data-file-path-tooltip="${escapeHtml(safeProjectFileDisplay.tooltip)}">
-              <input
-                class="project-title-input desktop-project-title"
-                type="text"
-                value="${escapeHtml(state.projectTitle)}"
-                data-edit-field="project-title"
-                aria-label="Project title"
-              />
-            </span>
           </div>
         </div>
         <div class="desktop-menubar-center">
@@ -64,19 +60,18 @@ export function renderEditorChrome({
             ${renderPaneTab("world", "World", "Spines and templates", activePane)}
             ${renderPaneTab("narration", "Narration + Voice", "Whisper follow-track", activePane)}
           </nav>
+          ${renderLocalAiSetting(state)}
         </div>
         <div class="desktop-stat-strip" aria-label="Project statistics">
           ${renderStat("Lines", projectWorkspace?.project?.stats?.lineCount ?? 0, "lines")}
+          ${renderChromeAutosaveIndicator(buildProjectAutosaveIndicatorModel(state, projectFileAutosaveConnected))}
           ${renderWritingTargetToggle(state, writingTargetSummary)}
           ${renderRevisionToggle(state)}
         </div>
       </div>
       ${renderWritingTargetStrip(writingTargetSummary, {
-        autosaveIndicator: buildProjectAutosaveIndicatorModel(state, projectFileAutosaveConnected),
+        leadingPanelHTML: `${renderDraftProofPanel(state)}${renderDeveloperLogsControl(writingTargetSummary)}`,
       })}
-      <div class="desktop-toolbar">
-        ${renderLocalAiSetting(state)}
-      </div>
     </header>
   `;
 }
@@ -247,7 +242,52 @@ function renderLocalAiSetting(state) {
   `;
 }
 
-// Intent: describe autosave runtime state for the top metric strip without exposing persistence internals to UI callers.
+// Intent: keep autosave state beside top-level project stats rather than in the lower target strip.
+function renderChromeAutosaveIndicator(indicator) {
+  return `
+    <div
+      class="project-autosave-indicator ${escapeHtml(indicator.toneClass)}"
+      data-project-autosave-indicator
+      data-status-key="${escapeHtml(indicator.statusKey)}"
+      title="${escapeHtml(indicator.note)}"
+    >
+      <span class="project-autosave-indicator__label">${escapeHtml(indicator.label)}</span>
+      <strong class="project-autosave-indicator__status" data-project-autosave-status>${escapeHtml(indicator.statusLabel)}</strong>
+      <span class="project-autosave-indicator__note" data-project-autosave-note>${escapeHtml(indicator.note)}</span>
+    </div>
+  `;
+}
+
+// Intent: keep developer diagnostics available beside proof-read controls without pulling them into writing metrics.
+function renderDeveloperLogsControl(summary) {
+  const debugTerminal = summary?.debugTerminal ?? {
+    entryCount: 0,
+    recentErrorCount: 0,
+    lastEventLabel: "",
+  };
+  const entryCount = Math.max(0, Math.round(Number(debugTerminal.entryCount) || 0));
+  const recentErrorCount = Math.max(0, Math.round(Number(debugTerminal.recentErrorCount) || 0));
+  const meta = recentErrorCount > 0
+    ? `${formatDisplayNumber(entryCount)} events · ${formatDisplayNumber(recentErrorCount)} errors`
+    : `${formatDisplayNumber(entryCount)} events`;
+
+  return `
+    <div class="developer-log-chip">
+      <button
+        class="tag-button panel-action-button developer-log-chip__button"
+        type="button"
+        data-action="open-developer-logs"
+        aria-pressed="false"
+        title="Open developer logs in a separate tab"
+      >
+        Developer logs
+      </button>
+      <span class="developer-log-chip__meta">${escapeHtml(meta)}</span>
+    </div>
+  `;
+}
+
+// Intent: describe autosave runtime state for the top chrome without exposing persistence internals to UI callers.
 function buildProjectAutosaveIndicatorModel(state, projectFileAutosaveConnected = false) {
   return buildProjectAutosaveStatusModel(state, {
     connected: projectFileAutosaveConnected,
@@ -261,12 +301,16 @@ function renderProjectFileAutosaveSetting(state, projectFileAutosaveConnected = 
   const autosaveStatus = buildProjectAutosaveStatusModel(state, {
     connected: projectFileAutosaveConnected,
   });
-  const destinationLabel = state.projectFileAutosaveBlocked
+  const projectFileOutOfSync =
+    autosaveStatus.statusKey === "permission-required" ||
+    autosaveStatus.statusKey === "manual-save-required" ||
+    autosaveStatus.statusKey === "out-of-sync";
+  const destinationLabel = projectFileOutOfSync
     ? "Project file out of sync"
     : projectFileAutosaveConnected
       ? "Writing to JSON file"
       : "Waiting for file";
-  const statusNote = state.projectFileAutosaveBlocked
+  const statusNote = projectFileOutOfSync
     ? autosaveStatus.note
     : enabled
       ? "Saves after 5 seconds of idle editing."

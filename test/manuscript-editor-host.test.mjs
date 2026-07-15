@@ -14,6 +14,7 @@ import {
   findTextareaOffsetForVisualLineEnd,
   renderTextareaAuthorMarkContent,
   renderTextareaDiagnosticContent,
+  renderTextareaDraftProofContent,
   renderTextareaEditorHostHTML,
   renderTextareaSpellcheckContent,
 } from "../apps/editor/public/adapters/editor-host/textarea-editor-host.js";
@@ -34,6 +35,22 @@ export function runManuscriptEditorHostTest() {
       startOffset: 0,
       endOffset: 5,
     }],
+    draftProofing: {
+      activeRunId: "draft-proof-run-0001",
+      runs: [{
+        id: "draft-proof-run-0001",
+        label: "Draft proof 1",
+        iterationNumber: 1,
+        status: "active",
+        coverageByScene: {
+          "scene-1": [{
+            startOffset: 0,
+            endOffset: 5,
+            touchedAt: "2026-07-15T01:00:00.000Z",
+          }],
+        },
+      }],
+    },
     spellcheckMisspellings: [{
       word: "dooor",
       index: 6,
@@ -88,6 +105,20 @@ export function runManuscriptEditorHostTest() {
         priority: 100,
       },
       {
+        id: "same-scene-highlight",
+        sceneId: "scene-1",
+        startOffset: 6,
+        endOffset: 11,
+        channel: MANUSCRIPT_PROJECTION_CHANNELS.AUTHOR_MARK,
+        styleToken: "highlight",
+        priority: 100,
+        visualStyle: {
+          highlightColor: "rgba(125, 197, 255, 0.34)",
+          highlightOutline: "rgba(71, 148, 214, 0.24)",
+          highlightColorId: "sky",
+        },
+      },
+      {
         id: "foreign-scene",
         sceneId: "scene-2",
         startOffset: 0,
@@ -99,15 +130,22 @@ export function runManuscriptEditorHostTest() {
     ],
   });
 
-  assert.equal(snapshot.projections.length, 7);
-  assert.equal(selectManuscriptEditorHostChannel(snapshot, MANUSCRIPT_PROJECTION_CHANNELS.AUTHOR_MARK).length, 2);
+  assert.equal(snapshot.projections.length, 9);
+  assert.equal(selectManuscriptEditorHostChannel(snapshot, MANUSCRIPT_PROJECTION_CHANNELS.AUTHOR_MARK).length, 3);
+  assert.equal(selectManuscriptEditorHostChannel(snapshot, MANUSCRIPT_PROJECTION_CHANNELS.DRAFT_PROOF).length, 1);
   assert.equal(selectManuscriptEditorHostChannel(snapshot, MANUSCRIPT_PROJECTION_CHANNELS.DIAGNOSTIC).length, 1);
   assert.equal(selectManuscriptEditorHostChannel(snapshot, MANUSCRIPT_PROJECTION_CHANNELS.NOTE).length, 1);
   assert.equal(selectManuscriptEditorHostChannel(snapshot, MANUSCRIPT_PROJECTION_CHANNELS.SEARCH).length, 1);
   assert.equal(selectManuscriptEditorHostChannel(snapshot, MANUSCRIPT_PROJECTION_CHANNELS.NARRATION_FOLLOW).length, 1);
   assert.equal(selectManuscriptEditorHostChannel(snapshot, MANUSCRIPT_PROJECTION_CHANNELS.SPELLCHECK).length, 1);
   assert.match(renderTextareaAuthorMarkContent(snapshot), /editor-inline-format-italic/);
+  assert.match(renderTextareaAuthorMarkContent(snapshot), /editor-inline-format-italic-token/);
+  assert.match(renderTextareaAuthorMarkContent(snapshot), /data-italic-text="Quiet"/);
   assert.match(renderTextareaAuthorMarkContent(snapshot), /editor-inline-format-bold/);
+  assert.match(renderTextareaAuthorMarkContent(snapshot), /editor-inline-format-highlight/);
+  assert.match(renderTextareaAuthorMarkContent(snapshot), /--editor-mark-highlight-color:rgba\(125, 197, 255, 0\.34\)/);
+  assert.match(renderTextareaAuthorMarkContent(snapshot), /has-inline-format-projection/);
+  assert.match(renderTextareaDraftProofContent(snapshot), /editor-draft-proof-range/);
   assert.match(renderTextareaDiagnosticContent(snapshot), /editor-diagnostic-warning/);
   assert.match(renderTextareaDiagnosticContent(snapshot), /data-diagnostic-id="issue-1"/);
   assert.match(renderTextareaSpellcheckContent(snapshot), /editor-spellcheck-word is-misspelled/);
@@ -119,10 +157,12 @@ export function runManuscriptEditorHostTest() {
     inputClassName: "has-revision-preview",
   });
   assert.match(markup, /data-inline-format-layer/);
+  assert.match(markup, /data-draft-proof-layer/);
+  assert.match(markup, /editor-draft-proof-range/);
   assert.match(markup, /data-diagnostic-layer/);
   assert.match(markup, /editor-diagnostic-warning/);
   assert.match(markup, /data-spellcheck-layer/);
-  assert.match(markup, /class="editor-document-input has-revision-preview"/);
+  assert.match(markup, /class="editor-document-input has-revision-preview has-inline-format-projection"/);
   assert.match(markup, /Quiet dooor\./);
 
   const wrappedText = "abcdefghij\nklmno";

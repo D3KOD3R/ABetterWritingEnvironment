@@ -177,7 +177,20 @@ export interface EventTag {
 
 export interface ManuscriptMarkMetadata {
   colorToken?: string;
+  highlightColor?: ManuscriptMarkHighlightColor;
   purpose?: ManuscriptMarkPurpose;
+}
+
+export interface ManuscriptMarkHighlightColor {
+  id?: string;
+  label?: string;
+  color: string;
+  outline: string;
+  rgb?: {
+    red: number;
+    green: number;
+    blue: number;
+  };
 }
 
 export interface ManuscriptMark {
@@ -884,7 +897,64 @@ function normalizeManuscriptMarkMetadata(metadata: ManuscriptMarkMetadata): Manu
     normalized.purpose = metadata.purpose;
   }
 
+  const highlightColor = normalizeManuscriptMarkHighlightColor(metadata.highlightColor);
+  if (highlightColor) {
+    normalized.highlightColor = highlightColor;
+  }
+
   return normalized;
+}
+
+function normalizeManuscriptMarkHighlightColor(
+  candidate: ManuscriptMarkHighlightColor | undefined,
+): ManuscriptMarkHighlightColor | null {
+  if (!candidate || typeof candidate !== "object") {
+    return null;
+  }
+
+  const color = normalizeRgbaColor(candidate.color);
+  const outline = normalizeRgbaColor(candidate.outline);
+  if (!color || !outline) {
+    return null;
+  }
+
+  const id = candidate.id?.trim() ?? "";
+  const label = candidate.label?.trim() ?? "";
+  return {
+    ...(id ? { id } : {}),
+    ...(label ? { label } : {}),
+    color,
+    outline,
+    ...(candidate.rgb ? {
+      rgb: {
+        red: clampColorChannel(candidate.rgb.red),
+        green: clampColorChannel(candidate.rgb.green),
+        blue: clampColorChannel(candidate.rgb.blue),
+      },
+    } : {}),
+  };
+}
+
+function normalizeRgbaColor(value: string | undefined): string {
+  const source = String(value ?? "").trim();
+  const match = /^rgba\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(0|1|0?\.\d+)\s*\)$/i.exec(source);
+  if (!match) {
+    return "";
+  }
+
+  const red = clampColorChannel(Number(match[1]));
+  const green = clampColorChannel(Number(match[2]));
+  const blue = clampColorChannel(Number(match[3]));
+  const alpha = Math.max(0, Math.min(1, Number(match[4])));
+  return `rgba(${red}, ${green}, ${blue}, ${Number(alpha.toFixed(3)).toString()})`;
+}
+
+function clampColorChannel(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.min(255, Math.round(value)));
 }
 
 function createManuscriptMarkEvidence(

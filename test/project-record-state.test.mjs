@@ -1,6 +1,7 @@
 // Intent: verify durable project-record construction stays separate from live editor shell state.
 import assert from "node:assert/strict";
 
+import { normalizeDraftProofingState } from "../apps/editor/public/features/draft-proofing/draft-proofing-service.js";
 import { normalizeProjectSelectionDefaults } from "../apps/editor/public/state/project-library-state.js";
 import { createProjectRecordStateService } from "../apps/editor/public/state/project-record-state.js";
 
@@ -12,6 +13,7 @@ export function runProjectRecordStateTest() {
     createDefaultLocalAiPrefs: () => ({ localOnly: true }),
     normalizeManuscriptTasks: (tasks) => Array.isArray(tasks) ? tasks : [],
     normalizePassageNotes: (notes) => Array.isArray(notes) ? notes : [],
+    normalizeDraftProofingState,
     normalizeProjectSelectionDefaults,
     normalizeProjectSettingsSnapshot: (settings) => ({
       editorPrefs: settings.editorPrefs ?? { font: "serif" },
@@ -49,6 +51,17 @@ export function runProjectRecordStateTest() {
     },
     manuscriptTasks: [{ id: "task-1" }],
     passageNotes: [{ id: "note-1" }],
+    draftProofing: {
+      activeRunId: "draft-proof-run-0001",
+      runs: [{
+        id: "draft-proof-run-0001",
+        status: "active",
+        iterationNumber: 1,
+        coverageByScene: {
+          "scene-1": [{ startOffset: 0, endOffset: 6 }],
+        },
+      }],
+    },
     revisions: { sessions: [] },
   });
   assert.equal(record.id, "project-1");
@@ -56,6 +69,11 @@ export function runProjectRecordStateTest() {
   assert.equal(record.projectIndex.projectId, "project-1");
   assert.equal(record.workspace.project.stats.sceneCount, 1);
   assert.equal(record.schemaVersion, 3);
+  assert.equal(record.draftProofing.activeRunId, "draft-proof-run-0001");
+  assert.deepEqual(record.draftProofing.runs[0].coverageByScene["scene-1"].map((span) => [
+    span.startOffset,
+    span.endOffset,
+  ]), [[0, 6]]);
 
   const normalized = service.normalizeProjectRecord({
     ...record,
@@ -66,4 +84,5 @@ export function runProjectRecordStateTest() {
   assert.equal(normalized.title, "Recovered Project");
   assert.equal(normalized.workspace.project.title, "Recovered Project");
   assert.equal(normalized.sceneDrafts["scene-1"].editorText, "The first line.");
+  assert.equal(normalized.draftProofing.activeRunId, "draft-proof-run-0001");
 }

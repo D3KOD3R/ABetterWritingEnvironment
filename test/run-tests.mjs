@@ -7,6 +7,8 @@ import { runAudioServiceTest } from "./audio-service.test.mjs";
 import { runDesktopApplicationTest } from "./desktop-application.test.mjs";
 import { runDeveloperLoggerTest } from "./developer-logger.test.mjs";
 import { runDeleteConfirmationDialogTest } from "./delete-confirmation-dialog.test.mjs";
+import { runDraftProofingPanelTest } from "./draft-proofing-panel.test.mjs";
+import { runDraftProofingServiceTest } from "./draft-proofing-service.test.mjs";
 import { runEditorStorageTest } from "./editor-storage.test.mjs";
 import { runEditorUiStateTest } from "./editor-ui-state.test.mjs";
 import { runEditorModelTest } from "./editor-model.test.mjs";
@@ -56,7 +58,6 @@ import { runSpellcheckTest } from "./spellcheck.test.mjs";
 import { runTaskContextMenuTest } from "./task-context-menu.test.mjs";
 import { runTaskPanelTest } from "./task-panel.test.mjs";
 import { runUserHighlightCommandServiceTest } from "./user-highlight-command-service.test.mjs";
-import { runUserHighlightPanelTest } from "./user-highlight-panel.test.mjs";
 import { runVoiceNarrationFoundationTest } from "./voice-narration-foundation.test.mjs";
 import { runVoiceRecordingActionServiceTest } from "./voice-recording-action-service.test.mjs";
 import { runVoiceRecordingPreviewServiceTest } from "./voice-recording-preview-service.test.mjs";
@@ -98,6 +99,14 @@ const tests = [
   {
     name: "delete confirmation dialog renders outside the shell",
     run: runDeleteConfirmationDialogTest,
+  },
+  {
+    name: "draft proofing service tracks active proof-read coverage",
+    run: runDraftProofingServiceTest,
+  },
+  {
+    name: "draft proofing panel renders top-chrome controls",
+    run: runDraftProofingPanelTest,
   },
   {
     name: "editor storage keeps canonical and legacy key compatibility",
@@ -294,10 +303,6 @@ const tests = [
   {
     name: "user highlight command recovers toolbar click selections",
     run: runUserHighlightCommandServiceTest,
-  },
-  {
-    name: "user highlight panel renders canonical manuscript marks",
-    run: runUserHighlightPanelTest,
   },
   {
     name: "voice service creates speaker bindings and render jobs",
