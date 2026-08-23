@@ -67,10 +67,53 @@ function normalizeRuntimeSceneDraft(candidate, fallbackSceneId) {
   };
 }
 
+// Intent: let metadata-only runtime DTOs update exported scene chunks without overwriting stored manuscript bodies.
+function mergeRuntimeSceneDraftForExport(storedDraft, runtimeDraft) {
+  const normalizedRuntimeDraft = runtimeDraft && typeof runtimeDraft === "object" && !Array.isArray(runtimeDraft)
+    ? cloneValue(runtimeDraft)
+    : null;
+  if (!normalizedRuntimeDraft) {
+    return storedDraft && typeof storedDraft === "object" && !Array.isArray(storedDraft)
+      ? cloneValue(storedDraft)
+      : null;
+  }
+
+  const storedHasBody = sceneDraftHasSubstantiveBody(storedDraft);
+  const runtimeHasBody = sceneDraftHasSubstantiveBody(normalizedRuntimeDraft);
+  if (runtimeHasBody || !storedHasBody) {
+    return normalizedRuntimeDraft;
+  }
+
+  const storedBody = storedDraft && typeof storedDraft === "object" && !Array.isArray(storedDraft)
+    ? cloneValue(storedDraft)
+    : {};
+  return {
+    ...storedBody,
+    ...normalizedRuntimeDraft,
+    editorText: typeof storedBody.editorText === "string" ? storedBody.editorText : "",
+    blocks: Array.isArray(storedBody.blocks) ? cloneValue(storedBody.blocks) : [],
+  };
+}
+
 function normalizeLibrarySnapshot(snapshot) {
   return migrateProjectData(snapshot, {
     targetSchemaVersion: PROJECT_SCHEMA_VERSION,
   });
+}
+
+// Intent: treat scene bodies supplied by a loaded project file as the save authority for unopened scenes.
+function getProjectSceneStore(sceneStore, projectId) {
+  if (!sceneStore || typeof sceneStore !== "object" || Array.isArray(sceneStore)) {
+    return null;
+  }
+  if (typeof projectId !== "string" || !projectId.trim()) {
+    return null;
+  }
+
+  const scenes = sceneStore[projectId];
+  return scenes && typeof scenes === "object" && !Array.isArray(scenes)
+    ? cloneValue(scenes)
+    : null;
 }
 
 function collectWorkspaceSceneWordCounts(projectRecord) {
@@ -270,10 +313,20 @@ export function createProjectService({
       if (!project?.id) {
         continue;
       }
-      const scenes = projectRepository.loadAllScenes(project.id);
-      const mergedScenes = scenes && typeof scenes === "object" && !Array.isArray(scenes)
-        ? cloneValue(scenes)
-        : {};
+      const authoritativeScenes = getProjectSceneStore(snapshot.sceneStore, project.id);
+      const hasAuthoritativeSceneStore = authoritativeScenes !== null;
+      const mergedScenes = authoritativeScenes ?? {};
+      const scenes = hasAuthoritativeSceneStore ? null : projectRepository.loadAllScenes(project.id);
+      if (scenes && typeof scenes === "object" && !Array.isArray(scenes)) {
+        for (const [sceneId, candidate] of Object.entries(scenes)) {
+          const normalizedSceneId = normalizeSceneId(sceneId);
+          if (!normalizedSceneId || Object.prototype.hasOwnProperty.call(mergedScenes, normalizedSceneId)) {
+            continue;
+          }
+
+          mergedScenes[normalizedSceneId] = cloneValue(candidate);
+        }
+      }
       const runtimeDrafts = project.sceneDrafts && typeof project.sceneDrafts === "object" && !Array.isArray(project.sceneDrafts)
         ? project.sceneDrafts
         : {};
@@ -290,10 +343,10 @@ export function createProjectService({
           continue;
         }
 
-        const storedDraft = mergedScenes[normalizedSceneId];
-        if (sceneDraftHasSubstantiveBody(normalizedDraft) || !sceneDraftHasSubstantiveBody(storedDraft)) {
-          mergedScenes[normalizedSceneId] = normalizedDraft;
-        }
+        mergedScenes[normalizedSceneId] = mergeRuntimeSceneDraftForExport(
+          mergedScenes[normalizedSceneId],
+          normalizedDraft,
+        );
       }
 
       if (Object.keys(mergedScenes).length) {

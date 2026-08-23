@@ -9,6 +9,12 @@ function stopSpeechRecognition(speechRecognition, {
 
   try {
     if (clearHandlers) {
+      speechRecognition.onstart = null;
+      speechRecognition.onaudiostart = null;
+      speechRecognition.onaudioend = null;
+      speechRecognition.onspeechstart = null;
+      speechRecognition.onspeechend = null;
+      speechRecognition.onnomatch = null;
       speechRecognition.onresult = null;
       speechRecognition.onerror = null;
       speechRecognition.onend = null;

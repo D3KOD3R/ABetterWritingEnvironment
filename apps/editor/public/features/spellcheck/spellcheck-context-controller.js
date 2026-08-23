@@ -126,6 +126,43 @@ export function buildSpellcheckEditorContextMenu(editorContext, event, lexicons,
   });
 }
 
+// Intent: open hover suggestions only from the pointer location, never from a stale textarea caret.
+export function buildSpellcheckEditorHoverContextMenu(editorContext, event, lexicons, options = {}) {
+  if (!hasSpellcheckLexicon(lexicons) || !editorContext) {
+    return null;
+  }
+
+  const { textarea } = editorContext;
+  if (!isTextareaElement(textarea)) {
+    return null;
+  }
+
+  const sceneId = String(textarea.dataset.sceneId ?? "");
+  if (!sceneId) {
+    return null;
+  }
+
+  const point = getEventPoint(event);
+  let wordRange = typeof options.getWordRangeFromLayerPoint === "function"
+    ? options.getWordRangeFromLayerPoint(textarea, event)
+    : getSpellcheckWordRangeFromLayerPoint(textarea, event);
+  if (!wordRange) {
+    wordRange = typeof options.getWordRangeFromPointer === "function"
+      ? options.getWordRangeFromPointer(textarea, event)
+      : getSpellcheckWordRangeFromPointer(textarea, event, options);
+  }
+  if (!wordRange) {
+    return null;
+  }
+
+  return buildSpellcheckWordContextMenu({
+    sceneId,
+    wordRange,
+    lexicons,
+    point,
+  });
+}
+
 export function buildSpellcheckGrammarCheckContextMenu(target, event, {
   scene,
   lexicons,
@@ -147,7 +184,11 @@ export function buildSpellcheckGrammarCheckContextMenu(target, event, {
   }
 
   const sourceText = String(scene.editorText ?? "");
-  const originalWord = sourceText.slice(firstIndex, firstIndex + word.length) || word;
+  const firstEndIndex = Number(target.dataset.grammarCheckFirstEndIndex);
+  const safeFirstEndIndex = Number.isInteger(firstEndIndex) && firstEndIndex > firstIndex
+    ? firstEndIndex
+    : firstIndex + word.length;
+  const originalWord = sourceText.slice(firstIndex, safeFirstEndIndex) || word;
   const point = getEventPoint(event);
   return {
     sceneId,
@@ -156,7 +197,7 @@ export function buildSpellcheckGrammarCheckContextMenu(target, event, {
     word: originalWord,
     normalizedWord,
     startOffset: firstIndex,
-    endOffset: firstIndex + originalWord.length,
+    endOffset: safeFirstEndIndex,
     suggestions: suggestSpellcheckAlternatives(originalWord, lexicons),
     x: point.x,
     y: point.y,

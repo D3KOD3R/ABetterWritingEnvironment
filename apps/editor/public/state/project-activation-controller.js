@@ -21,6 +21,7 @@ export function createProjectActivationController({
   writeProjectSourcePath,
   writeBinderWidth,
   writeConsoleWidth,
+  writePanelResizerLayoutProfiles,
   persistConsoleDockCollapsedState,
   persistCollapsedChapterState,
   persistCollapsedConsoleChapterState,
@@ -57,6 +58,7 @@ export function createProjectActivationController({
     writeProjectSourcePath,
     writeBinderWidth,
     writeConsoleWidth,
+    writePanelResizerLayoutProfiles,
     persistConsoleDockCollapsedState,
     persistCollapsedChapterState,
     persistCollapsedConsoleChapterState,
@@ -90,6 +92,8 @@ export function createProjectActivationController({
     setNarrationRecordingRuntime(null);
     state.narrationTakeSelection = null;
     state.narrationTakeSession = null;
+    state.narrationRecordingReview = null;
+    state.narrationRecordingPreviewId = null;
 
     const previewAudio = getVoiceRecordingPreviewAudio();
     if (previewAudio) {
@@ -112,6 +116,7 @@ export function createProjectActivationController({
     writeProjectSourcePath(state.projectSourcePath);
     writeBinderWidth(state.binderPanelWidth);
     writeConsoleWidth(state.consoleDockWidth);
+    writePanelResizerLayoutProfiles(state.panelResizerLayoutProfiles);
     persistConsoleDockCollapsedState(state.consoleDockCollapsed);
     persistCollapsedChapterState(record.id, state.collapsedChapterIds);
     persistCollapsedConsoleChapterState(record.id, state.collapsedConsoleChapterIds);

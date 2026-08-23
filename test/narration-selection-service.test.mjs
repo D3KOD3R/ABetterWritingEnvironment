@@ -78,4 +78,28 @@ export function runNarrationSelectionServiceTest() {
   assert.equal(fromInput.startOffset, 1);
   assert.equal(fromInput.endOffset, 5);
   assert.equal(fromInput.selectedText, "irst");
+
+  const fromCaretLine = resolveNarrationTakeSelectionFromTextInput({
+    scene,
+    contextRange: {
+      hasExplicitSelection: false,
+      startOffset: 0,
+      endOffset: 0,
+      selectedText: "",
+    },
+    caretOffset: 18,
+    caretRange: {
+      blockId: "block-2",
+      startOffset: 13,
+      endOffset: 19,
+      selectedText: "Second",
+    },
+    projectId: "project-1",
+    findSceneBlockAtOffset: () => scene.blocks[1],
+    getSceneBlockRanges,
+  });
+  assert.equal(fromCaretLine.blockId, "block-2");
+  assert.equal(fromCaretLine.startOffset, 13);
+  assert.equal(fromCaretLine.endOffset, 19);
+  assert.equal(fromCaretLine.selectedText, "Second");
 }

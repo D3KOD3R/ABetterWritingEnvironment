@@ -2,7 +2,10 @@
 import assert from "node:assert/strict";
 
 import { createProjectPersistenceService } from "../apps/editor/public/adapters/storage/project-persistence-service.js";
-import { getProjectFileIdentity } from "../apps/editor/public/adapters/storage/project-file.js";
+import {
+  getProjectFileIdentity,
+  getSuggestedProjectFileName,
+} from "../apps/editor/public/adapters/storage/project-file.js";
 
 export async function runProjectPersistenceServiceTest() {
   const windowRef = createFakeWindowRef();
@@ -39,6 +42,7 @@ export async function runProjectPersistenceServiceTest() {
     editorPrefs: {
       projectFileAutosaveEnabled: true,
     },
+    activePane: "manuscript",
     workspace: {
       project: {
         id: "project-1",
@@ -67,6 +71,7 @@ export async function runProjectPersistenceServiceTest() {
   };
 
   const fetchCalls = [];
+  const desktopFileSnapshots = new Map();
   const projectService = createFakeProjectService(projectRecord, loadedRecord, browserCacheWrites);
   const projectRepository = {
     loadActiveProjectId: () => state.activeProjectId,
@@ -80,6 +85,13 @@ export async function runProjectPersistenceServiceTest() {
       requestOptions,
     });
     if (pathname === "/api/project-file/load") {
+      const filePath = requestOptions.body?.filePath ?? "";
+      if (desktopFileSnapshots.has(filePath)) {
+        return {
+          ok: true,
+          value: structuredClone(desktopFileSnapshots.get(filePath)),
+        };
+      }
       return {
         ok: true,
         value: {
@@ -89,10 +101,14 @@ export async function runProjectPersistenceServiceTest() {
       };
     }
     if (pathname === "/api/project-file/save") {
+      const { filePath, snapshot } = requestOptions.body ?? {};
+      if (filePath && snapshot) {
+        desktopFileSnapshots.set(filePath, structuredClone(snapshot));
+      }
       return {
         ok: true,
         value: {
-          filePath: requestOptions.body?.filePath ?? "",
+          filePath: filePath ?? "",
         },
       };
     }
@@ -123,16 +139,21 @@ export async function runProjectPersistenceServiceTest() {
       return true;
     },
     writeProjectFilePathCache: () => {},
-    createProjectRecordFromRuntimeState: () => ({
-      ...projectRecord,
-      manuscriptTasks: runtimeManuscriptTasks,
-      passageNotes: runtimePassageNotes,
-      projectSettings: {
-        ...(projectRecord.projectSettings ?? {}),
-        projectFilePath: state.projectFilePath,
-        writingTargetState: runtimeWritingTargetState,
-      },
-    }),
+    createProjectRecordFromRuntimeState: () => {
+      const activeProjectId = state.activeProjectId ?? state.projectLibrarySelectionId ?? projectRecord.id;
+      const activeRecord = state.projectLibrary.find((project) => project?.id === activeProjectId) ?? projectRecord;
+      return {
+        ...activeRecord,
+        manuscriptTasks: runtimeManuscriptTasks,
+        passageNotes: runtimePassageNotes,
+        projectSettings: {
+          ...(activeRecord.projectSettings ?? {}),
+          activePane: state.activePane,
+          projectFilePath: state.projectFilePath,
+          writingTargetState: runtimeWritingTargetState,
+        },
+      };
+    },
     getActiveProjectRecord: () =>
       state.projectLibrary.find((project) => project.id === (state.activeProjectId ?? state.projectLibrarySelectionId)) ?? null,
     normalizeProjectLibrarySnapshot: (candidate) => ({
@@ -166,7 +187,8 @@ export async function runProjectPersistenceServiceTest() {
       });
     },
     renderHeader: () => {},
-    resolveSuggestedProjectFileName: () => "project-1.abe-project.json",
+    resolveSuggestedProjectFileName: (projectTitle) =>
+      getSuggestedProjectFileName(projectTitle || state.projectTitle || state.workspace?.project?.title || "Project 1"),
     loggerSources: {},
   });
 
@@ -174,6 +196,7 @@ export async function runProjectPersistenceServiceTest() {
   await projectPersistenceService.saveProjectSnapshot({ reason: "manual-save" });
   assert.equal(operationLog.includes("prepare-save"), true);
   assert.equal(operationLog.some((entry) => String(entry).startsWith("write:")), true);
+  assert.equal(operationLog.includes("get-file"), true);
   projectPersistenceService.clearProjectAutosaveState();
 
   // Failed external writes must still preserve the latest project in browser-backed project storage.
@@ -228,6 +251,39 @@ export async function runProjectPersistenceServiceTest() {
     8,
   );
   state.projectLibrary = [projectRecord];
+
+  // A write that reports success but reads back stale JSON must not clear dirty project-file state.
+  operationLog.length = 0;
+  browserCacheWrites.length = 0;
+  browserLogs.length = 0;
+  const staleReadbackHandle = createFakeWritableHandle("project-1.abe-project.json", operationLog, {
+    returnStaleTextOnGetFile: true,
+  });
+  state.projectFileHandle = staleReadbackHandle;
+  state.projectFileHandlePermission = "granted";
+  state.projectFilePath = "project-1.abe-project.json";
+  projectPersistenceService.clearProjectAutosaveState();
+  projectPersistenceService.markProjectAutosaveDirty({
+    domain: "manuscript",
+    reason: "test-stale-readback-verification",
+    source: "test",
+  });
+  await projectPersistenceService.saveProjectSnapshot({ reason: "manual-save" });
+  assert.equal(operationLog.some((entry) => String(entry).startsWith("write:")), true);
+  assert.equal(operationLog.includes("get-file"), true);
+  assert.equal(browserCacheWrites.length >= 1, true);
+  assert.match(state.projectFileStatus, /Latest project preserved in browser cache/);
+  assert.equal(state.projectFileAutosaveDirty, true);
+  assert.equal(state.projectFileAutosaveBlocked?.reason, "write-failed");
+  assert.match(
+    state.projectFileAutosaveBlocked?.errorMessage ?? "",
+    /does not contain the latest project snapshot/,
+  );
+  assert.equal(
+    browserLogs.some((entry) => entry.message === "Project file save failed."),
+    true,
+  );
+
   state.projectFileHandle = createFakeWritableHandle("project-1.abe-project.json", operationLog);
   state.projectFileHandlePermission = "granted";
   state.projectFilePath = "project-1.abe-project.json";
@@ -279,6 +335,119 @@ export async function runProjectPersistenceServiceTest() {
   assert.equal(state.projectFileAutosaveDirty, true);
   assert.equal(state.projectPersistenceDirtyDomains?.["manuscript-tasks"]?.reason, "manuscript-task-created");
   projectPersistenceService.clearProjectAutosaveState();
+
+  // Workspace pane changes are canonical project UI settings and must survive refresh/load.
+  state.projectLibrary = [projectRecord];
+  state.activeProjectId = "project-1";
+  state.projectLibrarySelectionId = "project-1";
+  state.activePane = "world";
+  browserCacheWrites.length = 0;
+  projectPersistenceService.commitCanonicalProjectMutation({
+    domain: "app-settings",
+    dirtyReason: "workspace-pane-selected",
+    source: "test-workspace-pane-select",
+  });
+  assert.equal(state.projectLibrary[0].projectSettings.activePane, "world");
+  assert.equal(browserCacheWrites.at(-1)?.projects?.[0]?.projectSettings?.activePane, "world");
+  assert.equal(state.projectFileAutosaveDirty, true);
+  assert.equal(state.projectPersistenceDirtyDomains?.["app-settings"]?.reason, "workspace-pane-selected");
+  projectPersistenceService.clearProjectAutosaveState();
+  state.activePane = "manuscript";
+
+  // Location-row style mutations can force the already canonical project mutation to hit the project file immediately.
+  operationLog.length = 0;
+  state.projectLibrary = [projectRecord];
+  state.activeProjectId = "project-1";
+  state.projectLibrarySelectionId = "project-1";
+  state.activePane = "world";
+  state.projectFileHandle = createFakeWritableHandle("project-1.abe-project.json", operationLog);
+  state.projectFileHandlePermission = "granted";
+  state.projectFilePath = "project-1.abe-project.json";
+  projectPersistenceService.clearProjectAutosaveState();
+  projectPersistenceService.commitCanonicalProjectMutation({
+    domain: "app-settings",
+    dirtyReason: "world-spine-location-row-named",
+    source: "test-immediate-world-spine-dto-flush",
+    flushProjectFileAutosave: true,
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(operationLog.includes("prepare-save"), true);
+  assert.equal(operationLog.some((entry) => String(entry).startsWith("write:")), true);
+  assert.equal(state.projectFileAutosaveDirty, false);
+  assert.equal(state.projectFileAutosaveRevision, 0);
+  state.activePane = "manuscript";
+
+  // Scene-store DTO repairs are explicit scene mutations even when the project-record comparator sees no field delta.
+  operationLog.length = 0;
+  state.projectLibrary = [projectRecord];
+  state.activeProjectId = "project-1";
+  state.projectLibrarySelectionId = "project-1";
+  state.activePane = "manuscript";
+  state.projectFileHandle = createFakeWritableHandle("project-1.abe-project.json", operationLog);
+  state.projectFileHandlePermission = "granted";
+  state.projectFilePath = "project-1.abe-project.json";
+  projectPersistenceService.clearProjectAutosaveState();
+  projectPersistenceService.commitCanonicalProjectMutation({
+    domain: "manuscript",
+    changedSceneIds: ["scene-1"],
+    dirtyReason: "world-spine-location-row-named",
+    source: "test-world-spine-scene-store-only-flush",
+    flushProjectFileAutosave: true,
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(operationLog.includes("prepare-save"), true);
+  assert.equal(operationLog.some((entry) => String(entry).startsWith("write:")), true);
+  assert.equal(state.projectFileAutosaveDirty, false);
+  assert.equal(state.projectFileAutosaveRevision, 0);
+
+  // Boot reconnect should not let an older project file without activePane erase the cached last workspace page.
+  const cachedPaneProject = {
+    ...createProjectRecord(),
+    projectSettings: {
+      projectFilePath: "C:\\Projects\\project-1.abe-project.json",
+      activePane: "world",
+    },
+  };
+  state.projectLibrary = [cachedPaneProject];
+  state.activeProjectId = "project-1";
+  state.projectLibrarySelectionId = "project-1";
+  state.projectFilePath = "C:\\Projects\\project-1.abe-project.json";
+  await projectPersistenceService.hydrateProjectLibraryFromLoadedSnapshot({
+    activeProjectId: "project-1",
+    projects: [{
+      ...createProjectRecord(),
+      projectSettings: {
+        projectFilePath: "C:\\Projects\\project-1.abe-project.json",
+      },
+    }],
+  }, {
+    filePath: "C:\\Projects\\project-1.abe-project.json",
+    sourceLabel: "project file",
+    reason: "boot-reconnect",
+    mode: "desktop-path",
+  });
+  assert.equal(state.projectLibrary[0].projectSettings.activePane, "world");
+
+  // A file that explicitly stores activePane remains authoritative during the same boot reconnect.
+  state.projectLibrary = [cachedPaneProject];
+  state.activeProjectId = "project-1";
+  state.projectLibrarySelectionId = "project-1";
+  await projectPersistenceService.hydrateProjectLibraryFromLoadedSnapshot({
+    activeProjectId: "project-1",
+    projects: [{
+      ...createProjectRecord(),
+      projectSettings: {
+        projectFilePath: "C:\\Projects\\project-1.abe-project.json",
+        activePane: "manuscript",
+      },
+    }],
+  }, {
+    filePath: "C:\\Projects\\project-1.abe-project.json",
+    sourceLabel: "project file",
+    reason: "boot-reconnect",
+    mode: "desktop-path",
+  });
+  assert.equal(state.projectLibrary[0].projectSettings.activePane, "manuscript");
 
   // Autosave should not repeatedly attempt browser-handle writes that require a user permission prompt.
   operationLog.length = 0;
@@ -480,6 +649,37 @@ export async function runProjectPersistenceServiceTest() {
   runtimePassageNotes = [];
   runtimeManuscriptTasks = [];
 
+  // The author-facing Load project action should open a chooser even when a current path exists.
+  const pickedProjectHandle = createFakeWritableHandle("picked-project.abe-project.json", operationLog);
+  const openPickerCalls = [];
+  windowRef.showOpenFilePicker = async (options = {}) => {
+    openPickerCalls.push(options);
+    return [pickedProjectHandle];
+  };
+  fetchCalls.length = 0;
+  operationLog.length = 0;
+  activationLog.length = 0;
+  state.activeProjectId = "project-1";
+  state.projectLibrarySelectionId = "project-1";
+  state.projectLibrary = [projectRecord];
+  state.projectFileHandle = null;
+  state.projectFileHandlePermission = "";
+  state.projectFilePath = "C:\\Projects\\project-1.abe-project.json";
+  await projectPersistenceService.chooseProjectSnapshotFileForLoad();
+  assert.equal(openPickerCalls.length, 1);
+  assert.equal(
+    fetchCalls.some((call) =>
+      call.pathname === "/api/project-file/load" &&
+      call.requestOptions?.body?.filePath === "picked-project.abe-project.json"
+    ),
+    false,
+  );
+  assert.equal(operationLog.includes("get-file"), true);
+  assert.equal(state.projectFileHandle, pickedProjectHandle);
+  assert.equal(state.projectFilePath, "picked-project.abe-project.json");
+  assert.equal(state.activeProjectId, "project-loaded");
+  delete windowRef.showOpenFilePicker;
+
   // Research-note mutations use the same passage-note project-file domain and should mark autosave dirty.
   runtimePassageNotes = [
     {
@@ -605,6 +805,9 @@ export async function runProjectPersistenceServiceTest() {
   assert.equal(state.projectFilePath, "OriginFileproject-serva-vitae.abe-project.json");
   assert.equal(state.projectFileHandle, browserHandle);
   assert.equal(state.projectFileHandlePermission, "granted");
+  const browserHandleSettingsCall = fetchCalls.filter((call) => call.pathname === "/api/settings").at(-1);
+  assert.equal(browserHandleSettingsCall?.requestOptions?.body?.lastProjectFilePath, "");
+  assert.equal(browserHandleSettingsCall?.requestOptions?.body?.lastProjectFilePathExplicit, false);
   assert.equal(activationLog.at(-1)?.projectFilePath, "OriginFileproject-serva-vitae.abe-project.json");
   assert.equal(activationLog.at(-1)?.hasProjectFileHandle, true);
   assert.equal(activationLog.at(-1)?.activeSceneText, "Loaded project scene text.");
@@ -626,6 +829,26 @@ export async function runProjectPersistenceServiceTest() {
   state.projectFileHandlePermission = "granted";
   const loadedSceneStore = {
     "scene-loaded": createLoadedProjectRecord().sceneDrafts["scene-loaded"],
+    "scene-unopened": {
+      sceneId: "scene-unopened",
+      chapterId: "chapter-loaded",
+      chapterTitle: "Loaded Chapter",
+      sceneTitle: "Unopened Loaded Scene",
+      sceneSynopsis: "",
+      editorText: "Unopened loaded scene text.",
+      blocks: [
+        {
+          blockId: "block-unopened-1",
+          lineNumber: 2,
+          kind: "narration",
+          speakerLabel: "",
+          text: "Unopened loaded scene text.",
+          issueIds: [],
+          eventTagIds: [],
+          isDraft: false,
+        },
+      ],
+    },
   };
   await projectPersistenceService.hydrateProjectLibraryFromLoadedSnapshot({
     activeProjectId: "project-1",
@@ -665,6 +888,15 @@ export async function runProjectPersistenceServiceTest() {
   assert.equal(
     state.projectLibrary.find((project) => project.id === remappedProjectId)?.sceneDrafts?.["scene-loaded"]?.editorText,
     "Loaded project scene text.",
+  );
+  assert.equal(
+    state.projectLibrary.find((project) => project.id === remappedProjectId)?.sceneDrafts?.["scene-unopened"]?.editorText,
+    undefined,
+  );
+  const retainedLoadedFileSnapshot = projectPersistenceService.buildProjectSnapshotForSaveFile();
+  assert.equal(
+    retainedLoadedFileSnapshot.sceneStore?.[remappedProjectId]?.["scene-unopened"]?.editorText,
+    "Unopened loaded scene text.",
   );
 
   // Renamed split-storage project files without their sceneStore must not recover bodies from an older browser cache.
@@ -739,19 +971,206 @@ export async function runProjectPersistenceServiceTest() {
   assert.equal(state.projectFilePath, "C:\\Projects\\project-1-renamed.abe-project.json");
   assert.equal(projectPersistenceService.hasProjectSaveDestination(), true);
 
-  // Restore-last-opened flow should hit desktop load/settings routes and keep persistence state coherent.
+  // Scrivener ports should activate an imported project and immediately ask for an ABE project file destination.
+  state.projectFilePath = "";
+  state.projectFileHandle = null;
+  state.projectFileHandlePermission = "";
+  activationLog.length = 0;
+  operationLog.length = 0;
+  const scrivenerSaveWrites = [];
+  const scrivenerSavePickerCalls = [];
+  const scrivenerProjectHandle = createFakeWritableHandle("imported-novel.abe-project.json", operationLog, {
+    writtenValues: scrivenerSaveWrites,
+  });
+  windowRef.showDirectoryPicker = async () => createFakeScrivenerDirectoryHandle();
+  windowRef.showSaveFilePicker = async (options = {}) => {
+    scrivenerSavePickerCalls.push(options);
+    return scrivenerProjectHandle;
+  };
+  await projectPersistenceService.chooseScrivenerProjectForImport();
+  assert.equal(state.activeProjectId, "scrivener-imported-novel");
+  assert.equal(scrivenerSavePickerCalls.length, 1);
+  assert.equal(scrivenerSavePickerCalls[0].suggestedName, "imported-novel.abe-project.json");
+  assert.equal(state.projectFilePath, "imported-novel.abe-project.json");
+  assert.equal(state.projectFileHandle, scrivenerProjectHandle);
+  assert.equal(activationLog.at(-1)?.reason, "scrivener-import");
+  assert.equal(activationLog.at(-1)?.activeSceneText, "Imported Scrivener text.");
+  assert.equal(scrivenerSaveWrites.length, 1);
+  const savedScrivenerSnapshot = JSON.parse(scrivenerSaveWrites[0]);
+  assert.equal(savedScrivenerSnapshot.activeProjectId, "scrivener-imported-novel");
+  assert.equal(savedScrivenerSnapshot.projects[0].id, "scrivener-imported-novel");
+  assert.equal(savedScrivenerSnapshot.projects[0].projectSettings.projectFilePath, "imported-novel.abe-project.json");
+  assert.equal(
+    state.projectLibrary.find((project) => project.id === "scrivener-imported-novel")?.projectSettings?.projectFilePath,
+    "imported-novel.abe-project.json",
+  );
+  assert.match(state.projectFileStatus, /Ported Scrivener project: 1 scene/);
+  assert.match(state.projectFileStatus, /Saved ABE project file to imported-novel\.abe-project\.json/);
+  delete windowRef.showDirectoryPicker;
+  delete windowRef.showSaveFilePicker;
+
+  // Restore-last-opened flow should prefer the explicit desktop path over stale cached record paths.
+  fetchCalls.length = 0;
+  state.projectFilePath = "C:\\Projects\\stale-cache.abe-project.json";
   await projectPersistenceService.restoreLastOpenedProject({
     lastProjectFilePathExplicit: true,
     lastProjectFilePath: "C:\\Projects\\loaded.abe-project.json",
     projectRoot: "C:\\Projects",
   });
+  const restoreLoadCall = fetchCalls.find((call) => call.pathname === "/api/project-file/load");
+  const restoreSettingsCall = fetchCalls.find((call) => call.pathname === "/api/settings");
   assert.equal(
-    fetchCalls.some((call) => call.pathname === "/api/project-file/load"),
-    true,
+    restoreLoadCall?.requestOptions?.body?.filePath,
+    "C:\\Projects\\loaded.abe-project.json",
   );
   assert.equal(
-    fetchCalls.some((call) => call.pathname === "/api/settings"),
-    true,
+    restoreSettingsCall?.requestOptions?.body?.lastProjectFilePath,
+    "C:\\Projects\\loaded.abe-project.json",
+  );
+  assert.equal(
+    state.projectFilePath,
+    "C:\\Projects\\loaded.abe-project.json",
+  );
+
+  // Metadata-only retained scene stores should recover body text from line-backed project records before save.
+  const recoverableProjectRecord = createRecoverableProjectRecord();
+  state.activeProjectId = recoverableProjectRecord.id;
+  state.projectLibrarySelectionId = recoverableProjectRecord.id;
+  state.projectLibrary = [recoverableProjectRecord];
+  state.loadedProjectSceneStore = {
+    [recoverableProjectRecord.id]: Object.fromEntries(
+      recoverableProjectRecord.projectIndex.scenes.map((scene) => [scene.id, {
+        sceneId: scene.id,
+        chapterId: scene.chapterId,
+        chapterTitle: scene.chapterTitle,
+        sceneTitle: scene.title,
+        editorText: "",
+        blocks: [],
+        location: "Earth",
+        locationRowLabel: "Earth",
+        locationRowKey: "earth",
+        locationScope: "planetary",
+        worldSpineMetadata: {
+          location: "Earth",
+          locationRowLabel: "Earth",
+          locationRowKey: "earth",
+          locationScope: "planetary",
+        },
+      }]),
+    ),
+  };
+  const recoveredSceneStoreSnapshot = projectPersistenceService.buildProjectSnapshotForSaveFile();
+  assert.equal(
+    recoveredSceneStoreSnapshot.sceneStore?.[recoverableProjectRecord.id]?.["recoverable-scene-3"]?.editorText,
+    "Recoverable scene 3 body.",
+  );
+  assert.equal(
+    recoveredSceneStoreSnapshot.sceneStore?.[recoverableProjectRecord.id]?.["recoverable-scene-3"]?.blocks?.[0]?.text,
+    "Recoverable scene 3 body.",
+  );
+  assert.equal(
+    recoveredSceneStoreSnapshot.sceneStore?.[recoverableProjectRecord.id]?.["recoverable-scene-3"]?.locationRowKey,
+    "earth",
+  );
+
+  // Already-collapsed runtime stores can recover from the current project file before writing.
+  const fileRecoverableProjectRecord = createCollapsedProjectRecord();
+  const fileRecoverableSceneStore = createRecoveredFileSceneStore(fileRecoverableProjectRecord);
+  const fileRecoveryWrites = [];
+  operationLog.length = 0;
+  state.activeProjectId = fileRecoverableProjectRecord.id;
+  state.projectLibrarySelectionId = fileRecoverableProjectRecord.id;
+  state.projectLibrary = [fileRecoverableProjectRecord];
+  state.loadedProjectSceneStore = {
+    [fileRecoverableProjectRecord.id]: createMetadataOnlySceneStore(fileRecoverableProjectRecord),
+  };
+  state.projectFilePath = "collapsed.abe-project.json";
+  state.projectFileHandle = createFakeWritableHandle("collapsed.abe-project.json", operationLog, {
+    fileText: JSON.stringify({
+      activeProjectId: fileRecoverableProjectRecord.id,
+      projects: [fileRecoverableProjectRecord],
+      sceneStore: {
+        [fileRecoverableProjectRecord.id]: fileRecoverableSceneStore,
+      },
+    }),
+    writtenValues: fileRecoveryWrites,
+  });
+  state.projectFileHandlePermission = "granted";
+  projectPersistenceService.clearProjectAutosaveState();
+  await projectPersistenceService.saveProjectSnapshot({ reason: "manual-save" });
+  const recoveredFileSaveSnapshot = JSON.parse(fileRecoveryWrites.at(-1));
+  assert.equal(
+    recoveredFileSaveSnapshot.sceneStore?.[fileRecoverableProjectRecord.id]?.["collapsed-scene-4"]?.editorText,
+    "Recovered file body for collapsed scene 4.",
+  );
+  assert.equal(
+    recoveredFileSaveSnapshot.sceneStore?.[fileRecoverableProjectRecord.id]?.["collapsed-scene-4"]?.locationRowKey,
+    "earth",
+  );
+  assert.equal(operationLog.filter((entry) => entry === "get-file").length >= 2, true);
+
+  // Direct browser-handle saves without a prebuilt snapshot must use the same scene-body recovery path.
+  const directRecoveryWrites = [];
+  operationLog.length = 0;
+  state.activeProjectId = fileRecoverableProjectRecord.id;
+  state.projectLibrarySelectionId = fileRecoverableProjectRecord.id;
+  state.projectLibrary = [fileRecoverableProjectRecord];
+  state.loadedProjectSceneStore = {
+    [fileRecoverableProjectRecord.id]: createMetadataOnlySceneStore(fileRecoverableProjectRecord),
+  };
+  state.projectFilePath = "collapsed-direct.abe-project.json";
+  state.projectFileHandle = createFakeWritableHandle("collapsed-direct.abe-project.json", operationLog, {
+    fileText: JSON.stringify({
+      activeProjectId: fileRecoverableProjectRecord.id,
+      projects: [fileRecoverableProjectRecord],
+      sceneStore: {
+        [fileRecoverableProjectRecord.id]: fileRecoverableSceneStore,
+      },
+    }),
+    writtenValues: directRecoveryWrites,
+  });
+  state.projectFileHandlePermission = "granted";
+  await projectPersistenceService.saveProjectSnapshotToBrowserHandle(state.projectFileHandle, null, {
+    reason: "direct-save",
+  });
+  const directRecoveredFileSaveSnapshot = JSON.parse(directRecoveryWrites.at(-1));
+  assert.equal(
+    directRecoveredFileSaveSnapshot.sceneStore?.[fileRecoverableProjectRecord.id]?.["collapsed-scene-4"]?.editorText,
+    "Recovered file body for collapsed scene 4.",
+  );
+  assert.equal(operationLog.filter((entry) => entry === "get-file").length >= 2, true);
+
+  // Collapsed split-storage files should fail before they become the active editable manuscript.
+  const collapsedProjectRecord = createCollapsedProjectRecord();
+  const collapsedSceneStore = createCollapsedSceneStore();
+  await assert.rejects(
+    () => projectPersistenceService.hydrateProjectLibraryFromLoadedSnapshot({
+      activeProjectId: collapsedProjectRecord.id,
+      projects: [collapsedProjectRecord],
+      sceneStore: {
+        [collapsedProjectRecord.id]: collapsedSceneStore,
+      },
+    }, {
+      filePath: "C:\\Projects\\collapsed.abe-project.json",
+      fileName: "collapsed.abe-project.json",
+      fileHandle: null,
+      reason: "load-project-file",
+      sourceLabel: "browser file",
+      mode: "browser-input",
+    }),
+    /manuscript body store looks collapsed/,
+  );
+
+  // Existing collapsed runtime state should also be blocked at save time.
+  state.activeProjectId = collapsedProjectRecord.id;
+  state.projectLibrarySelectionId = collapsedProjectRecord.id;
+  state.projectLibrary = [collapsedProjectRecord];
+  state.loadedProjectSceneStore = {
+    [collapsedProjectRecord.id]: collapsedSceneStore,
+  };
+  assert.throws(
+    () => projectPersistenceService.buildProjectSnapshotForSaveFile(),
+    /Refusing to save/,
   );
 }
 
@@ -786,7 +1205,7 @@ function createFakeProjectService(projectRecord, loadedRecord, browserCacheWrite
         ...snapshot,
         projects: snapshot.projects.map((project) => ({
           ...project,
-          sceneDrafts: snapshot.sceneStore?.[project.id] ?? project.sceneDrafts ?? {},
+          sceneDrafts: hydrateActiveSceneDraftForTest(project, snapshot.sceneStore?.[project.id] ?? project.sceneDrafts ?? {}),
         })),
       };
     },
@@ -836,7 +1255,12 @@ function createFakeProjectService(projectRecord, loadedRecord, browserCacheWrite
           !Array.isArray(project.sceneDrafts) &&
           Object.keys(project.sceneDrafts).length
         ) {
-          sceneStore[project.id] = project.sceneDrafts;
+          sceneStore[project.id] = {
+            ...(sceneStore[project.id] && typeof sceneStore[project.id] === "object" && !Array.isArray(sceneStore[project.id])
+              ? sceneStore[project.id]
+              : {}),
+            ...project.sceneDrafts,
+          };
         }
       }
       return {
@@ -847,6 +1271,19 @@ function createFakeProjectService(projectRecord, loadedRecord, browserCacheWrite
       };
     },
   };
+}
+
+function hydrateActiveSceneDraftForTest(project, sceneDrafts) {
+  if (!sceneDrafts || typeof sceneDrafts !== "object" || Array.isArray(sceneDrafts)) {
+    return {};
+  }
+
+  const activeSceneId = typeof project?.projectSettings?.activeSceneId === "string" && project.projectSettings.activeSceneId.trim()
+    ? project.projectSettings.activeSceneId
+    : Object.keys(sceneDrafts)[0] ?? "";
+  return activeSceneId && sceneDrafts[activeSceneId]
+    ? { [activeSceneId]: sceneDrafts[activeSceneId] }
+    : {};
 }
 
 function createProjectRecord() {
@@ -935,6 +1372,226 @@ function createLoadedProjectRecord() {
   };
 }
 
+function createRecoverableProjectRecord() {
+  const scenes = Array.from({ length: 6 }, (_, index) => {
+    const sceneNumber = index + 1;
+    return {
+      id: `recoverable-scene-${sceneNumber}`,
+      title: `Recoverable Scene ${sceneNumber}`,
+      chapterId: "recoverable-chapter",
+      chapterTitle: "Recoverable Chapter",
+      order: sceneNumber,
+      lineCount: 1,
+      wordCount: 4,
+    };
+  });
+  const lines = scenes.map((scene, index) => ({
+    blockId: `${scene.id}-block-1`,
+    lineNumber: index + 1,
+    kind: "narration",
+    speakerLabel: "",
+    text: `Recoverable scene ${index + 1} body.`,
+    chapterId: scene.chapterId,
+    chapterTitle: scene.chapterTitle,
+    sceneId: scene.id,
+    sceneTitle: scene.title,
+    sceneSynopsis: "",
+    issueIds: [],
+    eventTagIds: [],
+  }));
+
+  return {
+    id: "recoverable-project",
+    title: "Recoverable Project",
+    source: "test",
+    workspace: {
+      project: {
+        id: "recoverable-project",
+        title: "Recoverable Project",
+        lines,
+        stats: {
+          chapterCount: 1,
+          sceneCount: scenes.length,
+          lineCount: lines.length,
+        },
+      },
+      selectionDefaults: {
+        sceneId: "recoverable-scene-1",
+      },
+    },
+    projectIndex: {
+      sceneOrder: scenes.map((scene) => scene.id),
+      scenes,
+      chapters: [
+        {
+          id: "recoverable-chapter",
+          title: "Recoverable Chapter",
+          order: 1,
+          sceneIds: scenes.map((scene) => scene.id),
+          lineCount: lines.length,
+          wordCount: 24,
+        },
+      ],
+    },
+    sceneDrafts: {},
+    projectSettings: {
+      activeSceneId: "recoverable-scene-1",
+      projectFilePath: "C:\\Projects\\recoverable.abe-project.json",
+    },
+  };
+}
+
+function createCollapsedProjectRecord() {
+  const scenes = Array.from({ length: 6 }, (_, index) => {
+    const sceneNumber = index + 1;
+    return {
+      id: `collapsed-scene-${sceneNumber}`,
+      title: `Collapsed Scene ${sceneNumber}`,
+      chapterId: "collapsed-chapter",
+      chapterTitle: "Collapsed Chapter",
+      order: sceneNumber,
+      lineCount: 5,
+      wordCount: sceneNumber === 1 ? 4 : 0,
+    };
+  });
+  const lines = scenes.flatMap((scene, sceneIndex) =>
+    Array.from({ length: scene.lineCount }, (_, lineIndex) => ({
+      blockId: `${scene.id}-block-${lineIndex + 1}`,
+      lineNumber: sceneIndex * 5 + lineIndex + 1,
+      kind: "narration",
+      speakerLabel: "",
+      text: "",
+      chapterId: scene.chapterId,
+      chapterTitle: scene.chapterTitle,
+      sceneId: scene.id,
+      sceneTitle: scene.title,
+      sceneSynopsis: "",
+      issueIds: [],
+      eventTagIds: [],
+    })),
+  );
+
+  return {
+    id: "collapsed-project",
+    title: "Collapsed Project",
+    source: "test",
+    workspace: {
+      project: {
+        id: "collapsed-project",
+        title: "Collapsed Project",
+        lines,
+        stats: {
+          chapterCount: 1,
+          sceneCount: scenes.length,
+          lineCount: lines.length,
+        },
+      },
+      selectionDefaults: {
+        sceneId: "collapsed-scene-1",
+      },
+    },
+    projectIndex: {
+      sceneOrder: scenes.map((scene) => scene.id),
+      scenes,
+      chapters: [
+        {
+          id: "collapsed-chapter",
+          title: "Collapsed Chapter",
+          order: 1,
+          sceneIds: scenes.map((scene) => scene.id),
+          lineCount: lines.length,
+          wordCount: 4,
+        },
+      ],
+    },
+    sceneDrafts: {},
+    projectSettings: {
+      activeSceneId: "collapsed-scene-1",
+      projectFilePath: "C:\\Projects\\collapsed.abe-project.json",
+    },
+  };
+}
+
+function createCollapsedSceneStore() {
+  return Object.fromEntries(
+    Array.from({ length: 6 }, (_, index) => {
+      const sceneNumber = index + 1;
+      const sceneId = `collapsed-scene-${sceneNumber}`;
+      const editorText = sceneNumber === 1 ? "Only surviving scene body." : "";
+      return [sceneId, {
+        sceneId,
+        chapterId: "collapsed-chapter",
+        chapterTitle: "Collapsed Chapter",
+        sceneTitle: `Collapsed Scene ${sceneNumber}`,
+        sceneSynopsis: "",
+        editorText,
+        blocks: editorText
+          ? [{
+            blockId: `${sceneId}-block-1`,
+            lineNumber: 1,
+            kind: "narration",
+            speakerLabel: "",
+            text: editorText,
+            issueIds: [],
+            eventTagIds: [],
+            isDraft: false,
+          }]
+          : [],
+      }];
+    }),
+  );
+}
+
+function createMetadataOnlySceneStore(projectRecord) {
+  return Object.fromEntries(
+    (projectRecord.projectIndex?.scenes ?? []).map((scene) => [scene.id, {
+      sceneId: scene.id,
+      chapterId: scene.chapterId,
+      chapterTitle: scene.chapterTitle,
+      sceneTitle: scene.title,
+      sceneSynopsis: "",
+      editorText: "",
+      blocks: [],
+      location: "Earth",
+      locationRowLabel: "Earth",
+      locationRowKey: "earth",
+      locationScope: "planetary",
+      worldSpineMetadata: {
+        location: "Earth",
+        locationRowLabel: "Earth",
+        locationRowKey: "earth",
+        locationScope: "planetary",
+      },
+    }]),
+  );
+}
+
+function createRecoveredFileSceneStore(projectRecord) {
+  return Object.fromEntries(
+    (projectRecord.projectIndex?.scenes ?? []).map((scene, index) => {
+      const text = `Recovered file body for collapsed scene ${index + 1}.`;
+      return [scene.id, {
+        sceneId: scene.id,
+        chapterId: scene.chapterId,
+        chapterTitle: scene.chapterTitle,
+        sceneTitle: scene.title,
+        sceneSynopsis: "",
+        editorText: text,
+        blocks: [{
+          blockId: `${scene.id}-file-block-1`,
+          lineNumber: 1,
+          kind: "narration",
+          speakerLabel: "",
+          text,
+          issueIds: [],
+          eventTagIds: [],
+          isDraft: false,
+        }],
+      }];
+    }),
+  );
+}
+
 function createFakeWritableHandle(name, operationLog, options = {}) {
   let writtenText = typeof options.fileText === "string" ? options.fileText : "";
   return {
@@ -1019,6 +1676,64 @@ function createFakeWindowRef() {
     },
     clearTimeout(id) {
       timers.delete(id);
+    },
+  };
+}
+
+function createFakeScrivenerDirectoryHandle() {
+  return createFakeDirectoryHandle("Imported Novel.scriv", {
+    "Imported Novel.scrivx": createFakeTextFile("Imported Novel.scrivx", `
+      <ScrivenerProject>
+        <Binder>
+          <BinderItem UUID="draft-root">
+            <Title>Draft</Title>
+            <Type>DraftFolder</Type>
+            <Children>
+              <BinderItem UUID="scene-one">
+                <Title>Imported Scene</Title>
+                <Type>Text</Type>
+              </BinderItem>
+            </Children>
+          </BinderItem>
+        </Binder>
+      </ScrivenerProject>
+    `),
+    Files: createFakeDirectoryHandle("Files", {
+      Data: createFakeDirectoryHandle("Data", {
+        "scene-one": createFakeDirectoryHandle("scene-one", {
+          "content.rtf": createFakeTextFile("content.rtf", "{\\rtf1\\ansi Imported Scrivener text.}"),
+        }),
+      }),
+    }),
+  });
+}
+
+function createFakeDirectoryHandle(name, children = {}) {
+  return {
+    kind: "directory",
+    name,
+    async *entries() {
+      for (const [childName, childHandle] of Object.entries(children)) {
+        yield [childName, childHandle];
+      }
+    },
+  };
+}
+
+function createFakeTextFile(name, content) {
+  return {
+    kind: "file",
+    name,
+    async getFile() {
+      return {
+        name,
+        size: content.length,
+        type: "text/plain",
+        lastModified: 0,
+        async text() {
+          return content;
+        },
+      };
     },
   };
 }

@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 
 import {
+  addRecentHighlightCustomColor,
   buildSceneRecords,
   buildSceneLineMetrics,
   completeManuscriptTask,
@@ -19,7 +20,9 @@ import {
   groupScenesByChapter,
   insertStructureSceneDraftAfterAnchor,
   normalizeManuscriptTasks,
+  normalizeEditorAppearanceMode,
   normalizeEditorPrefs,
+  normalizeHighlightRecentCustomColors,
   normalizeLocalAiPrefs,
   normalizePassageNotes,
   normalizeSpellcheckProjectSettings,
@@ -78,6 +81,15 @@ export function runEditorModelTest() {
       "scene-1": {
         sceneTitle: "Docking Rewrite",
         sceneSynopsis: "A sharper version of the approach scene.",
+        locationRowLabel: "Halcyon",
+        locationRowKey: "halcyon",
+        locationScope: "planetary",
+        worldSpineMetadata: {
+          location: "Halcyon Station Dock",
+          time: "08:30",
+          peoplePresent: ["Mara", "Jules"],
+          criticalEvents: ["Docking burn fails"],
+        },
         editorText: "The frigate crawled toward Halcyon Station in silence.\nAnother beat follows.",
         blocks: [
           {
@@ -124,6 +136,11 @@ export function runEditorModelTest() {
   assert.equal(scenes[0].blocks[0].paragraphId, "paragraph-1");
   assert.equal(scenes[0].blocks[1].isDraft, true);
   assert.equal(scenes[0].blocks[1].speakerLabel, "Unnamed Speaker");
+  assert.equal(scenes[0].locationRowLabel, "Halcyon");
+  assert.equal(scenes[0].locationRowKey, "halcyon");
+  assert.equal(scenes[0].locationScope, "planetary");
+  assert.equal(scenes[0].worldSpineMetadata.location, "Halcyon Station Dock");
+  assert.deepEqual(scenes[0].worldSpineMetadata.criticalEvents, ["Docking burn fails"]);
   assert.equal(scenes[1].sceneTitle, "New Scene");
   assert.equal(scenes[1].blocks[0].text, "A blank route opens for a new scene.");
   assert.equal(scenes[1].editorText, "A blank route opens for a new scene.");
@@ -272,23 +289,90 @@ export function runEditorModelTest() {
       editorWidth: 840,
       projectFileAutosaveEnabled: true,
       grammarCheckEnabled: true,
+      grammarCheckPanelBounds: null,
+      worldbuildingCatalogueBounds: null,
+      manuScriptInfographicLaneVisible: true,
       revisionOverlayEnabled: false,
       italicText: false,
+      appearanceMode: "light",
+      milestoneSoundEffectsEnabled: true,
       highlightColorId: "sky",
       highlightCustomRgb: {
         red: 255,
         green: 222,
         blue: 99,
       },
+      highlightRecentCustomColors: [],
+      keyboardShortcuts: defaults.keyboardShortcuts,
     },
   );
+  assert.equal(normalizeEditorPrefs({ appearanceMode: "dark" }).appearanceMode, "dark");
+  assert.equal(normalizeEditorPrefs({ appearanceMode: "system" }).appearanceMode, "system");
+  assert.equal(normalizeEditorPrefs({ appearanceMode: "sepia" }).appearanceMode, "light");
+  assert.equal(normalizeEditorPrefs({ milestoneSoundEffectsEnabled: false }).milestoneSoundEffectsEnabled, false);
+  assert.equal(normalizeEditorPrefs({ milestoneSoundEffectsEnabled: "no" }).milestoneSoundEffectsEnabled, true);
+  assert.equal(normalizeEditorPrefs({ keyboardShortcuts: { bindings: { "project.save": "F3" } } }).keyboardShortcuts.bindings["project.save"], "F3");
+  assert.equal(normalizeEditorPrefs({ manuScriptInfographicLaneVisible: false }).manuScriptInfographicLaneVisible, false);
+  assert.deepEqual(
+    normalizeEditorPrefs({ grammarCheckPanelBounds: { left: 20, top: 30, width: 480, height: 520 } }).grammarCheckPanelBounds,
+    { left: 20, top: 30, width: 480, height: 520 },
+  );
+  assert.equal(normalizeEditorPrefs({ grammarCheckPanelBounds: { left: 20, top: 30, width: "bad", height: 520 } }).grammarCheckPanelBounds, null);
+  assert.deepEqual(
+    normalizeEditorPrefs({ worldbuildingCatalogueBounds: { left: 32, top: 48, width: 520, height: 420 } }).worldbuildingCatalogueBounds,
+    { left: 32, top: 48, width: 520, height: 420 },
+  );
+  assert.equal(
+    normalizeEditorPrefs({ worldbuildingCatalogueBounds: { left: 32, top: 48, width: "bad", height: 420 } }).worldbuildingCatalogueBounds,
+    null,
+  );
+  assert.equal(normalizeEditorAppearanceMode("DARK"), "dark");
+  assert.equal(normalizeEditorAppearanceMode("unknown", "system"), "system");
   assert.deepEqual(
     normalizeEditorPrefs({ highlightColorId: "custom", highlightCustomRgb: { red: 12.4, green: 280, blue: -8 } }).highlightCustomRgb,
     { red: 12, green: 255, blue: 0 },
   );
+  assert.deepEqual(
+    normalizeHighlightRecentCustomColors([
+      { red: 1, green: 2, blue: 3 },
+      { red: 1, green: 2, blue: 3 },
+      { rgb: { red: 4.4, green: 5.5, blue: 6.6 } },
+      { red: 7, green: 8, blue: 9 },
+      { red: 10, green: 11, blue: 12 },
+      { red: 13, green: 14, blue: 15 },
+      { red: 16, green: 17, blue: 18 },
+      { red: "bad", green: 0, blue: 0 },
+    ]),
+    [
+      { red: 1, green: 2, blue: 3 },
+      { red: 4, green: 6, blue: 7 },
+      { red: 7, green: 8, blue: 9 },
+      { red: 10, green: 11, blue: 12 },
+      { red: 13, green: 14, blue: 15 },
+    ],
+  );
+  assert.deepEqual(
+    addRecentHighlightCustomColor(
+      [
+        { red: 1, green: 2, blue: 3 },
+        { red: 4, green: 5, blue: 6 },
+        { red: 7, green: 8, blue: 9 },
+        { red: 10, green: 11, blue: 12 },
+        { red: 13, green: 14, blue: 15 },
+      ],
+      { red: 4, green: 5, blue: 6 },
+    ),
+    [
+      { red: 4, green: 5, blue: 6 },
+      { red: 1, green: 2, blue: 3 },
+      { red: 7, green: 8, blue: 9 },
+      { red: 10, green: 11, blue: 12 },
+      { red: 13, green: 14, blue: 15 },
+    ],
+  );
   assert.equal(
     resolveHighlightColorOption("custom", { red: 10, green: 20, blue: 30 }).color,
-    "rgba(10, 20, 30, 0.36)",
+    "rgba(10, 20, 30, 0.44)",
   );
   assert.deepEqual(normalizeLocalAiPrefs({}), createDefaultLocalAiPrefs());
   assert.deepEqual(normalizeLocalAiPrefs({ enabled: false }), { enabled: false });
@@ -425,6 +509,23 @@ export function runEditorModelTest() {
   );
   assert.equal(inlineNote.title, "What should the reader feel before the...");
   assert.equal(inlineNote.selectedText, "");
+  const customMetadataNote = createPassageNote(
+    scenes[0],
+    {
+      selectedText: "Halcyon Station",
+      startOffset: 27,
+      endOffset: 42,
+      body: "",
+      metadataDefinitionId: "metadata-lore",
+      metadataLabel: "Lore",
+      metadataHighlightColor: "#7fcf9f",
+    },
+    "metadata-lore",
+    "2026-04-24T02:04:00.000Z",
+  );
+  assert.equal(customMetadataNote.title, "Lore note");
+  assert.equal(customMetadataNote.metadataLabel, "Lore");
+  assert.equal(normalizePassageNotes([customMetadataNote])[0].metadataHighlightColor, "#7fcf9f");
 
   assert.deepEqual(
     resolveManuscriptTaskRange(

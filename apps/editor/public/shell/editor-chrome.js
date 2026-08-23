@@ -1,8 +1,32 @@
 // Intent: render the top-level editor chrome without owning editor state or persistence.
 import { renderWritingTargetStrip } from "../features/progress-tracker.js";
 import { renderDraftProofPanel } from "../features/draft-proofing/draft-proofing-panel.js";
+import { renderTopPanelCustomizationPopoverHTML } from "../features/top-panel-customization/top-panel-customization.js";
+import {
+  renderSpotifyDeveloperOptionsHTML,
+  renderSpotifyMusicChromeHTML,
+} from "../features/spotify-music/spotify-music-service.js";
 import { buildProjectAutosaveStatusModel } from "../shared/project-autosave-status.js";
 import { escapeHtml, formatDisplayNumber } from "../shared/ui-utils.js";
+import {
+  APPEARANCE_MODE_OPTIONS,
+  normalizeEditorAppearanceMode,
+} from "../editor-model.js";
+import {
+  getEffectiveKeyboardShortcutsForBehavior,
+  getKeyboardShortcutBehavior,
+} from "../state/keyboard-shortcut-state.js";
+import {
+  getTopPanelVisibilityForPane,
+  isTopPanelCardVisible,
+} from "../state/editor-ui-state.js";
+
+const RECENT_PROJECT_MENU_LIMIT = 5;
+const APPEARANCE_MODE_LABELS = Object.freeze({
+  light: "Light mode",
+  dark: "Dark mode",
+  system: "Follow system appearance",
+});
 
 export function renderEditorChrome({
   state,
@@ -10,20 +34,26 @@ export function renderEditorChrome({
   writingTargetSummary,
   projectFileAutosaveConnected = false,
   projectFileDisplay,
-  createProjectLibraryRecord,
   getSuggestedProjectFilePath,
 }) {
   const projectWorkspace = workspace ?? state?.workspace ?? null;
   const activePane = state?.activePane ?? "manuscript";
+  const proofReadAvailable = activePane === "manuscript";
+  const chromeWritingTargetSummary = buildChromeWritingTargetSummary(activePane, writingTargetSummary);
+  const topPanelVisibility = getTopPanelVisibilityForPane(state?.topPanelVisibility ?? {}, activePane);
+  // Intent: collapse the status-card strip when every configurable card is hidden.
+  const chromeStatCardsHTML = renderChromeStatCards({
+    state,
+    summary: writingTargetSummary,
+    projectFileAutosaveConnected,
+    topPanelVisibility,
+  });
+  const chromeStatStripIsEmpty = !chromeStatCardsHTML.trim();
   const safeProjectFileDisplay = projectFileDisplay ?? {
     inputValue: state?.projectFilePath ?? "",
     pathLabel: state?.projectFilePath ?? "",
     tooltip: "No project file selected",
   };
-  const projects = state?.projectLibrary?.length
-    ? state.projectLibrary
-    : (projectWorkspace ? [createProjectLibraryRecord()] : []);
-
   return `
     <header class="desktop-chrome">
       <div class="desktop-menubar">
@@ -42,16 +72,19 @@ export function renderEditorChrome({
             >File</button>
             ${state.fileMenuOpen ? renderFileMenu({
               state,
-              projects,
               projectFileAutosaveConnected,
               projectFileDisplay: safeProjectFileDisplay,
-              createProjectLibraryRecord,
               getSuggestedProjectFilePath,
             }) : ""}
           </div>
-        <div class="desktop-title-cluster">
-          <span class="desktop-app-name">A Better Novel Authoring Environment</span>
-          <span class="desktop-environment-badge" aria-label="Environment marker">Version: Test</span>
+          ${renderProjectSettingsControl(state, { proofReadAvailable })}
+          <div class="desktop-title-cluster">
+            <span class="desktop-app-name">A Better Novel Authoring Environment</span>
+            <div class="desktop-title-tools" role="group" aria-label="Environment and layout controls">
+              ${renderDeveloperOptionsControl(state)}
+              ${renderAppearanceModeControl(state)}
+              ${renderSidePanelsFocusToggle(state)}
+            </div>
           </div>
         </div>
         <div class="desktop-menubar-center">
@@ -60,185 +93,456 @@ export function renderEditorChrome({
             ${renderPaneTab("world", "World", "Spines and templates", activePane)}
             ${renderPaneTab("narration", "Narration + Voice", "Whisper follow-track", activePane)}
           </nav>
+          ${renderSpotifyMusicChromeHTML({
+            state: state?.spotifyMusic,
+            open: state?.spotifyMusicPanelOpen === true,
+          })}
           ${renderLocalAiSetting(state)}
         </div>
-        <div class="desktop-stat-strip" aria-label="Project statistics">
-          ${renderStat("Lines", projectWorkspace?.project?.stats?.lineCount ?? 0, "lines")}
-          ${renderChromeAutosaveIndicator(buildProjectAutosaveIndicatorModel(state, projectFileAutosaveConnected))}
-          ${renderWritingTargetToggle(state, writingTargetSummary)}
-          ${renderRevisionToggle(state)}
+        <div
+          class="desktop-stat-strip ${chromeStatStripIsEmpty ? "is-empty" : ""}"
+          aria-label="Project statistics"
+          data-top-panel-customization-region="chrome-stats"
+          data-top-panel-region-empty="${chromeStatStripIsEmpty ? "true" : "false"}"
+        >
+          ${chromeStatStripIsEmpty ? renderTopPanelRestoreTarget("chrome-stats", "Restore status cards") : chromeStatCardsHTML}
         </div>
       </div>
-      ${renderWritingTargetStrip(writingTargetSummary, {
-        leadingPanelHTML: `${renderDraftProofPanel(state)}${renderDeveloperLogsControl(writingTargetSummary)}`,
+      ${renderWritingTargetStrip(chromeWritingTargetSummary, {
+        leadingPanelHTML: renderLeadingTargetStripCards({
+          state,
+          summary: writingTargetSummary,
+          proofReadAvailable,
+          topPanelVisibility,
+        }),
+        isMetricVisible: (metricKey) => isTopPanelCardVisible(topPanelVisibility, metricKey),
+        wrapMetricCard: ({ cardId, label, html }) => renderTopPanelCardShell(cardId, label, html),
+        renderEmptyRegion: ({ groupId, label }) => renderTopPanelRestoreTarget(groupId, label),
+      })}
+      ${renderTopPanelCustomizationPopoverHTML({
+        open: state?.topPanelCustomizationOpen === true,
+        groupId: state?.topPanelCustomizationGroupId ?? "",
+        activePane,
+        position: state?.topPanelCustomizationPosition ?? null,
+        visibility: topPanelVisibility,
       })}
     </header>
+  `;
+}
+
+// Intent: keep test-build-only setup controls behind the environment badge so normal author UI stays focused.
+function renderDeveloperOptionsControl(state = {}) {
+  const open = state?.developerOptionsMenuOpen === true;
+  return `
+    <div
+      class="developer-options-menu ${open ? "is-open" : ""}"
+      data-developer-options-menu
+    >
+      <button
+        class="desktop-environment-badge desktop-environment-badge--button"
+        type="button"
+        data-action="toggle-developer-options-menu"
+        aria-expanded="${open ? "true" : "false"}"
+        aria-haspopup="menu"
+        aria-label="Open developer options"
+        title="Open developer options"
+      >Version: Test</button>
+      ${open ? `
+        <div class="file-menu-panel developer-options-menu-panel" role="menu" aria-label="Developer options menu">
+          <div class="file-menu-section">
+            ${renderSpotifyDeveloperOptionsHTML({ state: state?.spotifyMusic })}
+          </div>
+        </div>
+      ` : ""}
+    </div>
+  `;
+}
+
+// Intent: keep collapsed top-panel regions easy to reopen without reserving card-sized whitespace.
+function renderTopPanelRestoreTarget(groupId, label) {
+  const normalizedGroupId = String(groupId ?? "").trim();
+  if (!normalizedGroupId) {
+    return "";
+  }
+
+  const safeLabel = label || "Restore hidden cards";
+  return `
+    <button
+      class="top-panel-restore-target"
+      type="button"
+      data-top-panel-restore-target="${escapeHtml(normalizedGroupId)}"
+      aria-label="${escapeHtml(safeLabel)}"
+      title="${escapeHtml(safeLabel)}"
+    ><span class="top-panel-restore-icon" aria-hidden="true"></span></button>
+  `;
+}
+
+// Intent: keep the target-strip leading cards configurable without moving proof-read or log behavior into this shell.
+function renderLeadingTargetStripCards({
+  state,
+  summary,
+  proofReadAvailable = false,
+  topPanelVisibility = {},
+} = {}) {
+  return [
+    proofReadAvailable && isTopPanelCardVisible(topPanelVisibility, "draftProof")
+      ? renderTopPanelCardShell("draftProof", "Proof read", renderDraftProofPanel(state))
+      : "",
+    isTopPanelCardVisible(topPanelVisibility, "developerLogs")
+      ? renderTopPanelCardShell("developerLogs", "Developer logs", renderDeveloperLogsControl(summary))
+      : "",
+  ].join("");
+}
+
+// Intent: keep top status-card visibility separate from writing-target metric preferences.
+function renderChromeStatCards({
+  state,
+  summary,
+  projectFileAutosaveConnected = false,
+  topPanelVisibility = {},
+} = {}) {
+  return [
+    renderBenchedLinesStat(),
+    isTopPanelCardVisible(topPanelVisibility, "autosave")
+      ? renderTopPanelCardShell("autosave", "Autosave", renderChromeAutosaveIndicator(buildProjectAutosaveIndicatorModel(state, projectFileAutosaveConnected)))
+      : "",
+    isTopPanelCardVisible(topPanelVisibility, "writingGoals")
+      ? renderTopPanelCardShell("writingGoals", "Writing Goals", renderWritingTargetToggle(state, summary))
+      : "",
+    isTopPanelCardVisible(topPanelVisibility, "revisions")
+      ? renderTopPanelCardShell("revisions", "Revisions", renderRevisionToggle(state))
+      : "",
+  ].join("");
+}
+
+// BENCHED: the top Lines stat is not useful enough for the main chrome, but renderStat remains available for later revival.
+function renderBenchedLinesStat() {
+  return "";
+}
+
+// Intent: give each configurable top card its own hide affordance without changing the card's feature-owned markup.
+function renderTopPanelCardShell(cardId, label, contentHTML) {
+  const normalizedCardId = String(cardId ?? "").trim();
+  if (!normalizedCardId || typeof contentHTML !== "string" || !contentHTML.trim()) {
+    return "";
+  }
+
+  const safeLabel = label || normalizedCardId;
+  return `
+    <div class="top-panel-card-shell" data-top-panel-card="${escapeHtml(normalizedCardId)}">
+      <button
+        class="top-panel-card-hide-button"
+        type="button"
+        data-action="hide-top-panel-card"
+        data-top-panel-card-id="${escapeHtml(normalizedCardId)}"
+        aria-label="Hide ${escapeHtml(safeLabel)}"
+        title="Hide ${escapeHtml(safeLabel)}"
+      ><span class="top-panel-card-hide-icon" aria-hidden="true"></span></button>
+      ${contentHTML}
+    </div>
+  `;
+}
+
+// Intent: keep project and user settings available while scoping manuscript-only actions by pane.
+function renderProjectSettingsControl(state, { proofReadAvailable = false } = {}) {
+  return `
+    <div
+      class="project-settings-menu ${state.projectSettingsMenuOpen ? "is-open" : ""}"
+      data-project-settings-menu
+    >
+      <button
+        class="menu-button"
+        type="button"
+        data-action="toggle-project-settings-menu"
+        aria-expanded="${state.projectSettingsMenuOpen ? "true" : "false"}"
+        aria-haspopup="menu"
+      >Project</button>
+      ${state.projectSettingsMenuOpen ? renderProjectSettingsMenu(state, { proofReadAvailable }) : ""}
+    </div>
+  `;
+}
+
+// Intent: hide manuscript-session-specific metrics outside Manuscript without changing saved metric preferences.
+function buildChromeWritingTargetSummary(activePane, summary) {
+  if (activePane === "manuscript" || !summary || !Array.isArray(summary.visibleMetrics)) {
+    return summary;
+  }
+
+  return {
+    ...summary,
+    visibleMetrics: summary.visibleMetrics.filter((metric) => metric?.key !== "sessionTracker"),
+  };
+}
+
+// Intent: keep project settings discoverable from the top chrome while feature windows own their markup.
+function renderProjectSettingsMenu(state = {}, { proofReadAvailable = false } = {}) {
+  const milestoneSoundEffectsEnabled = state?.editorPrefs?.milestoneSoundEffectsEnabled !== false;
+  return `
+    <div class="file-menu-panel project-settings-menu-panel" role="menu" aria-label="Project settings menu">
+      <div class="file-menu-section">
+        <span class="file-menu-label">Project Settings</span>
+        <div class="file-menu-actions project-settings-actions">
+          ${proofReadAvailable ? `
+            <button
+              class="tag-button panel-action-button"
+              type="button"
+              data-action="open-proof-read-settings"
+            >Proof read</button>
+          ` : ""}
+          <button
+            class="tag-button panel-action-button"
+            type="button"
+            data-action="open-local-ai-panel"
+          >Local AI</button>
+        </div>
+      </div>
+      <div class="file-menu-section">
+        <span class="file-menu-label">User Settings</span>
+        <div class="file-menu-actions project-settings-actions">
+          <button
+            class="tag-button panel-action-button"
+            type="button"
+            data-action="open-keyboard-shortcut-settings"
+          >Shortcuts</button>
+          <label class="project-file-autosave-setting">
+            <input
+              type="checkbox"
+              data-editor-pref="milestoneSoundEffectsEnabled"
+              ${milestoneSoundEffectsEnabled ? "checked" : ""}
+            />
+            <span>Milestone sounds</span>
+            <strong>${milestoneSoundEffectsEnabled ? "On" : "Off"}</strong>
+            <small>Catalogue, session, and daily target completions.</small>
+          </label>
+        </div>
+      </div>
+    </div>
   `;
 }
 
 // Intent: keep the file menu markup together so file-related controls can evolve independently.
 function renderFileMenu({
   state,
-  projects,
   projectFileAutosaveConnected,
   projectFileDisplay,
-  createProjectLibraryRecord,
   getSuggestedProjectFilePath,
 }) {
-  const selectedProjectId = state.projectLibrarySelectionId ?? state.activeProjectId ?? projects[0]?.id ?? "";
-  const selectedProject = projects.find((project) => project.id === selectedProjectId)
-    ?? projects[0]
-    ?? null;
-  const activeProject = projects.find((project) => project.id === state.activeProjectId)
-    ?? selectedProject;
-  const status = activeProject
-    ? `${projects.length} saved project${projects.length === 1 ? "" : "s"}`
-    : "No saved projects yet";
-  const manuscriptStats = activeProject?.workspace?.project?.stats ?? null;
-  const worldStats = activeProject?.workspace?.world?.stats ?? null;
-  const manuscriptStatus = manuscriptStats
-    ? ` · ${manuscriptStats.chapterCount} chapters, ${manuscriptStats.sceneCount} scenes`
-    : "";
-  const templateStatus = worldStats
-    ? ` · ${worldStats.templateCount} templates`
-    : "";
-  const importReport = activeProject?.importReport && typeof activeProject.importReport === "object"
-    ? activeProject.importReport
-    : null;
-  const importedNoteCount = Number(importReport?.importedNotes ?? (Number(importReport?.importedResearchNotes ?? 0) + Number(importReport?.importedFrontMatterNotes ?? 0)));
-  const importedAssetCount = Number(importReport?.importedAssetNotes ?? 0);
-  const archivedCount = Number(importReport?.archivedItems ?? 0);
-  const selectionStatus =
-    selectedProject && activeProject && selectedProject.id !== activeProject.id
-      ? ` · Selected: ${selectedProject.title}`
-      : "";
-  const importStatus = importReport
-    ? ` · Import: ${importedNoteCount} notes${importedAssetCount ? `, ${importedAssetCount} assets` : ""}${archivedCount ? `, ${archivedCount} archived` : ""}`
-    : "";
   const projectFilePathLabel = projectFileDisplay?.pathLabel ?? state.projectFilePath ?? "";
-  const projectFileStatus = projectFilePathLabel
-    ? `Project file: ${projectFilePathLabel}`
-    : "No project file selected";
-  const projectFileFeedback = state.projectFileStatus ? ` · ${state.projectFileStatus}` : "";
-  const integratorStatus = state.projectSourceStatus
-    ? ` · Integrator: ${state.projectSourceStatus}`
-    : "";
+  const recentProjects = buildRecentProjectMenuItems(state);
+  const projectFileStatus = state.projectFileStatus
+    ? state.projectFileStatus
+    : projectFilePathLabel
+      ? `Path: ${projectFilePathLabel}`
+      : "No project path selected.";
 
   return `
-    <div class="file-menu-panel" role="menu" aria-label="File menu">
+    <div class="file-menu-panel" role="menu" aria-label="Project menu">
       <div class="file-menu-section">
         <span class="file-menu-label">Project</span>
-        <label class="project-library-select-shell compact">
-          <span>Saved projects</span>
-          <select data-project-library-select aria-label="Saved projects">
-            ${projects.map((project) => `
-              <option value="${escapeHtml(project.id)}" ${project.id === selectedProjectId ? "selected" : ""}>
-                ${escapeHtml(formatProjectLibraryLabel(project))}
-              </option>
-            `).join("")}
-          </select>
-        </label>
-        <div class="file-menu-actions">
-          <button class="tag-button panel-action-button" type="button" data-action="load-project">Load project</button>
-          <button class="tag-button panel-action-button" type="button" data-action="save-project">Save project</button>
-          <button class="tag-button panel-action-button" type="button" data-action="create-project">Create project</button>
-          <button class="tag-button panel-action-button" type="button" data-action="open-developer-logs">Developer logs</button>
-          <button class="tag-button panel-action-button" type="button" data-action="toggle-writing-target-window">
-            Writing target
-          </button>
-        </div>
-      </div>
-      <div class="file-menu-section">
-        <span class="file-menu-label">Project file</span>
-        ${renderProjectFileAutosaveSetting(state, projectFileAutosaveConnected)}
         <label class="project-file-shell compact">
-          <span>Save path</span>
+          <span>Path</span>
           <input
             type="text"
             value="${escapeHtml(projectFileDisplay?.inputValue ?? state.projectFilePath)}"
             data-edit-field="project-file-path"
             placeholder="${escapeHtml(getSuggestedProjectFilePath())}"
-            aria-label="Project file path"
+            aria-label="Project path"
             spellcheck="false"
           />
         </label>
-        <div class="file-menu-actions">
+        <div class="file-menu-actions project-file-actions">
           <button
-            class="tag-button panel-action-button"
+            class="panel-action-button project-menu-button"
             type="button"
-            data-action="save-project-file-as"
+            data-action="create-project"
             ${state.projectFileBusy ? "disabled" : ""}
           >
-            ${state.projectFileBusy ? "Saving..." : "Save as file"}
+            New project
+          </button>
+          <div class="project-load-menu">
+            <button
+              class="panel-action-button project-menu-button project-load-menu__trigger"
+              type="button"
+              data-action="load-project-file"
+              ${state.projectFileBusy ? "disabled" : ""}
+              aria-haspopup="menu"
+            >
+              Load project
+            </button>
+            ${renderRecentProjectMenu(recentProjects, state)}
+          </div>
+          <button
+            class="panel-action-button project-menu-button"
+            type="button"
+            data-action="import-scrivener-project"
+            ${state.projectFileBusy ? "disabled" : ""}
+          >
+            Port Scrivener
           </button>
           <button
-            class="tag-button panel-action-button"
+            class="panel-action-button project-menu-button"
             type="button"
-            data-action="load-project-file"
+            data-action="save-project"
             ${state.projectFileBusy ? "disabled" : ""}
           >
-            Load file
+            Save
           </button>
         </div>
+        ${renderProjectFileAutosaveSetting(state, projectFileAutosaveConnected)}
         <p class="project-file-status">
-          ${escapeHtml(projectFileStatus)}${escapeHtml(projectFileFeedback)}
+          ${escapeHtml(projectFileStatus)}
         </p>
       </div>
-      <div class="file-menu-section">
-        <span class="file-menu-label">Import</span>
-        <label class="project-source-shell compact">
-          <span>Project source</span>
-          <input
-            type="text"
-            value="${escapeHtml(state.projectSourcePath)}"
-            data-edit-field="project-source-path"
-            placeholder="C:\\Projects\\Novel.abe-project.json or ...\\Project folder"
-            aria-label="Project source path"
-            spellcheck="false"
-          />
-        </label>
-        <div class="file-menu-actions">
-          <button
-            class="tag-button panel-action-button"
-            type="button"
-            data-action="load-project-source"
-            ${state.projectSourceBusy ? "disabled" : ""}
-          >
-            ${state.projectSourceBusy ? "Importing..." : "Load Project Source"}
-          </button>
-        </div>
-      </div>
-      <p class="project-library-status">
-        ${escapeHtml(status)}${activeProject ? ` · Active: ${activeProject.title}` : ""}${escapeHtml(manuscriptStatus)}${escapeHtml(templateStatus)}${escapeHtml(selectionStatus)}${escapeHtml(importStatus)}${escapeHtml(integratorStatus)}
-      </p>
-      <p class="file-menu-shortcuts" aria-label="Keyboard shortcuts">
-        <span>Ctrl+S save</span>
-        <span>Ctrl+Shift+S save as</span>
-        <span>Ctrl+Shift+O load file</span>
-        <span>Ctrl+Shift+L logs</span>
-        <span>Ctrl+N new</span>
-        <span>Ctrl+O file</span>
-        <span>Ctrl+Alt+T goals</span>
-        <span>Ctrl+1-4 panes</span>
-        <span>Esc close</span>
-      </p>
     </div>
   `;
+}
+
+// Intent: expose recently loaded project records without adding another persistence path.
+function renderRecentProjectMenu(recentProjects, state) {
+  if (!Array.isArray(recentProjects) || !recentProjects.length) {
+    return "";
+  }
+
+  return `
+    <div class="project-recent-menu" role="menu" aria-label="Recent loaded projects">
+      <span class="project-recent-menu__label">Recent projects</span>
+      ${recentProjects.map((project) => `
+        <button
+          class="project-recent-menu__item ${project.id === state.activeProjectId ? "is-active" : ""}"
+          type="button"
+          data-action="load-project"
+          data-project-id="${escapeHtml(project.id)}"
+          title="${escapeHtml(project.tooltip)}"
+        >
+          <span>${escapeHtml(project.title)}</span>
+          <small>${escapeHtml(project.pathLabel)}</small>
+        </button>
+      `).join("")}
+    </div>
+  `;
+}
+
+// Intent: derive the visible recent-project list from durable project records only.
+function buildRecentProjectMenuItems(state) {
+  const projects = Array.isArray(state?.projectLibrary) ? state.projectLibrary : [];
+  const activeProjectId = typeof state?.activeProjectId === "string" ? state.activeProjectId.trim() : "";
+  return projects
+    .map((project, index) => {
+      const id = typeof project?.id === "string" ? project.id.trim() : "";
+      if (!id) {
+        return null;
+      }
+
+      const title = formatProjectLibraryLabel(project);
+      const pathLabel = formatProjectPathLabel(project);
+      return {
+        id,
+        title,
+        pathLabel,
+        tooltip: pathLabel === "No project path recorded" ? title : `${title} - ${pathLabel}`,
+        isActive: id === activeProjectId,
+        sortTime: resolveProjectSortTime(project),
+        index,
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => Number(right.isActive) - Number(left.isActive) || (right.sortTime - left.sortTime) || (left.index - right.index))
+    .slice(0, RECENT_PROJECT_MENU_LIMIT);
+}
+
+function resolveProjectSortTime(project) {
+  const updatedAtMs = Date.parse(project?.updatedAt ?? "");
+  if (Number.isFinite(updatedAtMs)) {
+    return updatedAtMs;
+  }
+
+  const createdAtMs = Date.parse(project?.createdAt ?? "");
+  return Number.isFinite(createdAtMs) ? createdAtMs : 0;
+}
+
+function formatProjectPathLabel(project) {
+  const projectSettings = project?.projectSettings && typeof project.projectSettings === "object"
+    ? project.projectSettings
+    : {};
+  const path = typeof projectSettings.projectFilePath === "string" && projectSettings.projectFilePath.trim()
+    ? projectSettings.projectFilePath.trim()
+    : typeof project?.projectFilePath === "string" && project.projectFilePath.trim()
+      ? project.projectFilePath.trim()
+      : "";
+  return path || "No project path recorded";
+}
+
+// Intent: keep project library labels stable and readable in the file menu.
+function formatProjectLibraryLabel(project) {
+  return typeof project?.title === "string" && project.title.trim()
+    ? project.title
+    : "Untitled Project";
 }
 
 // Intent: keep small chrome controls local to the shell module instead of spreading them across app.js.
 function renderLocalAiSetting(state) {
   const enabled = state.localAiPrefs.enabled;
   return `
-    <label class="local-ai-setting">
-      <input
-        type="checkbox"
-        data-local-ai-setting="enabled"
-        ${enabled ? "checked" : ""}
-      />
-      <span>Local AI</span>
-      <strong>${enabled ? "Titles on" : "Titles off"}</strong>
-    </label>
+    <div class="local-ai-cluster">
+      <label class="local-ai-setting">
+        <input
+          type="checkbox"
+          data-local-ai-setting="enabled"
+          ${enabled ? "checked" : ""}
+        />
+        <span>Local AI</span>
+        <strong>${enabled ? "Titles on" : "Titles off"}</strong>
+      </label>
+      <button
+        class="local-ai-model-button"
+        type="button"
+        data-action="open-local-ai-panel"
+        title="Open Local AI model settings"
+        aria-label="Open Local AI model settings"
+      >Models</button>
+    </div>
+  `;
+}
+
+// Intent: expose the editor appearance as a compact mode switch without making theme a manuscript setting.
+function renderAppearanceModeControl(state) {
+  const activeMode = normalizeEditorAppearanceMode(state?.editorPrefs?.appearanceMode);
+  return `
+    <div class="appearance-mode-control" role="group" aria-label="Editor appearance">
+      ${APPEARANCE_MODE_OPTIONS.map((mode) => {
+        const label = APPEARANCE_MODE_LABELS[mode] ?? mode;
+        const isActive = mode === activeMode;
+        return `
+          <button
+            class="appearance-mode-button ${isActive ? "is-active" : ""}"
+            type="button"
+            data-action="set-appearance-mode"
+            data-appearance-mode="${escapeHtml(mode)}"
+            aria-label="${escapeHtml(label)}"
+            aria-pressed="${isActive ? "true" : "false"}"
+            title="${escapeHtml(label)}"
+          ><span class="appearance-mode-icon appearance-mode-icon--${escapeHtml(mode)}" aria-hidden="true"></span></button>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+// Intent: expose side-rail focus mode as an icon-only control that stays available on every workspace page.
+function renderSidePanelsFocusToggle(state) {
+  const sidePanelsHidden = state?.sidePanelsHidden === true;
+  const label = sidePanelsHidden ? "Show side panels" : "Hide side panels";
+  return `
+    <button
+      class="side-panels-focus-toggle ${sidePanelsHidden ? "is-active" : ""}"
+      type="button"
+      data-action="toggle-side-panels-hidden"
+      aria-pressed="${sidePanelsHidden ? "true" : "false"}"
+      aria-label="${escapeHtml(label)}"
+      title="${escapeHtml(label)}"
+    >
+      <span class="side-panels-focus-toggle__icon" aria-hidden="true"></span>
+    </button>
   `;
 }
 
@@ -291,6 +595,7 @@ function renderDeveloperLogsControl(summary) {
 function buildProjectAutosaveIndicatorModel(state, projectFileAutosaveConnected = false) {
   return buildProjectAutosaveStatusModel(state, {
     connected: projectFileAutosaveConnected,
+    saveShortcutLabel: formatConfiguredKeyboardShortcut(state, "project.save"),
   });
 }
 
@@ -300,16 +605,17 @@ function renderProjectFileAutosaveSetting(state, projectFileAutosaveConnected = 
   const checked = enabled && projectFileAutosaveConnected;
   const autosaveStatus = buildProjectAutosaveStatusModel(state, {
     connected: projectFileAutosaveConnected,
+    saveShortcutLabel: formatConfiguredKeyboardShortcut(state, "project.save"),
   });
   const projectFileOutOfSync =
     autosaveStatus.statusKey === "permission-required" ||
     autosaveStatus.statusKey === "manual-save-required" ||
     autosaveStatus.statusKey === "out-of-sync";
   const destinationLabel = projectFileOutOfSync
-    ? "Project file out of sync"
+    ? "Out of sync"
     : projectFileAutosaveConnected
-      ? "Writing to JSON file"
-      : "Waiting for file";
+      ? "Writing to JSON"
+      : "Waiting for path";
   const statusNote = projectFileOutOfSync
     ? autosaveStatus.note
     : enabled
@@ -322,7 +628,7 @@ function renderProjectFileAutosaveSetting(state, projectFileAutosaveConnected = 
         data-editor-pref="projectFileAutosaveEnabled"
         ${checked ? "checked" : ""}
       />
-      <span>Autosave project file</span>
+      <span>Autosave</span>
       <strong>${escapeHtml(destinationLabel)}</strong>
       <small>${escapeHtml(statusNote)}</small>
     </label>
@@ -359,6 +665,10 @@ function renderStat(label, value, statKey = "") {
 // Intent: keep writing-goal CTA state in the shell layer rather than the main app file.
 function renderWritingTargetToggle(state, summary) {
   const targetLabel = summary?.goalButtonLabel ?? "Writing Goals";
+  const writingGoalsShortcut = formatConfiguredKeyboardShortcut(state, "writingTargets.toggle");
+  const title = writingGoalsShortcut
+    ? `Open writing goals (${writingGoalsShortcut})`
+    : "Open writing goals";
 
   return `
     <button
@@ -367,7 +677,7 @@ function renderWritingTargetToggle(state, summary) {
       data-writing-target-toggle
       data-action="toggle-writing-target-window"
       aria-pressed="${state.writingTargetWindowOpen ? "true" : "false"}"
-      title="Open writing goals (Ctrl+Alt+T)"
+      title="${escapeHtml(title)}"
       aria-label="Open writing goals"
     >
       <span class="chrome-target-icon" aria-hidden="true">◎</span>
@@ -375,6 +685,16 @@ function renderWritingTargetToggle(state, summary) {
       <strong data-writing-target-toggle-value>${escapeHtml(targetLabel)}</strong>
     </button>
   `;
+}
+
+// Intent: keep shortcut hints in chrome aligned with user-configured keymap preferences.
+function formatConfiguredKeyboardShortcut(state, behaviorId) {
+  const behavior = getKeyboardShortcutBehavior(behaviorId);
+  if (!behavior) {
+    return "";
+  }
+
+  return getEffectiveKeyboardShortcutsForBehavior(behavior, state?.editorPrefs?.keyboardShortcuts)[0] ?? "";
 }
 
 // Intent: keep the revision-window CTA beside writing goals while the revisions feature owns the window body.
@@ -397,11 +717,4 @@ function renderRevisionToggle(state) {
       <strong>${escapeHtml(`${formatDisplayNumber(revisionCount)} session${revisionCount === 1 ? "" : "s"}`)}</strong>
     </button>
   `;
-}
-
-// Intent: keep project library labels stable and readable in the file menu.
-function formatProjectLibraryLabel(project) {
-  return typeof project?.title === "string" && project.title.trim()
-    ? project.title
-    : "Untitled Project";
 }

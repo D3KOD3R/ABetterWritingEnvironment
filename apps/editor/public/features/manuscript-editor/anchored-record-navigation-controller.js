@@ -79,6 +79,12 @@ export function createAnchoredRecordNavigationController({
         recordId: String(record.id ?? ""),
         sceneId: String(record.sceneId ?? ""),
         noteType: record.noteType,
+        metadataLabel: record.metadataLabel,
+        visualStyle: record.metadataHighlightColor
+          ? {
+              highlightColor: record.metadataHighlightColor,
+            }
+          : record.visualStyle,
         startOffset: resolvedRange.startOffset,
         endOffset: resolvedRange.endOffset,
       }],

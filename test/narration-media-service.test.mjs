@@ -5,6 +5,7 @@ import {
   base64ToBlob,
   blobToBase64,
   createNarrationMediaService,
+  deleteMediaFile,
   loadMediaBlob,
 } from "../apps/editor/public/features/narration/narration-media-service.js";
 
@@ -23,6 +24,9 @@ export async function runNarrationMediaServiceTest() {
       calls.push({ pathname, options });
       if (pathname.endsWith("/save")) {
         return { ok: true, value: {} };
+      }
+      if (pathname.endsWith("/delete")) {
+        return { ok: true, value: { removed: true } };
       }
       return {
         ok: true,
@@ -52,10 +56,26 @@ export async function runNarrationMediaServiceTest() {
   assert.equal(await loaded.blob.text(), "voice bytes");
   assert.equal(calls[1].pathname, "/api/project-media/load");
 
+  const deleted = await service.deleteMediaFile({
+    filePath: " recordings/take.webm ",
+  });
+  assert.equal(deleted.ok, true);
+  assert.equal(deleted.filePath, "recordings/take.webm");
+  assert.equal(deleted.removed, true);
+  assert.equal(calls[2].pathname, "/api/project-media/delete");
+  assert.equal(calls[2].options.method, "POST");
+  assert.equal(calls[2].options.body.filePath, "recordings/take.webm");
+
   await assert.rejects(
     () => loadMediaBlob({ filePath: "recordings/missing.webm" }, {
       fetchJson: async () => ({ ok: true, value: { contentBase64: "" } }),
     }),
     /empty/,
+  );
+  await assert.rejects(
+    () => deleteMediaFile({ filePath: "" }, {
+      fetchJson: async () => ({ ok: true, value: {} }),
+    }),
+    /required/,
   );
 }

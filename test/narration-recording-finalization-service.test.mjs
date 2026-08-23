@@ -47,6 +47,51 @@ export async function runNarrationRecordingFinalizationServiceTest() {
   assert.equal(events.includes("save:project-media/project-1/take-1.webm:5"), true);
   assert.equal(events.includes("log:voice-recording:Failed to stop a narration recording cleanly."), true);
 
+  const followed = await service.finalizeRuntime({
+    projectId: "project-1",
+    recordingId: "take-1b",
+    selection,
+    followSelection: {
+      ...selection,
+      blockId: "block-2",
+      paragraphId: "paragraph-2",
+      lineNumber: 8,
+      verseText: "Line two.",
+      selectedText: "Line two.",
+      confidence: 0.82,
+      wordFitRatio: 0.78,
+      matchedWordCount: 4,
+    },
+    startedAtMs: 1000,
+    transcript: "line two",
+    mediaMimeType: "audio/webm",
+    mediaPath: "project-media/project-1/take-1b.webm",
+    chunks: [new Blob(["audio"])],
+  });
+  assert.equal(followed.selection.blockId, "block-2");
+  assert.equal(followed.finalRecord.blockId, "block-2");
+  assert.equal(followed.finalRecord.verseText, "Line two.");
+
+  const lowConfidenceFollow = await service.finalizeRuntime({
+    projectId: "project-1",
+    recordingId: "take-1c",
+    selection,
+    followSelection: {
+      ...selection,
+      blockId: "block-3",
+      confidence: 0.4,
+      wordFitRatio: 0.5,
+      matchedWordCount: 2,
+    },
+    startedAtMs: 1000,
+    transcript: "line",
+    mediaMimeType: "audio/webm",
+    mediaPath: "project-media/project-1/take-1c.webm",
+    chunks: [new Blob(["audio"])],
+  });
+  assert.equal(lowConfidenceFollow.selection.blockId, "block-1");
+  assert.equal(lowConfidenceFollow.finalRecord.blockId, "block-1");
+
   const failedService = createNarrationRecordingFinalizationService({
     cleanupRuntime: () => {},
     saveMediaBlob: async () => {

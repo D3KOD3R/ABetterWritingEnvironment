@@ -9,12 +9,27 @@ export function deriveManuscriptEditTransaction({
   createdAt = "",
   selectionStart = null,
   selectionEnd = null,
+  selectionBeforeInputStart = null,
+  selectionBeforeInputEnd = null,
 } = {}) {
   const normalizedSceneId = String(sceneId ?? "");
   const previous = String(previousText ?? "");
   const next = String(nextText ?? "");
   if (!normalizedSceneId || previous === next) {
     return null;
+  }
+
+  const selectedTextReplacement = resolveSelectedTextReplacement({
+    sceneId: normalizedSceneId,
+    previousText: previous,
+    nextText: next,
+    editId,
+    createdAt,
+    selectionBeforeInputStart,
+    selectionBeforeInputEnd,
+  });
+  if (selectedTextReplacement) {
+    return selectedTextReplacement;
   }
 
   const caretResolvedInsertion = resolveCaretAnchoredInsertion({
@@ -69,6 +84,88 @@ export function deriveManuscriptEditTransaction({
     sceneId: normalizedSceneId,
     startOffset,
     endOffset: previousEndOffset,
+    insertedText,
+    deletedText,
+    insertedLength,
+    deletedLength,
+    delta: insertedLength - deletedLength,
+    createdAt: typeof createdAt === "string" ? createdAt : "",
+    persistence: "runtime-only",
+  };
+}
+
+// Intent: use the browser's pre-input selection when replacement text could otherwise resemble a repeated-character insertion.
+function resolveSelectedTextReplacement({
+  sceneId = "",
+  previousText = "",
+  nextText = "",
+  editId = "",
+  createdAt = "",
+  selectionBeforeInputStart = null,
+  selectionBeforeInputEnd = null,
+} = {}) {
+  const previous = String(previousText ?? "");
+  const next = String(nextText ?? "");
+  const rawStart = Number(selectionBeforeInputStart);
+  const rawEnd = Number(selectionBeforeInputEnd);
+  if (!sceneId || !Number.isInteger(rawStart) || !Number.isInteger(rawEnd)) {
+    return null;
+  }
+
+  const startOffset = Math.max(0, Math.min(rawStart, rawEnd, previous.length));
+  const endOffset = Math.max(startOffset, Math.min(Math.max(rawStart, rawEnd), previous.length));
+  if (endOffset <= startOffset) {
+    return null;
+  }
+
+  const insertedEndOffset = next.length - (previous.length - endOffset);
+  if (insertedEndOffset < startOffset || insertedEndOffset > next.length) {
+    return null;
+  }
+
+  const insertedText = next.slice(startOffset, insertedEndOffset);
+  const deletedText = previous.slice(startOffset, endOffset);
+  if (`${previous.slice(0, startOffset)}${insertedText}${previous.slice(endOffset)}` !== next) {
+    return null;
+  }
+
+  return createEditTransaction({
+    sceneId,
+    startOffset,
+    endOffset,
+    insertedText,
+    deletedText,
+    editId,
+    createdAt,
+  });
+}
+
+function createEditTransaction({
+  sceneId,
+  startOffset,
+  endOffset,
+  insertedText,
+  deletedText,
+  editId,
+  createdAt,
+}) {
+  const insertedLength = insertedText.length;
+  const deletedLength = deletedText.length;
+  const stableEditId = editId || [
+    "edit",
+    sceneId,
+    startOffset,
+    endOffset,
+    insertedLength,
+    deletedLength,
+    createStableTextHash(`${deletedText}\u001f${insertedText}`),
+  ].join(":");
+
+  return {
+    editId: stableEditId,
+    sceneId,
+    startOffset,
+    endOffset,
     insertedText,
     deletedText,
     insertedLength,

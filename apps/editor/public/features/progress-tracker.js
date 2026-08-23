@@ -2,22 +2,65 @@
 import { renderSessionTrackerPenSvg } from "../session-tracker-icons.js";
 import { escapeHtml, formatDisplayNumber } from "../shared/ui-utils.js";
 
-// Intent: render only the visible metrics selected by writing-goal state.
+// Intent: render writing-goal metrics after both writing-goal and top-chrome visibility gates.
 export function renderWritingTargetStrip(summary, options = {}) {
-  const visibleMetrics = summary?.visibleMetrics ?? [];
+  const isMetricVisible = typeof options?.isMetricVisible === "function"
+    ? options.isMetricVisible
+    : () => true;
+  const wrapMetricCard = typeof options?.wrapMetricCard === "function"
+    ? options.wrapMetricCard
+    : ({ html }) => html;
+  const renderEmptyRegion = typeof options?.renderEmptyRegion === "function"
+    ? options.renderEmptyRegion
+    : () => "";
+  const visibleMetrics = (summary?.visibleMetrics ?? []).filter((metric) =>
+    isMetricVisible(metric?.key ?? "")
+  );
   const renderedCards = visibleMetrics.map((metric) => (
-    metric?.key === "sessionTracker"
-      ? renderSessionTrackerPanel(summary)
-      : renderWritingTargetCard(metric, summary)
+    wrapMetricCard({
+      cardId: metric?.key ?? "",
+      label: metric?.label ?? "",
+      html: metric?.key === "sessionTracker"
+        ? renderSessionTrackerPanel(summary)
+        : renderWritingTargetCard(metric, summary),
+    })
   ));
   const leadingPanelHTML = typeof options?.leadingPanelHTML === "string" ? options.leadingPanelHTML : "";
+  // Intent: mark empty restore regions explicitly so hidden cards do not reserve full card height.
+  const renderedCardsHTML = renderedCards.join("");
+  const leadingPanelIsEmpty = !leadingPanelHTML.trim();
+  const metricsPanelIsEmpty = !renderedCardsHTML.trim();
+  const leadingRestoreHTML = leadingPanelIsEmpty
+    ? renderEmptyRegion({
+      groupId: "target-strip",
+      label: metricsPanelIsEmpty ? "Restore writing panel cards" : "Restore proofing cards",
+    })
+    : "";
+  const metricsRestoreHTML = metricsPanelIsEmpty && !leadingPanelIsEmpty
+    ? renderEmptyRegion({ groupId: "target-strip", label: "Restore writing panel cards" })
+    : "";
+  const stripIsEmpty = leadingPanelIsEmpty && metricsPanelIsEmpty;
   return `
-    <div class="desktop-target-strip" aria-label="Writing target metrics" data-writing-target-strip>
-      <div class="desktop-target-strip__leading">
-        ${leadingPanelHTML}
+    <div
+      class="desktop-target-strip ${stripIsEmpty ? "is-empty" : ""}"
+      aria-label="Writing target metrics"
+      data-writing-target-strip
+      data-leading-empty="${leadingPanelIsEmpty ? "true" : "false"}"
+      data-metrics-empty="${metricsPanelIsEmpty ? "true" : "false"}"
+    >
+      <div
+        class="desktop-target-strip__leading ${leadingPanelIsEmpty ? "is-empty" : ""}"
+        data-top-panel-customization-region="target-strip"
+        data-top-panel-region-empty="${leadingPanelIsEmpty ? "true" : "false"}"
+      >
+        ${leadingPanelIsEmpty ? leadingRestoreHTML : leadingPanelHTML}
       </div>
-      <div class="desktop-target-strip__metrics">
-        ${renderedCards.join("")}
+      <div
+        class="desktop-target-strip__metrics ${metricsPanelIsEmpty ? "is-empty" : ""}"
+        data-top-panel-customization-region="target-strip"
+        data-top-panel-region-empty="${metricsPanelIsEmpty ? "true" : "false"}"
+      >
+        ${metricsPanelIsEmpty ? metricsRestoreHTML : renderedCardsHTML}
       </div>
     </div>
   `;

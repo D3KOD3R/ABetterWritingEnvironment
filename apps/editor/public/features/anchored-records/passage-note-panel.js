@@ -5,16 +5,23 @@ export function renderPassageNotePanelHTML(model, {
   selectedNoteId = "",
   previewNoteId = "",
   collapsedChapterIds = [],
+  metadataSubgroupsHtml = "",
   formatChapterTitle = defaultFormatChapterTitle,
 } = {}) {
   const label = model?.label || "Inspiration";
   const noteType = model?.noteType || "inspiration";
   const groups = Array.isArray(model?.groups) ? model.groups : [];
+  const highlightColor = typeof model?.highlightColor === "string" ? model.highlightColor : "";
+  const metadataIcon = model?.metadataIcon && typeof model.metadataIcon === "object" ? model.metadataIcon : null;
 
   return `
-    <div class="panel-heading">
-      <p class="panel-kicker">${escapeHtml(label)}</p>
+    <div class="panel-heading passage-note-panel-heading">
+      <p class="panel-kicker passage-note-panel-kicker">
+        ${metadataIcon?.dataUrl ? renderMetadataIconImageHTML(metadataIcon, "metadata-image-icon--panel") : highlightColor ? `<span class="metadata-color-swatch" style="--metadata-swatch-color:${escapeHtml(highlightColor)}" aria-hidden="true"></span>` : ""}
+        ${escapeHtml(label)}
+      </p>
     </div>
+    ${metadataSubgroupsHtml}
     ${groups.length ? `
       <div class="passage-note-list console-list console-chapter-list">
         ${groups.map((group) => renderPassageNoteChapterGroupHTML(noteType, group, {
@@ -35,7 +42,8 @@ export function renderPassageNoteItemHTML(note, {
   const isSelected = selectedNoteId === note?.id;
   const isPreviewing = previewNoteId === note?.id;
   const sourceLabel = formatImportSourceLabel(note?.source);
-  const noteType = note?.noteType === "research" ? "research" : "inspiration";
+  const displayLabel = getPassageNoteDisplayLabel(note);
+  const noteType = displayLabel.toLowerCase();
   const deleteLabel = `Delete ${noteType} note`;
   const editLabel = `Edit ${noteType} note`;
   return `
@@ -43,6 +51,8 @@ export function renderPassageNoteItemHTML(note, {
       class="console-item passage-note-item ${isSelected ? "is-selected" : ""} ${isPreviewing ? "is-previewing" : ""}"
       data-action="select-passage-note"
       data-note-id="${escapeHtml(note?.id)}"
+      data-note-type="${escapeHtml(note?.noteType)}"
+      draggable="true"
       role="button"
       tabindex="0"
       aria-expanded="${isPreviewing ? "true" : "false"}"
@@ -55,13 +65,13 @@ export function renderPassageNoteItemHTML(note, {
         data-title-input
         data-edit-field="passage-note-title"
         data-note-id="${escapeHtml(note?.id)}"
-        aria-label="${escapeHtml(noteType === "research" ? "Research title" : "Inspiration title")}"
+        aria-label="${escapeHtml(`${displayLabel} title`)}"
       />
       <textarea
         class="passage-note-body-input"
         data-edit-field="passage-note-body"
         data-note-id="${escapeHtml(note?.id)}"
-        aria-label="${escapeHtml(noteType === "research" ? "Research note body" : "Inspiration note body")}"
+        aria-label="${escapeHtml(`${displayLabel} note body`)}"
         rows="3"
       >${escapeHtml(note?.body || "")}</textarea>
       <div class="passage-note-actions">
@@ -124,6 +134,14 @@ function renderEmptyPassageNoteStateHTML(label) {
       <span>Right-click in the editor, choose ${escapeHtml(label)}, then type into the inline bubble.</span>
     </div>
   `;
+}
+
+function getPassageNoteDisplayLabel(note) {
+  if (typeof note?.metadataLabel === "string" && note.metadataLabel.trim()) {
+    return note.metadataLabel.trim();
+  }
+
+  return note?.noteType === "research" ? "Research" : note?.noteType === "inspiration" ? "Inspiration" : "Metadata";
 }
 
 function renderPassageNoteChapterGroupHTML(noteType, group, {
@@ -209,5 +227,17 @@ function renderPassageNoteDeleteIcon() {
       <path d="M6 4.5V3.2h4v1.3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
       <path d="M5 6.2 5.5 13h5l.5-6.8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
     </svg>
+  `;
+}
+
+function renderMetadataIconImageHTML(icon, className = "") {
+  return `
+    <img
+      class="metadata-image-icon ${escapeHtml(className)}"
+      src="${escapeHtml(icon.dataUrl)}"
+      alt=""
+      aria-hidden="true"
+      draggable="false"
+    />
   `;
 }

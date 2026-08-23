@@ -1,9 +1,12 @@
 // Intent: verify manuscript inline commands mutate style metadata without inserting markup into scene text.
 import assert from "node:assert/strict";
 import {
+  clearInlineFormatRangesForSelection,
   createDefaultManuscriptInlineFormattingState,
+  createNextDecorationEraserState,
   executeToggleInlineFormat,
   isInlineFormatActiveAtOffset,
+  isDecorationEraserPending,
   updateInlineFormatRangesForTextEdit,
 } from "../apps/editor/public/features/manuscript-editor/manuscript-command-controller.js";
 
@@ -50,6 +53,19 @@ export async function runManuscriptCommandControllerTest() {
   });
   assert.equal(selectedItalicKeepsStackedBold.state.pendingFormats.italic, true);
   assert.equal(selectedItalicKeepsStackedBold.state.pendingFormats.bold, true);
+  assert.equal(selectedItalicKeepsStackedBold.state.pendingClearDecorations, false);
+
+  const eraserState = createNextDecorationEraserState({
+    pendingFormats: {
+      bold: true,
+      highlight: true,
+      italic: true,
+    },
+  }, true);
+  assert.equal(eraserState.pendingFormats.bold, false);
+  assert.equal(eraserState.pendingFormats.highlight, false);
+  assert.equal(eraserState.pendingFormats.italic, false);
+  assert.equal(isDecorationEraserPending(eraserState), true);
 
   const appliedCoveredItalic = runInlineFormatCommand({
     text: "The quiet door opened.",
@@ -169,9 +185,11 @@ export async function runManuscriptCommandControllerTest() {
     startOffset: 4,
     endOffset: 4,
     format: "bold",
+    state: eraserState,
   });
   assert.equal(collapsedBold.mutation.kind, "start-pending-format");
   assert.equal(collapsedBold.state.pendingFormats.bold, true);
+  assert.equal(collapsedBold.state.pendingClearDecorations, false);
 
   const selectedUnderline = runInlineFormatCommand({
     text: "The quiet door opened.",
@@ -423,6 +441,85 @@ export async function runManuscriptCommandControllerTest() {
 
   assert.equal(isInlineFormatActiveAtOffset(selectedItalic.ranges, 8, "italic"), true);
   assert.equal(isInlineFormatActiveAtOffset(selectedItalic.ranges, 18, "italic"), false);
+
+  const erasedInlineDecorations = clearInlineFormatRangesForSelection([
+    {
+      id: "inline-bold-0-20",
+      formatId: "bold",
+      startOffset: 0,
+      endOffset: 20,
+    },
+    {
+      id: "inline-highlight-5-15",
+      formatId: "highlight",
+      startOffset: 5,
+      endOffset: 15,
+      metadata: {
+        highlightColor: {
+          id: "mint",
+          color: "rgba(127, 220, 164, 0.38)",
+          outline: "rgba(73, 174, 112, 0.24)",
+        },
+      },
+    },
+    {
+      id: "inline-italic-22-28",
+      formatId: "italic",
+      startOffset: 22,
+      endOffset: 28,
+    },
+  ], {
+    text: "The quiet door opened again.",
+    startOffset: 6,
+    endOffset: 12,
+    collapsed: false,
+  });
+  assert.deepEqual(erasedInlineDecorations, [
+    {
+      id: "inline-bold-0-6",
+      formatId: "bold",
+      startOffset: 0,
+      endOffset: 6,
+    },
+    {
+      id: "inline-highlight-5-6",
+      formatId: "highlight",
+      startOffset: 5,
+      endOffset: 6,
+      metadata: {
+        highlightColor: {
+          id: "mint",
+          color: "rgba(127, 220, 164, 0.38)",
+          outline: "rgba(73, 174, 112, 0.24)",
+        },
+      },
+    },
+    {
+      id: "inline-highlight-12-15",
+      formatId: "highlight",
+      startOffset: 12,
+      endOffset: 15,
+      metadata: {
+        highlightColor: {
+          id: "mint",
+          color: "rgba(127, 220, 164, 0.38)",
+          outline: "rgba(73, 174, 112, 0.24)",
+        },
+      },
+    },
+    {
+      id: "inline-bold-12-20",
+      formatId: "bold",
+      startOffset: 12,
+      endOffset: 20,
+    },
+    {
+      id: "inline-italic-22-28",
+      formatId: "italic",
+      startOffset: 22,
+      endOffset: 28,
+    },
+  ]);
 }
 
 function runInlineFormatCommand({

@@ -108,6 +108,29 @@ export function runWritingGoalsStateServiceTest() {
   assert.equal(summary.dailyWords, 0);
   assert.equal(Math.round(summary.targetWordsPerDay), 2184);
 
+  // Intent: daily-target edits should move the projected completion date, not rewrite the authored release date.
+  const authoredReleaseDate = "2026-08-20";
+  const dailyTargetPlan = service.persistWritingTargetState({
+    ...seededRecord,
+    targetWords: 151000,
+    releaseDate: authoredReleaseDate,
+    sessionTargetWords: 2200,
+    targetCadence: "daily",
+    goalSyncSource: "sessionTargetWords",
+  });
+  const dailyTargetSummary = service.buildWritingTargetSummaryForRecord(dailyTargetPlan);
+  const fasterDailyTargetSummary = service.buildWritingTargetSummaryForRecord({
+    ...dailyTargetPlan,
+    sessionTargetWords: 4400,
+  });
+  assert.equal(dailyTargetPlan.releaseDate, authoredReleaseDate);
+  assert.equal(dailyTargetSummary.syncedRecord.releaseDate, authoredReleaseDate);
+  assert.equal(dailyTargetSummary.goalSyncSource, "sessionTargetWords");
+  assert.equal(service.getLocalDateKey(dailyTargetSummary.projectionStartDate), service.getLocalDateKey(new Date()));
+  assert.equal(Math.ceil(dailyTargetSummary.projectedDaysToTarget), Math.ceil((151000 - 70097) / 2200));
+  assert.ok(fasterDailyTargetSummary.projectedCompletionDate.getTime() < dailyTargetSummary.projectedCompletionDate.getTime());
+  assert.equal(fasterDailyTargetSummary.syncedRecord.releaseDate, authoredReleaseDate);
+
   const runtimeTodayKey = service.getLocalDateKey(new Date());
   activeProjectRecord.projectIndex.scenes[0].wordCount = 69920;
   try {

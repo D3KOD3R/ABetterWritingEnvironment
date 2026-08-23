@@ -13,15 +13,22 @@ import {
   isCompatibilityManuscriptMark,
   normalizeManuscriptMarks,
 } from "./manuscript-mark-service.js";
+import {
+  buildCustomMetadataVisualStyle,
+  isCustomMetadataNoteType,
+  normalizeCustomMetadataIcon,
+} from "../metadata-console/custom-metadata-service.js";
 
 export const MANUSCRIPT_PROJECTION_CHANNELS = Object.freeze({
   AUTHOR_MARK: "author-mark",
   DRAFT_PROOF: "draft-proof",
   DIAGNOSTIC: "diagnostic",
+  MANU_SCRIPT_INFOGRAPHIC_LANE: "ManuScriptInfographicLane",
   TASK: "task",
   NOTE: "note",
   SEARCH: "search",
   NARRATION_FOLLOW: "narration-follow",
+  NARRATION_RECORDING: "narration-recording",
   SPELLCHECK: "spellcheck",
 });
 
@@ -31,8 +38,10 @@ const PROJECTION_PRIORITY = Object.freeze({
   [MANUSCRIPT_PROJECTION_CHANNELS.DIAGNOSTIC]: 90,
   [MANUSCRIPT_PROJECTION_CHANNELS.TASK]: 80,
   [MANUSCRIPT_PROJECTION_CHANNELS.NOTE]: 80,
+  [MANUSCRIPT_PROJECTION_CHANNELS.MANU_SCRIPT_INFOGRAPHIC_LANE]: 75,
   [MANUSCRIPT_PROJECTION_CHANNELS.SEARCH]: 70,
   [MANUSCRIPT_PROJECTION_CHANNELS.NARRATION_FOLLOW]: 70,
+  [MANUSCRIPT_PROJECTION_CHANNELS.NARRATION_RECORDING]: 65,
   [MANUSCRIPT_PROJECTION_CHANNELS.SPELLCHECK]: 40,
 });
 
@@ -46,13 +55,16 @@ export function selectManuscriptProjections({
   draftProofing = null,
   draftProofRunId = "",
   diagnosticIssues = [],
+  manuScriptInfographicLanePreviews = [],
   anchoredRecordPreviews = [],
   searchPreviews = [],
   narrationSelection = null,
+  narrationRecordingPreviews = [],
   spellcheckMisspellings = [],
   includeAuthorMarks = true,
   includeDraftProofing = true,
   includeDiagnostics = true,
+  includeManuScriptInfographicLane = true,
   includeAnchoredRecords = true,
   includeRuntimeSelections = true,
   includeSpellcheck = true,
@@ -108,6 +120,15 @@ export function selectManuscriptProjections({
     }
   }
 
+  if (includeManuScriptInfographicLane) {
+    for (const preview of Array.isArray(manuScriptInfographicLanePreviews) ? manuScriptInfographicLanePreviews : []) {
+      const projection = createManuScriptInfographicLaneProjection(preview, normalizedSceneId, normalizedText.length);
+      if (projection) {
+        projections.push(projection);
+      }
+    }
+  }
+
   if (includeRuntimeSelections) {
     for (const preview of Array.isArray(searchPreviews) ? searchPreviews : []) {
       const projection = createRuntimeSelectionProjection(
@@ -121,14 +142,40 @@ export function selectManuscriptProjections({
       }
     }
 
-    const narrationProjection = createRuntimeSelectionProjection(
-      narrationSelection,
-      normalizedSceneId,
-      normalizedText.length,
-      MANUSCRIPT_PROJECTION_CHANNELS.NARRATION_FOLLOW,
-    );
-    if (narrationProjection) {
-      projections.push(narrationProjection);
+    const narrationSelections = Array.isArray(narrationSelection)
+      ? narrationSelection
+      : narrationSelection
+        ? [narrationSelection]
+        : [];
+    for (const preview of narrationSelections) {
+      const narrationProjection = createRuntimeSelectionProjection(
+        preview,
+        normalizedSceneId,
+        normalizedText.length,
+        MANUSCRIPT_PROJECTION_CHANNELS.NARRATION_FOLLOW,
+      );
+      if (narrationProjection) {
+        projections.push(narrationProjection);
+      }
+    }
+
+    for (const preview of Array.isArray(narrationRecordingPreviews) ? narrationRecordingPreviews : []) {
+      const projection = createRuntimeSelectionProjection(
+        preview,
+        normalizedSceneId,
+        normalizedText.length,
+        MANUSCRIPT_PROJECTION_CHANNELS.NARRATION_RECORDING,
+      );
+      if (projection) {
+        projections.push({
+          ...projection,
+          persistence: "derived-durable",
+          sourceRef: {
+            recordType: "voiceRecording",
+            recordId: preview.id ?? preview.recordId ?? "",
+          },
+        });
+      }
     }
   }
 
@@ -321,10 +368,17 @@ function createAnchoredRecordProjection(preview, sceneId, textLength) {
   }
 
   const isTask = recordType === "task";
-  const noteType = preview?.noteType === "research" ? "research" : "inspiration";
+  const rawNoteType = String(preview?.noteType ?? "").trim();
+  const noteType = rawNoteType === "research"
+    ? "research"
+    : rawNoteType === "inspiration"
+      ? "inspiration"
+      : isCustomMetadataNoteType(rawNoteType)
+        ? "metadata"
+        : "inspiration";
   const channel = isTask ? MANUSCRIPT_PROJECTION_CHANNELS.TASK : MANUSCRIPT_PROJECTION_CHANNELS.NOTE;
   const styleToken = isTask ? "task" : noteType;
-  return createAnchorDecorationProjection({
+  const projection = createAnchorDecorationProjection({
     anchorId: `${recordType}:${recordId}`,
     ownerType: recordType,
     ownerId: recordId,
@@ -341,6 +395,114 @@ function createAnchoredRecordProjection(preview, sceneId, textLength) {
     priority: PROJECTION_PRIORITY[channel],
     persistence: "derived-durable",
   });
+  if (!projection || isTask || noteType !== "metadata") {
+    return projection;
+  }
+
+  return {
+    ...projection,
+    visualStyle: resolveCustomMetadataProjectionStyle(preview),
+  };
+}
+
+function createManuScriptInfographicLaneProjection(preview, sceneId, textLength) {
+  if (!preview || typeof preview !== "object") {
+    return null;
+  }
+
+  const markerType = normalizeManuScriptInfographicLaneMarkerType(preview.markerType);
+  const recordType = normalizeManuScriptInfographicLaneRecordType(preview.recordType);
+  const recordId = typeof preview.recordId === "string" ? preview.recordId : "";
+  const projectionSceneId = typeof preview.sceneId === "string" ? preview.sceneId : sceneId;
+  const startOffset = Number(preview.startOffset);
+  const endOffset = Number(preview.endOffset);
+  if (
+    !recordType ||
+    !recordId ||
+    projectionSceneId !== sceneId ||
+    !Number.isInteger(startOffset) ||
+    !Number.isInteger(endOffset) ||
+    startOffset < 0 ||
+    endOffset <= startOffset ||
+    endOffset > textLength
+  ) {
+    return null;
+  }
+
+  const nodeId = typeof preview.nodeId === "string" ? preview.nodeId : "";
+  const sourceRef = {
+    recordType,
+    recordId,
+    ...(nodeId ? { nodeId } : {}),
+  };
+  return {
+    id: `ManuScriptInfographicLane:${markerType}:${recordType}:${recordId}:${startOffset}`,
+    sceneId: projectionSceneId,
+    startOffset,
+    endOffset,
+    channel: MANUSCRIPT_PROJECTION_CHANNELS.MANU_SCRIPT_INFOGRAPHIC_LANE,
+    styleToken: markerType,
+    label: typeof preview.label === "string" ? preview.label : "",
+    priority: PROJECTION_PRIORITY[MANUSCRIPT_PROJECTION_CHANNELS.MANU_SCRIPT_INFOGRAPHIC_LANE],
+    persistence: "derived-durable",
+    sourceRef,
+    visualStyle: createManuScriptInfographicLaneVisualStyle(preview),
+  };
+}
+
+function createManuScriptInfographicLaneVisualStyle(preview) {
+  const icon = normalizeCustomMetadataIcon(preview?.metadataIcon ?? preview?.icon);
+  return icon ? { icon } : {};
+}
+
+function normalizeManuScriptInfographicLaneRecordType(recordType) {
+  const normalizedRecordType = String(recordType ?? "").trim();
+  return [
+    "eventTag",
+    "passageNote",
+    "task",
+    "worldSpineMetadata",
+    "worldSpineNode",
+  ].includes(normalizedRecordType)
+    ? normalizedRecordType
+    : "";
+}
+
+function normalizeManuScriptInfographicLaneMarkerType(markerType) {
+  const normalizedMarkerType = String(markerType ?? "").trim();
+  return [
+    "metadata",
+    "research",
+    "task",
+    "world",
+    "world-end",
+    "world-start",
+  ].includes(normalizedMarkerType)
+    ? normalizedMarkerType
+    : "metadata";
+}
+
+function resolveCustomMetadataProjectionStyle(preview) {
+  const visualStyle = preview?.visualStyle && typeof preview.visualStyle === "object"
+    ? preview.visualStyle
+    : {};
+  const colorToken = typeof visualStyle.colorToken === "string"
+    ? visualStyle.colorToken
+    : typeof visualStyle.highlightColor === "string" && visualStyle.highlightColor.startsWith("#")
+      ? visualStyle.highlightColor
+      : typeof preview?.metadataHighlightColor === "string"
+        ? preview.metadataHighlightColor
+        : "";
+
+  if (colorToken) {
+    return buildCustomMetadataVisualStyle(colorToken);
+  }
+
+  return {
+    highlightColor: typeof visualStyle.highlightColor === "string" ? visualStyle.highlightColor : "",
+    highlightOutline: typeof visualStyle.highlightOutline === "string" ? visualStyle.highlightOutline : "",
+    highlightShadow: typeof visualStyle.highlightShadow === "string" ? visualStyle.highlightShadow : "",
+  };
 }
 
 function createRuntimeSelectionProjection(preview, sceneId, textLength, channel) {
@@ -371,7 +533,9 @@ function createRuntimeSelectionProjection(preview, sceneId, textLength, channel)
     startOffset,
     endOffset,
     channel,
-    styleToken: channel,
+    styleToken: typeof preview.styleToken === "string" && preview.styleToken
+      ? preview.styleToken
+      : channel,
     priority: PROJECTION_PRIORITY[channel],
     persistence: "runtime-only",
   };

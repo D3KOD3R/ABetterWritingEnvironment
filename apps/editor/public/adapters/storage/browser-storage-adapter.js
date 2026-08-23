@@ -94,3 +94,102 @@ export function createBrowserStorageAdapter({
     writeJson,
   };
 }
+
+// Intent: provide local credential continuity for browser-only integrations without exposing raw storage to app shells.
+export function createDurableBrowserTokenStorage({
+  fallbackStorageKeyspace = "sessionStorage",
+  primaryStorageKeyspace = "localStorage",
+  reportBrowserLog = () => {},
+  windowRef = globalThis.window,
+} = {}) {
+  const getStorage = (keyspace) => {
+    try {
+      return windowRef?.[keyspace] ?? null;
+    } catch (error) {
+      reportBrowserLog("warn", "storage", `Unable to access ${keyspace}.`, {
+        error,
+        keyspace,
+      });
+      return null;
+    }
+  };
+
+  const readRaw = (storage, storageKey) => {
+    if (!storage || typeof storage.getItem !== "function") {
+      return "";
+    }
+
+    try {
+      return String(storage.getItem(storageKey) ?? "");
+    } catch (error) {
+      reportBrowserLog("warn", "storage", `Unable to read token storage ${storageKey}.`, {
+        error,
+        storageKey,
+      });
+      return "";
+    }
+  };
+
+  const writeRaw = (storage, storageKey, value) => {
+    if (!storage || typeof storage.setItem !== "function") {
+      return false;
+    }
+
+    try {
+      storage.setItem(storageKey, String(value ?? ""));
+      return true;
+    } catch (error) {
+      reportBrowserLog("warn", "storage", `Unable to write token storage ${storageKey}.`, {
+        error,
+        storageKey,
+      });
+      return false;
+    }
+  };
+
+  const removeRaw = (storage, storageKey) => {
+    if (!storage || typeof storage.removeItem !== "function") {
+      return false;
+    }
+
+    try {
+      storage.removeItem(storageKey);
+      return true;
+    } catch (error) {
+      reportBrowserLog("warn", "storage", `Unable to remove token storage ${storageKey}.`, {
+        error,
+        storageKey,
+      });
+      return false;
+    }
+  };
+
+  return {
+    getItem: (storageKey) => {
+      const primaryStorage = getStorage(primaryStorageKeyspace);
+      const primaryValue = readRaw(primaryStorage, storageKey);
+      if (primaryValue) {
+        return primaryValue;
+      }
+
+      const fallbackStorage = getStorage(fallbackStorageKeyspace);
+      const fallbackValue = readRaw(fallbackStorage, storageKey);
+      if (fallbackValue && writeRaw(primaryStorage, storageKey, fallbackValue)) {
+        removeRaw(fallbackStorage, storageKey);
+      }
+      return fallbackValue;
+    },
+    removeItem: (storageKey) => {
+      removeRaw(getStorage(primaryStorageKeyspace), storageKey);
+      removeRaw(getStorage(fallbackStorageKeyspace), storageKey);
+    },
+    setItem: (storageKey, value) => {
+      const primaryStorage = getStorage(primaryStorageKeyspace);
+      if (writeRaw(primaryStorage, storageKey, value)) {
+        removeRaw(getStorage(fallbackStorageKeyspace), storageKey);
+        return;
+      }
+      writeRaw(getStorage(fallbackStorageKeyspace), storageKey, value);
+    },
+  };
+}

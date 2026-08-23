@@ -16,16 +16,28 @@ export async function runProjectSourceServiceTest() {
         value: {
           activeProjectId: "imported",
           projects: [{ id: "imported", title: "Imported" }],
+          sceneStore: {
+            imported: {
+              "scene-imported": {
+                editorText: "Imported scene body.",
+              },
+            },
+          },
         },
       };
     },
     normalizeProjectLibrarySnapshot: (snapshot) => ({
       activeProjectId: snapshot?.activeProjectId ?? "",
       projects: Array.isArray(snapshot?.projects) ? snapshot.projects : [],
+      sceneStore: snapshot?.sceneStore ?? {},
     }),
     mergeProjectLibrarySnapshots: (current, imported) => ({
       activeProjectId: imported.activeProjectId || current.activeProjectId,
       projects: [...current.projects, ...imported.projects],
+      sceneStore: {
+        ...(current.sceneStore ?? {}),
+        ...(imported.sceneStore ?? {}),
+      },
     }),
     resolveActiveProjectId: (candidate) => candidate,
     saveProjectLibrarySnapshot: (snapshot) => ({
@@ -45,6 +57,7 @@ export async function runProjectSourceServiceTest() {
   assert.equal(result.persistedLibrary.saved, true);
   assert.equal(result.persistedLibrary.activeProjectId, "imported");
   assert.deepEqual(result.persistedLibrary.projects.map((project) => project.id), ["current", "imported"]);
+  assert.equal(result.persistedLibrary.sceneStore.imported["scene-imported"].editorText, "Imported scene body.");
   assert.equal(calls[0].pathname, "/api/project-source");
   assert.deepEqual(calls[0].options, {
     method: "POST",

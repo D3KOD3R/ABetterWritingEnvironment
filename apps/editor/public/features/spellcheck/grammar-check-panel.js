@@ -3,8 +3,24 @@ import {
   countSpellcheckMisspellings,
   groupSpellcheckMisspellings,
   normalizeSpellcheckWord,
+  suggestSpellcheckAlternatives,
 } from "../../spellcheck.js";
+import {
+  clampGrammarCheckPanelBounds,
+  clampGrammarCheckPanelPosition,
+  normalizeGrammarCheckPanelBounds,
+  setGrammarCheckPanelBoundsState,
+  setGrammarCheckPanelPositionState,
+} from "../../state/grammar-check-panel-state.js";
 import { escapeHtml } from "../../shared/ui-utils.js";
+
+export {
+  clampGrammarCheckPanelBounds,
+  clampGrammarCheckPanelPosition,
+  normalizeGrammarCheckPanelBounds,
+  setGrammarCheckPanelBoundsState,
+  setGrammarCheckPanelPositionState,
+};
 
 export function toggleGrammarCheckPanelState(panelState = {}) {
   const isOpen = panelState?.open === true;
@@ -23,32 +39,6 @@ export function closeGrammarCheckPanelState(panelState = {}) {
   return {
     ...panelState,
     open: false,
-  };
-}
-
-export function setGrammarCheckPanelPositionState(panelState = {}, left, top) {
-  return {
-    ...panelState,
-    position: {
-      left: Math.round(Number(left) || 0),
-      top: Math.round(Number(top) || 0),
-    },
-  };
-}
-
-export function clampGrammarCheckPanelPosition(left, top, width, height, viewport = {}) {
-  const safeWidth = Math.max(0, Number(width) || 0);
-  const safeHeight = Math.max(0, Number(height) || 0);
-  const viewportWidth = Math.max(0, Number(viewport.width) || 0);
-  const viewportHeight = Math.max(0, Number(viewport.height) || 0);
-  const minLeft = 12;
-  const minTop = 12;
-  const maxLeft = Math.max(minLeft, viewportWidth - safeWidth - 12);
-  const maxTop = Math.max(minTop, viewportHeight - safeHeight - 12);
-
-  return {
-    left: Math.min(Math.max(minLeft, Number(left) || 0), maxLeft),
-    top: Math.min(Math.max(minTop, Number(top) || 0), maxTop),
   };
 }
 
@@ -240,6 +230,106 @@ export function createGrammarCheckPanelDragController({
   };
 }
 
+// Intent: resize the floating grammar-check review window while keeping persistence in the shell.
+export function createGrammarCheckPanelResizeController({
+  isPanelOpen = () => false,
+  getViewport = () => ({ width: 0, height: 0 }),
+  setBounds = () => {},
+} = {}) {
+  let resizeState = null;
+
+  function begin(event) {
+    if (isPanelOpen() !== true || event?.button !== 0) {
+      return false;
+    }
+
+    const target = isElement(event.target) ? event.target : null;
+    const resizeHandle = target?.closest("[data-grammar-check-resize-handle]");
+    if (!isHtmlElement(resizeHandle)) {
+      return false;
+    }
+
+    const slot = resizeHandle.closest("#grammar-check-slot");
+    if (!isHtmlElement(slot)) {
+      return false;
+    }
+
+    const rect = slot.getBoundingClientRect();
+    resizeState = {
+      pointerId: event.pointerId,
+      slot,
+      resizeHandle,
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
+      startX: event.clientX,
+      startY: event.clientY,
+    };
+
+    slot.classList.add("is-resizing");
+    event.preventDefault();
+    if (typeof resizeHandle.setPointerCapture === "function") {
+      try {
+        resizeHandle.setPointerCapture(event.pointerId);
+      } catch {
+        // Ignore capture failures; document-level handlers can still receive move/end events.
+      }
+    }
+    return true;
+  }
+
+  function move(event) {
+    if (!resizeState || event?.pointerId !== resizeState.pointerId) {
+      return false;
+    }
+
+    const bounds = clampGrammarCheckPanelBounds({
+      left: resizeState.left,
+      top: resizeState.top,
+      width: resizeState.width + (event.clientX - resizeState.startX),
+      height: resizeState.height + (event.clientY - resizeState.startY),
+    }, getViewport());
+
+    setBounds(bounds);
+    event.preventDefault();
+    return true;
+  }
+
+  function end(event) {
+    if (!resizeState || event?.pointerId !== resizeState.pointerId) {
+      return false;
+    }
+
+    const { slot, resizeHandle, pointerId } = resizeState;
+    slot.classList.remove("is-resizing");
+    if (typeof resizeHandle.releasePointerCapture === "function") {
+      try {
+        resizeHandle.releasePointerCapture(pointerId);
+      } catch {
+        // Ignore release failures.
+      }
+    }
+
+    resizeState = null;
+    return true;
+  }
+
+  function getSnapshot() {
+    return {
+      isResizing: resizeState !== null,
+      pointerId: resizeState?.pointerId ?? null,
+    };
+  }
+
+  return {
+    begin,
+    move,
+    end,
+    getSnapshot,
+  };
+}
+
 export function buildGrammarCheckSummary(scene, lexicons = {}) {
   if (!scene || !lexicons?.baseLexicon?.wordList?.length) {
     return {
@@ -260,20 +350,33 @@ export function buildGrammarCheckEntries(scene, lexicons = {}, options = {}) {
     return [];
   }
 
+  const sceneId = String(scene?.sceneId ?? "");
   return groupSpellcheckMisspellings(scene.editorText ?? "", lexicons, options)
-    .map((entry) => ({
-      ...entry,
-      word: String(entry.word ?? "").trim() || String(entry.normalizedWord ?? ""),
-      normalizedWord: normalizeSpellcheckWord(entry.normalizedWord ?? entry.word),
-      count: Number(entry.count ?? 0),
-      firstIndex: Number(entry.firstIndex ?? 0),
-      lastIndex: Number(entry.lastIndex ?? 0),
-    }))
+    .map((entry) => {
+      const word = String(entry.word ?? "").trim() || String(entry.normalizedWord ?? "");
+      const firstIndex = Number(entry.firstIndex);
+      const safeFirstIndex = Number.isInteger(firstIndex) ? firstIndex : 0;
+      const firstEndIndex = safeFirstIndex + word.length;
+      const suggestions = suggestSpellcheckAlternatives(word, lexicons);
+      return {
+        ...entry,
+        sceneId,
+        word,
+        normalizedWord: normalizeSpellcheckWord(entry.normalizedWord ?? entry.word),
+        count: Number(entry.count ?? 0),
+        firstIndex: safeFirstIndex,
+        firstEndIndex,
+        lastIndex: Number(entry.lastIndex ?? 0),
+        suggestions,
+        firstSuggestion: suggestions[0] ?? "",
+      };
+    })
     .filter((entry) => entry.normalizedWord)
     .sort((left, right) => left.firstIndex - right.firstIndex || left.word.localeCompare(right.word));
 }
 
 export function renderGrammarCheckPanelHTML({
+  selectedSceneId = "",
   selectedSceneTitle,
   selectedSceneChapter,
   entries = [],
@@ -320,7 +423,7 @@ export function renderGrammarCheckPanelHTML({
               const isSelected = selectionSet.has(entry.normalizedWord);
               const isAnchor = selectionAnchorIndex === index;
               return `
-                <div class="grammar-check-item ${isSelected ? "is-selected" : ""} ${isAnchor ? "is-anchor" : ""}" data-grammar-check-word="${escapeHtml(entry.normalizedWord)}" data-grammar-check-index="${index}" data-grammar-check-first-index="${escapeHtml(String(entry.firstIndex ?? 0))}">
+                <div class="grammar-check-item ${isSelected ? "is-selected" : ""} ${isAnchor ? "is-anchor" : ""}" data-grammar-check-word="${escapeHtml(entry.normalizedWord)}" data-grammar-check-index="${index}" data-grammar-check-first-index="${escapeHtml(String(entry.firstIndex ?? 0))}" data-grammar-check-first-end-index="${escapeHtml(String(entry.firstEndIndex ?? 0))}">
                   <label class="grammar-check-item__toggle" data-action="toggle-grammar-check-word">
                     <input type="checkbox" ${isSelected ? "checked" : ""} aria-label="Select ${escapeHtml(entry.word)} for project dictionary" />
                   </label>
@@ -328,6 +431,7 @@ export function renderGrammarCheckPanelHTML({
                     <strong class="grammar-check-item__word">${escapeHtml(entry.word)}</strong>
                     <span class="grammar-check-item__meta">${escapeHtml(`${entry.count} occurrence${entry.count === 1 ? "" : "s"}`)}</span>
                   </button>
+                  ${renderGrammarCheckSuggestionControls(entry, selectedSceneId)}
                 </div>
               `;
             }).join("")
@@ -339,8 +443,154 @@ export function renderGrammarCheckPanelHTML({
           <button class="tag-button editor-action-button" type="button" data-action="grammar-check-add-selected" ${addDisabled ? "disabled" : ""}>Add selected to project dictionary</button>
         </div>
       </div>
+      <div class="manuscript-grammar-panel__resize-handle" data-grammar-check-resize-handle role="separator" tabindex="0" aria-label="Resize grammar check window" title="Resize grammar check window"></div>
     </section>
   `;
+}
+
+// Intent: expose guarded correction choices while leaving the shell to perform text mutation.
+function renderGrammarCheckSuggestionControls(entry, selectedSceneId = "") {
+  const sceneId = String(entry?.sceneId || selectedSceneId || "");
+  const word = String(entry?.word ?? "");
+  const normalizedWord = normalizeSpellcheckWord(entry?.normalizedWord ?? word);
+  const firstIndex = Number(entry?.firstIndex);
+  const firstEndIndex = Number(entry?.firstEndIndex);
+  const suggestions = normalizeSuggestionList(entry?.suggestions);
+  const firstSuggestion = String(entry?.firstSuggestion || suggestions[0] || "").trim();
+  const dropdownSuggestions = suggestions.length ? suggestions : [firstSuggestion].filter(Boolean);
+  const canApply = Boolean(
+    sceneId &&
+    normalizedWord &&
+    firstSuggestion &&
+    Number.isInteger(firstIndex) &&
+    Number.isInteger(firstEndIndex) &&
+    firstEndIndex > firstIndex,
+  );
+
+  if (!canApply) {
+    return `
+      <div class="grammar-check-item__quick-actions">
+        ${renderGrammarCheckDictionaryButton({ word, normalizedWord })}
+        <button class="grammar-check-item__apply-button" type="button" disabled aria-label="No spelling suggestion available">
+          <span aria-hidden="true">&rarr;</span>
+        </button>
+      </div>
+      <span class="grammar-check-item__no-suggestion">No suggestion</span>
+    `;
+  }
+
+  const firstSuggestionData = renderSpellcheckSuggestionDataAttributes({
+    sceneId,
+    replacement: firstSuggestion,
+    word: normalizedWord,
+    startOffset: firstIndex,
+    endOffset: firstEndIndex,
+  });
+  return `
+    <div class="grammar-check-item__quick-actions">
+      ${renderGrammarCheckDictionaryButton({ word, normalizedWord })}
+      <button
+        class="grammar-check-item__apply-button"
+        type="button"
+        data-action="apply-spellcheck-suggestion"
+        ${firstSuggestionData}
+        aria-label="Replace ${escapeHtml(word)} with ${escapeHtml(firstSuggestion)}"
+        title="Replace first occurrence with ${escapeHtml(firstSuggestion)}"
+      >
+        <span aria-hidden="true">&rarr;</span>
+      </button>
+    </div>
+    <div class="grammar-check-item__suggestion" data-grammar-check-suggestion>
+      <button
+        class="grammar-check-item__suggestion-primary"
+        type="button"
+        data-action="apply-spellcheck-suggestion"
+        ${firstSuggestionData}
+        title="Replace first occurrence with ${escapeHtml(firstSuggestion)}"
+      >${escapeHtml(firstSuggestion)}</button>
+      ${dropdownSuggestions.length
+        ? `
+          <div class="grammar-check-item__suggestion-menu" role="menu" aria-label="Spelling suggestions for ${escapeHtml(word)}">
+            ${dropdownSuggestions.map((suggestion) => `
+              <button
+                class="grammar-check-item__suggestion-option"
+                type="button"
+                role="menuitem"
+                data-action="apply-spellcheck-suggestion"
+                ${renderSpellcheckSuggestionDataAttributes({
+                  sceneId,
+                  replacement: suggestion,
+                  word: normalizedWord,
+                  startOffset: firstIndex,
+                  endOffset: firstEndIndex,
+                })}
+              >
+                <span class="grammar-check-item__suggestion-option-icon" aria-hidden="true">✓</span>
+                <span>${escapeHtml(suggestion)}</span>
+              </button>
+            `).join("")}
+          </div>
+        `
+        : ""}
+    </div>
+  `;
+}
+
+function renderGrammarCheckDictionaryButton({ word, normalizedWord } = {}) {
+  const displayWord = String(word || normalizedWord || "").trim();
+  const targetWord = displayWord || normalizeSpellcheckWord(normalizedWord);
+  if (!targetWord) {
+    return `
+      <button class="grammar-check-item__dictionary-button" type="button" disabled aria-label="No dictionary word available">
+        <span aria-hidden="true">+</span>
+      </button>
+    `;
+  }
+
+  return `
+    <button
+      class="grammar-check-item__dictionary-button"
+      type="button"
+      data-action="grammar-check-add-word"
+      data-grammar-check-dictionary-word="${escapeHtml(targetWord)}"
+      aria-label="Add ${escapeHtml(displayWord || targetWord)} to project dictionary"
+      title="Add ${escapeHtml(displayWord || targetWord)} to project dictionary"
+    >
+      <span aria-hidden="true">+</span>
+    </button>
+  `;
+}
+
+function normalizeSuggestionList(suggestions) {
+  const normalizedSuggestions = [];
+  const seen = new Set();
+  for (const suggestion of Array.isArray(suggestions) ? suggestions : []) {
+    const normalizedSuggestion = String(suggestion ?? "").trim();
+    if (!normalizedSuggestion || seen.has(normalizedSuggestion)) {
+      continue;
+    }
+
+    seen.add(normalizedSuggestion);
+    normalizedSuggestions.push(normalizedSuggestion);
+  }
+
+  return normalizedSuggestions;
+}
+
+function renderSpellcheckSuggestionDataAttributes({
+  sceneId,
+  replacement,
+  word,
+  startOffset,
+  endOffset,
+} = {}) {
+  return [
+    `data-spellcheck-replacement="${escapeHtml(replacement)}"`,
+    `data-spellcheck-start-offset="${escapeHtml(String(startOffset))}"`,
+    `data-spellcheck-end-offset="${escapeHtml(String(endOffset))}"`,
+    `data-spellcheck-scene-id="${escapeHtml(sceneId)}"`,
+    `data-spellcheck-word="${escapeHtml(word)}"`,
+  ].join(" ");
 }
 
 function isElement(value) {

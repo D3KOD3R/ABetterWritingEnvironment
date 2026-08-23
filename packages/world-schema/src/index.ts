@@ -10,12 +10,30 @@ export type TimelineSpineKind =
   | "region"
   | "thread"
   | "custom";
-export type TimelineEdgeKind = "causes" | "references" | "overlaps" | "reveals";
+export type TimelineEdgeKind = "causes" | "references" | "overlaps" | "reveals" | "implicates";
 export type EntityLinkKind =
   | "manuscript-reference"
   | "timeline-introduction"
   | "timeline-presence"
   | "entity-relationship";
+
+export interface TimelineNodeLocationPlacement {
+  locationLabel: string;
+  locationKey: string;
+  locationRowLabel: string;
+  locationRowKey: string;
+  locationScope: string;
+  eventLocationLabel: string;
+  eventLocationKey: string;
+  coreLocationLabel: string;
+  coreLocationKey: string;
+  childLocation: string;
+  childLocationLabel: string;
+  childLocationKey: string;
+  sublocationLabel: string;
+  sublocationKey: string;
+  orbitalBand: string;
+}
 
 export interface WorldModel {
   id: string;
@@ -71,6 +89,17 @@ export interface TemplateOrigin {
   templateKey: string;
 }
 
+export interface WorldCatalogueImage {
+  dataUrl?: string;
+  mediaPath?: string;
+  projectRelativePath?: string;
+  url?: string;
+  mediaType: "image/png" | "image/jpeg" | "image/webp" | "image/gif";
+  name: string;
+  size: number;
+  attachedAt?: string;
+}
+
 export interface EntityIntroduction {
   id: string;
   entityId: string;
@@ -88,6 +117,7 @@ export interface WorldEntity {
   templateOrigin: TemplateOrigin;
   createdAt: string;
   updatedAt: string;
+  image?: WorldCatalogueImage;
   introduction?: EntityIntroduction;
 }
 
@@ -107,6 +137,7 @@ export interface TimelineNode {
   label: string;
   summary: string;
   order: number;
+  locationPlacement?: TimelineNodeLocationPlacement;
   linkedEntityIds: string[];
   manuscriptAnchors: ManuscriptAnchor[];
   createdAt: string;
@@ -194,8 +225,30 @@ export interface AddTimelineSpineInput {
 export interface AddTimelineNodeInput {
   label: string;
   summary?: string;
+  locationPlacement?: TimelineNodeLocationPlacementInput;
   linkedEntityIds?: string[];
   manuscriptAnchors?: ManuscriptAnchor[];
+}
+
+export interface TimelineNodeLocationPlacementInput {
+  location?: string;
+  locationLabel?: string;
+  locationKey?: string;
+  locationRowLabel?: string;
+  locationRowKey?: string;
+  locationScope?: string;
+  eventLocationLabel?: string;
+  eventLocationKey?: string;
+  coreLocationLabel?: string;
+  coreLocationKey?: string;
+  childLocation?: string;
+  childLocationLabel?: string;
+  childLocationKey?: string;
+  sublocation?: string;
+  subLocation?: string;
+  sublocationLabel?: string;
+  sublocationKey?: string;
+  orbitalBand?: string;
 }
 
 export interface LinkTimelineNodesInput {
@@ -222,6 +275,8 @@ const DEFAULT_SEQUENCES: WorldSequences = {
   introduction: 0,
   link: 0,
 };
+
+const DEFAULT_LOCATION_SCOPE = "planetary";
 
 // Intent: create the canonical structured world model used by timelines, templates, and entities.
 export function createWorldModel(input: CreateWorldModelInput): WorldModel {
@@ -417,6 +472,7 @@ export function addTimelineNode(
 
   const label = nonEmpty(input.label, "Timeline node label");
   const linkedEntityIds = input.linkedEntityIds ? [...input.linkedEntityIds] : [];
+  const locationPlacement = normalizeTimelineNodeLocationPlacement(input.locationPlacement);
 
   for (const entityId of linkedEntityIds) {
     ensureEntity(world, entityId);
@@ -428,6 +484,7 @@ export function addTimelineNode(
     label,
     summary: input.summary?.trim() ?? "",
     order: world.spines[spineIndex].nodeIds.length + 1,
+    ...(locationPlacement ? { locationPlacement } : {}),
     linkedEntityIds,
     manuscriptAnchors: input.manuscriptAnchors ? [...input.manuscriptAnchors] : [],
     createdAt: resolveNow(now),
@@ -452,6 +509,67 @@ export function addTimelineNode(
   });
 
   return { world: updated, node };
+}
+
+// Intent: give timeline nodes one canonical location payload while accepting child-location terminology.
+export function createTimelineNodeLocationPlacement(
+  input: TimelineNodeLocationPlacementInput = {},
+): TimelineNodeLocationPlacement {
+  const eventLocationLabel = normalizePlainString(
+    input.eventLocationLabel ??
+      input.locationLabel ??
+      input.location,
+  );
+  const locationRowLabel = normalizePlainString(input.locationRowLabel) ||
+    normalizePlainString(input.coreLocationLabel) ||
+    eventLocationLabel;
+  const coreLocationLabel = normalizePlainString(input.coreLocationLabel) || locationRowLabel;
+  const locationLabel = normalizePlainString(input.locationLabel) ||
+    eventLocationLabel ||
+    locationRowLabel;
+  const sublocationLabel = normalizePlainString(
+    input.childLocationLabel ??
+      input.childLocation ??
+      input.sublocationLabel ??
+      input.sublocation ??
+      input.subLocation,
+  );
+
+  return {
+    locationLabel,
+    locationKey: normalizeLocationKey(input.locationKey || locationLabel),
+    locationRowLabel,
+    locationRowKey: normalizeLocationKey(input.locationRowKey || locationRowLabel),
+    locationScope: normalizePlainString(input.locationScope) || DEFAULT_LOCATION_SCOPE,
+    eventLocationLabel,
+    eventLocationKey: normalizeLocationKey(input.eventLocationKey || eventLocationLabel),
+    coreLocationLabel,
+    coreLocationKey: normalizeLocationKey(input.coreLocationKey || coreLocationLabel),
+    childLocation: sublocationLabel,
+    childLocationLabel: sublocationLabel,
+    childLocationKey: normalizeLocationKey(input.childLocationKey || input.sublocationKey || sublocationLabel),
+    sublocationLabel,
+    sublocationKey: normalizeLocationKey(input.sublocationKey || sublocationLabel),
+    orbitalBand: normalizePlainString(input.orbitalBand),
+  };
+}
+
+function normalizeTimelineNodeLocationPlacement(
+  input: TimelineNodeLocationPlacementInput | undefined,
+): TimelineNodeLocationPlacement | undefined {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return undefined;
+  }
+
+  const placement = createTimelineNodeLocationPlacement(input);
+  return placement.locationLabel ||
+    placement.locationRowLabel ||
+    placement.eventLocationLabel ||
+    placement.coreLocationLabel ||
+    placement.sublocationLabel ||
+    placement.orbitalBand
+    ? placement
+    : undefined;
 }
 
 export function linkTimelineNodes(
@@ -620,6 +738,18 @@ function normalizeKey(value: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
+}
+
+function normalizePlainString(value: unknown): string {
+  return String(value ?? "").trim().replace(/\s+/g, " ");
+}
+
+function normalizeLocationKey(value: unknown): string {
+  return normalizePlainString(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64);
 }
 
 function formatId(prefix: string, sequence: number): string {

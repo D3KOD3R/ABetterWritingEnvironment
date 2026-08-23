@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 
 import {
+  buildSpellcheckEditorHoverContextMenu,
   buildSpellcheckSelectionContextMenu,
   buildSpellcheckWordContextMenu,
 } from "../apps/editor/public/features/spellcheck/spellcheck-context-controller.js";
@@ -54,4 +55,51 @@ export function runSpellcheckContextControllerTest() {
     point: { x: 20, y: 30 },
   });
   assert.equal(knownWordContext, null);
+
+  const previousHTMLTextAreaElement = globalThis.HTMLTextAreaElement;
+  const previousMouseEvent = globalThis.MouseEvent;
+  class FakeTextArea {}
+  class FakeMouseEvent {
+    constructor() {
+      this.clientX = 44;
+      this.clientY = 55;
+    }
+  }
+
+  globalThis.HTMLTextAreaElement = FakeTextArea;
+  globalThis.MouseEvent = FakeMouseEvent;
+  try {
+    const textarea = new FakeTextArea();
+    textarea.dataset = { sceneId: "scene-1" };
+    textarea.value = "Wehn arrives";
+    textarea.selectionStart = 6;
+
+    const hoverContext = buildSpellcheckEditorHoverContextMenu(
+      { textarea },
+      new FakeMouseEvent(),
+      lexicons,
+      {
+        getWordRangeFromLayerPoint: () => getSpellcheckWordRange(textarea.value, 2),
+      },
+    );
+    assert.equal(hoverContext.mode, "word");
+    assert.equal(hoverContext.word, "Wehn");
+    assert.equal(hoverContext.startOffset, 0);
+    assert.equal(hoverContext.x, 44);
+    assert.equal(hoverContext.y, 55);
+
+    const missedHoverContext = buildSpellcheckEditorHoverContextMenu(
+      { textarea },
+      new FakeMouseEvent(),
+      lexicons,
+      {
+        getWordRangeFromLayerPoint: () => null,
+        getWordRangeFromPointer: () => null,
+      },
+    );
+    assert.equal(missedHoverContext, null);
+  } finally {
+    globalThis.HTMLTextAreaElement = previousHTMLTextAreaElement;
+    globalThis.MouseEvent = previousMouseEvent;
+  }
 }

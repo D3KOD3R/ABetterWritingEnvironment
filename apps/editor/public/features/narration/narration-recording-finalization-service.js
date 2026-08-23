@@ -7,6 +7,35 @@ import {
   formatNarrationRecordingElapsedLabel,
 } from "./narration-take-service.js";
 
+const MIN_FINAL_FOLLOW_CONFIDENCE = 0.58;
+const MIN_FINAL_FOLLOW_WORD_FIT = 0.55;
+
+function hasUsableFinalFollowSelection(runtime) {
+  const selection = runtime?.followSelection;
+  if (!selection?.sceneId || !selection?.blockId) {
+    return false;
+  }
+
+  const confidence = Number(selection.confidence ?? runtime?.followMatch?.confidence);
+  if (!Number.isFinite(confidence) || confidence < MIN_FINAL_FOLLOW_CONFIDENCE) {
+    return false;
+  }
+
+  const wordFitRatio = Number(selection.wordFitRatio ?? runtime?.followMatch?.wordFitRatio);
+  if (Number.isFinite(wordFitRatio) && wordFitRatio < MIN_FINAL_FOLLOW_WORD_FIT) {
+    return false;
+  }
+
+  const matchedWordCount = Number(selection.matchedWordCount ?? runtime?.followMatch?.matchedWordCount);
+  return !Number.isFinite(matchedWordCount) || matchedWordCount >= 2;
+}
+
+function resolveFinalNarrationSelection(runtime, fallbackSelection) {
+  return hasUsableFinalFollowSelection(runtime)
+    ? runtime.followSelection
+    : fallbackSelection;
+}
+
 export function createNarrationRecordingFinalizationService({
   cleanupRuntime,
   saveMediaBlob,
@@ -34,7 +63,8 @@ export function createNarrationRecordingFinalizationService({
   } = {}) {
     cleanupRuntime(runtime);
 
-    const selection = runtime.selection ?? resolveSelection(runtime);
+    const fallbackSelection = runtime.selection ?? resolveSelection(runtime);
+    const selection = resolveFinalNarrationSelection(runtime, fallbackSelection);
     const finalization = buildNarrationRecordingFinalizationContext(runtime, {
       selection,
       projectId: getProjectId(),
@@ -87,6 +117,7 @@ export function createNarrationRecordingFinalizationService({
         status: "paused",
         trackerStatus,
         transcript: finalization.transcript,
+        cleanupTranscript: finalization.cleanupTranscript || finalization.transcript,
         elapsedLabel: formatNarrationRecordingElapsedLabel(finalization.durationMs),
         recordingId: finalRecord.id,
         mediaPath: finalRecord.mediaPath,

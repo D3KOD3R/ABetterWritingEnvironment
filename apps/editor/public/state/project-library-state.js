@@ -8,13 +8,219 @@ function cloneValue(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function isSupportedPassageNoteType(noteType) {
+  const normalizedNoteType = String(noteType ?? "").trim();
+  return normalizedNoteType === "inspiration" ||
+    normalizedNoteType === "research" ||
+    /^metadata-[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$/.test(normalizedNoteType);
+}
+
+// Intent: identify the durable project-file destination that makes recent-project entries equivalent.
+function getProjectRecordFilePath(project) {
+  const projectSettings = project?.projectSettings && typeof project.projectSettings === "object" && !Array.isArray(project.projectSettings)
+    ? project.projectSettings
+    : {};
+  const settingsPath = typeof projectSettings.projectFilePath === "string" ? projectSettings.projectFilePath.trim() : "";
+  if (settingsPath) {
+    return settingsPath;
+  }
+
+  return typeof project?.projectFilePath === "string" ? project.projectFilePath.trim() : "";
+}
+
+// Intent: normalize comparable file labels without requiring storage adapters in the state layer.
+function normalizeProjectFileDedupeKey(filePath) {
+  const path = typeof filePath === "string" ? filePath.trim() : "";
+  if (!path) {
+    return "";
+  }
+
+  const normalizedSeparators = path.replace(/\\+/g, "/").replace(/\/{2,}/g, "/");
+  const isWindowsPath = /^[A-Za-z]:\//.test(normalizedSeparators) || path.includes("\\");
+  return isWindowsPath ? normalizedSeparators.toLowerCase() : normalizedSeparators;
+}
+
+// Intent: avoid treating the generated file stem as a stronger project title than the payload title.
+function getProjectFileStem(filePath) {
+  const normalizedPath = typeof filePath === "string" ? filePath.trim().replace(/\\+/g, "/") : "";
+  const fileName = normalizedPath.split("/").filter(Boolean).at(-1) ?? "";
+  return fileName
+    .replace(/\.abe-project\.json$/i, "")
+    .replace(/\.json$/i, "")
+    .trim();
+}
+
+function normalizeProjectTitleKey(value) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function normalizeProjectSceneStoreMap(candidate) {
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+    return {};
+  }
+
+  return cloneValue(candidate);
+}
+
+function mergeProjectSceneStoreMaps(primaryMap, fallbackMap) {
+  const merged = normalizeProjectSceneStoreMap(fallbackMap);
+  const primary = normalizeProjectSceneStoreMap(primaryMap);
+  for (const [sceneId, sceneDraft] of Object.entries(primary)) {
+    merged[sceneId] = cloneValue(sceneDraft);
+  }
+  return merged;
+}
+
+// Intent: carry split-storage manuscript bodies through cache/seed merges instead of relying on browser chunks.
+function mergeProjectLibrarySceneStores(...sceneStores) {
+  const merged = {};
+  for (const sceneStore of sceneStores) {
+    if (!sceneStore || typeof sceneStore !== "object" || Array.isArray(sceneStore)) {
+      continue;
+    }
+
+    for (const [projectId, projectSceneStore] of Object.entries(sceneStore)) {
+      if (typeof projectId !== "string" || !projectId.trim()) {
+        continue;
+      }
+      if (!projectSceneStore || typeof projectSceneStore !== "object" || Array.isArray(projectSceneStore)) {
+        continue;
+      }
+
+      merged[projectId] = mergeProjectSceneStoreMaps(projectSceneStore, merged[projectId]);
+    }
+  }
+
+  return merged;
+}
+
+function applyProjectSceneStoreAliases(sceneStore, idAliases) {
+  const remapped = mergeProjectLibrarySceneStores(sceneStore);
+  if (!(idAliases instanceof Map)) {
+    return remapped;
+  }
+
+  for (const [sourceProjectId, canonicalProjectId] of idAliases.entries()) {
+    if (!sourceProjectId || !canonicalProjectId || sourceProjectId === canonicalProjectId) {
+      continue;
+    }
+    if (!remapped[sourceProjectId]) {
+      continue;
+    }
+
+    remapped[canonicalProjectId] = mergeProjectSceneStoreMaps(remapped[canonicalProjectId], remapped[sourceProjectId]);
+  }
+
+  return remapped;
+}
+
+function resolveProjectId(candidate, library) {
+  const projects = Array.isArray(library?.projects) ? library.projects : [];
+  if (typeof candidate === "string" && projects.some((project) => project?.id === candidate)) {
+    return candidate;
+  }
+
+  if (typeof library?.activeProjectId === "string" && projects.some((project) => project?.id === library.activeProjectId)) {
+    return library.activeProjectId;
+  }
+
+  return projects[0]?.id ?? null;
+}
+
+function findProjectById(library, projectId) {
+  const projects = Array.isArray(library?.projects) ? library.projects : [];
+  if (typeof projectId !== "string" || !projectId.trim()) {
+    return projects[0] ?? null;
+  }
+
+  return projects.find((project) => project?.id === projectId) ?? projects[0] ?? null;
+}
+
+// Intent: keep the bundled default project from replacing a newer active browser-cache project during boot.
+export function shouldPreferBrowserCacheProjectLibraryOnBoot({
+  storedLibrary = null,
+  seedLibrary = null,
+  storedActiveProjectId = null,
+  explicitProjectFilePath = "",
+} = {}) {
+  const storedProjects = Array.isArray(storedLibrary?.projects) ? storedLibrary.projects : [];
+  if (!storedProjects.length) {
+    return false;
+  }
+
+  const explicitPathKey = normalizeProjectFileDedupeKey(explicitProjectFilePath);
+  if (!explicitPathKey) {
+    return true;
+  }
+
+  const seedProjectId = resolveProjectId(seedLibrary?.activeProjectId, seedLibrary);
+  const seedProject = findProjectById(seedLibrary, seedProjectId);
+  const seedPathKey = normalizeProjectFileDedupeKey(getProjectRecordFilePath(seedProject));
+  if (!seedPathKey || seedPathKey !== explicitPathKey) {
+    return false;
+  }
+
+  const storedProjectId = resolveProjectId(storedActiveProjectId, storedLibrary);
+  const storedProject = findProjectById(storedLibrary, storedProjectId);
+  if (!storedProject) {
+    return false;
+  }
+
+  const storedPathKey = normalizeProjectFileDedupeKey(getProjectRecordFilePath(storedProject));
+  if (storedPathKey && storedPathKey !== seedPathKey) {
+    return true;
+  }
+
+  if (storedProject.id && seedProject?.id && storedProject.id !== seedProject.id) {
+    return true;
+  }
+
+  const storedUpdatedAt = Date.parse(storedProject.updatedAt ?? "");
+  const seedUpdatedAt = Date.parse(seedProject?.updatedAt ?? "");
+  return Number.isFinite(storedUpdatedAt) &&
+    (!Number.isFinite(seedUpdatedAt) || storedUpdatedAt > seedUpdatedAt);
+}
+
+// Intent: prefer the record whose identity came from the checked project file while preserving cached edits through merge.
+function scoreProjectFileDuplicate(project, activeProjectId) {
+  const filePath = getProjectRecordFilePath(project);
+  const title = typeof project?.title === "string" ? project.title.trim() : "";
+  const fileStem = getProjectFileStem(filePath);
+  let score = 0;
+
+  if (project?.source === "project-file") {
+    score += 500;
+  } else if (project?.source === "user-created" || project?.source === "user") {
+    score += 100;
+  }
+
+  if (typeof project?.id === "string" && project.id && project.id === activeProjectId) {
+    score += 50;
+  }
+
+  if (
+    title &&
+    normalizeProjectTitleKey(title) !== normalizeProjectTitleKey(fileStem) &&
+    normalizeProjectTitleKey(title) !== normalizeProjectTitleKey(project?.id)
+  ) {
+    score += 75;
+  }
+
+  const updatedAtMs = Date.parse(project?.updatedAt ?? "");
+  if (Number.isFinite(updatedAtMs)) {
+    score += Math.min(25, Math.max(0, updatedAtMs / 1000 / 60 / 60 / 24 / 365));
+  }
+
+  return score;
+}
+
 // Intent: normalize persistable inline note drafts without depending on an active DOM surface.
 function normalizeInlinePassageDraftSelectionDefaults(candidate) {
   if (!candidate || typeof candidate !== "object") {
     return null;
   }
 
-  const noteType = candidate.noteType === "research" ? "research" : candidate.noteType === "inspiration" ? "inspiration" : "";
+  const noteType = isSupportedPassageNoteType(candidate.noteType) ? String(candidate.noteType).trim() : "";
   const sceneId = typeof candidate.sceneId === "string" && candidate.sceneId.trim()
     ? candidate.sceneId.trim()
     : "";
@@ -25,6 +231,9 @@ function normalizeInlinePassageDraftSelectionDefaults(candidate) {
   return {
     sceneId,
     noteType,
+    metadataDefinitionId: typeof candidate.metadataDefinitionId === "string" ? candidate.metadataDefinitionId : "",
+    metadataLabel: typeof candidate.metadataLabel === "string" ? candidate.metadataLabel : "",
+    metadataHighlightColor: typeof candidate.metadataHighlightColor === "string" ? candidate.metadataHighlightColor : "",
     selectedText: String(candidate.selectedText ?? ""),
     startOffset: Number.isInteger(candidate.startOffset) ? candidate.startOffset : null,
     endOffset: Number.isInteger(candidate.endOffset) ? candidate.endOffset : null,
@@ -206,18 +415,87 @@ export function createProjectLibraryStateService({
     throw new Error("ProjectLibraryStateService requires createProjectRecordFromWorkspace.");
   }
 
+  // Intent: collapse cache/seed records that point to the same project JSON file before UI selection sees them.
+  function dedupeProjectRecordsByFileDestination(projects, activeProjectId = null, legacyState = null) {
+    const dedupedProjects = [];
+    const projectFileIndexes = new Map();
+    const idAliases = new Map();
+    const normalizedActiveProjectId = typeof activeProjectId === "string" && activeProjectId.trim()
+      ? activeProjectId
+      : null;
+
+    for (const project of Array.isArray(projects) ? projects : []) {
+      if (!project || typeof project !== "object") {
+        continue;
+      }
+
+      const fileKey = normalizeProjectFileDedupeKey(getProjectRecordFilePath(project));
+      if (!fileKey) {
+        dedupedProjects.push(project);
+        continue;
+      }
+
+      const existingIndex = projectFileIndexes.get(fileKey);
+      if (existingIndex === undefined) {
+        projectFileIndexes.set(fileKey, dedupedProjects.length);
+        dedupedProjects.push(project);
+        continue;
+      }
+
+      const existingProject = dedupedProjects[existingIndex];
+      const existingScore = scoreProjectFileDuplicate(existingProject, normalizedActiveProjectId);
+      const candidateScore = scoreProjectFileDuplicate(project, normalizedActiveProjectId);
+      const canonicalProject = candidateScore > existingScore ? project : existingProject;
+      const cachedProject = canonicalProject === project ? existingProject : project;
+      const mergedProject = mergeProjectRecords(cachedProject, canonicalProject, legacyState);
+
+      dedupedProjects[existingIndex] = mergedProject;
+      if (typeof existingProject?.id === "string" && existingProject.id.trim()) {
+        idAliases.set(existingProject.id, mergedProject.id);
+      }
+      if (typeof project?.id === "string" && project.id.trim()) {
+        idAliases.set(project.id, mergedProject.id);
+      }
+      if (typeof mergedProject?.id === "string" && mergedProject.id.trim()) {
+        idAliases.set(mergedProject.id, mergedProject.id);
+      }
+    }
+
+    return {
+      projects: dedupedProjects,
+      idAliases,
+    };
+  }
+
+  // Intent: keep active-project selection valid after duplicate recent-project records are collapsed.
+  function resolveDedupedActiveProjectId(candidate, dedupeResult) {
+    const projects = Array.isArray(dedupeResult?.projects) ? dedupeResult.projects : [];
+    const candidateId = typeof candidate === "string" && candidate.trim() ? candidate : null;
+    const mappedCandidateId = candidateId
+      ? dedupeResult.idAliases.get(candidateId) ?? candidateId
+      : null;
+
+    if (mappedCandidateId && projects.some((project) => project.id === mappedCandidateId)) {
+      return mappedCandidateId;
+    }
+
+    return projects[0]?.id ?? null;
+  }
+
   // Intent: normalize external project-library data before it enters editor runtime state.
   function normalizeProjectLibrarySnapshot(candidate) {
     const projects = Array.isArray(candidate?.projects)
       ? candidate.projects.map((project) => normalizeProjectRecord(project)).filter(Boolean)
       : [];
+    const activeProjectId =
+      typeof candidate?.activeProjectId === "string" && candidate.activeProjectId.trim()
+        ? candidate.activeProjectId
+        : null;
+    const dedupedLibrary = dedupeProjectRecordsByFileDestination(projects, activeProjectId);
 
     return {
-      activeProjectId:
-        typeof candidate?.activeProjectId === "string" && candidate.activeProjectId.trim()
-          ? candidate.activeProjectId
-          : null,
-      projects,
+      activeProjectId: resolveDedupedActiveProjectId(activeProjectId, dedupedLibrary),
+      projects: dedupedLibrary.projects,
       sceneStore: candidate?.sceneStore && typeof candidate.sceneStore === "object" && !Array.isArray(candidate.sceneStore)
         ? clone(candidate.sceneStore)
         : {},
@@ -230,6 +508,10 @@ export function createProjectLibraryStateService({
     const safeSeedLibrary = seedLibrary ?? { activeProjectId: null, projects: [] };
     const projectsById = new Map();
     const mergedProjects = [];
+    const mergedSceneStore = mergeProjectLibrarySceneStores(
+      safeStoredLibrary.sceneStore,
+      safeSeedLibrary.sceneStore,
+    );
     const seedProjects = (Array.isArray(safeSeedLibrary.projects) ? safeSeedLibrary.projects : [])
       .map((project) => normalizeProjectRecord(project, legacyState))
       .filter(Boolean);
@@ -286,10 +568,14 @@ export function createProjectLibraryStateService({
         mergedProjects.push(fallbackProject);
       }
     }
+    const activeProjectIdCandidate = safeStoredLibrary.activeProjectId ?? safeSeedLibrary.activeProjectId ?? mergedProjects[0]?.id ?? null;
+    const dedupedLibrary = dedupeProjectRecordsByFileDestination(mergedProjects, activeProjectIdCandidate, legacyState);
+    const sceneStore = applyProjectSceneStoreAliases(mergedSceneStore, dedupedLibrary.idAliases);
 
     return {
-      activeProjectId: safeStoredLibrary.activeProjectId ?? safeSeedLibrary.activeProjectId ?? mergedProjects[0]?.id ?? null,
-      projects: mergedProjects,
+      activeProjectId: resolveDedupedActiveProjectId(activeProjectIdCandidate, dedupedLibrary),
+      projects: dedupedLibrary.projects,
+      sceneStore,
     };
   }
 

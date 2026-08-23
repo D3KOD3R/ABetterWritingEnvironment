@@ -521,3 +521,265 @@
     flex-wrap: wrap;
   }
 }
+
+/* Intent: keep the writing-goals dashboard aligned with the global editor appearance tokens. */
+:root[data-theme="dark"] .writing-target-window {
+  border-color: var(--line);
+  background:
+    radial-gradient(circle at 12% -12%, rgba(112, 200, 189, 0.12), transparent 34%),
+    linear-gradient(180deg, rgba(42, 39, 35, 0.99), rgba(25, 24, 22, 0.98));
+  color: var(--ink);
+  box-shadow: 0 32px 72px rgba(0, 0, 0, 0.48);
+}
+
+:root[data-theme="dark"] .writing-target-window-subtitle,
+:root[data-theme="dark"] .writing-target-window .writing-target-card-head span,
+:root[data-theme="dark"] .writing-target-window .writing-target-note,
+:root[data-theme="dark"] .writing-target-kicker,
+:root[data-theme="dark"] .writing-target-field span,
+:root[data-theme="dark"] .writing-target-checkbox span,
+:root[data-theme="dark"] .writing-target-hint,
+:root[data-theme="dark"] .writing-target-footer span,
+:root[data-theme="dark"] .writing-target-day-overview span,
+:root[data-theme="dark"] .writing-target-day-point span,
+:root[data-theme="dark"] .writing-target-day-sections span,
+:root[data-theme="dark"] .writing-target-day-session-summary span,
+:root[data-theme="dark"] .writing-target-note-field span,
+:root[data-theme="dark"] .writing-target-calendar-day-head span,
+:root[data-theme="dark"] .writing-target-calendar-day-count,
+:root[data-theme="dark"] .writing-target-week-day span,
+:root[data-theme="dark"] .writing-target-week-day-name,
+:root[data-theme="dark"] .writing-target-calendar-weekday,
+:root[data-theme="dark"] .writing-target-day-status,
+:root[data-theme="dark"] .writing-target-legend-chip,
+:root[data-theme="dark"] .writing-target-calendar-legend span,
+:root[data-theme="dark"] .writing-target-day-hero-value span,
+:root[data-theme="dark"] .writing-target-day-hero-meta,
+:root[data-theme="dark"] .writing-target-day-hero-target,
+:root[data-theme="dark"] .writing-target-day-excerpt p,
+:root[data-theme="dark"] .writing-target-help-card span,
+:root[data-theme="dark"] .writing-target-help-card p {
+  color: var(--ink-soft);
+}
+
+:root[data-theme="dark"] .writing-target-window-header h2,
+:root[data-theme="dark"] .writing-target-section-header h3,
+:root[data-theme="dark"] .writing-target-day-sections strong {
+  color: var(--ink-deep);
+}
+
+:root[data-theme="dark"] .writing-target-close,
+:root[data-theme="dark"] .writing-target-window .writing-target-card,
+:root[data-theme="dark"] .writing-target-dashboard-settings,
+:root[data-theme="dark"] .writing-target-dashboard-calendar,
+:root[data-theme="dark"] .writing-target-dashboard-detail,
+:root[data-theme="dark"] .writing-target-help-card,
+:root[data-theme="dark"] .writing-target-presets,
+:root[data-theme="dark"] .writing-target-checkbox,
+:root[data-theme="dark"] .writing-target-calendar-day,
+:root[data-theme="dark"] .writing-target-week-day,
+:root[data-theme="dark"] .writing-target-view-toggle,
+:root[data-theme="dark"] .writing-target-view-toggle-button,
+:root[data-theme="dark"] .writing-target-day-overview > div,
+:root[data-theme="dark"] .writing-target-day-session-summary > div,
+:root[data-theme="dark"] .writing-target-day-point,
+:root[data-theme="dark"] .writing-target-day-excerpt,
+:root[data-theme="dark"] .writing-target-day-section,
+:root[data-theme="dark"] .writing-target-list-item,
+:root[data-theme="dark"] .writing-target-archive,
+:root[data-theme="dark"] .writing-target-archive-item {
+  border-color: var(--line);
+  background: var(--theme-control);
+  color: var(--ink);
+  box-shadow: none;
+}
+
+:root[data-theme="dark"] .writing-target-dashboard-settings,
+:root[data-theme="dark"] .writing-target-dashboard-calendar,
+:root[data-theme="dark"] .writing-target-dashboard-detail {
+  background: rgba(31, 30, 27, 0.78);
+}
+
+:root[data-theme="dark"] .writing-target-presets {
+  background: rgba(20, 19, 17, 0.58);
+}
+
+:root[data-theme="dark"] .writing-target-checkbox {
+  padding: 7px 8px;
+  border-radius: 10px;
+  background: rgba(243, 234, 220, 0.06);
+}
+
+:root[data-theme="dark"] .writing-target-view-toggle-button.is-active,
+:root[data-theme="dark"] .writing-target-calendar-day.is-selected,
+:root[data-theme="dark"] .writing-target-week-day.is-selected,
+:root[data-theme="dark"] .writing-target-list-item.is-selected {
+  border-color: var(--dark-selected-edge-border, rgba(212, 138, 93, 0.62));
+  background: var(--dark-selected-inner-bg, var(--theme-control));
+  color: var(--ink-deep);
+  box-shadow: var(
+    --dark-selected-edge-shadow,
+    inset 0 0 0 1px rgba(212, 138, 93, 0.24),
+    0 0 0 2px rgba(212, 138, 93, 0.22),
+    0 0 14px rgba(212, 138, 93, 0.18)
+  );
+}
+
+:root[data-theme="dark"] .writing-target-window .writing-target-card-head strong,
+:root[data-theme="dark"] .writing-target-calendar-day-head strong,
+:root[data-theme="dark"] .writing-target-week-day strong,
+:root[data-theme="dark"] .writing-target-day-detail-date,
+:root[data-theme="dark"] .writing-target-day-hero-value,
+:root[data-theme="dark"] .writing-target-day-overview strong,
+:root[data-theme="dark"] .writing-target-day-point strong,
+:root[data-theme="dark"] .writing-target-day-session-summary strong {
+  color: var(--accent-deep);
+}
+
+:root[data-theme="dark"] .writing-target-day-hero-delta {
+  color: var(--signal);
+}
+
+:root[data-theme="dark"] .writing-target-card-icon,
+:root[data-theme="dark"] .writing-target-calendar-day-progress,
+:root[data-theme="dark"] .writing-target-progress-track {
+  background: rgba(243, 234, 220, 0.1);
+  color: var(--ink-soft);
+}
+
+:root[data-theme="dark"] .writing-target-bar {
+  background: rgba(243, 234, 220, 0.1);
+}
+
+:root[data-theme="dark"] .writing-target-calendar-day-indicators span {
+  background: rgba(243, 234, 220, 0.08);
+  color: var(--ink-soft);
+}
+
+:root[data-theme="dark"] .writing-target-calendar-day-indicators .is-task {
+  background: rgba(112, 200, 189, 0.14);
+  color: var(--signal);
+}
+
+:root[data-theme="dark"] .writing-target-calendar-day-indicators .is-inspiration {
+  background: rgba(122, 168, 240, 0.14);
+  color: #9dbbf4;
+}
+
+:root[data-theme="dark"] .writing-target-calendar-day-indicators .is-issue {
+  background: rgba(236, 127, 125, 0.14);
+  color: var(--danger);
+}
+
+:root[data-theme="dark"] .writing-target-calendar-day.on-target,
+:root[data-theme="dark"] .writing-target-week-day.on-target {
+  border-color: rgba(112, 200, 189, 0.36);
+}
+
+:root[data-theme="dark"] .writing-target-calendar-day.good,
+:root[data-theme="dark"] .writing-target-week-day.good,
+:root[data-theme="dark"] .writing-target-calendar-day.below-target,
+:root[data-theme="dark"] .writing-target-week-day.below-target {
+  border-color: rgba(240, 189, 105, 0.34);
+}
+
+:root[data-theme="dark"] .writing-target-calendar-day.low,
+:root[data-theme="dark"] .writing-target-week-day.low {
+  border-color: rgba(236, 127, 125, 0.34);
+}
+
+:root[data-theme="dark"] .writing-target-calendar-day.no-writing,
+:root[data-theme="dark"] .writing-target-week-day.no-writing {
+  border-color: rgba(243, 234, 220, 0.12);
+}
+
+:root[data-theme="dark"] .writing-target-calendar-day.is-outside-month,
+:root[data-theme="dark"] .writing-target-week-day.is-outside-month {
+  opacity: 0.72;
+}
+
+:root[data-theme="dark"] .writing-target-calendar-legend .is-no-writing::before {
+  background: rgba(243, 234, 220, 0.28);
+}
+
+:root[data-theme="dark"] .writing-target-range::-webkit-slider-runnable-track,
+:root[data-theme="dark"] .writing-target-range::-moz-range-track {
+  background: rgba(243, 234, 220, 0.14);
+}
+
+:root[data-theme="dark"] .writing-target-checkbox input {
+  accent-color: var(--signal);
+}
+
+:root[data-theme="dark"] .writing-target-field input:not(.writing-target-range),
+:root[data-theme="dark"] .writing-target-field select,
+:root[data-theme="dark"] .writing-target-note-field textarea {
+  border-color: var(--line);
+  background: rgba(20, 19, 17, 0.78);
+  color: var(--ink);
+}
+
+:root[data-theme="dark"] .writing-target-field input:not(.writing-target-range):focus,
+:root[data-theme="dark"] .writing-target-field select:focus,
+:root[data-theme="dark"] .writing-target-note-field textarea:focus {
+  border-color: rgba(112, 200, 189, 0.5);
+  outline-color: rgba(112, 200, 189, 0.28);
+}
+
+:root[data-theme="dark"] .writing-target-field input::placeholder,
+:root[data-theme="dark"] .writing-target-note-field textarea::placeholder {
+  color: rgba(184, 195, 189, 0.58);
+}
+
+:root[data-theme="dark"] .writing-target-day-status.is-on-target {
+  background: rgba(112, 200, 189, 0.14);
+  color: var(--signal);
+}
+
+:root[data-theme="dark"] .writing-target-day-status.is-good,
+:root[data-theme="dark"] .writing-target-day-status.is-below-target {
+  background: rgba(240, 189, 105, 0.14);
+  color: var(--warning);
+}
+
+:root[data-theme="dark"] .writing-target-day-status.is-low {
+  background: rgba(236, 127, 125, 0.14);
+  color: var(--danger);
+}
+
+:root[data-theme="dark"] .writing-target-day-status.is-no-writing {
+  background: rgba(243, 234, 220, 0.08);
+  color: var(--ink-soft);
+}
+
+:root[data-theme="dark"] .writing-target-archive-empty,
+:root[data-theme="dark"] .writing-target-archive-top span,
+:root[data-theme="dark"] .writing-target-archive-chapter,
+:root[data-theme="dark"] .writing-target-archive-excerpt,
+:root[data-theme="dark"] .writing-target-archive-body span:last-child,
+:root[data-theme="dark"] .writing-target-archive-meta span {
+  color: var(--ink-soft);
+}
+
+:root[data-theme="dark"] .writing-target-archive-top strong,
+:root[data-theme="dark"] .writing-target-archive-body strong {
+  color: var(--ink);
+}
+
+:root[data-theme="dark"] .writing-target-archive-meta span {
+  background: rgba(243, 234, 220, 0.08);
+}
+
+:root[data-theme="dark"] .writing-target-window .panel-action-button {
+  border-color: var(--line);
+  background: var(--theme-control);
+  color: var(--ink);
+}
+
+:root[data-theme="dark"] .writing-target-window .panel-action-button:hover,
+:root[data-theme="dark"] .writing-target-window .panel-action-button:focus-visible,
+:root[data-theme="dark"] .writing-target-window .panel-action-button.is-primary {
+  border-color: rgba(212, 138, 93, 0.44);
+  background: var(--theme-control-hover);
+  color: var(--ink-deep);
+}

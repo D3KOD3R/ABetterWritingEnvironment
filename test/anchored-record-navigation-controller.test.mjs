@@ -67,13 +67,25 @@ export function runAnchoredRecordNavigationControllerTest() {
     selectionStart: 8,
     selectionEnd: 12,
   });
+  const customPreview = controller.buildPreview({
+    record: {
+      id: "note-1",
+      sceneId: "scene-1",
+      noteType: "metadata-lore",
+      metadataHighlightColor: "#7fcf9f",
+    },
+    recordType: "passageNote",
+    text: "Quiet water.",
+  });
+  assert.equal(customPreview.projection.styleToken, "metadata");
+  assert.equal(customPreview.projection.visualStyle.highlightColor, "rgba(127, 207, 159, 0.56)");
   controller.buildPreview({
     record: tasks[0],
     recordType: "task",
     text: "Quiet water.",
     repair: false,
   });
-  assert.equal(repairs.length, 2);
+  assert.equal(repairs.length, 3);
   assert.equal(controller.buildPreview({
     record: tasks[1],
     recordType: "task",

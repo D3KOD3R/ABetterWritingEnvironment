@@ -8,6 +8,12 @@ import {
 } from "../apps/editor/public/features/anchored-records/passage-note-panel.js";
 
 export function runPassageNotePanelTest() {
+  const metadataIcon = {
+    dataUrl: "data:image/png;base64,AAAA",
+    mediaType: "image/png",
+    name: "lore.png",
+    size: 3,
+  };
   assert.equal(formatImportSourceLabel("source-front-matter"), "Front matter");
   assert.equal(formatImportSourceLabel("source-world-note"), "World Note");
 
@@ -26,9 +32,23 @@ export function runPassageNotePanelTest() {
 
   assert.match(markup, /passage-note-item is-selected is-previewing/);
   assert.match(markup, /Chapter One · Arrival · Research/);
+  assert.match(markup, /data-note-type="research"/);
+  assert.match(markup, /draggable="true"/);
   assert.match(markup, /data-edit-field="passage-note-title"/);
   assert.match(markup, /data-action="edit-passage-note"/);
   assert.match(markup, /aria-label="Delete research note"/);
+
+  const customMarkup = renderPassageNoteItemHTML({
+    id: "note-lore",
+    noteType: "metadata-lore",
+    metadataLabel: "Lore",
+    chapterTitle: "Chapter One",
+    sceneTitle: "Arrival",
+    title: "Lore title",
+    body: "Lore body",
+  });
+  assert.match(customMarkup, /aria-label="Delete lore note"/);
+  assert.match(customMarkup, /aria-label="Lore title"/);
 
   const panelMarkup = renderPassageNotePanelHTML({
     noteType: "research",
@@ -50,10 +70,22 @@ export function runPassageNotePanelTest() {
     collapsedChapterIds: ["chapter-1"],
   });
 
-  assert.match(panelMarkup, /panel-kicker">Research/);
+  assert.match(panelMarkup, /passage-note-panel-kicker/);
+  assert.match(panelMarkup, /Research/);
   assert.match(panelMarkup, /data-console-panel="research"/);
   assert.match(panelMarkup, /class="console-chapter-group passage-note-chapter-group is-collapsed"/);
   assert.match(panelMarkup, /aria-expanded="false"/);
+
+  const customPanelMarkup = renderPassageNotePanelHTML({
+    noteType: "metadata-lore",
+    label: "Lore",
+    highlightColor: "#7fcf9f",
+    metadataIcon,
+    groups: [],
+  });
+  assert.match(customPanelMarkup, /metadata-image-icon--panel/);
+  assert.doesNotMatch(customPanelMarkup, /metadata-color-swatch/);
+  assert.match(customPanelMarkup, /No lore bubbles yet/);
 
   const emptyMarkup = renderPassageNotePanelHTML({ label: "Inspiration", groups: [] });
   assert.match(emptyMarkup, /No inspiration bubbles yet/);

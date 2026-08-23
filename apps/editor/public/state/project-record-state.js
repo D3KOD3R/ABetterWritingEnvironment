@@ -16,6 +16,7 @@ export function createProjectRecordStateService({
   createDefaultLocalAiPrefs,
   normalizeManuscriptTasks,
   normalizePassageNotes,
+  normalizeMetadataSubgroups = (value) => Array.isArray(value) ? clone(value) : [],
   normalizeDraftProofingState = () => ({ schemaVersion: 1, activeRunId: "", runs: [] }),
   normalizeProjectSelectionDefaults,
   normalizeProjectSettingsSnapshot,
@@ -107,6 +108,7 @@ export function createProjectRecordStateService({
       }),
       new Date(now),
     );
+    const metadataGroupIds = getMetadataSubgroupGroupIds(projectSettings);
 
     const normalizedRecord = {
       id,
@@ -131,6 +133,7 @@ export function createProjectRecordStateService({
         : legacyState?.templateDrafts ?? createTemplateDrafts(),
       manuscriptTasks: normalizeManuscriptTasks(candidate.manuscriptTasks ?? legacyState?.manuscriptTasks),
       passageNotes: normalizePassageNotes(candidate.passageNotes ?? legacyState?.passageNotes),
+      metadataSubgroups: normalizeMetadataSubgroups(candidate.metadataSubgroups ?? legacyState?.metadataSubgroups, metadataGroupIds),
       draftProofing: normalizeDraftProofingState(candidate.draftProofing ?? legacyState?.draftProofing),
       sourceArchive: Array.isArray(candidate.sourceArchive) ? clone(candidate.sourceArchive) : [],
       importReport: candidate.importReport && typeof candidate.importReport === "object"
@@ -207,6 +210,7 @@ export function createProjectRecordStateService({
       currentWordCount,
       new Date(now),
     );
+    const metadataGroupIds = getMetadataSubgroupGroupIds(projectSettings);
 
     const record = {
       id,
@@ -220,6 +224,7 @@ export function createProjectRecordStateService({
       templateDrafts: clone(options.templateDrafts ?? createTemplateDrafts()),
       manuscriptTasks: normalizeManuscriptTasks(options.manuscriptTasks),
       passageNotes: normalizePassageNotes(options.passageNotes),
+      metadataSubgroups: normalizeMetadataSubgroups(options.metadataSubgroups, metadataGroupIds),
       draftProofing: normalizeDraftProofingState(options.draftProofing),
       sourceArchive: Array.isArray(options.sourceArchive) ? clone(options.sourceArchive) : [],
       importReport: options.importReport && typeof options.importReport === "object"
@@ -246,4 +251,17 @@ export function createProjectRecordStateService({
     normalizeProjectRecord,
     createProjectRecordFromWorkspace,
   };
+}
+
+function getMetadataSubgroupGroupIds(projectSettings = {}) {
+  const customDefinitions = Array.isArray(projectSettings?.customMetadataDefinitions)
+    ? projectSettings.customMetadataDefinitions
+    : [];
+  return [
+    "inspiration",
+    "research",
+    ...customDefinitions
+      .map((definition) => (typeof definition?.id === "string" ? definition.id.trim() : ""))
+      .filter(Boolean),
+  ];
 }

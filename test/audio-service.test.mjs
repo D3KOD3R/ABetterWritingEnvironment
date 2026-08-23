@@ -8,7 +8,10 @@ import {
   createManuscriptAnchor,
   createProject,
 } from "../packages/manuscript-schema/src/index.ts";
-import { createInMemoryAudioService } from "../services/audio/src/index.ts";
+import {
+  createInMemoryAudioService,
+  createSherpaOnnxRealtimeProviderDescriptor,
+} from "../services/audio/src/index.ts";
 
 export function runAudioServiceTest() {
   let project = createProject({
@@ -37,7 +40,20 @@ export function runAudioServiceTest() {
     endOffset: 12,
   });
 
-  const audio = createInMemoryAudioService();
+  const audio = createInMemoryAudioService({
+    realtimeSpeechProviders: [
+      createSherpaOnnxRealtimeProviderDescriptor({
+        runtimeAvailable: true,
+        modelBundle: {
+          root: "C:/models/sherpa/live",
+          tokens: "C:/models/sherpa/live/tokens.txt",
+          encoder: "C:/models/sherpa/live/encoder.onnx",
+          decoder: "C:/models/sherpa/live/decoder.onnx",
+          joiner: "C:/models/sherpa/live/joiner.onnx",
+        },
+      }),
+    ],
+  });
   const session = audio.startNarrationSession({
     project,
     sessionLabel: "Test Session",
@@ -62,4 +78,39 @@ export function runAudioServiceTest() {
   assert.equal(alignment.job.status, "completed");
   assert.equal(alignment.job.result?.matchedLineNumber, 1);
   assert.equal(alignment.session.currentText, block.block.text);
+
+  const realtimeProviders = audio.listRealtimeSpeechProviders();
+  assert.equal(realtimeProviders[0].kind, "local-sherpa-onnx");
+  assert.equal(realtimeProviders[0].requiresInternet, false);
+  assert.equal(audio.provider.realtimeSpeechProviders?.[0].streamingMode, "true-streaming");
+
+  const realtimeSession = audio.startRealtimeSpeechSession({
+    projectId: project.id,
+    recordingId: "take-1",
+    sceneId: scene.scene.id,
+    blockId: block.block.id,
+    preferredProviderId: "local-sherpa-onnx",
+    now: "2026-04-21T07:26:00.000Z",
+  });
+  assert.equal(realtimeSession.status, "listening");
+  assert.equal(realtimeSession.providerId, "local-sherpa-onnx");
+
+  const updatedRealtimeSession = audio.acceptRealtimeSpeechSnapshot({
+    sessionId: realtimeSession.id,
+    resultIndex: 1,
+    segments: [
+      { index: 0, transcript: "The narrator", isFinal: true, confidence: 0.91 },
+      { index: 1, transcript: "tracked", isFinal: false, confidence: 0.82 },
+    ],
+    now: "2026-04-21T07:26:01.000Z",
+  });
+  assert.equal(updatedRealtimeSession.transcriptSnapshot?.transcript, "The narrator tracked");
+  assert.equal(updatedRealtimeSession.transcriptSnapshot?.finalTranscript, "The narrator");
+  assert.equal(updatedRealtimeSession.transcriptSnapshot?.changedTranscript, "tracked");
+
+  const stoppedRealtimeSession = audio.stopRealtimeSpeechSession({
+    sessionId: realtimeSession.id,
+    now: "2026-04-21T07:26:02.000Z",
+  });
+  assert.equal(stoppedRealtimeSession?.status, "stopped");
 }

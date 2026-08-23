@@ -40,6 +40,7 @@ export async function loadProjectSource({
   projectPath = "",
   activeProjectId = "",
   projects = [],
+  sceneStore = {},
 } = {}, {
   fetchJson,
   normalizeProjectLibrarySnapshot,
@@ -71,6 +72,7 @@ export async function loadProjectSource({
   const currentLibrary = normalizeProjectLibrarySnapshot({
     activeProjectId,
     projects,
+    sceneStore,
   });
   const mergedLibrary = mergeProjectLibrarySnapshots(currentLibrary, importedLibrary, null);
   const nextActiveProjectId = resolveActiveProjectId(
@@ -80,6 +82,7 @@ export async function loadProjectSource({
   const persistedLibrary = saveProjectLibrarySnapshot({
     activeProjectId: nextActiveProjectId,
     projects: mergedLibrary.projects,
+    sceneStore: mergedLibrary.sceneStore ?? {},
   });
 
   return {

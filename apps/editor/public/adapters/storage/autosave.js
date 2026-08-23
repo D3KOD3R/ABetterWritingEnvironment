@@ -20,6 +20,24 @@ export function createProjectFileAutosaveController({
     return candidate || DEFAULT_DIRTY_DOMAIN;
   };
 
+  // Intent: preserve the actionable save failure behind a blocked autosave state for the header/status UI.
+  const normalizeBlockErrorMessage = (context = {}) => {
+    const explicitMessage = typeof context.errorMessage === "string" ? context.errorMessage.trim() : "";
+    if (explicitMessage) {
+      return explicitMessage;
+    }
+
+    if (typeof context.error === "string" && context.error.trim()) {
+      return context.error.trim();
+    }
+
+    if (typeof context.error?.message === "string" && context.error.message.trim()) {
+      return context.error.message.trim();
+    }
+
+    return "";
+  };
+
   const ensureDirtyDomainState = () => {
     if (!state.projectPersistenceDirtyDomains || typeof state.projectPersistenceDirtyDomains !== "object") {
       state.projectPersistenceDirtyDomains = {};
@@ -226,6 +244,7 @@ export function createProjectFileAutosaveController({
     }
 
     clearTimer("blocked");
+    const errorMessage = normalizeBlockErrorMessage(context);
     state.projectFileAutosaveDirty = true;
     state.projectFileAutosaveTarget = getTarget();
     state.projectFileAutosaveBlocked = {
@@ -235,12 +254,16 @@ export function createProjectFileAutosaveController({
       blockedAt: new Date().toISOString(),
       target: state.projectFileAutosaveTarget,
     };
+    if (errorMessage) {
+      state.projectFileAutosaveBlocked.errorMessage = errorMessage;
+    }
     lastQueueSkipReason = "";
     logWarn("autosave.blocked", "Project file remains out of sync after cache-only preservation.", {
       reason: state.projectFileAutosaveBlocked.reason,
       projectId: state.projectFileAutosaveTarget?.projectId ?? "",
       filePath: state.projectFileAutosaveTarget?.filePath ?? "",
       dirtyDomains: dirtyDomainNames,
+      errorMessage,
     });
   };
 
@@ -326,10 +349,15 @@ export function createProjectFileAutosaveController({
           fallbackPersisted: saveResult?.fallbackPersisted === true,
         });
       }
-    } catch {
-      // Save errors are surfaced by the project-file adapter caller.
+    } catch (error) {
+      // Intent: keep autosave failures diagnosable even when the project-file adapter also reports details.
       logError("autosave.failed", "Autosave write failed.", {
         revision: saveRevision,
+        projectId: currentTarget?.projectId ?? "",
+        filePath: currentTarget?.filePath ?? "",
+        hasHandle: Boolean(currentTarget?.fileHandle),
+        error,
+        errorMessage: error instanceof Error ? error.message : String(error),
       });
     }
 

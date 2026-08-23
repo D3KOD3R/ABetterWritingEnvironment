@@ -1,4 +1,15 @@
 // Intent: own editor-side state normalization, draft records, task records, and scene derivation helpers.
+import {
+  createDefaultKeyboardShortcutSettings,
+  normalizeKeyboardShortcutSettings,
+} from "./state/keyboard-shortcut-state.js";
+import {
+  normalizeGrammarCheckPanelBounds,
+} from "./state/grammar-check-panel-state.js";
+import {
+  normalizeWorldbuildingCatalogueBounds,
+} from "./state/worldbuilding-catalogue-panel-state.js";
+
 // Intent: keep storage keys centralized so project save migration can reason about every browser cache.
 export const EDITOR_DRAFTS_KEY = "abe-scene-drafts-v1";
 export const EDITOR_PREFS_KEY = "abe-editor-prefs-v1";
@@ -12,11 +23,18 @@ export const EDITOR_STRUCTURE_KEY = "abe-structure-drafts-v1";
 export const EDITOR_TEMPLATE_DRAFTS_KEY = "abe-template-drafts-v1";
 export const EDITOR_TASKS_KEY = "abe-manuscript-tasks-v1";
 
+const CUSTOM_METADATA_NOTE_TYPE_PATTERN = /^metadata-[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$/;
+
 export const FONT_OPTIONS = [
   {
     id: "story-serif",
     label: "Story Serif",
     stack: '"Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif',
+  },
+  {
+    id: "manuscript-serif",
+    label: "Manuscript Serif",
+    stack: '"Times New Roman", Times, serif',
   },
   {
     id: "draft-sans",
@@ -33,67 +51,69 @@ export const FONT_OPTIONS = [
 export const FONT_SIZE_OPTIONS = [16, 18, 20, 22];
 export const LINE_HEIGHT_OPTIONS = [1.5, 1.7, 1.9, 2.1];
 export const EDITOR_WIDTH_OPTIONS = [560, 680, 760, 840];
+export const APPEARANCE_MODE_OPTIONS = Object.freeze(["light", "dark", "system"]);
 export const CUSTOM_HIGHLIGHT_COLOR_ID = "custom";
+export const MAX_RECENT_CUSTOM_HIGHLIGHT_COLORS = 5;
 export const HIGHLIGHT_COLOR_OPTIONS = Object.freeze([
   {
     id: "amber",
     label: "Amber",
-    color: "rgba(255, 222, 99, 0.44)",
-    outline: "rgba(255, 222, 99, 0.28)",
+    color: "rgba(255, 222, 99, 0.52)",
+    outline: "rgba(255, 222, 99, 0.36)",
   },
   {
     id: "lemon",
     label: "Lemon",
-    color: "rgba(255, 241, 118, 0.42)",
-    outline: "rgba(218, 185, 36, 0.24)",
+    color: "rgba(255, 241, 118, 0.5)",
+    outline: "rgba(218, 185, 36, 0.32)",
   },
   {
     id: "mint",
     label: "Mint",
-    color: "rgba(127, 220, 164, 0.38)",
-    outline: "rgba(73, 174, 112, 0.24)",
+    color: "rgba(127, 220, 164, 0.46)",
+    outline: "rgba(73, 174, 112, 0.32)",
   },
   {
     id: "teal",
     label: "Teal",
-    color: "rgba(92, 213, 205, 0.34)",
-    outline: "rgba(40, 151, 148, 0.22)",
+    color: "rgba(92, 213, 205, 0.42)",
+    outline: "rgba(40, 151, 148, 0.3)",
   },
   {
     id: "sky",
     label: "Sky",
-    color: "rgba(125, 197, 255, 0.34)",
-    outline: "rgba(71, 148, 214, 0.24)",
+    color: "rgba(125, 197, 255, 0.42)",
+    outline: "rgba(71, 148, 214, 0.32)",
   },
   {
     id: "cobalt",
     label: "Cobalt",
-    color: "rgba(116, 149, 255, 0.28)",
-    outline: "rgba(63, 94, 202, 0.22)",
+    color: "rgba(116, 149, 255, 0.36)",
+    outline: "rgba(63, 94, 202, 0.3)",
   },
   {
     id: "rose",
     label: "Rose",
-    color: "rgba(255, 148, 164, 0.34)",
-    outline: "rgba(216, 86, 112, 0.22)",
+    color: "rgba(255, 148, 164, 0.42)",
+    outline: "rgba(216, 86, 112, 0.3)",
   },
   {
     id: "coral",
     label: "Coral",
-    color: "rgba(255, 156, 112, 0.34)",
-    outline: "rgba(206, 95, 54, 0.22)",
+    color: "rgba(255, 156, 112, 0.42)",
+    outline: "rgba(206, 95, 54, 0.3)",
   },
   {
     id: "violet",
     label: "Violet",
-    color: "rgba(177, 151, 255, 0.32)",
-    outline: "rgba(126, 94, 218, 0.22)",
+    color: "rgba(177, 151, 255, 0.4)",
+    outline: "rgba(126, 94, 218, 0.3)",
   },
   {
     id: "graphite",
     label: "Graphite",
-    color: "rgba(114, 124, 137, 0.24)",
-    outline: "rgba(71, 79, 91, 0.2)",
+    color: "rgba(114, 124, 137, 0.32)",
+    outline: "rgba(71, 79, 91, 0.28)",
   },
 ]);
 
@@ -106,14 +126,21 @@ export function createDefaultEditorPrefs() {
     editorWidth: 760,
     projectFileAutosaveEnabled: true,
     grammarCheckEnabled: true,
+    grammarCheckPanelBounds: null,
+    worldbuildingCatalogueBounds: null,
+    manuScriptInfographicLaneVisible: true,
     revisionOverlayEnabled: false,
     italicText: false,
+    appearanceMode: "light",
+    milestoneSoundEffectsEnabled: true,
     highlightColorId: "amber",
     highlightCustomRgb: {
       red: 255,
       green: 222,
       blue: 99,
     },
+    highlightRecentCustomColors: [],
+    keyboardShortcuts: createDefaultKeyboardShortcutSettings(),
   };
 }
 
@@ -183,10 +210,25 @@ export function normalizeEditorPrefs(candidate) {
     typeof candidate?.grammarCheckEnabled === "boolean"
       ? candidate.grammarCheckEnabled
       : defaults.grammarCheckEnabled;
+  const grammarCheckPanelBounds = normalizeGrammarCheckPanelBounds(
+    candidate?.grammarCheckPanelBounds ?? defaults.grammarCheckPanelBounds,
+  );
+  const worldbuildingCatalogueBounds = normalizeWorldbuildingCatalogueBounds(
+    candidate?.worldbuildingCatalogueBounds ?? defaults.worldbuildingCatalogueBounds,
+  );
+  const manuScriptInfographicLaneVisible =
+    typeof candidate?.manuScriptInfographicLaneVisible === "boolean"
+      ? candidate.manuScriptInfographicLaneVisible
+      : defaults.manuScriptInfographicLaneVisible;
   const italicText =
     typeof candidate?.italicText === "boolean"
       ? candidate.italicText
       : defaults.italicText;
+  const appearanceMode = normalizeEditorAppearanceMode(candidate?.appearanceMode, defaults.appearanceMode);
+  const milestoneSoundEffectsEnabled =
+    typeof candidate?.milestoneSoundEffectsEnabled === "boolean"
+      ? candidate.milestoneSoundEffectsEnabled
+      : defaults.milestoneSoundEffectsEnabled;
   const highlightColorId = (
     candidate?.highlightColorId === CUSTOM_HIGHLIGHT_COLOR_ID ||
     HIGHLIGHT_COLOR_OPTIONS.some((option) => option.id === candidate?.highlightColorId)
@@ -194,6 +236,12 @@ export function normalizeEditorPrefs(candidate) {
     ? candidate.highlightColorId
     : defaults.highlightColorId;
   const highlightCustomRgb = normalizeHighlightCustomRgb(candidate?.highlightCustomRgb, defaults.highlightCustomRgb);
+  const highlightRecentCustomColors = normalizeHighlightRecentCustomColors(
+    candidate?.highlightRecentCustomColors ?? candidate?.highlightRecentCustomRgbs ?? defaults.highlightRecentCustomColors,
+  );
+  const keyboardShortcuts = normalizeKeyboardShortcutSettings(
+    candidate?.keyboardShortcuts ?? candidate?.shortcuts ?? defaults.keyboardShortcuts,
+  );
 
   return {
     fontFamilyId,
@@ -202,11 +250,30 @@ export function normalizeEditorPrefs(candidate) {
     editorWidth,
     projectFileAutosaveEnabled,
     grammarCheckEnabled,
+    grammarCheckPanelBounds,
+    worldbuildingCatalogueBounds,
+    manuScriptInfographicLaneVisible,
     revisionOverlayEnabled,
     italicText,
+    appearanceMode,
+    milestoneSoundEffectsEnabled,
     highlightColorId,
     highlightCustomRgb,
+    highlightRecentCustomColors,
+    keyboardShortcuts,
   };
+}
+
+export function normalizeEditorAppearanceMode(candidate, fallback = createDefaultEditorPrefs().appearanceMode) {
+  const normalizedCandidate = String(candidate ?? "").trim().toLowerCase();
+  if (APPEARANCE_MODE_OPTIONS.includes(normalizedCandidate)) {
+    return normalizedCandidate;
+  }
+
+  const normalizedFallback = String(fallback ?? "").trim().toLowerCase();
+  return APPEARANCE_MODE_OPTIONS.includes(normalizedFallback)
+    ? normalizedFallback
+    : "light";
 }
 
 export function normalizeHighlightCustomRgb(candidate, fallback = createDefaultEditorPrefs().highlightCustomRgb) {
@@ -220,19 +287,93 @@ export function normalizeHighlightCustomRgb(candidate, fallback = createDefaultE
   };
 }
 
+// Intent: remember only distinct committed custom highlight colours so the palette stays useful and bounded.
+export function normalizeHighlightRecentCustomColors(candidate, fallback = []) {
+  const source = Array.isArray(candidate)
+    ? candidate
+    : Array.isArray(fallback)
+      ? fallback
+      : [];
+  const recentColors = [];
+  const seen = new Set();
+
+  for (const item of source) {
+    const rgb = normalizeHighlightRecentCustomColor(item);
+    if (!rgb) {
+      continue;
+    }
+
+    const key = formatHighlightRgbKey(rgb);
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    recentColors.push(rgb);
+    if (recentColors.length >= MAX_RECENT_CUSTOM_HIGHLIGHT_COLORS) {
+      break;
+    }
+  }
+
+  return recentColors;
+}
+
+// Intent: add the latest committed custom colour without duplicating an existing recent swatch.
+export function addRecentHighlightCustomColor(recentColors, rgb) {
+  const normalizedRgb = normalizeHighlightRecentCustomColor(rgb);
+  if (!normalizedRgb) {
+    return normalizeHighlightRecentCustomColors(recentColors);
+  }
+
+  return normalizeHighlightRecentCustomColors([
+    normalizedRgb,
+    ...normalizeHighlightRecentCustomColors(recentColors)
+      .filter((candidate) => !areHighlightCustomColorsEqual(candidate, normalizedRgb)),
+  ]);
+}
+
+export function areHighlightCustomColorsEqual(left, right) {
+  const leftRgb = normalizeHighlightRecentCustomColor(left);
+  const rightRgb = normalizeHighlightRecentCustomColor(right);
+  return Boolean(leftRgb && rightRgb && formatHighlightRgbKey(leftRgb) === formatHighlightRgbKey(rightRgb));
+}
+
 export function resolveHighlightColorOption(colorId, customRgb = createDefaultEditorPrefs().highlightCustomRgb) {
   if (colorId === CUSTOM_HIGHLIGHT_COLOR_ID) {
     const rgb = normalizeHighlightCustomRgb(customRgb);
     return {
       id: CUSTOM_HIGHLIGHT_COLOR_ID,
       label: "Custom",
-      color: `rgba(${rgb.red}, ${rgb.green}, ${rgb.blue}, 0.36)`,
-      outline: `rgba(${rgb.red}, ${rgb.green}, ${rgb.blue}, 0.24)`,
+      color: `rgba(${rgb.red}, ${rgb.green}, ${rgb.blue}, 0.44)`,
+      outline: `rgba(${rgb.red}, ${rgb.green}, ${rgb.blue}, 0.3)`,
       rgb,
     };
   }
 
   return HIGHLIGHT_COLOR_OPTIONS.find((option) => option.id === colorId) ?? HIGHLIGHT_COLOR_OPTIONS[0];
+}
+
+function normalizeHighlightRecentCustomColor(candidate) {
+  const source = candidate?.rgb && typeof candidate.rgb === "object" && !Array.isArray(candidate.rgb)
+    ? candidate.rgb
+    : candidate;
+  if (!source || typeof source !== "object" || Array.isArray(source)) {
+    return null;
+  }
+
+  if (![source.red, source.green, source.blue].every((value) => Number.isFinite(Number(value)))) {
+    return null;
+  }
+
+  return {
+    red: normalizeHighlightRgbChannel(source.red, 0),
+    green: normalizeHighlightRgbChannel(source.green, 0),
+    blue: normalizeHighlightRgbChannel(source.blue, 0),
+  };
+}
+
+function formatHighlightRgbKey(rgb) {
+  return `${rgb.red},${rgb.green},${rgb.blue}`;
 }
 
 function normalizeHighlightRgbChannel(value, fallback) {
@@ -277,6 +418,13 @@ function normalizeSpellcheckWord(word) {
     .replace(/^[^a-z]+|[^a-z]+$/g, "");
 
   return /[a-z]/.test(normalized) ? normalized : "";
+}
+
+export function isSupportedPassageNoteType(noteType) {
+  const normalizedNoteType = String(noteType ?? "").trim();
+  return normalizedNoteType === "inspiration" ||
+    normalizedNoteType === "research" ||
+    CUSTOM_METADATA_NOTE_TYPE_PATTERN.test(normalizedNoteType);
 }
 
 // Intent: keep binder ordering deterministic when draft-only scenes need to sit between persisted manuscript scenes.
@@ -407,6 +555,7 @@ export function buildSceneRecords(workspace, sceneDrafts = {}, structureDrafts =
     scene.chapterTitle = typeof metadata.chapterTitle === "string" ? metadata.chapterTitle : scene.chapterTitle;
     scene.sceneTitle = typeof metadata.sceneTitle === "string" ? metadata.sceneTitle : scene.sceneTitle;
     scene.sceneSynopsis = typeof metadata.sceneSynopsis === "string" ? metadata.sceneSynopsis : scene.sceneSynopsis;
+    Object.assign(scene, copySceneTimelineMetadata(metadata));
   }
 
   const draftSceneIds = new Set();
@@ -431,6 +580,7 @@ export function buildSceneRecords(workspace, sceneDrafts = {}, structureDrafts =
         chapterTitle: scene.chapterTitle ?? "New Chapter",
         sceneTitle: scene.sceneTitle ?? "New Scene",
         sceneSynopsis: scene.sceneSynopsis ?? "",
+        ...copySceneTimelineMetadata(scene),
         editorText: scene.initialText ?? "",
         blocks: [
           {
@@ -469,6 +619,8 @@ export function buildSceneRecords(workspace, sceneDrafts = {}, structureDrafts =
       chapterTitle: scene.chapterTitle,
       sceneTitle: draft.sceneTitle ?? scene.sceneTitle,
       sceneSynopsis: draft.sceneSynopsis ?? scene.sceneSynopsis,
+      ...copySceneTimelineMetadata(scene),
+      ...copySceneTimelineMetadata(draft),
       editorText: resolvedEditorText,
       blocks: draftBlocks
         ? draftBlocks.map((block, index) => ({
@@ -493,6 +645,73 @@ export function createSceneDraft(scene) {
   const draft = cloneValue(scene);
   draft.editorText ??= composeEditorText(scene.blocks);
   return draft;
+}
+
+// Intent: carry only supported timeline metadata from scene drafts into render-time scene records.
+function copySceneTimelineMetadata(source = {}) {
+  if (!source || typeof source !== "object" || Array.isArray(source)) {
+    return {};
+  }
+
+  const metadata = {};
+  for (const key of [
+    "location",
+    "storyLocation",
+    "place",
+    "setting",
+    "locality",
+    "sublocation",
+    "subLocation",
+    "specificLocation",
+    "localPlace",
+    "ship",
+    "vehicle",
+    "orbitalBand",
+    "orbit",
+    "orbitalPosition",
+    "position",
+    "locationRowLabel",
+    "timelineRowLabel",
+    "assignedLocationRow",
+    "locationRowKey",
+    "timelineRowKey",
+    "assignedLocationRowKey",
+    "locationScope",
+    "timelineLocationScope",
+    "date",
+    "storyDate",
+    "timelineDate",
+    "chronologyDate",
+    "time",
+    "storyTime",
+    "timelineTime",
+    "chronologyTime",
+    "people",
+    "peoplePresent",
+    "characters",
+    "charactersPresent",
+    "cast",
+    "criticalEvents",
+    "criticalEvent",
+    "importantEvents",
+    "majorEvents",
+    "locationChanges",
+    "locationChange",
+    "settingChanges",
+    "placeChanges",
+    "worldSpineMetadata",
+    "worldMetadata",
+    "timelineMetadata",
+    "storyMetadata",
+    "customMetadata",
+    "metadata",
+  ]) {
+    if (Object.prototype.hasOwnProperty.call(source, key)) {
+      metadata[key] = cloneValue(source[key]);
+    }
+  }
+
+  return metadata;
 }
 
 export function createDraftBlock(kind, blockCount) {
@@ -658,7 +877,7 @@ export function normalizePassageNotes(candidate) {
     .filter((note) => note && typeof note === "object")
     .filter((note) =>
       typeof note.id === "string" &&
-      (note.noteType === "inspiration" || note.noteType === "research") &&
+      isSupportedPassageNoteType(note.noteType) &&
       typeof note.chapterId === "string" &&
       typeof note.sceneId === "string" &&
       typeof note.selectedText === "string" &&
@@ -667,7 +886,10 @@ export function normalizePassageNotes(candidate) {
     )
     .map((note) => ({
       id: note.id,
-      noteType: note.noteType,
+      noteType: String(note.noteType).trim(),
+      metadataDefinitionId: typeof note.metadataDefinitionId === "string" ? note.metadataDefinitionId : undefined,
+      metadataLabel: typeof note.metadataLabel === "string" ? note.metadataLabel : undefined,
+      metadataHighlightColor: typeof note.metadataHighlightColor === "string" ? note.metadataHighlightColor : undefined,
       chapterId: note.chapterId,
       chapterTitle: typeof note.chapterTitle === "string" ? note.chapterTitle : "",
       sceneId: note.sceneId,
@@ -761,6 +983,7 @@ export function createManuscriptTaskTitle(task) {
 }
 
 export function createPassageNote(scene, selection, noteType, now = new Date().toISOString()) {
+  const normalizedNoteType = String(noteType ?? "").trim();
   const startOffset = Number(selection?.startOffset);
   const endOffset = Number(selection?.endOffset);
   const selectedText = String(selection?.selectedText ?? "");
@@ -770,7 +993,7 @@ export function createPassageNote(scene, selection, noteType, now = new Date().t
     throw new Error("A scene is required to create a passage note.");
   }
 
-  if (noteType !== "inspiration" && noteType !== "research") {
+  if (!isSupportedPassageNoteType(normalizedNoteType)) {
     throw new Error("A passage note requires a supported note type.");
   }
 
@@ -779,13 +1002,17 @@ export function createPassageNote(scene, selection, noteType, now = new Date().t
   }
 
   const noteSeed = {
-    noteType,
+    noteType: normalizedNoteType,
     body,
     selectedText,
+    metadataLabel: typeof selection?.metadataLabel === "string" ? selection.metadataLabel : "",
   };
   return {
-    id: `${noteType}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    noteType,
+    id: `${normalizedNoteType}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    noteType: normalizedNoteType,
+    metadataDefinitionId: typeof selection?.metadataDefinitionId === "string" ? selection.metadataDefinitionId : undefined,
+    metadataLabel: typeof selection?.metadataLabel === "string" ? selection.metadataLabel : undefined,
+    metadataHighlightColor: typeof selection?.metadataHighlightColor === "string" ? selection.metadataHighlightColor : undefined,
     chapterId: scene.chapterId,
     chapterTitle: scene.chapterTitle,
     sceneId: scene.sceneId,
@@ -805,7 +1032,9 @@ export function createPassageNoteTitle(note) {
   const fallback =
     note?.noteType === "research"
       ? "Research note"
-      : "Inspiration note";
+      : note?.noteType === "inspiration"
+        ? "Inspiration note"
+        : `${String(note?.metadataLabel ?? "").trim() || "Metadata"} note`;
 
   if (!body) {
     return fallback;

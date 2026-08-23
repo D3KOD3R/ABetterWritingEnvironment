@@ -184,7 +184,7 @@ export async function runProjectFileStorageAdaptersTest() {
       displayName: "new-project.abe-project.json",
       inputValue: "",
       pathLabel: "",
-      tooltip: "Project file path unavailable. Use Save as file with a full path to set one.",
+      tooltip: "new-project.abe-project.json",
     },
   );
 
@@ -312,6 +312,34 @@ export async function runProjectFileStorageAdaptersTest() {
       statusKey: "manual-save-required",
       statusLabel: "Manual save",
       note: "Browser blocked background file writes. Latest changes are preserved in browser cache; press Ctrl+S to write the project file.",
+      tone: "waiting",
+      toneClass: "is-waiting",
+    },
+  );
+  assert.deepEqual(
+    buildProjectAutosaveStatusModel({
+      ...state,
+      projectFileAutosaveDirty: true,
+      projectFileAutosaveBlocked: {
+        reason: "write-failed",
+        errorMessage: "Project file verification failed: browser-handle at novel.abe-project.json does not contain the latest project snapshot.",
+      },
+      projectPersistenceDirtyDomains: {
+        world: {
+          reason: "world-spine-location-renamed",
+        },
+      },
+      editorPrefs: {
+        projectFileAutosaveEnabled: true,
+      },
+    }, {
+      connected: true,
+    }),
+    {
+      label: "Autosave",
+      statusKey: "out-of-sync",
+      statusLabel: "Out of sync",
+      note: "Project file is out of sync: Project file verification failed: browser-handle at novel.abe-project.json does not contain the latest project snapshot. Latest changes are preserved in browser cache; press Ctrl+S to retry.",
       tone: "waiting",
       toneClass: "is-waiting",
     },

@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 
 import {
+  applyNarrationCleanupTranscriptToRecord,
   buildVoiceRecordingMediaPath,
   buildNarrationRecordingFinalizationContext,
   createFinalNarrationRecordingRecord,
@@ -27,6 +28,8 @@ export function runNarrationTakeServiceTest() {
     blockId: "block/2",
     paragraphId: "paragraph-3",
     lineNumber: 7,
+    startOffset: 3,
+    endOffset: 14,
     verseText: "  First   line. ",
   };
 
@@ -48,14 +51,45 @@ export function runNarrationTakeServiceTest() {
     status: "recording",
     trackerStatus: " Listening ",
     transcript: "spoken line",
+    liveTranscript: "sherpa words",
+    liveChangedTranscript: "words",
+    liveTranscriptUpdatedAt: "2026-07-19T00:00:00.000Z",
+    cleanupTranscript: "whisper words",
+    speechSnapshot: {
+      transcript: "sherpa words",
+    },
+    speechProviderId: "browser-web-speech",
+    speechProviderLabel: "Browser Web Speech",
+    speechProviderKind: "browser-web-speech",
     startedAtMs: 0,
     recordingId: "take-1",
     mediaPath: "project-media/project/take-1.webm",
+    followSelection: {
+      sceneId: "scene:1",
+      blockId: "block/3",
+      startOffset: 24,
+      endOffset: 42,
+    },
+    followMatch: {
+      lineNumber: 8,
+      confidence: 0.88,
+    },
   });
   assert.equal(session.status, "recording");
   assert.equal(session.trackerStatus, "Listening");
+  assert.equal(session.liveTranscript, "sherpa words");
+  assert.equal(session.cleanupTranscript, "whisper words");
+  assert.equal(session.speechSnapshot.transcript, "sherpa words");
+  assert.equal(session.speechProviderId, "browser-web-speech");
+  assert.equal(session.speechProviderLabel, "Browser Web Speech");
   assert.equal(session.startedAt, "1970-01-01T00:00:00.000Z");
   assert.notEqual(session.selection, selection);
+  assert.equal(session.selection.blockId, "block/2");
+  assert.equal(session.followSelection.blockId, "block/3");
+  assert.equal(session.followMatch.confidence, 0.88);
+  assert.equal(createNarrationTakeSession(selection, {
+    status: "finalizing",
+  }).status, "finalizing");
 
   const record = createNarrationRecordingRecord(selection, {
     projectId: "project-1",
@@ -69,10 +103,27 @@ export function runNarrationTakeServiceTest() {
   assert.equal(record.projectId, "project-1");
   assert.equal(record.mediaName, "take-1.m4a");
   assert.equal(record.mediaPath, "project-media/project-1/take-1.m4a");
+  assert.equal(record.startOffset, 3);
+  assert.equal(record.endOffset, 14);
   assert.equal(record.verseText, "First line.");
   assert.equal(record.transcript, "captured transcript");
   assert.equal(record.durationMs, 1100);
   assert.equal(record.status, "saved");
+
+  const cleanedRecord = applyNarrationCleanupTranscriptToRecord(record, " poorer   whisper cleanup ", {
+    updatedAt: "2026-07-19T00:00:00.000Z",
+  });
+  assert.equal(cleanedRecord.transcript, "captured transcript");
+  assert.equal(cleanedRecord.cleanupTranscript, "poorer whisper cleanup");
+  assert.equal(cleanedRecord.cleanupTranscriptUpdatedAt, "2026-07-19T00:00:00.000Z");
+  assert.equal(cleanedRecord.updatedAt, "2026-07-19T00:00:00.000Z");
+
+  const cleanupOnlyRecord = applyNarrationCleanupTranscriptToRecord({
+    ...record,
+    transcript: "",
+  }, " fallback cleanup ");
+  assert.equal(cleanupOnlyRecord.transcript, "fallback cleanup");
+  assert.equal(cleanupOnlyRecord.cleanupTranscript, "fallback cleanup");
 
   const blob = createNarrationRecordingBlob({
     mediaMimeType: "audio/webm",
@@ -109,15 +160,27 @@ export function runNarrationTakeServiceTest() {
   assert.equal(runtime.recordingId, "take-10-scene-1-block-2");
   assert.equal(runtime.mediaPath, "project-media/project-1/take-10-scene-1-block-2.webm");
   assert.equal(runtime.trackerStatus, "Requesting microphone access...");
+  assert.equal(runtime.liveTranscript, "");
+  assert.equal(runtime.cleanupTranscript, "");
+  assert.equal(runtime.speechSnapshot, null);
+  assert.equal(runtime.speechProviderId, "");
+  assert.equal(runtime.followSelection, null);
   assert.notEqual(runtime.selection, selection);
 
   assert.deepEqual(createNarrationRecordingInitialSessionOptions(runtime), {
     status: "paused",
     trackerStatus: "Requesting microphone access...",
     transcript: "",
+    liveTranscript: "",
+    liveChangedTranscript: "",
+    liveTranscriptUpdatedAt: "",
+    cleanupTranscript: "",
     elapsedLabel: "0:00",
     recordingId: "take-10-scene-1-block-2",
     mediaPath: "project-media/project-1/take-10-scene-1-block-2.webm",
+    speechProviderId: "",
+    speechProviderLabel: "",
+    speechProviderKind: "",
     startedAtMs: 36,
   });
 }

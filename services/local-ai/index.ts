@@ -13,6 +13,23 @@ export type {
 export { LocalAiRouter } from "./local-ai-router.ts";
 export { selectModelTier } from "./model-routing-policy.ts";
 export { buildLocalAiPrompt } from "./prompt-builder.ts";
+export {
+  LOCAL_AI_MODEL_BROWSE_LINKS,
+  LOCAL_AI_MODEL_CATEGORY_FOLDERS,
+  LOCAL_AI_MODEL_MANIFEST_FILE_NAME,
+  createLocalAiModelLibrarySnapshot,
+  ensureLocalAiModelLibraryFolders,
+  normalizeModelRoot,
+  type LocalAiModelBrowseLink,
+  type LocalAiModelCategory,
+  type LocalAiModelDescriptor,
+  type LocalAiModelFolderRecord,
+  type LocalAiModelFormat,
+  type LocalAiModelLibrarySnapshot,
+  type LocalAiModelRuntime,
+  type LocalAiModelSource,
+  type LocalAiModelStatus,
+} from "./model-library.ts";
 export { LlamaCppProvider } from "./providers/llama-cpp-provider.ts";
 export {
   createDefaultModelByTier,

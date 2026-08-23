@@ -19,6 +19,42 @@ function createPausedNarrationSession(selection, trackerStatus, {
   });
 }
 
+function getNarrationDisplayLineNumber(selection) {
+  const displayLineNumber = Number(selection?.displayLineNumber);
+  if (Number.isInteger(displayLineNumber) && displayLineNumber > 0) {
+    return displayLineNumber;
+  }
+
+  const lineNumber = Number(selection?.lineNumber);
+  return Number.isInteger(lineNumber) && lineNumber > 0 ? lineNumber : null;
+}
+
+function formatNarrationTrackerListeningStatus(selection) {
+  const lineNumber = getNarrationDisplayLineNumber(selection);
+  return lineNumber
+    ? `Speech tracker listening at line ${lineNumber}`
+    : "Speech tracker listening";
+}
+
+function formatNarrationTrackerUnavailableStatus(selection) {
+  const lineNumber = getNarrationDisplayLineNumber(selection);
+  return lineNumber
+    ? `Speech tracker unavailable; verse anchored at line ${lineNumber}.`
+    : "Speech tracker unavailable; verse anchored.";
+}
+
+function normalizeSpeechProviderText(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
+function createSpeechProviderRuntimePatch(speechRecognition) {
+  return {
+    speechProviderId: normalizeSpeechProviderText(speechRecognition?.providerId),
+    speechProviderLabel: normalizeSpeechProviderText(speechRecognition?.providerLabel),
+    speechProviderKind: normalizeSpeechProviderText(speechRecognition?.providerKind),
+  };
+}
+
 export function createNarrationRecordingCommandService({
   getRuntime,
   setRuntime,
@@ -146,12 +182,18 @@ export function createNarrationRecordingCommandService({
       mediaRecorder: recorder,
     });
 
-    const speechRecognition = createRecognition(recordingId);
+    const speechRecognition = await createRecognition(recordingId, {
+      projectId,
+      selection,
+      stream,
+      mediaMimeType,
+    });
     if (speechRecognition) {
       setRuntime({
         ...getRuntime(),
         speechRecognition,
-        trackerStatus: "Speech tracker active",
+        ...createSpeechProviderRuntimePatch(speechRecognition),
+        trackerStatus: formatNarrationTrackerListeningStatus(selection),
       });
       try {
         speechRecognition.start();
@@ -159,13 +201,16 @@ export function createNarrationRecordingCommandService({
         setRuntime({
           ...getRuntime(),
           speechRecognition: null,
-          trackerStatus: "Speech tracker unavailable; verse anchored.",
+          speechProviderId: "",
+          speechProviderLabel: "",
+          speechProviderKind: "",
+          trackerStatus: formatNarrationTrackerUnavailableStatus(selection),
         });
       }
     } else {
       setRuntime({
         ...getRuntime(),
-        trackerStatus: "Speech tracker unavailable; verse anchored.",
+        trackerStatus: formatNarrationTrackerUnavailableStatus(selection),
       });
     }
 
@@ -184,20 +229,29 @@ export function createNarrationRecordingCommandService({
   // Intent: centralize stop eligibility and fallback finalization for active recordings.
   async function stopRecording() {
     const runtime = getRuntime();
+    if (runtime?.isStopping) {
+      return;
+    }
+
     if (!runtime?.mediaRecorder || runtime.mediaRecorder.state !== "recording") {
       return;
     }
 
-    setRuntime({
+    const stoppingRuntime = {
       ...runtime,
-      trackerStatus: "Finalizing narration take...",
+      trackerStatus: "Saving narration take...",
+      isStopping: true,
+    };
+    setRuntime(stoppingRuntime);
+    updateSessionFromRuntime({
+      status: "finalizing",
+      trackerStatus: stoppingRuntime.trackerStatus,
     });
-    updateSessionFromRuntime();
 
     try {
-      getRuntime().mediaRecorder.stop();
+      stoppingRuntime.mediaRecorder.stop();
     } catch (error) {
-      await finalizeRecording(getRuntime().recordingId, error);
+      await finalizeRecording(stoppingRuntime.recordingId, error);
     }
   }
 

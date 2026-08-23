@@ -210,6 +210,97 @@ export function toggleManuscriptMarksForSceneSelection(options = {}) {
   });
 }
 
+// Intent: remove every author-owned manuscript mark crossing the selected span while preserving outside fragments.
+export function clearManuscriptMarksForSceneSelection({
+  marks = [],
+  sequences = {},
+  projectId = "",
+  chapterId = "",
+  sceneId = "",
+  text = "",
+  sceneBlocks = [],
+  selection = null,
+  source = "author",
+  now = "",
+} = {}) {
+  const normalizedText = String(text ?? "");
+  const normalizedSelection = normalizeSceneSelection(selection, normalizedText.length);
+  if (!normalizedSelection) {
+    return createMarkMutationResult({
+      marks,
+      sequences,
+      changed: false,
+      reason: "empty-selection",
+    });
+  }
+
+  const normalizedSceneId = String(sceneId ?? "");
+  const existingMarks = Array.isArray(marks) ? marks : [];
+  const blockSpans = createSceneBlockSpans(sceneBlocks, normalizedText, {
+    chapterId,
+    sceneId: normalizedSceneId,
+  });
+  const selectedSegments = createSceneSelectionSegments(normalizedSelection, blockSpans);
+  if (!selectedSegments.length) {
+    return createMarkMutationResult({
+      marks: existingMarks,
+      sequences,
+      changed: false,
+      reason: "unmapped-selection",
+      unmappedSelection: normalizedSelection,
+    });
+  }
+
+  let markSequence = resolveMarkSequence(sequences, existingMarks);
+  const allocateMarkId = () => {
+    markSequence += 1;
+    return formatCanonicalMarkId(markSequence);
+  };
+  const retainedMarks = [];
+  const addedMarks = [];
+  const removedMarkIds = [];
+
+  for (const mark of existingMarks) {
+    const clearableRange = createClearableMarkSceneRange(mark, blockSpans, {
+      sceneId: normalizedSceneId,
+      source,
+    });
+    if (!clearableRange || !doesSceneRangeOverlapSegments(clearableRange, selectedSegments)) {
+      retainedMarks.push(mark);
+      continue;
+    }
+
+    removedMarkIds.push(clearableRange.mark.id);
+    for (const fragment of subtractSegmentsFromSceneRange(clearableRange, selectedSegments)) {
+      addedMarks.push(createManuscriptMarkFromSpan({
+        markId: allocateMarkId(),
+        kind: clearableRange.mark.kind,
+        span: clearableRange.span,
+        localStart: fragment.startOffset - clearableRange.span.startOffset,
+        localEnd: fragment.endOffset - clearableRange.span.startOffset,
+        projectId,
+        sceneId: normalizedSceneId,
+        now,
+        source: clearableRange.mark.source,
+        metadata: clearableRange.mark.metadata,
+      }));
+    }
+  }
+
+  const nextMarks = [
+    ...retainedMarks,
+    ...addedMarks,
+  ];
+  return createMarkMutationResult({
+    marks: nextMarks,
+    sequences: updateMarkSequence(sequences, markSequence),
+    changed: JSON.stringify(existingMarks) !== JSON.stringify(nextMarks),
+    reason: removedMarkIds.length ? "cleared-marks" : "no-marks-in-selection",
+    addedMarks,
+    removedMarkIds,
+  });
+}
+
 // Intent: share anchor-backed mark creation while keeping paint-style apply separate from button toggles.
 function mutateManuscriptMarksForSceneSelection({
   marks = [],
@@ -769,6 +860,41 @@ function createEditableMarkSceneRange(mark, blockSpans, {
   if (
     !normalizedMark ||
     normalizedMark.kind !== kind ||
+    normalizedMark.source !== source
+  ) {
+    return null;
+  }
+
+  const span = blockSpans.find((candidate) => candidate.blockId === normalizedMark.anchor.blockId) ?? null;
+  if (!span) {
+    return null;
+  }
+
+  const sceneStartOffset = span.startOffset + normalizedMark.anchor.startOffset;
+  const sceneEndOffset = span.startOffset + normalizedMark.anchor.endOffset;
+  if (
+    sceneStartOffset < span.startOffset ||
+    sceneEndOffset > span.endOffset ||
+    sceneEndOffset <= sceneStartOffset
+  ) {
+    return null;
+  }
+
+  return {
+    mark: normalizedMark,
+    span,
+    sceneStartOffset,
+    sceneEndOffset,
+  };
+}
+
+function createClearableMarkSceneRange(mark, blockSpans, {
+  sceneId = "",
+  source = "author",
+} = {}) {
+  const normalizedMark = normalizeManuscriptMark(mark, { sceneId });
+  if (
+    !normalizedMark ||
     normalizedMark.source !== source
   ) {
     return null;

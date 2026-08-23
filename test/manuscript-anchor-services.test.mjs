@@ -141,6 +141,21 @@ export function runManuscriptAnchorServicesTest() {
   assert.equal(replaced.anchor.status, MANUSCRIPT_ANCHOR_STATUS.CONTENT_CHANGED);
   assert.equal(replaced.anchor.dirtyReason, "content-replaced");
 
+  const repeatedCharacterReplacement = deriveManuscriptEditTransaction({
+    sceneId: "scene-1",
+    previousText: "aaaa",
+    nextText: "aaaaa",
+    selectionStart: 2,
+    selectionEnd: 2,
+    selectionBeforeInputStart: 0,
+    selectionBeforeInputEnd: 1,
+    editId: "edit-replace-repeated-character",
+  });
+  assert.equal(repeatedCharacterReplacement.startOffset, 0);
+  assert.equal(repeatedCharacterReplacement.endOffset, 1);
+  assert.equal(repeatedCharacterReplacement.deletedText, "a");
+  assert.equal(repeatedCharacterReplacement.insertedText, "aa");
+
   const deleteAnchorTransaction = deriveManuscriptEditTransaction({
     sceneId: "scene-1",
     previousText,

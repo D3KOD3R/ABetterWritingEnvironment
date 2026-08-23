@@ -10,7 +10,7 @@ The application should not hardcode a specific model or provider into the editor
 
 - `apps/editor/public` can call desktop HTTP routes, but must not call model runtimes directly.
 - `apps/desktop` owns local HTTP routing and request translation.
-- `services/local-ai` owns tier selection, prompt construction, provider availability checks, and provider invocation.
+- `services/local-ai` owns tier selection, prompt construction, provider availability checks, model-library scanning, and provider invocation.
 - Provider-specific code stays inside `services/local-ai/providers`.
 - Canonical manuscript anchors and analysis records remain owned by `packages/manuscript-schema`, `services/analysis`, and shared contracts.
 
@@ -27,6 +27,26 @@ Initial development model:
 This model is not considered a production-quality editing model.
 
 The provider uses the `llama.cpp` OpenAI-compatible `POST /v1/chat/completions` endpoint. The sidecar is expected at `http://127.0.0.1:8080` unless overridden by desktop-host configuration.
+
+## Local Model Library
+
+The desktop host exposes a ComfyUI-style model-root surface for local artifacts. The default root comes from desktop-local settings and should not be stored in project manuscript data.
+
+Initial folder architecture:
+
+- `llm`
+- `embeddings`
+- `speech`
+- `voice`
+
+Each registered model folder should contain an `abe-model.json` manifest. The manifest describes the local artifact without executing any downloaded code:
+
+- stable model ID and display name
+- source metadata such as a Hugging Face repo ID and revision
+- runtime, format, tier, and supported AI task types
+- optional context window and checksum
+
+Loose `.gguf`, `.onnx`, `.bin`, and `.safetensors` artifacts are visible in the Local AI settings panel as unregistered files. They should not be routed to authoring tasks until they have an explicit manifest and a provider adapter can safely handle their format.
 
 ## Capability Tiers
 
@@ -71,6 +91,9 @@ Continuity checks normally route to Large. For development pipeline testing only
 The initial desktop host routes are:
 
 - `GET /api/local-ai/status`
+- `GET /api/local-ai/models`
+- `POST /api/local-ai/model-settings`
+- `POST /api/local-ai/models/ensure-folders`
 - `POST /api/local-ai/generate-title`
 - `POST /api/local-ai/generate-tags`
 - `POST /api/local-ai/continuity-check`
@@ -81,6 +104,8 @@ The browser-facing response is an `AiResult`:
 
 - `ok: true` returns generated text, task type, selected tier, provider name, model name, and output format.
 - `ok: false` returns `provider_unavailable`, `tier_not_configured`, or `provider_error` with a readable message.
+
+The model-library routes return a browser-renderable scan result with folder readiness, registered model descriptors, unregistered artifacts, validation messages, and model catalog links. They do not launch model processes.
 
 ## Security
 

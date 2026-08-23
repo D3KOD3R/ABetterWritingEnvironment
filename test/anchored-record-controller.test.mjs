@@ -55,6 +55,26 @@ export function runAnchoredRecordControllerTest() {
     x: 130,
     y: 50,
   });
+  assert.deepEqual(buildInlinePassageNoteDraftFromContextMenu(menu, "metadata-lore", {
+    customMetadataDefinitions: [{ id: "metadata-lore", label: "Lore", highlightColor: "#7fcf9f" }],
+  }), {
+    sceneId: "scene-1",
+    noteType: "metadata-lore",
+    metadataDefinitionId: "metadata-lore",
+    metadataLabel: "Lore",
+    metadataHighlightColor: "#7fcf9f",
+    selectedText: "selected passage",
+    startOffset: 4,
+    endOffset: 20,
+    anchorStartOffset: 4,
+    seededSelection: true,
+    typedStartOffset: null,
+    typedEndOffset: null,
+    body: "",
+    typedText: "selected passage",
+    x: 130,
+    y: 50,
+  });
 
   const scene = {
     chapterId: "chapter-1",
@@ -186,6 +206,34 @@ export function runAnchoredRecordControllerTest() {
       chapterId: "chapter-2",
       chapterTitle: "Chapter Two",
       items: [{ id: "note-1", noteType: "research", chapterId: "chapter-2", chapterTitle: "Two" }],
+    }],
+  });
+  assert.deepEqual(buildPassageNotePanelModel([
+    {
+      id: "note-3",
+      noteType: "metadata-lore",
+      chapterId: "chapter-1",
+      chapterTitle: "One",
+      metadataLabel: "Lore",
+    },
+  ], "metadata-lore", chapters, {
+    customMetadataDefinitions: [{ id: "metadata-lore", label: "Lore", highlightColor: "#7fcf9f" }],
+  }), {
+    noteType: "metadata-lore",
+    label: "Lore",
+    highlightColor: "#7fcf9f",
+    noteCount: 1,
+    groups: [{
+      chapterKey: "chapter-1",
+      chapterId: "chapter-1",
+      chapterTitle: "Chapter One",
+      items: [{
+        id: "note-3",
+        noteType: "metadata-lore",
+        chapterId: "chapter-1",
+        chapterTitle: "One",
+        metadataLabel: "Lore",
+      }],
     }],
   });
   assert.equal(createAnchoredRecordChapterKey("Loose Notes"), "chapter-loose-notes");

@@ -1,5 +1,7 @@
 // Intent: bootstrap and orchestrate the browser editor while refactor slices move feature logic outward.
 import {
+  addRecentHighlightCustomColor,
+  areHighlightCustomColorsEqual,
   CUSTOM_HIGHLIGHT_COLOR_ID,
   EDITOR_DRAFTS_KEY,
   EDITOR_ACTIVE_PROJECT_ID_KEY,
@@ -28,22 +30,30 @@ import {
   insertStructureSceneDraftAfterAnchor,
   normalizeManuscriptTasks,
   normalizeEditorPrefs,
+  normalizeEditorAppearanceMode,
+  normalizeHighlightRecentCustomColors,
   normalizeLocalAiPrefs,
   normalizePassageNotes,
   normalizeSpellcheckProjectSettings,
+  isSupportedPassageNoteType,
   resolveHighlightColorOption,
   resolveManuscriptTaskRange,
 } from "./editor-model.js";
 import {
+  createNarrationRecordingPreviewsForScene,
   formatSceneEditorSelectionWordCount,
   formatSceneEditorWordCount,
   getPassageNotePlaceholder,
   renderManuscriptPanelHTML,
 } from "./features/scene-editor.js";
 import {
+  clearInlineFormatRangesForSelection,
   createDefaultManuscriptInlineFormattingState,
+  createNextDecorationEraserState,
   createManuscriptCommandController,
+  INLINE_DECORATION_ERASER,
   INLINE_FORMATS,
+  isDecorationEraserPending,
   isInlineFormatActiveAtOffset,
   normalizeInlineFormatRanges,
   normalizeManuscriptInlineFormattingState,
@@ -53,22 +63,61 @@ import {
   selectManuscriptProjections,
 } from "./features/manuscript-editor/projection-selector.js";
 import {
+  PANEL_RESIZER_FALLBACK_PROFILE_KEY,
+  createPanelResizerLayoutProfile,
+  isPanelResizerLayoutProfileLikelyClamped,
+  normalizePanelResizerLayoutProfiles,
+  recoverPanelResizerLayoutProfileWidths,
+  resolvePanelResizerLayoutProfile,
+  resolvePanelResizerLayoutProfileKey,
+  resolvePanelResizerLayoutProfileWidths,
+  resolvePanelResizerPercentWidths,
+  resolveMeasuredEditorGutterLineCount,
+  shouldReplacePanelResizerFallbackProfile,
+  upsertPanelResizerLayoutProfile,
+} from "./features/manuscript-editor/manuscript-layout-service.js";
+import {
+  DRAFT_PROOF_BACKDROP_COLOR_DEFAULT,
   addDraftProofCoverageRange,
+  addRecentDraftProofBackdropColor,
+  clearDraftProofRunData,
   completeDraftProofRun,
+  continueDraftProofRun,
   createDefaultDraftProofingState,
+  deleteDraftProofRuns,
+  getDraftProofSettingsForRun,
   normalizeDraftProofingState,
   pauseDraftProofRun,
   pruneDraftProofCoverageForScenes,
+  removeDraftProofCoverageRange,
+  resolveDraftProofSettingsRunId,
+  startNewDraftProofRun,
   startOrResumeDraftProofRun,
+  updateDraftProofRunSettings,
+  updateDraftProofSettings,
   updateDraftProofCoverageForTextEdit,
 } from "./features/draft-proofing/draft-proofing-service.js";
 import {
+  renderDraftProofSettingsWindowHTML,
+  shouldCloseDraftProofSettingsWindowForClick,
+} from "./features/draft-proofing/draft-proofing-settings-window.js";
+import {
   applyManuscriptMarksForSceneSelection,
+  clearManuscriptMarksForSceneSelection,
   createAuthorMarkProjectionFromManuscriptMark,
+  isCompatibilityManuscriptMark,
   promoteCompatibilityManuscriptMarksForSceneFormat,
   syncCompatibilityManuscriptMarksForScene as syncCompatibilityManuscriptMarksForSceneState,
   updateManuscriptMarksForSceneTextEdit,
 } from "./features/manuscript-editor/manuscript-mark-service.js";
+import {
+  createManuscriptMarkHistoryEntry,
+  createManuscriptMarkHistorySnapshot,
+  createManuscriptMarkHistoryState,
+  popManuscriptMarkHistoryRedo,
+  popManuscriptMarkHistoryUndo,
+  pushManuscriptMarkHistoryEntry,
+} from "./features/manuscript-editor/manuscript-mark-history-service.js";
 import { createManuscriptFindController } from "./features/manuscript-editor/manuscript-find-controller.js";
 import { createManuscriptInputController } from "./features/manuscript-editor/manuscript-input-controller.js";
 import {
@@ -76,6 +125,7 @@ import {
   updateSceneBlocksForTextEdit,
 } from "./features/manuscript-editor/manuscript-block-text-service.js";
 import { createManuscriptSelectionController } from "./features/manuscript-editor/manuscript-selection-controller.js";
+import { createManuScriptInfographicLanePreviewsForScene } from "./features/manuscript-editor/ManuScriptInfographicLane-selector.js";
 import { createAnchoredRecordNavigationController } from "./features/manuscript-editor/anchored-record-navigation-controller.js";
 import { validateLiveSpellcheckMenuRange } from "./features/manuscript-editor/spellcheck-range-guard.js";
 import {
@@ -83,7 +133,10 @@ import {
   buildGrammarCheckSummary,
   closeGrammarCheckPanelState,
   createGrammarCheckPanelDragController,
+  createGrammarCheckPanelResizeController,
+  normalizeGrammarCheckPanelBounds,
   renderGrammarCheckPanelHTML,
+  setGrammarCheckPanelBoundsState,
   setGrammarCheckPanelPositionState,
   toggleGrammarCheckPanelState,
   toggleGrammarCheckPanelWordSelectionState,
@@ -94,7 +147,7 @@ import {
 } from "./features/spellcheck/spellcheck-project-settings.js";
 import {
   buildSpellcheckEditorContextMenu,
-  buildSpellcheckGrammarCheckContextMenu,
+  buildSpellcheckEditorHoverContextMenu,
 } from "./features/spellcheck/spellcheck-context-controller.js";
 import { renderSpellcheckContextMenuHTML } from "./features/spellcheck/spellcheck-context-menu.js";
 import {
@@ -122,6 +175,45 @@ import {
 } from "./features/anchored-records/anchored-record-controller.js";
 import { renderPassageNotePanelHTML } from "./features/anchored-records/passage-note-panel.js";
 import { renderTaskPanelHTML } from "./features/anchored-records/task-panel.js";
+import {
+  SIDE_PANEL_FEATURES,
+  renderHiddenSidePanelOverviewHTML,
+  renderSidePanelCustomizationPopoverHTML,
+  renderSidePanelTabsHTML,
+} from "./features/side-panel-customization/side-panel-customization.js";
+import {
+  getTopPanelCustomizationContextFromContextMenuTarget,
+  getTopPanelCustomizationFeatures,
+} from "./features/top-panel-customization/top-panel-customization.js";
+import { renderCustomMetadataFormHTML } from "./features/metadata-console/custom-metadata-panel.js";
+import {
+  CUSTOM_METADATA_ICON_MAX_BYTES,
+  DEFAULT_CUSTOM_METADATA_HIGHLIGHT_COLOR,
+  buildCustomMetadataSidePanelFeatures,
+  createCustomMetadataDefinition,
+  findCustomMetadataDefinition,
+  getMetadataNoteLabel,
+  normalizeCustomMetadataIcon,
+  normalizeCustomMetadataDefinitions,
+  validateCustomMetadataIconFile,
+} from "./features/metadata-console/custom-metadata-service.js";
+import { renderMetadataSubgroupPanelHTML } from "./features/metadata-console/metadata-subgroup-panel.js";
+import {
+  countMetadataSubgroupNotesByGroup,
+  createMetadataSubgroup,
+  createMetadataSubgroupNote,
+  createMetadataSubgroupNoteInputFromPassageNote,
+  deleteMetadataSubgroup,
+  deleteMetadataSubgroupNote,
+  findMetadataSubgroup,
+  findMetadataSubgroupNote,
+  isSupportedMetadataSubgroupGroupId,
+  mergeMetadataSubgroupsById,
+  normalizeMetadataSubgroups,
+  selectMetadataSubgroupsByGroupId,
+  updateMetadataSubgroup,
+  updateMetadataSubgroupNote,
+} from "./features/metadata-console/metadata-subgroup-service.js";
 import {
   USER_MARK_COMMAND_MODE,
   resolveUserMarkCommandIntent,
@@ -167,6 +259,16 @@ import {
   getSpellcheckWordRange,
   normalizeSpellcheckWord,
 } from "./spellcheck.js";
+import {
+  buildDictionaryEditorContextMenu,
+  buildDictionaryLookupContext,
+  buildDictionaryShortcutContext,
+} from "./features/dictionary/dictionary-context-controller.js";
+import {
+  ensureEnglishDefinitionLexicon,
+  lookupEnglishDefinition,
+} from "./features/dictionary/english-definition-lexicon-service.js";
+import { renderDictionaryWindowHTML } from "./features/dictionary/dictionary-window.js";
 import { renderEditorChrome } from "./shell/editor-chrome.js";
 import { createWritingGoalsService } from "./features/writing-targets/writing-goals-service.js";
 import { createWritingGoalsStateService } from "./features/writing-targets/writing-goals-state-service.js";
@@ -174,7 +276,10 @@ import {
   PROJECT_STATE_STORAGE_KEYS,
   createEditorStorage,
 } from "./adapters/storage/editor-storage.js";
-import { createBrowserStorageAdapter } from "./adapters/storage/browser-storage-adapter.js";
+import {
+  createBrowserStorageAdapter,
+  createDurableBrowserTokenStorage,
+} from "./adapters/storage/browser-storage-adapter.js";
 import { createProjectRepository } from "./adapters/storage/project-repository.js";
 import { createPreferencesRepository } from "./adapters/storage/preferences-repository.js";
 import { createProjectService } from "./adapters/storage/project-service.js";
@@ -185,6 +290,7 @@ import {
   createProjectLibraryStateService,
   mergeProjectLibraryItemsById,
   normalizeProjectSelectionDefaults,
+  shouldPreferBrowserCacheProjectLibraryOnBoot,
 } from "./state/project-library-state.js";
 import { createProjectRecordStateService } from "./state/project-record-state.js";
 import { createProjectRuntimeRecordStateService } from "./state/project-runtime-record-state.js";
@@ -192,11 +298,30 @@ import { createProjectActivationStateService } from "./state/project-activation-
 import { createProjectActivationController } from "./state/project-activation-controller.js";
 import {
   createCollapsedConsoleChapterState,
+  createSidePanelVisibilityState,
+  createTopPanelVisibilityState,
+  getVisibleSidePanelIds,
   normalizeCollapsedChapterIds,
+  normalizeSidePanelsHiddenState,
+  normalizeWorkspacePaneId,
   pruneCollapsedChapterIds,
+  resolveVisibleSidePanelMode,
+  setSidePanelFeatureVisible,
+  setTopPanelCardVisible,
+  toggleSidePanelsHiddenState,
   toggleCollapsedChapterId,
   toggleCollapsedConsoleChapter,
 } from "./state/editor-ui-state.js";
+import {
+  captureKeyboardShortcutFromEvent,
+  findKeyboardShortcutConflict,
+  getKeyboardShortcutBehavior,
+  normalizeKeyboardShortcutSettings,
+  resolveKeyboardShortcutBehaviorIdForEvent,
+  resetKeyboardShortcutBinding,
+  resetKeyboardShortcutSettings,
+  setKeyboardShortcutBinding,
+} from "./state/keyboard-shortcut-state.js";
 import {
   captureTextareaEditorHostBookmark,
   captureTextareaEditorHostViewport,
@@ -211,7 +336,12 @@ import {
   renderTextareaAuthorMarkLayer,
   renderTextareaDiagnosticLayer,
   renderTextareaDraftProofLayer,
+  renderTextareaManuScriptInfographicLane,
+  renderTextareaNarrationFollowLayer,
+  renderTextareaNarrationRecordingLayer,
   renderTextareaSpellcheckLayer,
+  resolveTextareaEditorHostContentWidth,
+  resolveTextareaVisualLineIndexForOffset,
   resolveTextareaEditorHost,
   restoreTextareaEditorHostBookmark,
   restoreTextareaEditorHostViewport,
@@ -232,8 +362,32 @@ import { createRevisionService } from "./features/revisions/revision-service.js"
 import { createRevisionPanelController } from "./features/revisions/revision-panel-controller.js";
 import { renderRevisionWindowHTML } from "./features/revisions/revision-window.js";
 import { createLocalAiTitleService } from "./features/local-ai/local-ai-title-service.js";
+import {
+  createLocalAiModelLibraryClient,
+  renderLocalAiPanelHTML,
+} from "./features/local-ai/local-ai-panel.js";
+import { renderKeyboardShortcutSettingsWindowHTML } from "./features/keyboard-shortcuts/keyboard-shortcut-settings-window.js";
+import {
+  SPOTIFY_MUSIC_CLIENT_ID_STORAGE_KEY,
+  createDefaultSpotifyMusicPanelState,
+  createSpotifyMusicService,
+  formatSpotifyPlaybackTimeLabel,
+} from "./features/spotify-music/spotify-music-service.js";
+import {
+  MILESTONE_SOUND_EFFECT_TYPES,
+  createMilestoneSoundEffectsService,
+  isMilestoneSoundEffectsEnabled,
+  selectWritingGoalMilestoneSoundEffects,
+} from "./features/milestone-sounds/milestone-sound-effects-service.js";
 import { createNarrationMediaService } from "./features/narration/narration-media-service.js";
 import { createNarrationMediaRecorderService } from "./features/narration/narration-media-recorder-service.js";
+import {
+  createNarrationRecordingTranscriptAlignmentService,
+  createWhisperCppWordTimingProvider,
+  resolveNarrationRecordingAlignedSeekTime,
+  shouldRefreshNarrationRecordingTranscriptAlignment,
+} from "./features/narration/narration-recording-alignment-service.js";
+import { createNarrationRecordingAlignmentJobService } from "./features/narration/narration-recording-alignment-job-service.js";
 import { createNarrationRecordingCommandService } from "./features/narration/narration-recording-command-service.js";
 import { createNarrationRecordingFinalizationService } from "./features/narration/narration-recording-finalization-service.js";
 import { createNarrationRecordingRuntimeService } from "./features/narration/narration-recording-runtime-service.js";
@@ -248,8 +402,151 @@ import {
   syncVoiceRecordingsMetadata,
   syncVoiceRenderJobsMetadata,
 } from "./features/narration/narration-metadata-sync-service.js";
-import { createNarrationSpeechRecognitionService } from "./features/narration/narration-speech-recognition-service.js";
+import { createNarrationFollowAlignmentService } from "./features/narration/narration-follow-alignment-service.js";
 import {
+  createNarrationReadingRateTracker,
+} from "./features/narration/narration-reading-rate-service.js";
+import { createNarrationFollowViewportMetricsCache } from "./features/narration/narration-follow-viewport-metrics-service.js";
+import { estimateNarrationVisibleTextRange } from "./features/narration/narration-visible-range-service.js";
+import {
+  createNarrationFollowLeadSelection,
+  resolveNarrationFollowViewportOffsets,
+} from "./features/narration/narration-follow-display-service.js";
+import {
+  createDefaultNarrationFollowSettings,
+  normalizeNarrationFollowSettings,
+  toggleNarrationDecorations,
+  toggleNarrationManuscriptDecorations,
+  toggleNarrationFollowScroll,
+} from "./features/narration/narration-follow-settings-service.js";
+import {
+  createNarrationLiveSpeechTrackerService,
+  createBrowserWebSpeechTrackerProvider,
+  createPrimaryLiveWithCleanupTrackerProvider,
+} from "./features/narration/narration-live-speech-tracker-service.js";
+import { createNarrationSpeechRecognitionService } from "./features/narration/narration-speech-recognition-service.js";
+import { createDesktopRealtimeSpeechTrackerProvider } from "./features/narration/narration-desktop-speech-tracker-service.js";
+import { createNarrationLiveAudioFrameService } from "./features/narration/narration-live-audio-frame-service.js";
+import { createNarrationRealtimeSpeechClient } from "./features/narration/narration-realtime-speech-client.js";
+import { createNarrationViewportTracker } from "./features/narration/narration-viewport-tracker-service.js";
+import {
+  NARRATION_AUDIO_PANEL_ID,
+  renderNarrationMetadataPanelHTML,
+} from "./features/narration/narration-metadata-panel.js";
+import {
+  createNarrationRecordingReviewSelection,
+  createNarrationRecordingReviewModel,
+  createNarrationRecordingReviewState,
+  renderNarrationRecordingReviewWaveformHTML,
+  renderNarrationRecordingReviewTranscriptHTML,
+} from "./features/narration/narration-recording-review-service.js";
+import {
+  VOICE_RECORDING_WAVEFORM_STATUS,
+  createVoiceRecordingWaveformService,
+  createVoiceRecordingWaveformState,
+} from "./features/voice/voice-recording-waveform-service.js";
+import {
+  WORLD_SPINE_RIGHT_PANE_MODE_EVENT_SECTION,
+  buildWorldSpineTimelineModel,
+  createWorldSpineLocationFilterViewportModel,
+  createWorldSpineInteractionController,
+  findWorldSpineNode,
+  isWorldSpineAssignableEventNode,
+  normalizeWorldSpineRightPaneMode,
+  renderWorldSpinePanelHTML,
+  renderWorldSpineWhitespaceContextMenuHTML,
+} from "./features/world-spine/world-spine-panel.js";
+import {
+  buildWorldSpineEventComposerFromContextMenu,
+  buildWorldSpineEventTagFromComposer,
+} from "./features/world-spine/world-spine-event-tag-service.js";
+import { createWorldSpineEventScenePlacement } from "./features/world-spine/world-spine-event-scene-service.js";
+import {
+  applyWorldSpineImplicationEdgeToWorld,
+  deleteWorldSpineImplicationEdgeFromWorld,
+  normalizeWorldSpineImplicationText,
+  normalizeWorldSpineEdges,
+  updateWorldSpineImplicationEdgeInWorld,
+} from "./features/world-spine/world-spine-implication-service.js";
+import {
+  applyWorldSpineCatalogueItemAssignmentToWorld,
+  applyWorldSpineEventSublocationToWorld,
+  buildWorldSpineCatalogueAssignmentMenuModel,
+} from "./features/world-spine/world-spine-catalogue-assignment-service.js";
+import {
+  canRedoWorldSpineHistory,
+  canUndoWorldSpineHistory,
+  createWorldSpineHistoryState,
+  pushWorldSpineHistoryEntry,
+  redoWorldSpineHistory,
+  undoWorldSpineHistory,
+} from "./features/world-spine/world-spine-history-service.js";
+import {
+  WORLD_SPINE_LAYOUT_FALLBACK_PROFILE_KEY,
+  createWorldSpineLayoutProfile,
+  normalizeWorldSpineLayoutProfiles,
+  resolveWorldSpineLayoutProfile,
+  resolveWorldSpineLayoutProfileKey,
+  resolveWorldSpineLayoutProfileWidths,
+  shouldReplaceWorldSpineFallbackProfile,
+  upsertWorldSpineLayoutProfile,
+} from "./features/world-spine/world-spine-layout-service.js";
+import {
+  buildWorldSpineLocationFilterModel,
+  clearWorldSpineLocationFilterSelection,
+  createDefaultWorldSpineLocationFilterState,
+  normalizeWorldSpineLocationFilterState,
+  updateWorldSpineLocationFilterSelection,
+} from "./features/world-spine/world-spine-location-filter-service.js";
+import {
+  applyWorldSpineLocationAssignmentToSceneEventTags,
+  applyWorldSpineLocationAssignmentToSceneRecord,
+  applyWorldSpineLocationAssignmentToStructureDrafts,
+  applyWorldSpineLocationAssignmentToWorldPlaceLinks,
+  createWorldSpineLocationRowAssignment,
+  hasWorldSpineLocationAssignment,
+  upsertWorldSpineLocationAssignmentInSceneStore,
+} from "./features/world-spine/world-spine-location-row-service.js";
+import {
+  applySceneWorldSpineMetadataToDraft,
+  buildSceneWorldSpineMetadataFromFormValues,
+  buildSceneWorldSpineMetadataMenuModel,
+  renderSceneWorldSpineMetadataMenuHTML,
+} from "./features/world-spine/scene-world-spine-metadata.js";
+import {
+  buildWorldSpineCharacterOptions,
+  buildWorldSpinePickerOptionSets,
+} from "./features/world-spine/world-spine-character-options.js";
+import {
+  DEFAULT_WORLDBUILDING_CATEGORY_ID,
+  WORLDBUILDING_CATALOGUE_IMAGE_ACCEPT,
+  WORLDBUILDING_CATALOGUE_IMAGE_MAX_BYTES,
+  addParallelWorldSpine,
+  applyWorldSpineLocationRowNameToWorld,
+  applyWorldSpineLocationImageToWorld,
+  applyWorldbuildingCategoryLocationRoleToWorld,
+  applyWorldbuildingCatalogueItemImageToWorld,
+  applyWorldbuildingItemToWorld,
+  buildWorldbuildingCatalogueImageMediaPath,
+  buildWorldbuildingItemFromFormValues,
+  buildWorldbuildingRelatedCatalogueCardsModel,
+  buildWorldbuildingStudioModel,
+  collectWorldbuildingFormValues,
+  createWorldbuildingCatalogueEditFormState,
+  deleteWorldbuildingCatalogueItemFromWorld,
+  dropWorldbuildingEventDraftOnWorldSpine,
+  normalizeWorldbuildingCatalogueImage,
+  refreshWorldbuildingScopedPickerDatalists,
+  renderWorldbuildingEventDraftPlacementPreviewHTML,
+  renderWorldbuildingStudioHTML,
+  validateWorldbuildingCatalogueImageFile,
+} from "./features/world-spine/worldbuilding-studio.js";
+import {
+  clampWorldbuildingCatalogueBounds,
+  normalizeWorldbuildingCatalogueBounds,
+} from "./state/worldbuilding-catalogue-panel-state.js";
+import {
+  applyNarrationCleanupTranscriptToRecord,
   createNarrationTakeSession as createNarrationTakeSessionRecord,
   formatNarrationRecordingElapsedLabel,
 } from "./features/narration/narration-take-service.js";
@@ -260,19 +557,31 @@ import { createVoiceRecordingService } from "./features/voice/voice-recording-se
 
 // Intent: keep shell-wide constants and state visible until each concern moves into its roadmap owner.
 const AUTHOR_MARK_DECORATION_FORMAT_IDS = new Set(["bold", "highlight"]);
-const MANUSCRIPT_INLINE_FORMAT_SHORTCUTS = Object.freeze({
-  b: "bold",
-  h: "highlight",
-  i: "italic",
+const MANUSCRIPT_INLINE_FORMAT_SHORTCUT_BEHAVIORS = Object.freeze({
+  "format.bold": "bold",
+  "format.highlight": "highlight",
+  "format.italic": "italic",
 });
 const appRoot = document.querySelector("#app");
 const EDITOR_RIGHT_DOCK_COLLAPSED_KEY = "abe-right-dock-collapsed-v1";
 const EDITOR_BINDER_WIDTH_KEY = "abe-binder-width-v1";
 const EDITOR_CONSOLE_WIDTH_KEY = "abe-console-width-v1";
+const EDITOR_PANEL_RESIZER_LAYOUT_PROFILES_KEY = "abe-panel-resizer-layout-profiles-v1";
+const EDITOR_WORLD_SPINE_PANEL_LAYOUT_PROFILES_KEY = "abe-world-spine-panel-layout-profiles-v1";
+const EDITOR_WORLD_SPINE_EVENT_RAIL_WIDTH_KEY = "abe-world-spine-event-rail-width-v1";
+const EDITOR_WORLD_SPINE_MANUSCRIPT_PANE_WIDTH_KEY = "abe-world-spine-manuscript-pane-width-v1";
 const EDITOR_WRITING_TARGETS_KEY = "abe-writing-targets-v1";
 const EDITOR_PROJECT_FILE_PATH_KEY = "abe-project-file-path-v1";
-const DEFAULT_BINDER_PANEL_WIDTH = 320;
-const DEFAULT_CONSOLE_PANEL_WIDTH = 320;
+const EDITOR_SIDE_PANEL_VISIBILITY_KEY = "abe-side-panel-visibility-v1";
+const EDITOR_SIDE_PANELS_HIDDEN_KEY = "abe-side-panels-hidden-v1";
+const EDITOR_TOP_PANEL_VISIBILITY_KEY = "abe-top-panel-visibility-v1";
+const EDITOR_NARRATION_FOLLOW_SETTINGS_KEY = "abe-narration-follow-settings-v1";
+const APPEARANCE_MODE_MEDIA_QUERY = "(prefers-color-scheme: dark)";
+// Intent: seed imported and newly-created author workspaces with rails wide enough for long chapter headings.
+const DEFAULT_BINDER_PANEL_WIDTH = 520;
+const DEFAULT_CONSOLE_PANEL_WIDTH = 520;
+const DEFAULT_WORLD_SPINE_EVENT_RAIL_WIDTH = 224;
+const DEFAULT_WORLD_SPINE_MANUSCRIPT_PANE_WIDTH = 330;
 const DEFAULT_WRITING_TARGET_WORDS = 150000;
 const DEFAULT_SESSION_TARGET_WORDS = 5000;
 const DEFAULT_WRITING_TARGET_LOOKBACK_DAYS = 7;
@@ -297,11 +606,16 @@ const DESKTOP_PROJECT_LIBRARY_BOOT_TIMEOUT_MS = 50;
 const DEVELOPER_LOG_WINDOW_PATH = "/developer-logs.html";
 const DEVELOPER_LOG_RUNTIME_BRIDGE_KEY = "__ABE_DEVELOPER_LOG_RUNTIME__";
 const DESKTOP_LOG_BRIDGE_WARNING_THROTTLE_MS = 30000;
+const VOICE_RECORDING_PLAYBACK_LOG_INTERVAL_MS = 1000;
 const REVISION_DRAFTING_UI_ENABLED = false;
 const MIN_BINDER_PANEL_WIDTH = 220;
 const MIN_CONSOLE_PANEL_WIDTH = 260;
 const MIN_MANUSCRIPT_PANEL_WIDTH = 560;
+const MIN_WORLD_SPINE_EVENT_RAIL_WIDTH = 156;
+const MIN_WORLD_SPINE_MANUSCRIPT_PANE_WIDTH = 220;
+const MIN_WORLD_SPINE_TIMELINE_WIDTH = 420;
 const PANEL_RESIZER_WIDTH = 8;
+const WORKSPACE_GRID_COLUMN_GAP = 12;
 
 const {
   clearProjectContentStorage,
@@ -380,17 +694,36 @@ const state = {
   },
   projectFileAutosaveSuppressionDepth: 0,
   projectCacheSuppressionDepth: 0,
+  loadedProjectSceneStore: {},
   projectSourcePath: "",
   projectSourceStatus: "",
   projectSourceBusy: false,
   fileMenuOpen: false,
+  projectSettingsMenuOpen: false,
+  developerOptionsMenuOpen: false,
   consoleDockCollapsed: false,
+  sidePanelsHidden: false,
   binderPanelWidth: DEFAULT_BINDER_PANEL_WIDTH,
   consoleDockWidth: DEFAULT_CONSOLE_PANEL_WIDTH,
   userSettingPanelResizerLeftPercent: null,
   userSettingPanelResizerRightPercent: null,
+  panelResizerLayoutProfiles: {},
   writingTargetWindowOpen: false,
   revisionWindowOpen: false,
+  draftProofSettingsWindowOpen: false,
+  localAiPanelOpen: false,
+  keyboardShortcutSettingsWindowOpen: false,
+  keyboardShortcutCaptureBehaviorId: "",
+  keyboardShortcutSettingsStatus: "",
+  spotifyMusicPanelOpen: false,
+  localAiModelLibrary: null,
+  localAiModelRootDraft: "",
+  localAiModelLibraryStatus: "",
+  localAiModelLibraryLoading: false,
+  spotifyMusicDesktopClientId: "",
+  spotifyMusic: createDefaultSpotifyMusicPanelState(),
+  draftProofClearConfirmationArmed: false,
+  draftProofSettingsSelectedRunId: "",
   writingTargetProjectId: null,
   writingTargetState: null,
   writingTargetDraft: null,
@@ -399,17 +732,30 @@ const state = {
   writingTargetViewMode: "month",
   writingTargetSelectedDateKey: "",
   writingTargetCalendarMonthKey: "",
-  activePane: "manuscript",
+  activePane: normalizeWorkspacePaneId(),
   sceneDrafts: {},
   structureDrafts: createStructureDrafts(),
   templateDrafts: createTemplateDrafts(),
   manuscriptTasks: [],
   passageNotes: [],
+  customMetadataDefinitions: [],
+  metadataSubgroups: [],
   draftProofing: createDefaultDraftProofingState(),
+  draftProofMarksVisible: false,
   spellcheckProjectSettings: createDefaultSpellcheckProjectSettings(),
   sidePanelMode: "issues",
+  sidePanelVisibility: createSidePanelVisibilityState(),
+  sidePanelCustomizationOpen: false,
+  sidePanelCustomizationPosition: null,
+  topPanelVisibility: createTopPanelVisibilityState(),
+  topPanelCustomizationOpen: false,
+  topPanelCustomizationPosition: null,
+  topPanelCustomizationGroupId: "",
+  customMetadataFormOpen: false,
+  customMetadataFormError: "",
   selectedTaskId: null,
   selectedPassageNoteId: null,
+  selectedMetadataSubgroupNoteId: null,
   inlinePassageDraft: null,
   taskContextMenu: null,
   binderContextMenu: null,
@@ -419,11 +765,14 @@ const state = {
   grammarCheckPanel: {
     open: false,
     position: null,
+    bounds: null,
     selectedWords: [],
     selectionAnchorIndex: null,
   },
   taskComposer: null,
   taskPreview: null,
+  dictionaryLookup: null,
+  dictionaryLookupRequestId: 0,
   manuscriptInlineFormatting: createDefaultManuscriptInlineFormattingState(),
   manuscriptFind: {
     open: false,
@@ -443,6 +792,12 @@ const state = {
   },
   narrationTakeSelection: null,
   narrationTakeSession: null,
+  narrationRecordingReview: null,
+  narrationRecordingWaveforms: {},
+  narrationRecordingPreviewId: null,
+  narrationFollowSettings: normalizeNarrationFollowSettings(
+    readStoredJson(EDITOR_NARRATION_FOLLOW_SETTINGS_KEY) ?? createDefaultNarrationFollowSettings(),
+  ),
   editorPrefs: createDefaultEditorPrefs(),
   localAiPrefs: createDefaultLocalAiPrefs(),
   localAiTitleStatus: {},
@@ -454,6 +809,7 @@ const state = {
     undoStack: [],
     redoStack: [],
   },
+  manuscriptMarkHistory: createManuscriptMarkHistoryState(),
   developerLogsWindowOpen: false,
   voiceNarration: voiceWorkflowService.loadState(),
   scenes: [],
@@ -462,6 +818,33 @@ const state = {
   selectedIssueId: null,
   selectedNodeId: null,
   selectedEntityId: null,
+  worldSpineHistory: createWorldSpineHistoryState(),
+  worldSpineEventRailWidth: DEFAULT_WORLD_SPINE_EVENT_RAIL_WIDTH,
+  worldSpineManuscriptPaneWidth: DEFAULT_WORLD_SPINE_MANUSCRIPT_PANE_WIDTH,
+  worldSpinePanelLayoutProfiles: {},
+  worldSpineRightPaneMode: normalizeWorldSpineRightPaneMode(),
+  worldSpineRelatedCardExpandedKey: "",
+  worldSpineSublocationComposer: null,
+  worldSpineLocationFilter: createDefaultWorldSpineLocationFilterState(),
+  worldSpineLocationFilterOpen: false,
+  worldSpineTimelineScrollLeft: 0,
+  worldSpineManuscriptScrollTop: 0,
+  worldSpineScrollTargetNodeId: "",
+  worldSpineScrollTargetLocationKey: "",
+  worldSpinePassageScrollTargetBlockId: "",
+  worldSpineImplicationComposer: null,
+  worldSpineContextMenu: null,
+  worldSpineInsertionContext: null,
+  worldbuildingStudioCategoryId: "",
+  worldbuildingStudioStatus: "",
+  worldbuildingCatalogueCategoryId: "",
+  worldbuildingCataloguePosition: null,
+  worldbuildingCatalogueBounds: null,
+  worldbuildingCatalogueSelectedItemId: "",
+  worldbuildingCatalogueSelectedItemKind: "",
+  worldbuildingEditingCatalogueItemId: "",
+  worldbuildingEditingCatalogueItemKind: "",
+  worldbuildingDraggedEventDraftId: "",
   editingChapterTitleId: null,
   editingSceneTitleId: null,
   collapsedChapterIds: [],
@@ -481,13 +864,34 @@ let writingTargetDebugLastTypingLogAt = 0;
 let writingTargetDebugLastSceneTypingWordCount = null;
 let binderTitleClickState = null;
 let binderSceneDragState = null;
+let worldbuildingCatalogueDragState = null;
+let worldbuildingCatalogueResizeState = null;
+let worldbuildingCatalogueSuppressNextClick = false;
+let worldSpineAssignmentSuppressNextClick = false;
+let worldbuildingEventDraftDragState = null;
+let metadataFolderDragState = null;
 let manuscriptFindDragState = null;
+let worldSpineLayoutResizeSession = null;
 let manuscriptPendingFormatDragSelectionSession = null;
+let draftProofSelectionGesture = null;
+let draftProofLayerLogSignature = "";
 let highlightColorHoverTimer = null;
+let spellcheckHoverMenuHideTimer = null;
 let spellcheckBaseLexicon = null;
 let spellcheckReferenceLexicon = null;
 let narrationRecordingRuntime = null;
+let narrationViewportTracker = null;
+let narrationReadingRateTracker = null;
+let narrationFollowViewportPulseTimerId = null;
+let narrationFollowPreviewFrameId = null;
+let voiceRecordingPlaybackTelemetryTimerId = null;
+let voiceRecordingPlaybackTelemetryStartedAtMs = 0;
+let narrationRecordingWaveformSelectionGesture = null;
+let narrationRecordingWaveformSuppressClick = false;
+let narrationRecordingReviewCursorFallbackLogKey = "";
 let lastDesktopLogBridgeWarningAt = 0;
+let appearanceModeMediaQueryList = null;
+let appearanceModeSystemPreferenceListener = null;
 
 // Intent: keep pure find derivation and replacement planning outside browser shell effects.
 const manuscriptFindController = createManuscriptFindController({
@@ -497,6 +901,136 @@ const manuscriptFindController = createManuscriptFindController({
 // Intent: keep selection derivation separate from DOM focus, scrolling, and persistence orchestration.
 const manuscriptSelectionController = createManuscriptSelectionController({
   findSceneBlockAtOffset,
+});
+
+// Intent: keep World Spine detail cards and scrolling behind the feature controller.
+const worldSpineController = createWorldSpineInteractionController({
+  getModel: () => buildWorldSpineViewportModelForState(),
+  onTimelineScroll: (scrollLeft) => {
+    state.worldSpineTimelineScrollLeft = scrollLeft;
+  },
+  onManuscriptScroll: (scrollTop) => {
+    state.worldSpineManuscriptScrollTop = scrollTop;
+  },
+  onTimelineZoom: ({
+    previousZoom,
+    nextZoom,
+    previousScrollLeft,
+    nextScrollLeft,
+  }) => {
+    const before = captureWorldSpineHistorySnapshot();
+    before.timelineZoom = previousZoom;
+    before.worldSpineTimelineScrollLeft = previousScrollLeft;
+    const after = captureWorldSpineHistorySnapshot();
+    after.timelineZoom = nextZoom;
+    after.worldSpineTimelineScrollLeft = nextScrollLeft;
+    pushWorldSpineHistoryChange(before, {
+      afterSnapshot: after,
+      label: "Zoomed World Spine timeline",
+      dirtyReason: "world-spine-timeline-zoomed",
+      source: "worldSpineController.onTimelineZoom",
+    });
+  },
+  onImplicationLinkDraft: (draft) => {
+    openWorldSpineImplicationComposer(draft);
+  },
+  onImplicationContextMenu: (context) => {
+    openWorldSpineImplicationContextMenu(context);
+  },
+  onImplicationNavigate: (context) => {
+    navigateWorldSpineImplicationTarget(context);
+  },
+  onEventContextMenu: (context) => {
+    openWorldSpineEventContextMenu(context);
+  },
+  onWhitespaceContextMenu: (context) => {
+    openWorldSpineWhitespaceContextMenu(context);
+  },
+  onSelectionClear: () => {
+    clearWorldSpineSelection();
+  },
+  onSceneNodeReorder: ({ sourceSceneId, dropTarget }) => {
+    const targetScene = getMovableSceneById(dropTarget?.sceneId);
+    const locationLabel = String(dropTarget?.locationLabel ?? "").trim();
+    if (!targetScene && !locationLabel) {
+      return false;
+    }
+
+    const historyBefore = captureWorldSpineHistorySnapshot();
+    const rowAssignment = locationLabel
+      ? createWorldSpineLocationRowAssignment(locationLabel, dropTarget)
+      : null;
+    const changedSceneIds = rowAssignment
+      ? applyWorldSpineLocationToSceneRows([sourceSceneId], locationLabel, dropTarget, rowAssignment)
+      : [];
+    const sourceSceneIds = normalizeWorldSpineContextIdList([sourceSceneId]);
+    const placeLinkResult = rowAssignment
+      ? applyWorldSpineLocationAssignmentToWorldPlaceLinks(state.workspace?.world ?? {}, {
+          sceneIds: sourceSceneIds,
+          nodeIds: sourceSceneIds.map((sceneId) => `scene:${sceneId}`),
+          assignment: rowAssignment,
+        })
+      : { world: state.workspace?.world ?? {}, changed: false };
+    const changedPlaceLinks = Boolean(placeLinkResult.changed);
+    if (changedPlaceLinks && state.workspace) {
+      state.workspace.world = placeLinkResult.world;
+      uiEventDispatcherLog.info("state-change", "world-spine.location-row.drag-place-links-updated", "Removed stale place-card links after World Spine event drag.", {
+        location: rowAssignment.location,
+        locationRowKey: rowAssignment.locationRowKey,
+        sourceSceneId,
+        removedPlaceEntityLinkIds: placeLinkResult.removedEntityLinkIds,
+        removedPlaceEntityIds: placeLinkResult.removedEntityIds,
+      });
+    }
+    if (changedSceneIds.length) {
+      writeStoredJsonRaw(EDITOR_DRAFTS_KEY, state.sceneDrafts);
+      writeStoredJsonRaw(EDITOR_STRUCTURE_KEY, state.structureDrafts);
+      refreshScenes();
+    }
+
+    const moved = targetScene
+      ? moveBinderScene(sourceSceneId, {
+          ...dropTarget,
+          chapterId: targetScene.chapterId,
+          chapterTitle: targetScene.chapterTitle,
+        }, {
+          recordHistory: false,
+          flushProjectFileAutosave: Boolean(changedSceneIds.length || changedPlaceLinks),
+        })
+      : false;
+    const hasLocationChange = Boolean(changedSceneIds.length || changedPlaceLinks);
+    if (moved || hasLocationChange) {
+      state.worldSpineScrollTargetNodeId = `scene:${sourceSceneId}`;
+      pushWorldSpineHistoryChange(historyBefore, {
+        label: moved && hasLocationChange
+          ? "Reordered World Spine scene node and updated location"
+          : moved
+            ? "Reordered World Spine scene node"
+            : "Updated World Spine scene location",
+        dirtyReason: moved && hasLocationChange
+          ? "world-spine-scene-node-reordered-and-location-updated"
+          : moved
+            ? "world-spine-scene-node-reordered"
+            : changedSceneIds.length
+              ? "world-spine-scene-location-updated"
+              : "world-spine-scene-location-place-links-updated",
+        source: "worldSpineController.onSceneNodeReorder",
+      });
+    }
+    if (!moved && hasLocationChange) {
+      persistCurrentProjectRecord({
+        changedSceneIds,
+        domain: changedSceneIds.length && changedPlaceLinks ? "world-spine" : changedSceneIds.length ? "manuscript" : "world",
+        dirtyReason: changedSceneIds.length
+          ? "world-spine-scene-location-updated"
+          : "world-spine-scene-location-place-links-updated",
+        source: "worldSpineController.onSceneNodeReorder",
+        flushProjectFileAutosave: true,
+      });
+      render();
+    }
+    return moved || hasLocationChange;
+  },
 });
 
 // Intent: dispatch live manuscript typing through feature-owned mutation planning with shell effects injected.
@@ -524,6 +1058,8 @@ const manuscriptInputController = createManuscriptInputController({
     pendingFormats,
     selectionStart,
     selectionEnd,
+    selectionBeforeInputStart,
+    selectionBeforeInputEnd,
   }) => {
     const scene = getScene(sceneId);
     const sourceBlocks = scene?.blocks ?? state.sceneDrafts?.[sceneId]?.blocks;
@@ -534,6 +1070,8 @@ const manuscriptInputController = createManuscriptInputController({
       nextText,
       selectionStart,
       selectionEnd,
+      selectionBeforeInputStart,
+      selectionBeforeInputEnd,
     });
     const nextBlocks = reconcileSceneBlocksWithEditorText({
       blocks: editedBlocks,
@@ -541,6 +1079,10 @@ const manuscriptInputController = createManuscriptInputController({
       chapterId: scene?.chapterId ?? state.sceneDrafts?.[sceneId]?.chapterId ?? "",
       text: nextText,
     });
+    if (previousText !== nextText) {
+      state.manuscriptMarkHistory = createManuscriptMarkHistoryState();
+      state.worldSpineHistory = createWorldSpineHistoryState();
+    }
     updateManuscriptMarksAfterSceneTextEdit({
       sceneId,
       previousText,
@@ -580,11 +1122,13 @@ const anchorIdleValidationScheduler = createManuscriptAnchorIdleValidationSchedu
 });
 const grammarCheckPanelDragController = createGrammarCheckPanelDragController({
   isPanelOpen: () => state.grammarCheckPanel?.open === true,
-  getViewport: () => ({
-    width: window.innerWidth,
-    height: window.innerHeight,
-  }),
+  getViewport: () => getGrammarCheckPanelViewport(),
   setPosition: (left, top) => setGrammarCheckPanelPosition(left, top),
+});
+const grammarCheckPanelResizeController = createGrammarCheckPanelResizeController({
+  isPanelOpen: () => state.grammarCheckPanel?.open === true,
+  getViewport: () => getGrammarCheckPanelViewport(),
+  setBounds: (bounds) => setGrammarCheckPanelBounds(bounds),
 });
 
 // Intent: centralize anchor-aware task/note resolution while the shell retains browser navigation effects.
@@ -626,6 +1170,20 @@ const desktopFileSystemLog = developerLogger.createSource("DesktopFileSystemAdap
 const uiEventDispatcherLog = developerLogger.createSource("UIEventDispatcher");
 const writingGoalsServiceLog = developerLogger.createSource("WritingGoalsService");
 const revisionServiceLog = developerLogger.createSource("RevisionService");
+const layoutStateLog = developerLogger.createSource("LayoutState");
+const narrationFollowTrackerLog = developerLogger.createSource("NarrationFollowTracker");
+const narrationViewportTrackerLog = developerLogger.createSource("NarrationViewportTracker");
+const narrationReadingRateLog = developerLogger.createSource("NarrationReadingRate");
+const draftProofingLog = developerLogger.createSource("DraftProofingService");
+const spotifyMusicLog = developerLogger.createSource("SpotifyMusicService");
+const milestoneSoundEffectsLog = developerLogger.createSource("MilestoneSoundEffectsService");
+narrationViewportTracker = createNarrationViewportTracker({
+  logger: narrationViewportTrackerLog,
+});
+narrationReadingRateTracker = createNarrationReadingRateTracker({
+  logger: narrationReadingRateLog,
+});
+const narrationFollowViewportMetricsCache = createNarrationFollowViewportMetricsCache();
 registerDeveloperLogRuntimeBridge();
 
 const writingGoalsStateLogHooks = {
@@ -648,6 +1206,7 @@ const projectRecordStateService = createProjectRecordStateService({
   createDefaultLocalAiPrefs,
   normalizeManuscriptTasks,
   normalizePassageNotes,
+  normalizeMetadataSubgroups,
   normalizeDraftProofingState,
   normalizeProjectSelectionDefaults,
   normalizeProjectSettingsSnapshot,
@@ -865,7 +1424,7 @@ const projectPersistenceService = createProjectPersistenceService({
   },
   reportBrowserLog,
   renderHeader,
-  resolveSuggestedProjectFileName: () => getSuggestedProjectFileName(),
+  resolveSuggestedProjectFileName: (projectTitle) => getSuggestedProjectFileName(projectTitle),
   onProjectRecordPersisted: ({ projectRecord, persistCache, options }) => {
     const activeLibraryRecord = state.projectLibrary.find((project) => project.id === state.activeProjectId) ?? null;
     const indexedScenes = Array.isArray(activeLibraryRecord?.projectIndex?.scenes)
@@ -901,11 +1460,41 @@ const projectSourceService = createProjectSourceService({
   normalizeProjectLibrarySnapshot,
   mergeProjectLibrarySnapshots,
   resolveActiveProjectId,
-  saveProjectLibrarySnapshot: (snapshot) => projectService.saveProjectLibrarySnapshot(snapshot),
+  saveProjectLibrarySnapshot: (snapshot, options = {}) => projectService.saveProjectLibrarySnapshot(snapshot, options),
 });
 const localAiTitleService = createLocalAiTitleService({
   fetchJson: fetchJsonFromDesktopApi,
   logger: console,
+});
+const localAiModelLibraryClient = createLocalAiModelLibraryClient({
+  fetchJson: fetchJsonFromDesktopApi,
+  logger: console,
+});
+const spotifyMusicTokenStorage = createDurableBrowserTokenStorage({
+  reportBrowserLog,
+  windowRef: window,
+});
+const spotifyMusicPlaybackStateStorage = createDurableBrowserTokenStorage({
+  reportBrowserLog,
+  windowRef: window,
+});
+const spotifyMusicService = createSpotifyMusicService({
+  fetchFn: fetch.bind(window),
+  cryptoRef: window.crypto,
+  windowRef: window,
+  documentRef: document,
+  authStorage: window.sessionStorage,
+  playbackStateStorage: spotifyMusicPlaybackStateStorage,
+  tokenStorage: spotifyMusicTokenStorage,
+  logger: spotifyMusicLog,
+});
+const SPOTIFY_LIMITED_PLAYLIST_MESSAGE = "Spotify hides track lists for playlists you do not own or collaborate on. Use Play to start the playlist.";
+// Intent: advance the chrome player's visible seek position between Spotify SDK state snapshots without persisting playback time.
+const SPOTIFY_PLAYBACK_POSITION_TICK_MS = 1000;
+let spotifyPlaybackPositionTickerId = null;
+let spotifyPlaybackPositionSyncedAtMs = 0;
+const milestoneSoundEffectsService = createMilestoneSoundEffectsService({
+  logger: milestoneSoundEffectsLog,
 });
 const anchoredRecordService = createAnchoredRecordService({
   getTasks: () => state.manuscriptTasks,
@@ -922,6 +1511,17 @@ const anchoredRecordService = createAnchoredRecordService({
 const narrationMediaService = createNarrationMediaService({
   fetchJson: fetchJsonFromDesktopApi,
 });
+const narrationRecordingTranscriptAlignmentService = createNarrationRecordingTranscriptAlignmentService({
+  wordTimingProvider: createWhisperCppWordTimingProvider({
+    fetchJson: fetchJsonFromDesktopApi,
+    reportLog: reportBrowserLog,
+  }),
+  reportLog: reportBrowserLog,
+});
+const narrationRecordingTranscriptAlignmentJobService = createNarrationRecordingAlignmentJobService({
+  runAlignment: runNarrationRecordingTranscriptAlignmentJob,
+  reportLog: reportBrowserLog,
+});
 const narrationRecordingRuntimeService = createNarrationRecordingRuntimeService({
   clearIntervalFn: (timerId) => window.clearInterval(timerId),
 });
@@ -937,11 +1537,16 @@ const voiceRecordingService = createVoiceRecordingService({
   getWorkspace: () => state.workspace,
   getProjectId: () => state.activeProjectId ?? state.workspace?.project?.id ?? "",
 });
+const voiceRecordingWaveformService = createVoiceRecordingWaveformService({
+  reportLog: reportBrowserLog,
+});
 const voiceRecordingActionService = createVoiceRecordingActionService({
   getRecordingById: (recordingId) => voiceRecordingService.getById(recordingId),
   loadMediaBlob: (input) => narrationMediaService.loadMediaBlob(input),
-  playBlob: (blob) => voiceRecordingPreviewController.playBlob(blob),
+  deleteMediaFile: (input) => narrationMediaService.deleteMediaFile(input),
+  playBlob: (blob, playbackOptions) => voiceRecordingPreviewController.playBlob(blob, playbackOptions),
   getScene: (sceneId) => getScene(sceneId),
+  deleteRecordingById: (recordingId, projectId) => voiceRecordingService.deleteById(recordingId, projectId),
   reportLog: reportBrowserLog,
 });
 const narrationMediaRecorderService = createNarrationMediaRecorderService({
@@ -968,19 +1573,94 @@ const narrationMediaRecorderService = createNarrationMediaRecorderService({
     void finalizeNarrationRecording(recordingId);
   },
 });
+const narrationFollowAlignmentService = createNarrationFollowAlignmentService({
+  getScene: (sceneId) => getScene(sceneId),
+  getProjectId: () => state.activeProjectId ?? state.workspace?.project?.id ?? "",
+  logger: narrationFollowTrackerLog,
+});
+const narrationRealtimeSpeechClient = createNarrationRealtimeSpeechClient({
+  fetchJson: fetchJsonFromDesktopApi,
+});
+const narrationLiveAudioFrameService = createNarrationLiveAudioFrameService({
+  chunkDurationMs: 700,
+  maxBufferedAudioMs: 950,
+  logger: narrationFollowTrackerLog,
+});
+
+// Intent: share recording runtime patching across live ASR providers without moving state ownership into providers.
+function applyNarrationRecordingRuntimePatch(recordingId, patch) {
+  if (!narrationRecordingRuntime || narrationRecordingRuntime.recordingId !== recordingId) {
+    return;
+  }
+  narrationRecordingRuntime = {
+    ...narrationRecordingRuntime,
+    ...patch,
+  };
+}
+
+// Intent: prefer the browser-managed live recognizer when the tiny local Sherpa model is not good enough for read-along tracking.
+const browserSpeechRecognitionConstructor = typeof window === "undefined"
+  ? null
+  : window.SpeechRecognition ?? window.webkitSpeechRecognition ?? null;
 const narrationSpeechRecognitionService = createNarrationSpeechRecognitionService({
-  recognitionConstructor: window.SpeechRecognition || window.webkitSpeechRecognition || null,
+  recognitionConstructor: browserSpeechRecognitionConstructor,
+  getRuntime: () => narrationRecordingRuntime,
+  applyRuntimePatch: applyNarrationRecordingRuntimePatch,
+  refreshSession: () => updateNarrationTakeSessionFromRuntime(),
+  resolveFollowMatch: ({ transcript, runtime, speechSnapshot }) => resolveNarrationFollowMatchForTranscript({
+    transcript,
+    runtime,
+    speechSnapshot,
+  }),
+  logger: narrationFollowTrackerLog,
+});
+const browserWebSpeechTrackerProvider = createBrowserWebSpeechTrackerProvider({
+  speechRecognitionService: narrationSpeechRecognitionService,
+  availability: browserSpeechRecognitionConstructor ? "ready" : "disabled",
+  unavailableReason: "Browser Web Speech is unavailable in this desktop webview.",
+});
+const desktopRealtimeSpeechTrackerProvider = createDesktopRealtimeSpeechTrackerProvider({
+  realtimeSpeechClient: narrationRealtimeSpeechClient,
+  liveAudioFrameService: narrationLiveAudioFrameService,
+  getRuntime: () => narrationRecordingRuntime,
+  applyRuntimePatch: applyNarrationRecordingRuntimePatch,
+  refreshSession: () => updateNarrationTakeSessionFromRuntime(),
+  resolveFollowMatch: ({ transcript, runtime, speechSnapshot }) => resolveNarrationFollowMatchForTranscript({
+    transcript,
+    runtime,
+    speechSnapshot,
+  }),
+  logger: narrationFollowTrackerLog,
+});
+// Intent: keep local PCM/Whisper cleanup available when Browser Web Speech owns the live transcript.
+const desktopCleanupSpeechTrackerProvider = createDesktopRealtimeSpeechTrackerProvider({
+  realtimeSpeechClient: narrationRealtimeSpeechClient,
+  liveAudioFrameService: narrationLiveAudioFrameService,
   getRuntime: () => narrationRecordingRuntime,
   applyRuntimePatch: (recordingId, patch) => {
-    if (!narrationRecordingRuntime || narrationRecordingRuntime.recordingId !== recordingId) {
+    if (typeof patch?.cleanupTranscript !== "string") {
       return;
     }
-    narrationRecordingRuntime = {
-      ...narrationRecordingRuntime,
-      ...patch,
-    };
+    applyNarrationRecordingRuntimePatch(recordingId, {
+      cleanupTranscript: patch.cleanupTranscript,
+      speechSnapshot: patch.speechSnapshot ?? narrationRecordingRuntime?.speechSnapshot ?? null,
+    });
   },
   refreshSession: () => updateNarrationTakeSessionFromRuntime(),
+  resolveFollowMatch: () => null,
+  logger: narrationFollowTrackerLog,
+  applyLiveTranscriptPatches: false,
+});
+const narrationLiveSpeechTrackerService = createNarrationLiveSpeechTrackerService({
+  providers: [
+    createPrimaryLiveWithCleanupTrackerProvider({
+      primaryProvider: browserWebSpeechTrackerProvider,
+      cleanupProvider: desktopCleanupSpeechTrackerProvider,
+      label: "Browser Web Speech + local cleanup",
+    }),
+    desktopRealtimeSpeechTrackerProvider,
+  ],
+  logger: narrationFollowTrackerLog,
 });
 const narrationRecordingCommandService = createNarrationRecordingCommandService({
   getRuntime: () => narrationRecordingRuntime,
@@ -989,9 +1669,13 @@ const narrationRecordingCommandService = createNarrationRecordingCommandService(
   },
   resolveSelection: (sceneId) => {
     const scene = sceneId ? getScene(sceneId) : getSelectedScene() ?? state.scenes[0] ?? null;
+    const selection = scene ? getNarrationTakeSelectionForScene(scene.sceneId) : null;
+    if (selection) {
+      state.narrationTakeSelection = selection;
+    }
     return {
       scene,
-      selection: scene ? getNarrationTakeSelectionForScene(scene.sceneId) : null,
+      selection,
     };
   },
   getProjectId: () => state.activeProjectId ?? state.workspace?.project?.id ?? "",
@@ -1002,7 +1686,7 @@ const narrationRecordingCommandService = createNarrationRecordingCommandService(
   hasMediaRecorder: () => typeof MediaRecorder !== "undefined",
   mediaRecorderConstructor: typeof MediaRecorder === "undefined" ? null : MediaRecorder,
   createRecorder: (recordingId, stream, options) => narrationMediaRecorderService.createRecorder(recordingId, stream, options),
-  createRecognition: (recordingId) => narrationSpeechRecognitionService.createRecognition(recordingId),
+  createRecognition: (recordingId, context) => narrationLiveSpeechTrackerService.createTracker(recordingId, context),
   updateSessionFromRuntime: (overrides) => updateNarrationTakeSessionFromRuntime(overrides),
   abortStart: (selection, error, stream) => abortNarrationRecordingStart(selection, error, stream),
   finalizeRecording: (recordingId, error) => finalizeNarrationRecording(recordingId, error),
@@ -1012,6 +1696,10 @@ const voiceRecordingPreviewController = createVoiceRecordingPreviewController({
   createObjectUrl: (blob) => URL.createObjectURL(blob),
   revokeObjectUrl: (url) => URL.revokeObjectURL(url),
   createAudio: (url) => new Audio(url),
+  reportLog: reportBrowserLog,
+  onPlaybackStateChange: (playbackState, eventType) => {
+    handleVoiceRecordingPlaybackStateChange(playbackState, eventType);
+  },
 });
 
 const revisionStorageService = createRevisionStorageService({
@@ -1025,6 +1713,7 @@ const projectActivationStateService = createProjectActivationStateService({
   createTemplateDrafts,
   normalizeManuscriptTasks,
   normalizePassageNotes,
+  normalizeMetadataSubgroups,
   normalizeDraftProofingState,
   readRevisionState: (record) => revisionStorageService.readRevisionState(record),
   createRevisionPanelStateForProject,
@@ -1163,6 +1852,7 @@ const projectActivationController = createProjectActivationController({
   writeProjectSourcePath: (value) => writeStoredJsonRaw(EDITOR_PROJECT_SOURCE_PATH_KEY, value),
   writeBinderWidth: (value) => writeStoredJsonRaw(EDITOR_BINDER_WIDTH_KEY, value),
   writeConsoleWidth: (value) => writeStoredJsonRaw(EDITOR_CONSOLE_WIDTH_KEY, value),
+  writePanelResizerLayoutProfiles: (value) => writeStoredJsonRaw(EDITOR_PANEL_RESIZER_LAYOUT_PROFILES_KEY, value),
   persistConsoleDockCollapsedState,
   persistCollapsedChapterState,
   persistCollapsedConsoleChapterState,
@@ -1199,14 +1889,26 @@ boot().catch((error) => {
 async function boot() {
   const desktopSettings = await loadDesktopSettingsSnapshot();
   const seedLibrary = await loadInitialProjectLibrary(desktopSettings);
+  const explicitBootProjectFilePath = desktopSettings.lastProjectFilePathExplicit === true
+    ? normalizeProjectFilePath(desktopSettings.lastProjectFilePath)
+    : "";
+  const hasExplicitBootProjectFilePath = hasProjectFilePath(explicitBootProjectFilePath);
+  const ignoredDesktopProjectFilePath = seedLibrary.ignoredDesktopProjectFilePath === true
+    ? explicitBootProjectFilePath
+    : normalizeProjectFilePath(seedLibrary.ignoredDesktopProjectFilePath ?? "");
+  const shouldUseExplicitBootProjectFilePath =
+    hasExplicitBootProjectFilePath &&
+    !areProjectFilePathsEquivalent(explicitBootProjectFilePath, ignoredDesktopProjectFilePath);
   state.projectLibrary = seedLibrary.projects;
   state.activeProjectId = seedLibrary.activeProjectId ?? seedLibrary.projects[0]?.id ?? null;
   state.projectLibrarySelectionId = state.activeProjectId;
+  state.loadedProjectSceneStore = seedLibrary.sceneStore && typeof seedLibrary.sceneStore === "object" && !Array.isArray(seedLibrary.sceneStore)
+    ? cloneValue(seedLibrary.sceneStore)
+    : {};
   state.projectFileHandle = null;
   state.projectFileHandlePermission = "";
-  state.projectFilePath = desktopSettings.lastProjectFilePathExplicit
-    ? normalizeProjectFilePath(desktopSettings.lastProjectFilePath)
-    : "";
+  state.projectFilePath = shouldUseExplicitBootProjectFilePath ? explicitBootProjectFilePath : "";
+  state.spotifyMusicDesktopClientId = desktopSettings.spotifyClientId;
   state.projectFileStatus = "";
   state.projectFileBusy = false;
   state.projectFileAutosaveDirty = false;
@@ -1227,24 +1929,65 @@ async function boot() {
   state.projectSourcePath = loadStoredString(EDITOR_PROJECT_SOURCE_PATH_KEY) ?? "";
   state.projectSourceStatus = "";
   state.consoleDockCollapsed = readStoredJson(EDITOR_RIGHT_DOCK_COLLAPSED_KEY) === true;
+  state.sidePanelsHidden = normalizeSidePanelsHiddenState(readStoredJson(EDITOR_SIDE_PANELS_HIDDEN_KEY));
   state.binderPanelWidth = loadStoredNumber(EDITOR_BINDER_WIDTH_KEY, DEFAULT_BINDER_PANEL_WIDTH);
   state.consoleDockWidth = loadStoredNumber(EDITOR_CONSOLE_WIDTH_KEY, DEFAULT_CONSOLE_PANEL_WIDTH);
+  state.panelResizerLayoutProfiles = normalizePanelResizerLayoutProfiles(
+    readStoredJson(EDITOR_PANEL_RESIZER_LAYOUT_PROFILES_KEY),
+  );
+  state.worldSpineEventRailWidth = loadStoredNumber(
+    EDITOR_WORLD_SPINE_EVENT_RAIL_WIDTH_KEY,
+    DEFAULT_WORLD_SPINE_EVENT_RAIL_WIDTH,
+  );
+  state.worldSpineManuscriptPaneWidth = loadStoredNumber(
+    EDITOR_WORLD_SPINE_MANUSCRIPT_PANE_WIDTH_KEY,
+    DEFAULT_WORLD_SPINE_MANUSCRIPT_PANE_WIDTH,
+  );
+  state.worldSpinePanelLayoutProfiles = normalizeWorldSpineLayoutProfiles(
+    readStoredJson(EDITOR_WORLD_SPINE_PANEL_LAYOUT_PROFILES_KEY),
+  );
   applyProjectRecord(getActiveProjectRecord() ?? state.projectLibrary[0]);
   refreshScenes();
-  projectPersistenceService.syncActiveProjectFileDestinationFromRecord({
-    persistDesktopProjectFilePath: true,
-    source: "boot",
-  });
-  await reconnectProjectFileDestinationOnBoot(desktopSettings);
+  // Intent: keep bundled seed paths from replacing the active browser project cache before reconnect.
+  if (ignoredDesktopProjectFilePath) {
+    const activeRecordPath = getBootFallbackProjectFilePath(ignoredDesktopProjectFilePath);
+    if (activeRecordPath) {
+      state.projectFilePath = activeRecordPath;
+    }
+    await projectPersistenceService.persistDesktopProjectFilePath("", false);
+  } else if (!shouldUseExplicitBootProjectFilePath) {
+    projectPersistenceService.syncActiveProjectFileDestinationFromRecord({
+      persistDesktopProjectFilePath: false,
+      source: "boot",
+    });
+  }
+  const reconnectDesktopSettings = shouldUseExplicitBootProjectFilePath
+    ? desktopSettings
+    : {
+        ...desktopSettings,
+        lastProjectFilePath: "",
+        lastProjectFilePathExplicit: false,
+      };
+  await reconnectProjectFileDestinationOnBoot(reconnectDesktopSettings);
   spellcheckBaseLexicon = await ensureSpellcheckBaseLexicon();
   spellcheckReferenceLexicon = await ensureSpellcheckReferenceLexicon();
 
   restoreSelectionFromWorkspaceDefaults();
   syncWritingTargetState({ forceReload: true });
   refreshWritingTargetSessionLifecycle({ reason: "boot" });
+  initializeSpotifyMusicState();
+  await completeSpotifyAuthorizationFromCurrentLocation();
+  await refreshSpotifyMusicProfileFromCurrentToken();
+  const spotifyPlaybackResumeSnapshot = hydrateSpotifyMusicPlaybackFromStoredSnapshot();
 
   render();
-  syncLayoutWidths();
+  syncLayoutWidths({ reason: "boot-post-render" });
+  syncWorldSpinePanelLayout({ reason: "boot-post-render" });
+  if (spotifyPlaybackResumeSnapshot && spotifyPlaybackResumeSnapshot.paused === false) {
+    window.setTimeout(() => {
+      void restoreSpotifyMusicPlaybackFromStoredSnapshot({ reason: "boot" });
+    }, 0);
+  }
   recordWritingTargetSnapshot({ immediate: true, reason: "boot", skipProjectFileAutosave: true });
   startSessionTrackerRefreshTimer();
   const bootedProject = getActiveProjectRecord();
@@ -1261,15 +2004,48 @@ async function boot() {
   syncSceneDocumentLayout();
 }
 
+function normalizeProjectFileComparisonKey(filePath) {
+  const normalizedPath = normalizeProjectFilePath(filePath).replace(/\\+/g, "/");
+  return normalizedPath.includes("/") || /^[A-Za-z]:\//.test(normalizedPath)
+    ? normalizedPath.toLowerCase()
+    : normalizedPath;
+}
+
+function areProjectFilePathsEquivalent(leftPath, rightPath) {
+  const leftKey = normalizeProjectFileComparisonKey(leftPath);
+  const rightKey = normalizeProjectFileComparisonKey(rightPath);
+  return Boolean(leftKey && rightKey && leftKey === rightKey);
+}
+
+function getBootFallbackProjectFilePath(ignoredProjectFilePath = "") {
+  const activeRecord = getActiveProjectRecord();
+  if (!activeRecord) {
+    return "";
+  }
+
+  const durableRecordPath = normalizeProjectFilePath(getProjectRecordFilePath(activeRecord));
+  const rawRecordPath = normalizeProjectFilePath(
+    activeRecord?.projectSettings?.projectFilePath ?? activeRecord?.projectFilePath ?? "",
+  );
+  const candidatePath = durableRecordPath || rawRecordPath;
+  return areProjectFilePathsEquivalent(candidatePath, ignoredProjectFilePath) ? "" : candidatePath;
+}
+
 // Intent: delegate browser events while the shell still coordinates feature slices during the refactor.
 function wireEvents() {
   if (eventsWired) {
     return;
   }
   eventsWired = true;
+  wireAppearanceModeSystemPreferenceListener();
 
   document.addEventListener("pointerdown", (event) => {
     const clickTarget = event.target instanceof Element ? event.target : null;
+    beginNarrationRecordingWaveformSelectionGesture(clickTarget, event);
+    if (handleWorldSpineCatalogueAssignmentPointerDown(event, clickTarget)) {
+      return;
+    }
+    worldSpineController.handlePointerDown(event);
     if (isManuscriptSelectionCommandTarget(clickTarget)) {
       refreshSceneEditorSelectionStateFromActiveTextarea();
       event.preventDefault();
@@ -1277,11 +2053,37 @@ function wireEvents() {
     if (clickTarget instanceof HTMLTextAreaElement && clickTarget.classList.contains("editor-document-input")) {
       markSceneEditorAsCurrent(clickTarget);
       beginPendingFormatDragSelection(clickTarget, event);
+      beginDraftProofSelectionGesture(clickTarget, event);
     } else {
       manuscriptPendingFormatDragSelectionSession = null;
+      draftProofSelectionGesture = null;
     }
     writingTargetPointerDownStartedInsideWindow = Boolean(clickTarget?.closest(".writing-target-window"));
     revisionWindowPointerDownStartedInsideWindow = Boolean(clickTarget?.closest(".revision-window"));
+    const catalogueResizeHandle = clickTarget?.closest("[data-worldbuilding-catalogue-resize-handle]");
+    if (catalogueResizeHandle instanceof HTMLElement) {
+      beginWorldbuildingCatalogueResize(catalogueResizeHandle, event);
+      return;
+    }
+
+    const catalogueDragHandle = clickTarget?.closest("[data-worldbuilding-catalogue-drag-handle]");
+    if (
+      catalogueDragHandle instanceof HTMLElement &&
+      !clickTarget?.closest("button, input, textarea, select, a, [data-action]")
+    ) {
+      beginWorldbuildingCatalogueDrag(catalogueDragHandle, event);
+      return;
+    }
+
+    const worldSpineResizeHandle = clickTarget?.closest("[data-world-spine-resize-handle]");
+    if (worldSpineResizeHandle instanceof HTMLElement) {
+      if (state.sidePanelsHidden === true) {
+        return;
+      }
+      beginWorldSpineLayoutResize(worldSpineResizeHandle.dataset.worldSpineResizeHandle, event);
+      return;
+    }
+
     const resizeHandle = clickTarget?.closest("[data-resize-handle]");
     if (!(resizeHandle instanceof HTMLElement)) {
       return;
@@ -1289,6 +2091,10 @@ function wireEvents() {
 
     const handleId = resizeHandle.dataset.resizeHandle;
     if (handleId !== "binder" && handleId !== "console") {
+      return;
+    }
+
+    if (state.sidePanelsHidden === true) {
       return;
     }
 
@@ -1300,14 +2106,30 @@ function wireEvents() {
   });
 
   document.addEventListener("pointermove", handleLayoutResizePointerMove);
+  document.addEventListener("pointermove", handleWorldSpineLayoutResizePointerMove);
+  document.addEventListener("pointermove", handleSpellcheckHoverPointerMove);
+  document.addEventListener("pointermove", handleWorldbuildingCatalogueDragPointerMove);
+  document.addEventListener("pointermove", (event) => worldSpineController.handlePointerMove(event));
   document.addEventListener("pointerup", endLayoutResize);
+  document.addEventListener("pointerup", endWorldSpineLayoutResize);
+  document.addEventListener("pointerup", endWorldbuildingCatalogueDrag);
+  document.addEventListener("pointerup", (event) => worldSpineController.handlePointerEnd(event));
+  document.addEventListener("pointerup", handleNarrationRecordingWaveformSelectionPointerEnd);
   document.addEventListener("pointercancel", endLayoutResize);
+  document.addEventListener("pointercancel", endWorldSpineLayoutResize);
+  document.addEventListener("pointercancel", endWorldbuildingCatalogueDrag);
+  document.addEventListener("pointercancel", (event) => worldSpineController.handlePointerEnd(event));
+  document.addEventListener("pointercancel", cancelNarrationRecordingWaveformSelectionGesture);
   document.addEventListener("pointercancel", cancelPendingFormatDragSelection);
+  document.addEventListener("pointercancel", cancelDraftProofSelectionGesture);
   document.addEventListener("pointerup", (event) => {
     const pendingFormatDragSession = consumePendingFormatDragSelection(event);
-    refreshSceneEditorSelectionStateFromActiveTextarea();
+    const draftProofGesture = consumeDraftProofSelectionGesture(event);
+    const activeTextarea = refreshSceneEditorSelectionStateFromActiveTextarea();
     window.setTimeout(() => {
-      applyPendingFormatDragSelection(pendingFormatDragSession, refreshSceneEditorSelectionStateFromActiveTextarea());
+      const refreshedTextarea = refreshSceneEditorSelectionStateFromActiveTextarea() ?? activeTextarea;
+      applyPendingFormatDragSelection(pendingFormatDragSession, refreshedTextarea);
+      applyDraftProofSelectionGesture(draftProofGesture, refreshedTextarea);
       writingTargetPointerDownStartedInsideWindow = false;
       revisionWindowPointerDownStartedInsideWindow = false;
     }, 0);
@@ -1320,13 +2142,14 @@ function wireEvents() {
   document.addEventListener("pointermove", handleManuscriptFindPointerMove);
   document.addEventListener("pointerup", handleManuscriptFindPointerEnd);
   document.addEventListener("pointercancel", handleManuscriptFindPointerEnd);
+  document.addEventListener("input", handleWorldSpineAssignmentFilterInput);
+  document.addEventListener("submit", handleWorldSpineParallelTimelineFormSubmit);
   document.addEventListener("wheel", handleManuscriptFindWheel, { passive: false });
+  document.addEventListener("wheel", handleSidePanelTabsWheel, { passive: false });
+  document.addEventListener("wheel", (event) => worldSpineController.handleWheel(event), { passive: false });
+  document.addEventListener("scroll", (event) => worldSpineController.handleScroll(event), true);
   document.addEventListener("selectionchange", () => {
     const activeElement = refreshSceneEditorSelectionStateFromActiveTextarea();
-    recordDraftProofCoverageFromTextarea(activeElement, {
-      source: "selectionchange",
-      persist: true,
-    });
 
     if (state.activePane !== "narration" || state.narrationTakeSession?.status === "recording") {
       return;
@@ -1342,16 +2165,93 @@ function wireEvents() {
   document.addEventListener("dragover", handleBinderSceneDragOver);
   document.addEventListener("drop", handleBinderSceneDrop);
   document.addEventListener("dragend", handleBinderSceneDragEnd);
-  document.addEventListener("scroll", handleDraftProofCoverageScroll, true);
-  window.addEventListener("resize", syncLayoutWidths);
+  document.addEventListener("dragstart", handleWorldbuildingStudioDragStart);
+  document.addEventListener("dragover", handleWorldSpineTimelineDragOver);
+  document.addEventListener("drop", handleWorldSpineTimelineDrop);
+  document.addEventListener("dragend", handleWorldbuildingStudioDragEnd);
+  document.addEventListener("dragstart", handleMetadataFolderDragStart);
+  document.addEventListener("dragover", handleMetadataFolderDragOver);
+  document.addEventListener("drop", handleMetadataFolderDrop);
+  document.addEventListener("dragleave", handleMetadataFolderDragLeave);
+  document.addEventListener("dragend", handleMetadataFolderDragEnd);
+  window.addEventListener("resize", () => {
+    syncLayoutWidths({ reason: "window-resize" });
+    syncWorldSpinePanelLayout({ reason: "window-resize" });
+    syncGrammarCheckPanelBoundsToViewport();
+    syncWorldbuildingEntryPopoverPosition();
+    syncWorldbuildingCataloguePositionToViewport();
+  });
+  window.addEventListener("pagehide", () => {
+    persistSpotifyMusicPlaybackSnapshot({ reason: "pagehide" });
+  });
 
   document.addEventListener("click", (event) => {
     const clickTarget = event.target instanceof Element ? event.target : null;
+    if (worldbuildingCatalogueSuppressNextClick) {
+      worldbuildingCatalogueSuppressNextClick = false;
+      event.preventDefault();
+      return;
+    }
+    if (worldSpineAssignmentSuppressNextClick) {
+      worldSpineAssignmentSuppressNextClick = false;
+      event.preventDefault();
+      return;
+    }
+
+    if (worldSpineController.handleClick(event) === true) {
+      return;
+    }
     if (state.fileMenuOpen && !clickTarget?.closest("[data-file-menu]")) {
       hideFileMenu();
     }
-    if (state.binderContextMenu && !clickTarget?.closest("[data-binder-menu]")) {
+    if (state.projectSettingsMenuOpen && !clickTarget?.closest("[data-project-settings-menu]")) {
+      hideProjectSettingsMenu();
+    }
+    if (state.developerOptionsMenuOpen && !clickTarget?.closest("[data-developer-options-menu]")) {
+      hideDeveloperOptionsMenu();
+    }
+    if (state.binderContextMenu && !isTaskContextMenuOwnedTarget(clickTarget)) {
       hideBinderContextMenu();
+    }
+    if (state.worldSpineContextMenu && !clickTarget?.closest("[data-world-spine-context-menu]")) {
+      hideWorldSpineContextMenu();
+    }
+    if (
+      state.sidePanelCustomizationOpen &&
+      clickTarget &&
+      !clickTarget.closest("[data-side-panel-customization]")
+    ) {
+      closeSidePanelCustomization();
+    }
+    if (
+      state.topPanelCustomizationOpen &&
+      clickTarget &&
+      !clickTarget.closest("[data-top-panel-customization]")
+    ) {
+      closeTopPanelCustomization();
+    }
+    if (
+      state.worldbuildingCatalogueCategoryId &&
+      clickTarget &&
+      !clickTarget.closest("[data-worldbuilding-catalogue]") &&
+      !clickTarget.closest("[data-worldbuilding-category-id]")
+    ) {
+      closeWorldbuildingCatalogue();
+    }
+    if (
+      state.customMetadataFormOpen &&
+      clickTarget &&
+      !clickTarget.closest("[data-custom-metadata-form]") &&
+      !clickTarget.closest('[data-action="open-custom-metadata-form"]')
+    ) {
+      closeCustomMetadataForm();
+    }
+    if (
+      state.spotifyMusicPanelOpen &&
+      clickTarget &&
+      !clickTarget.closest("[data-spotify-music-chrome]")
+    ) {
+      closeSpotifyMusicPanel();
     }
     if (
       state.writingTargetWindowOpen &&
@@ -1372,6 +2272,12 @@ function wireEvents() {
       closeRevisionWindow();
     }
     if (
+      state.draftProofSettingsWindowOpen &&
+      shouldCloseDraftProofSettingsWindowForClick(clickTarget)
+    ) {
+      closeDraftProofSettingsWindow();
+    }
+    if (
       state.highlightColorPaletteOpen &&
       clickTarget &&
       !clickTarget.closest("[data-highlight-color-palette]") &&
@@ -1384,8 +2290,22 @@ function wireEvents() {
       return;
     }
 
+    const topPanelRestoreTarget = clickTarget?.closest("[data-top-panel-restore-target]");
+    if (topPanelRestoreTarget instanceof HTMLElement) {
+      openTopPanelCustomization(topPanelRestoreTarget.dataset.topPanelRestoreTarget, {
+        x: event.clientX,
+        y: event.clientY,
+      });
+      hideTaskSurfaces();
+      return;
+    }
+
     const target = clickTarget?.closest("[data-action]");
     if (!target) {
+      if (isTaskContextMenuOwnedTarget(clickTarget)) {
+        return;
+      }
+
       if (selectPassageNoteFromEditorClick(clickTarget)) {
         hideTaskContextMenu();
         return;
@@ -1418,27 +2338,45 @@ function wireEvents() {
         "save-project",
         "save-project-file-as",
         "load-project-file",
+        "import-scrivener-project",
         "create-project",
         "load-project-source",
         "open-developer-logs",
         "toggle-writing-target-window",
         "toggle-revision-window",
+        "toggle-side-panels-hidden",
+        "set-appearance-mode",
+        "open-keyboard-shortcut-settings",
         "select-scene",
+        "select-next-scene",
       ]);
       if (trackedUserActions.has(action)) {
         uiEventDispatcherLog.info("user-action", `ui.action.${action}`, "User triggered UI action.", {
           action,
           sceneId: target.dataset.sceneId ?? "",
-          projectId: state.activeProjectId ?? "",
+          projectId: target.dataset.projectId ?? state.activeProjectId ?? "",
         });
       }
     }
 
     if (
+      !isTaskContextMenuOwnedTarget(target) &&
       action !== "add-selection-task" &&
       action !== "add-passage-note" &&
+      action !== "add-world-spine-event" &&
+      action !== "world-spine-insert-event-here" &&
+      action !== "world-spine-add-parallel-timeline" &&
+      action !== "world-spine-add-dual-timeline" &&
+      action !== "world-spine-edit-location-row" &&
+      action !== "save-world-spine-parallel-timeline" &&
+      action !== "save-world-spine-location-row" &&
+      action !== "close-world-spine-context-menu" &&
       action !== "apply-spellcheck-suggestion" &&
-      action !== "dismiss-spellcheck-menu"
+      action !== "add-grammar-check-dictionary" &&
+      action !== "add-grammar-check-exceptions" &&
+      action !== "dismiss-spellcheck-menu" &&
+      action !== "lookup-dictionary-word" &&
+      action !== "close-dictionary-window"
     ) {
       hideTaskContextMenu();
     }
@@ -1448,9 +2386,90 @@ function wireEvents() {
       return;
     }
 
+    if (action === "toggle-project-settings-menu") {
+      toggleProjectSettingsMenu();
+      return;
+    }
+
+    if (action === "toggle-developer-options-menu") {
+      toggleDeveloperOptionsMenu();
+      return;
+    }
+
+    if (action === "open-proof-read-settings") {
+      hideProjectSettingsMenu();
+      openDraftProofSettingsWindow();
+      return;
+    }
+
+    if (action === "open-local-ai-panel") {
+      hideProjectSettingsMenu();
+      void openLocalAiPanel();
+      return;
+    }
+
+    if (action === "open-keyboard-shortcut-settings") {
+      hideProjectSettingsMenu();
+      openKeyboardShortcutSettingsWindow();
+      return;
+    }
+
+    if (action === "toggle-spotify-music-panel") {
+      toggleSpotifyMusicPanel();
+      return;
+    }
+
+    if (action === "close-spotify-music-panel") {
+      closeSpotifyMusicPanel();
+      return;
+    }
+
+    if (action === "set-appearance-mode") {
+      setAppearanceModePreference(target.dataset.appearanceMode);
+      return;
+    }
+
+    if (action === "close-proof-read-settings-window") {
+      closeDraftProofSettingsWindow();
+      return;
+    }
+
+    if (action === "close-local-ai-panel") {
+      closeLocalAiPanel();
+      return;
+    }
+
+    if (action === "close-keyboard-shortcut-settings-window") {
+      closeKeyboardShortcutSettingsWindow();
+      return;
+    }
+
+    if (action === "start-keyboard-shortcut-capture") {
+      startKeyboardShortcutCapture(target.dataset.keyboardShortcutBehaviorId);
+      return;
+    }
+
+    if (action === "clear-keyboard-shortcut-binding") {
+      clearKeyboardShortcutBinding(target.dataset.keyboardShortcutBehaviorId);
+      return;
+    }
+
+    if (action === "reset-keyboard-shortcut-binding") {
+      resetKeyboardShortcutPreference(target.dataset.keyboardShortcutBehaviorId);
+      return;
+    }
+
+    if (action === "reset-all-keyboard-shortcuts") {
+      resetAllKeyboardShortcutPreferences();
+      return;
+    }
+
     if (action === "load-project") {
+      if (target.dataset.projectId) {
+        state.projectLibrarySelectionId = target.dataset.projectId;
+      }
       hideFileMenu();
-      loadSelectedProject();
+      loadSelectedProject(target.dataset.projectId);
       return;
     }
 
@@ -1469,6 +2488,12 @@ function wireEvents() {
     if (action === "load-project-file") {
       hideFileMenu();
       void loadProjectLibraryFromFile();
+      return;
+    }
+
+    if (action === "import-scrivener-project") {
+      hideFileMenu();
+      void portScrivenerProject();
       return;
     }
 
@@ -1493,12 +2518,17 @@ function wireEvents() {
     if (action === "toggle-writing-target-window") {
       hideFileMenu();
       closeRevisionWindow();
+      closeLocalAiPanel();
+      closeKeyboardShortcutSettingsWindow();
+      closeSpotifyMusicPanel();
       toggleWritingTargetWindow();
       return;
     }
 
     if (action === "toggle-revision-window") {
       hideFileMenu();
+      closeLocalAiPanel();
+      closeSpotifyMusicPanel();
       toggleRevisionWindow();
       return;
     }
@@ -1548,8 +2578,28 @@ function wireEvents() {
       return;
     }
 
+    if (action === "toggle-decoration-eraser") {
+      toggleDecorationEraser();
+      return;
+    }
+
     if (action === "toggle-draft-proof-run") {
       toggleDraftProofRun();
+      return;
+    }
+
+    if (action === "start-draft-proof-run") {
+      startDraftProofRun();
+      return;
+    }
+
+    if (action === "toggle-draft-proof-markers") {
+      toggleDraftProofMarkerVisibility();
+      return;
+    }
+
+    if (action === "toggle-ManuScriptInfographicLane") {
+      toggleManuScriptInfographicLaneVisibility();
       return;
     }
 
@@ -1558,7 +2608,142 @@ function wireEvents() {
       return;
     }
 
+    if (action === "reset-draft-proof-backdrop-color") {
+      updateDraftProofBackdropColor(DRAFT_PROOF_BACKDROP_COLOR_DEFAULT);
+      return;
+    }
+
+    if (action === "set-draft-proof-backdrop-preset") {
+      setDraftProofBackdropPreset(target.dataset.draftProofPresetIndex);
+      return;
+    }
+
+    if (action === "set-draft-proof-backdrop-recent") {
+      setDraftProofRecentBackdropColor(target.dataset.draftProofRecentIndex);
+      return;
+    }
+
+    if (action === "request-clear-draft-proof-data") {
+      requestClearDraftProofData();
+      return;
+    }
+
+    if (action === "clear-draft-proof-data") {
+      clearAllDraftProofData();
+      return;
+    }
+
+    if (action === "delete-selected-draft-proof-runs") {
+      deleteSelectedDraftProofRuns(target);
+      return;
+    }
+
+    if (action === "cancel-clear-draft-proof-data") {
+      cancelClearDraftProofData();
+      return;
+    }
+
+    if (action === "refresh-local-ai-models") {
+      void refreshLocalAiModelLibrary();
+      return;
+    }
+
+    if (action === "save-local-ai-model-settings") {
+      void saveLocalAiModelSettings();
+      return;
+    }
+
+    if (action === "ensure-local-ai-model-folders") {
+      void ensureLocalAiModelFolders();
+      return;
+    }
+
+    if (action === "spotify-save-client-id") {
+      saveSpotifyClientId();
+      return;
+    }
+
+    if (action === "spotify-connect") {
+      void connectSpotifyMusicAccount();
+      return;
+    }
+
+    if (action === "spotify-disconnect") {
+      disconnectSpotifyMusicAccount();
+      return;
+    }
+
+    if (action === "spotify-toggle-account-menu") {
+      toggleSpotifyMusicAccountMenu();
+      return;
+    }
+
+    if (action === "spotify-set-source") {
+      setSpotifyMusicSource(target.dataset.spotifySource);
+      return;
+    }
+
+    if (action === "spotify-load-playlists") {
+      void loadSpotifyMusicPlaylists();
+      return;
+    }
+
+    if (action === "spotify-load-playlist-tracks") {
+      void loadSpotifyMusicPlaylistTracks(target.dataset.spotifyPlaylistId);
+      return;
+    }
+
+    if (action === "spotify-play-playlist") {
+      void playSpotifyMusicPlaylist(target.dataset.spotifyPlaylistUri || target.dataset.spotifyPlaylistId);
+      return;
+    }
+
+    if (action === "spotify-search") {
+      void searchSpotifyMusicTracks();
+      return;
+    }
+
+    if (action === "spotify-analyze-tempo") {
+      void analyzeSpotifyVisibleTrackTempo();
+      return;
+    }
+
+    if (action === "spotify-start-player") {
+      void startSpotifyInAppPlayer();
+      return;
+    }
+
+    if (action === "spotify-toggle-playback") {
+      void toggleSpotifyMusicPlayback();
+      return;
+    }
+
+    if (action === "spotify-previous-track") {
+      void skipSpotifyMusicPlayback("previous");
+      return;
+    }
+
+    if (action === "spotify-next-track") {
+      void skipSpotifyMusicPlayback("next");
+      return;
+    }
+
+    if (action === "spotify-play-track") {
+      void playSpotifyMusicTrack(target.dataset.spotifyTrackUri);
+      return;
+    }
+
+    if (action === "spotify-queue-track") {
+      void queueSpotifyMusicTrack(target.dataset.spotifyTrackUri);
+      return;
+    }
+
     if (action === "set-highlight-color") {
+      if (target.dataset.highlightCustomRgbIndex !== undefined) {
+        setHighlightRecentCustomColorPreference(target.dataset.highlightCustomRgbIndex);
+        return;
+      }
+
       setHighlightColorPreference(target.dataset.highlightColorId);
       return;
     }
@@ -1663,14 +2848,228 @@ function wireEvents() {
       return;
     }
 
+    if (action === "toggle-side-panels-hidden") {
+      hideFileMenu();
+      toggleSidePanelsHidden();
+      return;
+    }
+
     if (action === "toggle-console-chapter-collapse") {
       hideFileMenu();
       toggleConsoleChapterCollapse(target.dataset.consolePanel, target.dataset.chapterKey);
       return;
     }
 
+    if (action === "close-side-panel-customization") {
+      closeSidePanelCustomization();
+      return;
+    }
+
+    if (action === "reset-side-panel-customization") {
+      resetSidePanelCustomization();
+      return;
+    }
+
+    if (action === "close-top-panel-customization") {
+      closeTopPanelCustomization();
+      return;
+    }
+
+    if (action === "reset-top-panel-customization") {
+      resetTopPanelCustomization(target.dataset.topPanelCustomizationGroup);
+      return;
+    }
+
+    if (action === "hide-all-top-panel-customization") {
+      hideTopPanelCustomizationGroup(target.dataset.topPanelCustomizationGroup);
+      return;
+    }
+
+    if (action === "hide-top-panel-card") {
+      hideTopPanelCard(target.dataset.topPanelCardId);
+      return;
+    }
+
+    if (action === "open-custom-metadata-form") {
+      openCustomMetadataForm();
+      return;
+    }
+
+    if (action === "close-custom-metadata-form") {
+      closeCustomMetadataForm();
+      return;
+    }
+
+    if (action === "save-custom-metadata-definition") {
+      saveCustomMetadataDefinitionFromForm();
+      return;
+    }
+
     if (action === "cancel-binder-context-menu") {
       hideBinderContextMenu();
+      return;
+    }
+
+    if (action === "open-scene-world-spine-metadata") {
+      openSceneWorldSpineMetadataMenu(target.dataset.sceneId);
+      return;
+    }
+
+    if (action === "close-scene-world-spine-metadata") {
+      closeSceneWorldSpineMetadataMenu();
+      return;
+    }
+
+    if (action === "save-scene-world-spine-metadata") {
+      saveSceneWorldSpineMetadataFromMenu(target.dataset.sceneId);
+      return;
+    }
+
+    if (action === "open-worldbuilding-catalogue") {
+      openWorldbuildingCatalogue(target.dataset.worldbuildingCategoryId, resolveWorldbuildingCatalogueOpenPosition(target, event));
+      return;
+    }
+
+    if (action === "open-worldbuilding-custom-catalogue-item") {
+      selectWorldbuildingStudioCategory("custom");
+      return;
+    }
+
+    if (action === "add-worldbuilding-catalogue-item") {
+      selectWorldbuildingStudioCategory(target.dataset.worldbuildingCategoryId ?? state.worldbuildingCatalogueCategoryId);
+      return;
+    }
+
+    if (action === "close-worldbuilding-catalogue") {
+      closeWorldbuildingCatalogue();
+      return;
+    }
+
+    if (action === "select-worldbuilding-catalogue-item") {
+      selectWorldbuildingCatalogueItem(
+        target.dataset.worldbuildingCatalogueItemId,
+        target.dataset.worldbuildingCatalogueItemKind,
+      );
+      return;
+    }
+
+    if (action === "edit-worldbuilding-catalogue-item") {
+      editWorldbuildingCatalogueItem(target);
+      return;
+    }
+
+    if (action === "delete-worldbuilding-catalogue-item") {
+      deleteWorldbuildingCatalogueItem(target);
+      return;
+    }
+
+    if (action === "save-worldbuilding-category-properties") {
+      saveWorldbuildingCategoryProperties(target);
+      return;
+    }
+
+    if (action === "cancel-worldbuilding-item") {
+      closeWorldbuildingStudioForm();
+      return;
+    }
+
+    if (action === "add-worldbuilding-custom-field") {
+      addWorldbuildingCustomField(target);
+      return;
+    }
+
+    if (action === "save-worldbuilding-item") {
+      saveWorldbuildingStudioItem();
+      return;
+    }
+
+    if (action === "world-spine-insert-event-here") {
+      openWorldSpineEventInsertionFromContextMenu(target);
+      return;
+    }
+
+    if (action === "world-spine-edit-location-row") {
+      openWorldSpineLocationRowFormFromLabel(target, event);
+      return;
+    }
+
+    if (action === "world-spine-add-parallel-timeline" || action === "world-spine-add-dual-timeline") {
+      openParallelTimelineFormFromWorldSpineContextMenu();
+      return;
+    }
+
+    if (action === "save-world-spine-parallel-timeline") {
+      saveParallelTimelineFromWorldSpineForm();
+      return;
+    }
+
+    if (action === "save-world-spine-location-row") {
+      saveWorldSpineLocationRowFromForm();
+      return;
+    }
+
+    if (action === "attach-world-spine-location-row-image") {
+      attachWorldSpineLocationRowImage(target);
+      return;
+    }
+
+    if (action === "close-world-spine-context-menu") {
+      hideWorldSpineContextMenu();
+      return;
+    }
+
+    if (action === "toggle-world-spine-location-filter-pane") {
+      toggleWorldSpineLocationFilterPane();
+      return;
+    }
+
+    if (action === "clear-world-spine-location-filter") {
+      clearWorldSpineLocationFilter();
+      return;
+    }
+
+    if (action === "world-spine-select-catalogue-assignment-category") {
+      selectWorldSpineCatalogueAssignmentCategoryFromContextMenu(target);
+      return;
+    }
+
+    if (action === "world-spine-assign-catalogue-item") {
+      assignWorldSpineCatalogueItemFromContextMenu(target);
+      return;
+    }
+
+    if (action === "set-world-spine-right-pane-mode") {
+      setWorldSpineRightPaneMode(target.dataset.worldSpineRightPaneMode);
+      return;
+    }
+
+    if (action === "toggle-world-spine-related-card") {
+      toggleWorldSpineRelatedCard(target);
+      return;
+    }
+
+    if (action === "open-world-spine-sublocation-composer") {
+      openWorldSpineSublocationComposer(target);
+      return;
+    }
+
+    if (action === "cancel-world-spine-sublocation-composer") {
+      closeWorldSpineSublocationComposer();
+      return;
+    }
+
+    if (action === "save-world-spine-sublocation") {
+      saveWorldSpineSublocationFromComposer();
+      return;
+    }
+
+    if (action === "attach-worldbuilding-catalogue-image") {
+      attachWorldbuildingCatalogueImage(target);
+      return;
+    }
+
+    if (action === "open-ManuScriptInfographicLane-marker") {
+      openManuScriptInfographicLaneMarker(target);
       return;
     }
 
@@ -1691,6 +3090,16 @@ function wireEvents() {
 
     if (action === "dismiss-spellcheck-menu") {
       hideSpellcheckContextMenu();
+      return;
+    }
+
+    if (action === "lookup-dictionary-word") {
+      openDictionaryLookupFromMenuTarget(target);
+      return;
+    }
+
+    if (action === "close-dictionary-window") {
+      closeDictionaryWindow();
       return;
     }
 
@@ -1742,6 +3151,11 @@ function wireEvents() {
       return;
     }
 
+    if (action === "grammar-check-add-word") {
+      addGrammarCheckPanelWordToProjectDictionary(target);
+      return;
+    }
+
     if (action === "close-grammar-check-panel") {
       closeGrammarCheckPanel();
       return;
@@ -1757,8 +3171,18 @@ function wireEvents() {
       return;
     }
 
+    if (action === "add-world-spine-event") {
+      openWorldSpineEventComposerFromContextMenu(event);
+      return;
+    }
+
     if (action === "save-selection-task") {
       saveTaskFromComposer();
+      return;
+    }
+
+    if (action === "save-world-spine-event") {
+      saveWorldSpineEventFromComposer();
       return;
     }
 
@@ -1815,6 +3239,24 @@ function wireEvents() {
       return;
     }
 
+    if (action === "toggle-narration-follow-scroll") {
+      hideFileMenu();
+      toggleNarrationFollowScrollPreference();
+      return;
+    }
+
+    if (action === "toggle-narration-manuscript-decorations") {
+      hideFileMenu();
+      toggleNarrationManuscriptDecorationPreference();
+      return;
+    }
+
+    if (action === "toggle-narration-decorations") {
+      hideFileMenu();
+      toggleNarrationDecorationPreference();
+      return;
+    }
+
     if (action === "select-pane") {
       hideFileMenu();
       selectWorkspacePane(target.dataset.paneId);
@@ -1842,6 +3284,54 @@ function wireEvents() {
     if (action === "delete-passage-note") {
       hideFileMenu();
       requestDeletePassageNoteFromPanel(target.dataset.noteId);
+      return;
+    }
+
+    if (action === "add-metadata-folder" || action === "add-metadata-subgroup") {
+      hideFileMenu();
+      addMetadataSubgroupForPanel(target.dataset.metadataGroupId);
+      return;
+    }
+
+    if (action === "add-metadata-child-folder") {
+      hideFileMenu();
+      addMetadataSubgroupForPanel(target.dataset.metadataGroupId, target.dataset.metadataParentSubgroupId);
+      return;
+    }
+
+    if (action === "delete-metadata-folder" || action === "delete-metadata-subgroup") {
+      hideFileMenu();
+      removeMetadataSubgroup(target.dataset.metadataSubgroupId);
+      return;
+    }
+
+    if (action === "add-metadata-folder-note" || action === "add-metadata-subgroup-note") {
+      hideFileMenu();
+      addMetadataSubgroupNote(target.dataset.metadataSubgroupId);
+      return;
+    }
+
+    if (action === "delete-metadata-folder-note" || action === "delete-metadata-subgroup-note") {
+      hideFileMenu();
+      removeMetadataSubgroupNote(target.dataset.metadataSubgroupId, target.dataset.metadataNoteId);
+      return;
+    }
+
+    if (action === "point-metadata-subgroup-note-to-selection") {
+      hideFileMenu();
+      pointMetadataSubgroupNoteToCurrentSelection(target.dataset.metadataSubgroupId, target.dataset.metadataNoteId);
+      return;
+    }
+
+    if (action === "clear-metadata-subgroup-note-anchor") {
+      hideFileMenu();
+      clearMetadataSubgroupNoteAnchor(target.dataset.metadataSubgroupId, target.dataset.metadataNoteId);
+      return;
+    }
+
+    if (action === "open-metadata-subgroup-note-anchor") {
+      hideFileMenu();
+      openMetadataSubgroupNoteAnchor(target.dataset.metadataSubgroupId, target.dataset.metadataNoteId);
       return;
     }
 
@@ -1929,6 +3419,12 @@ function wireEvents() {
       return;
     }
 
+    if (action === "select-next-scene") {
+      hideFileMenu();
+      selectNextSceneFromSceneEditor(target.dataset.sceneId, target.dataset.nextSceneId);
+      return;
+    }
+
     if (action === "select-line") {
       hideFileMenu();
       state.selectedIssueId = null;
@@ -1943,9 +3439,60 @@ function wireEvents() {
       return;
     }
 
+    if (action === "re-record-voice-recording") {
+      hideFileMenu();
+      openVoiceRecordingReviewForRecordingId(target.dataset.recordingId);
+      return;
+    }
+
+    if (action === "re-record-voice-recording-selection") {
+      hideFileMenu();
+      void rerecordVoiceRecordingSelection(target.dataset.recordingId);
+      return;
+    }
+
+    if (action === "stop-voice-recording-preview") {
+      hideFileMenu();
+      stopVoiceRecordingPreview(target.dataset.recordingId);
+      return;
+    }
+
+    if (action === "seek-narration-recording-waveform") {
+      hideFileMenu();
+      if (narrationRecordingWaveformSuppressClick) {
+        narrationRecordingWaveformSuppressClick = false;
+        return;
+      }
+      void seekNarrationRecordingReviewWaveform(target, event);
+      return;
+    }
+
+    if (action === "seek-narration-recording-word") {
+      hideFileMenu();
+      if (event.shiftKey) {
+        selectNarrationRecordingReviewWordRange(target);
+        return;
+      }
+      logNarrationRecordingReviewWordClick(target, event);
+      void seekNarrationRecordingReviewWord(target.dataset.recordingId, target.dataset.reviewWordTime);
+      return;
+    }
+
     if (action === "go-to-voice-recording-verse") {
       hideFileMenu();
       goToVoiceRecordingVerse(target.dataset.recordingId);
+      return;
+    }
+
+    if (action === "close-narration-recording-review") {
+      hideFileMenu();
+      closeNarrationRecordingReview(target.dataset.recordingId);
+      return;
+    }
+
+    if (action === "delete-voice-recording") {
+      hideFileMenu();
+      void deleteVoiceRecording(target.dataset.recordingId);
       return;
     }
 
@@ -1977,20 +3524,56 @@ function wireEvents() {
 
     if (action === "select-node") {
       hideFileMenu();
-      const node = getNode(target.dataset.nodeId);
-      if (!node) {
-        return;
-      }
+      selectWorldSpineNode(target.dataset.nodeId);
+      return;
+    }
 
-      state.selectedNodeId = node.id;
-      if (node.primaryBlockId) {
-        state.selectedIssueId = null;
-        syncSelectionFromBlock(node.primaryBlockId);
-      }
-      if (node.linkedEntityIds[0]) {
-        state.selectedEntityId = node.linkedEntityIds[0];
-      }
-      render();
+    if (action === "world-spine-open-passage") {
+      hideFileMenu();
+      openWorldSpinePassage(target.dataset.nodeId, target.dataset.blockId);
+      return;
+    }
+
+    if (action === "world-spine-edit-scene-metadata") {
+      hideFileMenu();
+      openWorldSpineSceneMetadataEditor(target.dataset.sceneId, event);
+      return;
+    }
+
+    if (action === "world-spine-save-implication") {
+      hideFileMenu();
+      saveWorldSpineImplicationComposer();
+      return;
+    }
+
+    if (action === "world-spine-edit-implication") {
+      hideFileMenu();
+      openWorldSpineImplicationEditorFromContextMenu(target);
+      return;
+    }
+
+    if (action === "world-spine-delete-implication") {
+      hideFileMenu();
+      hideWorldSpineContextMenu({ renderAfter: false });
+      deleteWorldSpineImplication(target.dataset.worldSpineEdgeId);
+      return;
+    }
+
+    if (action === "world-spine-cancel-implication") {
+      hideFileMenu();
+      cancelWorldSpineImplicationComposer();
+      return;
+    }
+
+    if (action === "world-spine-undo") {
+      hideFileMenu();
+      undoWorldSpineInteraction();
+      return;
+    }
+
+    if (action === "world-spine-redo") {
+      hideFileMenu();
+      redoWorldSpineInteraction();
       return;
     }
 
@@ -2007,7 +3590,7 @@ function wireEvents() {
         syncSelectionFromBlock(entity.introductionBlockId);
       }
       if (entity.introductionNodeId) {
-        state.selectedNodeId = entity.introductionNodeId;
+        setWorldSpineSelectedNodeId(entity.introductionNodeId);
       }
       render();
       return;
@@ -2029,7 +3612,10 @@ function wireEvents() {
     }
 
     if (action === "load-project") {
-      loadSelectedProject();
+      if (target.dataset.projectId) {
+        state.projectLibrarySelectionId = target.dataset.projectId;
+      }
+      loadSelectedProject(target.dataset.projectId);
       return;
     }
 
@@ -2045,6 +3631,11 @@ function wireEvents() {
 
     if (action === "load-project-file") {
       void loadProjectLibraryFromFile();
+      return;
+    }
+
+    if (action === "import-scrivener-project") {
+      void portScrivenerProject();
       return;
     }
 
@@ -2065,21 +3656,45 @@ function wireEvents() {
     }
   });
 
+  document.addEventListener("keydown", handleKeyboardShortcutCapture, true);
+  document.addEventListener("keydown", handleWorldSpineAssignmentFilterKeyDown, true);
+  document.addEventListener("keydown", (event) => worldSpineController.handleKeyDown(event), true);
   document.addEventListener("keydown", handleGlobalKeyboardShortcut, true);
 
   document.addEventListener("contextmenu", (event) => {
     const clickTarget = event.target instanceof Element ? event.target : null;
-    const grammarCheckTarget = clickTarget?.closest("[data-grammar-check-word]");
-    if (grammarCheckTarget instanceof HTMLElement && grammarCheckTarget.closest("[data-grammar-check-panel]")) {
-      const grammarCheckContext = getSpellcheckContextFromGrammarCheckTarget(grammarCheckTarget, event);
-      if (grammarCheckContext) {
-        event.preventDefault();
-        state.taskComposer = null;
-        state.binderContextMenu = null;
-        state.taskContextMenu = null;
-        state.spellcheckContextMenu = grammarCheckContext;
-        renderTaskContextMenu();
+    const topPanelCustomizationContext = getTopPanelCustomizationContextFromContextMenu(clickTarget);
+    if (topPanelCustomizationContext) {
+      event.preventDefault();
+      openTopPanelCustomization(topPanelCustomizationContext.groupId, { x: event.clientX, y: event.clientY });
+      return;
+    }
+
+    if (shouldOpenSidePanelCustomizationFromContextMenu(clickTarget)) {
+      event.preventDefault();
+      openSidePanelCustomization({ x: event.clientX, y: event.clientY });
+      return;
+    }
+
+    const worldbuildingCategoryContext = getWorldbuildingCategoryContextFromTarget(clickTarget);
+    if (worldbuildingCategoryContext) {
+      event.preventDefault();
+      selectWorldbuildingStudioCategory(worldbuildingCategoryContext.categoryId);
+      return;
+    }
+
+    if (worldSpineController.handleContextMenu(event) === true) {
+      return;
+    }
+
+    const grammarCheckPanelTarget = clickTarget?.closest("[data-grammar-check-panel]");
+    if (grammarCheckPanelTarget instanceof HTMLElement) {
+      const grammarCheckSuggestionTarget = clickTarget?.closest("[data-grammar-check-suggestion]");
+      if (grammarCheckSuggestionTarget instanceof HTMLElement) {
+        positionGrammarCheckSuggestionMenu(grammarCheckSuggestionTarget);
       }
+      event.preventDefault();
+      hideSpellcheckContextMenu();
       return;
     }
 
@@ -2139,16 +3754,13 @@ function wireEvents() {
     const spellcheckContext = getSpellcheckContextFromEvent(editorContext, event);
     if (spellcheckContext) {
       event.preventDefault();
-      state.taskComposer = null;
-      state.binderContextMenu = null;
-      state.taskContextMenu = null;
-      state.spellcheckContextMenu = spellcheckContext;
-      renderTaskContextMenu();
+      openSpellcheckContextMenu(spellcheckContext, "contextmenu");
       return;
     }
 
     const { textarea, contextRange, inlinePosition } = editorContext;
     const sceneId = textarea.dataset.sceneId;
+    const dictionaryContext = getDictionaryContextFromEvent(editorContext, event);
 
     if (!sceneId || !contextRange) {
       hideTaskSurfaces();
@@ -2169,6 +3781,7 @@ function wireEvents() {
         : textarea.selectionStart,
       hasExplicitSelection: contextRange.hasExplicitSelection,
       inlinePosition,
+      dictionaryContext,
       x: event.clientX,
       y: event.clientY,
     };
@@ -2176,7 +3789,9 @@ function wireEvents() {
   });
 
   document.addEventListener("pointerover", (event) => {
-    const highlightButtonTarget = getHighlightColorButtonTarget(event.target instanceof Element ? event.target : null);
+    worldSpineController.handlePointerOver(event);
+    const eventTarget = event.target instanceof Element ? event.target : null;
+    const highlightButtonTarget = getHighlightColorButtonTarget(eventTarget);
     if (highlightButtonTarget instanceof HTMLElement) {
       const related = event.relatedTarget instanceof Element ? event.relatedTarget : null;
       if (!related || !highlightButtonTarget.contains(related)) {
@@ -2184,9 +3799,20 @@ function wireEvents() {
       }
     }
 
-    const target = event.target instanceof Element
-      ? event.target.closest("[data-task-preview-trigger]")
-      : null;
+    const grammarCheckSuggestionTarget = eventTarget?.closest("[data-grammar-check-suggestion]");
+    if (grammarCheckSuggestionTarget instanceof HTMLElement) {
+      positionGrammarCheckSuggestionMenu(grammarCheckSuggestionTarget);
+    }
+
+    const narrationRecordingTarget = eventTarget?.closest("[data-narration-recording-preview-id]");
+    if (narrationRecordingTarget instanceof HTMLElement) {
+      const related = event.relatedTarget instanceof Element ? event.relatedTarget : null;
+      if (!related || !narrationRecordingTarget.contains(related)) {
+        previewNarrationRecordingAnchor(narrationRecordingTarget.dataset.narrationRecordingPreviewId);
+      }
+    }
+
+    const target = eventTarget?.closest("[data-task-preview-trigger]") ?? null;
     if (!target) {
       return;
     }
@@ -2195,7 +3821,9 @@ function wireEvents() {
   });
 
   document.addEventListener("pointerout", (event) => {
-    const highlightButtonTarget = getHighlightColorButtonTarget(event.target instanceof Element ? event.target : null);
+    worldSpineController.handlePointerOut(event);
+    const eventTarget = event.target instanceof Element ? event.target : null;
+    const highlightButtonTarget = getHighlightColorButtonTarget(eventTarget);
     if (highlightButtonTarget instanceof HTMLElement) {
       const related = event.relatedTarget instanceof Element ? event.relatedTarget : null;
       if (!related || !highlightButtonTarget.contains(related)) {
@@ -2203,9 +3831,27 @@ function wireEvents() {
       }
     }
 
-    const target = event.target instanceof Element
-      ? event.target.closest("[data-task-preview-id]")
-      : null;
+    const grammarCheckSuggestionTarget = eventTarget?.closest("[data-grammar-check-suggestion]");
+    if (grammarCheckSuggestionTarget instanceof HTMLElement) {
+      const related = event.relatedTarget instanceof Element ? event.relatedTarget : null;
+      if (
+        !related ||
+        (!grammarCheckSuggestionTarget.contains(related) &&
+          !related.closest("[data-grammar-check-floating-suggestion-menu]"))
+      ) {
+        deactivateGrammarCheckSuggestionMenu(grammarCheckSuggestionTarget);
+      }
+    }
+
+    const narrationRecordingTarget = eventTarget?.closest("[data-narration-recording-preview-id]");
+    if (narrationRecordingTarget instanceof HTMLElement) {
+      const related = event.relatedTarget instanceof Element ? event.relatedTarget : null;
+      if (!related || !narrationRecordingTarget.contains(related)) {
+        clearNarrationRecordingAnchorPreview(narrationRecordingTarget.dataset.narrationRecordingPreviewId);
+      }
+    }
+
+    const target = eventTarget?.closest("[data-task-preview-id]") ?? null;
     if (!target) {
       return;
     }
@@ -2221,12 +3867,9 @@ function wireEvents() {
   });
 
   document.addEventListener("focusin", (event) => {
+    worldSpineController.handleFocusIn(event);
     if (event.target instanceof HTMLTextAreaElement && event.target.classList.contains("editor-document-input")) {
       markSceneEditorAsCurrent(event.target);
-      recordDraftProofCoverageFromTextarea(event.target, {
-        source: "focusin",
-        persist: true,
-      });
     }
 
     const target = event.target instanceof Element
@@ -2235,9 +3878,24 @@ function wireEvents() {
     if (target) {
       previewTaskAnchor(target.dataset.taskPreviewId);
     }
+
+    const grammarCheckSuggestionTarget = event.target instanceof Element
+      ? event.target.closest("[data-grammar-check-suggestion]")
+      : null;
+    if (grammarCheckSuggestionTarget instanceof HTMLElement) {
+      positionGrammarCheckSuggestionMenu(grammarCheckSuggestionTarget);
+    }
+
+    const narrationRecordingTarget = event.target instanceof Element
+      ? event.target.closest("[data-narration-recording-preview-id]")
+      : null;
+    if (narrationRecordingTarget instanceof HTMLElement) {
+      previewNarrationRecordingAnchor(narrationRecordingTarget.dataset.narrationRecordingPreviewId);
+    }
   });
 
   document.addEventListener("focusout", (event) => {
+    worldSpineController.handleFocusOut(event);
     const chapterTitleTarget = event.target instanceof Element
       ? event.target.closest("[data-edit-field='chapter-title']")
       : null;
@@ -2268,6 +3926,30 @@ function wireEvents() {
         finishSceneTitleEdit(sceneId);
       }
       return;
+    }
+
+    const grammarCheckSuggestionTarget = event.target instanceof Element
+      ? event.target.closest("[data-grammar-check-suggestion]")
+      : null;
+    if (grammarCheckSuggestionTarget instanceof HTMLElement) {
+      const related = event.relatedTarget instanceof Element ? event.relatedTarget : null;
+      if (
+        !related ||
+        (!grammarCheckSuggestionTarget.contains(related) &&
+          !related.closest("[data-grammar-check-floating-suggestion-menu]"))
+      ) {
+        deactivateGrammarCheckSuggestionMenu(grammarCheckSuggestionTarget);
+      }
+    }
+
+    const narrationRecordingTarget = event.target instanceof Element
+      ? event.target.closest("[data-narration-recording-preview-id]")
+      : null;
+    if (narrationRecordingTarget instanceof HTMLElement) {
+      const related = event.relatedTarget instanceof Element ? event.relatedTarget : null;
+      if (!related || !narrationRecordingTarget.contains(related)) {
+        clearNarrationRecordingAnchorPreview(narrationRecordingTarget.dataset.narrationRecordingPreviewId);
+      }
     }
 
     const target = event.target instanceof Element
@@ -2364,10 +4046,30 @@ function wireEvents() {
     });
   });
 
+  // Intent: retain selected manuscript span offsets before native typing collapses the textarea selection.
+  document.addEventListener("beforeinput", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLTextAreaElement) || target.dataset.editField !== "editor-text") {
+      return;
+    }
+
+    manuscriptInputController.handleEditorTextBeforeInput({
+      sceneId: target.dataset.sceneId,
+      editorSurface: target,
+    });
+  });
+
   document.addEventListener("input", (event) => {
     const target = event.target;
     if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement)) {
       return;
+    }
+
+    const worldbuildingForm = target.dataset.worldbuildingField !== undefined && typeof target.closest === "function"
+      ? target.closest("[data-worldbuilding-studio-form]")
+      : null;
+    if (worldbuildingForm instanceof HTMLFormElement) {
+      refreshWorldbuildingScopedPickerDatalists(worldbuildingForm, getWorldSpinePickerOptionSetsForState());
     }
 
     const findField = String(target.dataset.findField ?? "");
@@ -2383,6 +4085,38 @@ function wireEvents() {
 
     if (target instanceof HTMLInputElement && target.dataset.highlightRgbChannel) {
       setHighlightCustomRgbPreference(target.dataset.highlightRgbChannel, target.value);
+      return;
+    }
+
+    if (target instanceof HTMLInputElement && target.dataset.localAiModelSetting === "modelRoot") {
+      state.localAiModelRootDraft = target.value;
+      state.localAiModelLibraryStatus = "";
+      return;
+    }
+
+    if (target instanceof HTMLInputElement && target.dataset.spotifyClientId !== undefined) {
+      updateSpotifyClientIdDraft(target.value);
+      return;
+    }
+
+    if (target instanceof HTMLInputElement && target.dataset.spotifySearchQuery !== undefined) {
+      updateSpotifySearchQuery(target.value);
+      return;
+    }
+
+    if (target instanceof HTMLInputElement && target.dataset.spotifyPlaybackSeek !== undefined) {
+      updateSpotifyPlaybackSeekDraft(target.value);
+      return;
+    }
+
+    if (target instanceof HTMLInputElement && target.dataset.narrationReviewSeek !== undefined) {
+      logNarrationRecordingReviewSliderSeek(target);
+      seekNarrationRecordingReview(target.dataset.recordingId, target.value);
+      return;
+    }
+
+    if (target instanceof HTMLInputElement && target.dataset.narrationReviewWaveformZoom !== undefined) {
+      setNarrationRecordingWaveformZoom(target.dataset.recordingId, target.value);
       return;
     }
 
@@ -2470,6 +4204,21 @@ function wireEvents() {
       return;
     }
 
+    if (editField === "metadata-subgroup-title") {
+      updateMetadataSubgroupTitle(target.dataset.metadataSubgroupId, target.value);
+      return;
+    }
+
+    if (editField === "metadata-subgroup-note-title") {
+      updateMetadataSubgroupNoteTitle(target.dataset.metadataSubgroupId, target.dataset.metadataNoteId, target.value);
+      return;
+    }
+
+    if (editField === "metadata-subgroup-note-body") {
+      updateMetadataSubgroupNoteBody(target.dataset.metadataSubgroupId, target.dataset.metadataNoteId, target.value);
+      return;
+    }
+
     if (editField === "chapter-title") {
       updateChapterTitle(target.dataset.chapterId, target.value);
       return;
@@ -2504,6 +4253,12 @@ function wireEvents() {
     }
 
     if (!["editor-text", "inline-passage-note", "inline-passage-verse", "task-description", "passage-note-body"].includes(String(target.dataset.editField ?? ""))) {
+      return;
+    }
+
+    // Intent: keep read-only manuscript mirrors copyable while refusing paste-driven writes.
+    if (target.readOnly === true || target.disabled === true) {
+      event.preventDefault();
       return;
     }
 
@@ -2551,6 +4306,11 @@ function wireEvents() {
       return;
     }
 
+    if (target instanceof HTMLSelectElement && target.dataset.draftProofSettingsRun !== undefined) {
+      selectDraftProofSettingsRun(target.value);
+      return;
+    }
+
     if (target instanceof HTMLSelectElement && target.dataset.revisionCategoryFilter !== undefined) {
       updateRevisionPanelFilter("categoryFilter", target.value);
       return;
@@ -2558,6 +4318,21 @@ function wireEvents() {
 
     if (target instanceof HTMLSelectElement && target.dataset.revisionOriginFilter !== undefined) {
       updateRevisionPanelFilter("originFilter", target.value);
+      return;
+    }
+
+    if (target instanceof HTMLInputElement && target.dataset.sidePanelFeatureToggle) {
+      updateSidePanelFeatureVisibility(target.dataset.sidePanelFeatureToggle, target.checked);
+      return;
+    }
+
+    if (target instanceof HTMLInputElement && target.dataset.topPanelCardToggle) {
+      updateTopPanelCardVisibility(target.dataset.topPanelCardToggle, target.checked);
+      return;
+    }
+
+    if (target instanceof HTMLInputElement && target.dataset.worldSpineLocationFilterKey !== undefined) {
+      updateWorldSpineLocationFilter(target.dataset.worldSpineLocationFilterKey, target.checked);
       return;
     }
 
@@ -2569,8 +4344,33 @@ function wireEvents() {
       writeStoredJson(EDITOR_LOCAL_AI_PREFS_KEY, state.localAiPrefs);
       persistCurrentProjectRecord();
       renderHeader();
+      renderLocalAiPanel();
       renderManuscriptPanel();
       syncSceneDocumentLayout();
+      return;
+    }
+
+    if (target instanceof HTMLInputElement && target.dataset.draftProofSetting === "backdropColor") {
+      updateDraftProofBackdropColor(target.value, { rememberRecent: true });
+      return;
+    }
+
+    if (target instanceof HTMLInputElement && target.dataset.draftProofSetting === "highlightIntensity") {
+      updateDraftProofHighlightIntensity(target.dataset.draftProofHighlightTheme, target.value);
+      return;
+    }
+
+    if (target instanceof HTMLInputElement && target.dataset.draftProofPresetIndex !== undefined) {
+      updateDraftProofBackdropPreset(target.dataset.draftProofPresetIndex, target.value, {
+        rememberRecent: true,
+      });
+      return;
+    }
+
+    if (target instanceof HTMLInputElement && target.dataset.highlightRgbChannel) {
+      setHighlightCustomRgbPreference(target.dataset.highlightRgbChannel, target.value, {
+        rememberRecent: true,
+      });
       return;
     }
 
@@ -2603,6 +4403,11 @@ function wireEvents() {
       return;
     }
 
+    if (target instanceof HTMLInputElement && target.dataset.spotifyPlaybackSeek !== undefined) {
+      void seekSpotifyMusicPlayback(target.value);
+      return;
+    }
+
     if (!(target instanceof HTMLSelectElement)) {
       return;
     }
@@ -2627,28 +4432,12 @@ function wireEvents() {
   window.addEventListener("resize", () => {
     hideTaskSurfaces();
     syncSceneDocumentLayout();
+    syncWorldbuildingEntryPopoverPosition();
+    syncWorldbuildingCataloguePositionToViewport();
   });
 
   document.addEventListener("keydown", (event) => {
     if (event.defaultPrevented) {
-      return;
-    }
-
-    if ((event.ctrlKey || event.metaKey) && event.altKey && event.key.toLowerCase() === "t") {
-      event.preventDefault();
-      closeRevisionWindow();
-      toggleWritingTargetWindow();
-      return;
-    }
-
-    if (
-      event.target instanceof HTMLTextAreaElement &&
-      ["inline-passage-note", "inline-passage-verse"].includes(event.target.dataset.editField) &&
-      (event.ctrlKey || event.metaKey) &&
-      event.key === "Enter"
-    ) {
-      event.preventDefault();
-      commitInlinePassageNote();
       return;
     }
 
@@ -2671,12 +4460,6 @@ function wireEvents() {
       return;
     }
 
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
-      event.preventDefault();
-      openManuscriptFind();
-      return;
-    }
-
     if (state.manuscriptFind.open && event.key === "Enter" && event.target instanceof HTMLInputElement) {
       if (event.target.dataset.findField === "manuscript-find-query") {
         event.preventDefault();
@@ -2692,6 +4475,22 @@ function wireEvents() {
     }
 
     if (event.key === "Escape") {
+      if (state.keyboardShortcutSettingsWindowOpen) {
+        closeKeyboardShortcutSettingsWindow();
+        return;
+      }
+      if (state.draftProofSettingsWindowOpen) {
+        closeDraftProofSettingsWindow();
+        return;
+      }
+      if (state.localAiPanelOpen) {
+        closeLocalAiPanel();
+        return;
+      }
+      if (state.spotifyMusicPanelOpen) {
+        closeSpotifyMusicPanel();
+        return;
+      }
       if (state.revisionWindowOpen) {
         closeRevisionWindow();
         return;
@@ -2700,11 +4499,24 @@ function wireEvents() {
         closeWritingTargetWindow();
         return;
       }
+      if (state.worldSpineContextMenu) {
+        hideWorldSpineContextMenu();
+        return;
+      }
+      if (state.worldbuildingCatalogueCategoryId) {
+        closeWorldbuildingCatalogue();
+        return;
+      }
+      if (state.worldbuildingStudioCategoryId) {
+        closeWorldbuildingStudioForm();
+        return;
+      }
       if (state.highlightColorPaletteOpen) {
         closeHighlightColorPalette({ renderAfter: true });
         return;
       }
       hideFileMenu();
+      hideProjectSettingsMenu();
       hideTaskSurfaces();
     }
   });
@@ -2714,7 +4526,7 @@ function wireEvents() {
 function isManuscriptSelectionCommandTarget(target) {
   return Boolean(
     target instanceof Element &&
-    target.closest('[data-action="toggle-inline-format"]')
+    target.closest('[data-action="toggle-inline-format"], [data-action="toggle-decoration-eraser"]')
   );
 }
 
@@ -2731,12 +4543,13 @@ function beginPendingFormatDragSelection(textarea, event) {
 
   const sceneId = String(textarea.dataset.sceneId ?? "").trim();
   const pendingFormatIds = getPendingManuscriptInlineFormatIds();
+  const clearDecorations = isPendingManuscriptDecorationEraser();
   if (!sceneId) {
     manuscriptPendingFormatDragSelectionSession = null;
     return;
   }
 
-  if (!pendingFormatIds.length) {
+  if (!pendingFormatIds.length && !clearDecorations) {
     manuscriptPendingFormatDragSelectionSession = null;
     return;
   }
@@ -2747,6 +4560,7 @@ function beginPendingFormatDragSelection(textarea, event) {
     pointerId: Number.isInteger(event.pointerId) ? event.pointerId : null,
     sceneId,
     formatIds: pendingFormatIds,
+    clearDecorations,
     startOffset: Math.min(selectionStart, selectionEnd),
     endOffset: Math.max(selectionStart, selectionEnd),
   };
@@ -2784,11 +4598,102 @@ function cancelPendingFormatDragSelection(event = null) {
   manuscriptPendingFormatDragSelectionSession = null;
 }
 
+// Intent: make proof-read marking an explicit manuscript selection gesture rather than passive viewport tracking.
+function beginDraftProofSelectionGesture(textarea, event) {
+  const activeRun = getActiveDraftProofRunRecord();
+  if (
+    state.activePane !== "manuscript" ||
+    !activeRun ||
+    !(textarea instanceof HTMLTextAreaElement) ||
+    !textarea.classList.contains("editor-document-input") ||
+    event?.button !== 0
+  ) {
+    draftProofSelectionGesture = null;
+    return;
+  }
+
+  const sceneId = String(textarea.dataset.sceneId ?? "").trim();
+  if (!sceneId) {
+    draftProofSelectionGesture = null;
+    return;
+  }
+
+  draftProofSelectionGesture = {
+    pointerId: Number.isInteger(event.pointerId) ? event.pointerId : null,
+    sceneId,
+    mode: event.shiftKey === true ? "remove" : "add",
+  };
+  draftProofingLog.debug(
+    "user-action",
+    "draft-proof.selection-gesture.begin",
+    "Started a proof-read selection gesture.",
+    createDraftProofTextareaLogContext(textarea, {
+      runId: activeRun.id,
+      pointerId: draftProofSelectionGesture.pointerId,
+      mode: draftProofSelectionGesture.mode,
+      marksVisible: state.draftProofMarksVisible === true,
+    }),
+  );
+}
+
+function consumeDraftProofSelectionGesture(event) {
+  const gesture = draftProofSelectionGesture;
+  if (!gesture) {
+    return null;
+  }
+
+  const pointerId = Number.isInteger(event?.pointerId) ? event.pointerId : null;
+  if (gesture.pointerId !== null && pointerId !== null && gesture.pointerId !== pointerId) {
+    draftProofingLog.debug("user-action", "draft-proof.selection-gesture.pointer-mismatch", "Ignored proof-read selection gesture for a different pointer.", {
+      projectId: state.activeProjectId ?? state.workspace?.project?.id ?? "",
+      sceneId: gesture.sceneId,
+      expectedPointerId: gesture.pointerId,
+      actualPointerId: pointerId,
+      mode: gesture.mode,
+    });
+    return null;
+  }
+
+  draftProofSelectionGesture = null;
+  draftProofingLog.debug("user-action", "draft-proof.selection-gesture.end", "Finished a proof-read selection gesture.", {
+    projectId: state.activeProjectId ?? state.workspace?.project?.id ?? "",
+    sceneId: gesture.sceneId,
+    pointerId,
+    mode: gesture.mode,
+  });
+  return gesture;
+}
+
+function cancelDraftProofSelectionGesture(event = null) {
+  const gesture = draftProofSelectionGesture;
+  if (!gesture) {
+    return;
+  }
+
+  const pointerId = Number.isInteger(event?.pointerId) ? event.pointerId : null;
+  if (
+    gesture.pointerId !== null &&
+    pointerId !== null &&
+    gesture.pointerId !== pointerId
+  ) {
+    return;
+  }
+
+  draftProofSelectionGesture = null;
+  draftProofingLog.debug("user-action", "draft-proof.selection-gesture.cancel", "Cancelled a proof-read selection gesture.", {
+    projectId: state.activeProjectId ?? state.workspace?.project?.id ?? "",
+    sceneId: gesture.sceneId ?? "",
+    pointerId,
+    mode: gesture.mode ?? "",
+  });
+}
+
 function applyPendingFormatDragSelection(session, activeTextarea = null) {
   const formatIds = Array.isArray(session?.formatIds)
     ? session.formatIds.filter((formatId) => isPendingManuscriptInlineFormat(formatId))
     : [];
-  if (!session || !formatIds.length) {
+  const clearDecorations = session?.clearDecorations === true && isPendingManuscriptDecorationEraser();
+  if (!session || (!formatIds.length && !clearDecorations)) {
     return false;
   }
 
@@ -2820,6 +4725,19 @@ function applyPendingFormatDragSelection(session, activeTextarea = null) {
     collapsed: false,
     selectionSource: "drag",
   });
+
+  if (clearDecorations) {
+    const result = clearSelectedManuscriptDecorations({
+      textarea,
+      selectionOverride: createSelection(),
+    });
+    return result?.changed === true;
+  }
+
+  const shouldGroupDecorationHistory = formatIds.length > 1;
+  const beforeGroupHistorySnapshot = shouldGroupDecorationHistory
+    ? captureManuscriptMarkHistorySnapshotForScene(sceneId, text.length)
+    : null;
   let applied = false;
   for (const formatId of formatIds) {
     const selection = createSelection();
@@ -2828,6 +4746,7 @@ function applyPendingFormatDragSelection(session, activeTextarea = null) {
         textarea,
         selectionOverride: selection,
         applyOnly: true,
+        suppressHistory: shouldGroupDecorationHistory,
       });
       applied = result?.changed === true || applied;
       continue;
@@ -2840,7 +4759,79 @@ function applyPendingFormatDragSelection(session, activeTextarea = null) {
     });
     applied = result?.applied === true || applied;
   }
+  if (shouldGroupDecorationHistory && applied) {
+    state.manuscriptMarkHistory = pushManuscriptMarkHistoryEntry(
+      state.manuscriptMarkHistory,
+      createManuscriptMarkHistoryEntry({
+        sceneId,
+        formatId: createGroupedManuscriptMarkHistoryFormatId(formatIds),
+        beforeSnapshot: beforeGroupHistorySnapshot,
+        afterSnapshot: captureManuscriptMarkHistorySnapshotForScene(sceneId, text.length),
+        selection: {
+          startOffset,
+          endOffset,
+        },
+        createdAt: new Date().toISOString(),
+      }),
+    );
+  }
   return applied;
+}
+
+// Intent: make one paint-style decoration gesture appear as one editor undo step.
+function createGroupedManuscriptMarkHistoryFormatId(formatIds = []) {
+  const normalizedFormatIds = (Array.isArray(formatIds) ? formatIds : [])
+    .map((formatId) => String(formatId ?? "").trim())
+    .filter((formatId) => Boolean(INLINE_FORMATS[formatId]));
+  return `group:${normalizedFormatIds.join("+") || "decorations"}`;
+}
+
+function applyDraftProofSelectionGesture(gesture, activeTextarea = null) {
+  const activeRun = getActiveDraftProofRunRecord();
+  if (!gesture || !activeRun) {
+    if (gesture) {
+      draftProofingLog.debug("user-action", "draft-proof.selection-gesture.skip", "Skipped proof-read selection gesture because no active run is available.", {
+        projectId: state.activeProjectId ?? state.workspace?.project?.id ?? "",
+        sceneId: gesture.sceneId ?? "",
+        mode: gesture.mode ?? "",
+      });
+    }
+    return false;
+  }
+
+  const textarea = resolveDraftProofSelectionGestureTextarea(gesture, activeTextarea);
+  if (!(textarea instanceof HTMLTextAreaElement)) {
+    draftProofingLog.warn("user-action", "draft-proof.selection-gesture.textarea-missing", "Could not resolve the textarea for a proof-read selection gesture.", {
+      projectId: state.activeProjectId ?? state.workspace?.project?.id ?? "",
+      runId: activeRun.id,
+      sceneId: gesture.sceneId ?? "",
+      mode: gesture.mode ?? "",
+    });
+    return false;
+  }
+
+  return recordDraftProofCoverageFromTextarea(textarea, {
+    mode: gesture.mode === "remove" ? "remove" : "add",
+    source: gesture.mode === "remove" ? "selection-erase" : "selection-mark",
+    persist: true,
+  });
+}
+
+function resolveDraftProofSelectionGestureTextarea(gesture, activeTextarea = null) {
+  const sceneId = String(gesture?.sceneId ?? "").trim();
+  if (!sceneId) {
+    return null;
+  }
+
+  if (
+    activeTextarea instanceof HTMLTextAreaElement &&
+    activeTextarea.classList.contains("editor-document-input") &&
+    String(activeTextarea.dataset.sceneId ?? "").trim() === sceneId
+  ) {
+    return activeTextarea;
+  }
+
+  return document.querySelector(`.editor-document-input[data-scene-id="${CSS.escape(sceneId)}"]`);
 }
 
 function resolvePendingFormatDragSelectionTextarea(session, activeTextarea = null) {
@@ -2863,6 +4854,10 @@ function resolvePendingFormatDragSelectionTextarea(session, activeTextarea = nul
 function getPendingManuscriptInlineFormatIds() {
   const inlineFormattingState = normalizeManuscriptInlineFormattingState(state.manuscriptInlineFormatting);
   return Object.keys(INLINE_FORMATS).filter((formatId) => inlineFormattingState.pendingFormats[formatId] === true);
+}
+
+function isPendingManuscriptDecorationEraser() {
+  return isDecorationEraserPending(state.manuscriptInlineFormatting);
 }
 
 function isPendingManuscriptInlineFormat(formatId) {
@@ -2891,12 +4886,15 @@ function refreshSceneEditorSelectionStateFromActiveTextarea() {
 
 // Intent: orchestrate slot rendering without letting individual panels own whole-app refresh order.
 function render() {
+  syncAppearanceMode({ reason: "render" });
+
   if (!state.shellReady) {
     renderShell();
     state.shellReady = true;
   }
 
-  syncLayoutWidths();
+  syncSidePanelsHiddenClass();
+  syncLayoutWidths({ reason: "render" });
   renderHeader();
   renderBinderPanel();
   renderManuscriptPanel();
@@ -2909,6 +4907,10 @@ function render() {
   renderDeleteConfirmationDialog();
   renderWritingTargetWindow();
   renderRevisionWindow();
+  renderDraftProofSettingsWindow();
+  renderLocalAiPanel();
+  renderKeyboardShortcutSettingsWindow();
+  renderDictionaryLookupWindow();
   renderPaneVisibility();
   if (state.activePane === "manuscript" || state.activePane === "narration") {
     syncSceneDocumentLayout();
@@ -2957,6 +4959,10 @@ function renderShell() {
     <div id="grammar-check-slot"></div>
     <div id="writing-target-slot"></div>
     <div id="revision-window-slot"></div>
+    <div id="draft-proof-settings-slot"></div>
+    <div id="local-ai-panel-slot"></div>
+    <div id="keyboard-shortcut-settings-slot"></div>
+    <div id="dictionary-window-slot"></div>
   `;
 }
 
@@ -2975,10 +4981,21 @@ function renderTaskContextMenu() {
     return;
   }
 
+  const worldSpineMenu = state.worldSpineContextMenu;
+  if (worldSpineMenu) {
+    slot.innerHTML = renderWorldSpineWhitespaceContextMenuHTML(worldSpineMenu, {
+      width: window.innerWidth,
+      height: window.innerHeight,
+    });
+    return;
+  }
+
   const binderMenu = state.binderContextMenu;
   if (binderMenu) {
-    const left = Math.min(Math.max(8, binderMenu.x), Math.max(8, window.innerWidth - 280));
-    const top = Math.min(Math.max(8, binderMenu.y), Math.max(8, window.innerHeight - 220));
+    const menuWidth = binderMenu.kind === "scene" && binderMenu.worldSpineMetadataOpen === true ? 320 : 280;
+    const menuHeight = binderMenu.kind === "scene" && binderMenu.worldSpineMetadataOpen === true ? 520 : 220;
+    const left = Math.min(Math.max(8, binderMenu.x), Math.max(8, window.innerWidth - menuWidth));
+    const top = Math.min(Math.max(8, binderMenu.y), Math.max(8, window.innerHeight - menuHeight));
     const title =
       binderMenu.kind === "chapter"
         ? `${String(binderMenu.chapterTitle ?? "").trim() || "Untitled chapter"}`
@@ -2987,14 +5004,26 @@ function renderTaskContextMenu() {
       binderMenu.kind === "chapter"
         ? "Delete this chapter and every scene inside it."
         : "Delete this scene and its attached tasks and notes.";
+    const scene = binderMenu.kind === "scene" ? getScene(binderMenu.sceneId) : null;
+    const worldSpineMetadataHTML = binderMenu.kind === "scene"
+      ? renderSceneWorldSpineMetadataMenuHTML(buildSceneWorldSpineMetadataMenuModel({
+        scene,
+        draft: state.sceneDrafts?.[binderMenu.sceneId] ?? null,
+        expanded: binderMenu.worldSpineMetadataOpen === true,
+        characterOptions: getWorldSpineCharacterPickerOptions(),
+        customMetadataDefinitions: getCustomMetadataDefinitions(),
+        pickerOptionSets: getWorldSpinePickerOptionSetsForState(),
+      }))
+      : "";
     slot.innerHTML = `
       <div
-        class="task-context-menu binder-context-menu"
+        class="task-context-menu binder-context-menu ${binderMenu.worldSpineMetadataOpen ? "has-world-spine-form" : ""}"
         style="left:${left}px; top:${top}px;"
         role="menu"
         data-binder-menu
       >
         <p>${escapeHtml(title)}</p>
+        ${worldSpineMetadataHTML}
         <button class="task-menu-item" data-action="${binderMenu.kind === "chapter" ? "delete-chapter" : "delete-scene"}" data-${binderMenu.kind}-id="${escapeHtml(binderMenu.kind === "chapter" ? binderMenu.chapterId : binderMenu.sceneId)}" role="menuitem">
           <span class="task-menu-icon" aria-hidden="true">−</span>
           <span>${escapeHtml(binderMenu.kind === "chapter" ? "Delete chapter" : "Delete scene")}</span>
@@ -3038,11 +5067,13 @@ function renderTaskContextMenu() {
   slot.innerHTML = renderAnchoredRecordContextMenuHTML(menu, {
     width: window.innerWidth,
     height: window.innerHeight,
+  }, {
+    customMetadataDefinitions: getCustomMetadataDefinitions(),
   });
 }
 
 function getPassageNoteVerb(noteType) {
-  return noteType === "research" ? "research" : "inspiration";
+  return getPassageNoteDisplayLabel(noteType).toLowerCase();
 }
 
 function renderHeader() {
@@ -3063,13 +5094,38 @@ function renderHeader() {
 // Intent: keep header menu interactions centralized until the chrome owns its own controller.
 function toggleFileMenu() {
   state.fileMenuOpen = !state.fileMenuOpen;
+  if (state.fileMenuOpen) {
+    state.projectSettingsMenuOpen = false;
+    state.developerOptionsMenuOpen = false;
+  }
   renderHeader();
 }
 
-function focusProjectLibrarySelect() {
-  const select = document.querySelector("[data-project-library-select]");
-  if (select instanceof HTMLSelectElement) {
-    select.focus({ preventScroll: true });
+// Intent: keep project-level settings discoverable without putting destructive actions on the proof-read panel.
+function toggleProjectSettingsMenu() {
+  state.projectSettingsMenuOpen = !state.projectSettingsMenuOpen;
+  if (state.projectSettingsMenuOpen) {
+    state.fileMenuOpen = false;
+    state.developerOptionsMenuOpen = false;
+  }
+  renderHeader();
+}
+
+// Intent: keep release-gated diagnostic setup controls grouped under the environment badge.
+function toggleDeveloperOptionsMenu() {
+  state.developerOptionsMenuOpen = !state.developerOptionsMenuOpen;
+  if (state.developerOptionsMenuOpen) {
+    state.fileMenuOpen = false;
+    state.projectSettingsMenuOpen = false;
+  }
+  renderHeader();
+}
+
+function focusProjectFilePathInput() {
+  const input = document.querySelector('[data-edit-field="project-file-path"]');
+  if (input instanceof HTMLInputElement) {
+    input.focus({ preventScroll: true });
+    input.select();
   }
 }
 
@@ -3079,6 +5135,24 @@ function hideFileMenu() {
   }
 
   state.fileMenuOpen = false;
+  renderHeader();
+}
+
+function hideProjectSettingsMenu() {
+  if (!state.projectSettingsMenuOpen) {
+    return;
+  }
+
+  state.projectSettingsMenuOpen = false;
+  renderHeader();
+}
+
+function hideDeveloperOptionsMenu() {
+  if (!state.developerOptionsMenuOpen) {
+    return;
+  }
+
+  state.developerOptionsMenuOpen = false;
   renderHeader();
 }
 
@@ -3146,9 +5220,94 @@ function runNativeTextEditCommand(command) {
   }
 }
 
+// Intent: let app-owned author marks participate in editor-scoped Ctrl+Z/Ctrl+Y before native text history runs.
+function handleManuscriptMarkHistoryKeyboardShortcut(event, action) {
+  const textarea = resolveManuscriptShortcutTextarea(event.target);
+  if (!(textarea instanceof HTMLTextAreaElement)) {
+    return false;
+  }
+
+  const previousHistory = state.manuscriptMarkHistory;
+  const result = action === "redo"
+    ? popManuscriptMarkHistoryRedo(previousHistory)
+    : popManuscriptMarkHistoryUndo(previousHistory);
+  if (!result.handled) {
+    return false;
+  }
+
+  state.manuscriptMarkHistory = result.history;
+  const applied = applyManuscriptMarkHistorySnapshot({
+    entry: result.entry,
+    snapshot: result.snapshot,
+    direction: result.direction,
+    textarea,
+  });
+  if (!applied) {
+    state.manuscriptMarkHistory = previousHistory;
+    return false;
+  }
+
+  event.preventDefault();
+  hideFileMenu();
+  return true;
+}
+
+// Intent: restore mark and compatibility-range state without changing manuscript text content.
+function applyManuscriptMarkHistorySnapshot({
+  entry = null,
+  snapshot = null,
+  direction = "undo",
+  textarea = null,
+} = {}) {
+  const project = state.workspace?.project;
+  const sceneId = String(entry?.sceneId ?? "").trim();
+  const scene = getScene(sceneId);
+  if (!project || !scene || !snapshot) {
+    return false;
+  }
+
+  const textLength = textarea instanceof HTMLTextAreaElement && String(textarea.dataset.sceneId ?? "") === sceneId
+    ? String(textarea.value ?? "").length
+    : String(scene.editorText ?? "").length;
+  const inlineFormatRanges = normalizeInlineFormatRanges(snapshot.inlineFormatRanges, textLength);
+  project.marks = cloneValue(snapshot.marks);
+  project.sequences = cloneValue(snapshot.sequences);
+  updateSceneDraft(sceneId, (draft) => {
+    draft.inlineFormatRanges = inlineFormatRanges;
+  }, {
+    reason: `manuscript-author-mark-${direction}`,
+    markSessionActivity: false,
+    immediate: true,
+  });
+  project.marks = cloneValue(snapshot.marks);
+  project.sequences = cloneValue(snapshot.sequences);
+  persistCurrentProjectRecord({
+    changedSceneIds: [sceneId],
+    domain: "manuscript",
+    dirtyReason: "user-edit",
+    source: "manuscriptMarkHistory",
+  });
+  const viewport = captureSceneEditorViewport(sceneId);
+  syncSceneDocumentLayout({ skipSpellcheck: true });
+  if (entry?.selection) {
+    restoreSceneEditorViewportSelection(sceneId, viewport, entry.selection);
+  } else {
+    restoreSceneEditorViewport(sceneId, viewport);
+  }
+  updateInlineFormatToolbarState(textarea);
+  editorInteractionLog.info("user-action", `manuscript.mark.${direction}`, `Applied manuscript mark ${direction}.`, {
+    sceneId,
+    format: entry?.formatId ?? "",
+    startOffset: entry?.selection?.startOffset ?? null,
+    endOffset: entry?.selection?.endOffset ?? null,
+  });
+  return true;
+}
+
 // Intent: keep paste insertion on the browser undo stack before falling back to scripted textarea writes.
 function insertPastedTextWithUndoFallback(target, normalizedText) {
-  if (!(target instanceof HTMLTextAreaElement)) {
+  // Intent: refuse scripted paste insertion when a shared editor surface is display-only.
+  if (!(target instanceof HTMLTextAreaElement) || target.readOnly === true || target.disabled === true) {
     return {
       insertedWithNativeUndo: false,
       fallbackUsed: false,
@@ -3197,6 +5356,12 @@ function handleGlobalKeyboardShortcut(event) {
   const key = typeof event.key === "string" ? event.key.toLowerCase() : "";
 
   if (key === "escape") {
+    if (state.keyboardShortcutSettingsWindowOpen) {
+      event.preventDefault();
+      closeKeyboardShortcutSettingsWindow();
+      return;
+    }
+
     if (state.revisionWindowOpen) {
       event.preventDefault();
       closeRevisionWindow();
@@ -3209,27 +5374,84 @@ function handleGlobalKeyboardShortcut(event) {
       return;
     }
 
+    if (state.localAiPanelOpen) {
+      event.preventDefault();
+      closeLocalAiPanel();
+      return;
+    }
+
+    if (state.spotifyMusicPanelOpen) {
+      event.preventDefault();
+      closeSpotifyMusicPanel();
+      return;
+    }
+
+    if (state.dictionaryLookup) {
+      event.preventDefault();
+      closeDictionaryWindow();
+      return;
+    }
+
     if (state.fileMenuOpen) {
       event.preventDefault();
       hideFileMenu();
+      return;
+    }
+
+    if (state.developerOptionsMenuOpen) {
+      event.preventDefault();
+      hideDeveloperOptionsMenu();
     }
 
     return;
   }
 
-  const commandKey = event.ctrlKey || event.metaKey;
-  if (!commandKey) {
+  if (key === " " || key === "spacebar") {
+    if (toggleVoiceRecordingPreviewWithSpacebar(event)) {
+      return;
+    }
+  }
+
+  const behaviorId = resolveKeyboardShortcutBehaviorIdForEvent(
+    event,
+    state.editorPrefs?.keyboardShortcuts,
+  );
+  if (!behaviorId) {
     return;
   }
 
-  if (handleManuscriptInlineFormatKeyboardShortcut(event, key)) {
+  if (behaviorId === "inlineNote.commit") {
+    if (
+      event.target instanceof HTMLTextAreaElement &&
+      ["inline-passage-note", "inline-passage-verse"].includes(event.target.dataset.editField)
+    ) {
+      event.preventDefault();
+      commitInlinePassageNote();
+    }
     return;
   }
 
-  if (!event.altKey && !isTextEditingTarget(event.target) && (key === "z" || key === "y")) {
-    const handled = key === "z"
-      ? (event.shiftKey ? redoBinderSceneMove() : undoBinderSceneMove())
-      : redoBinderSceneMove();
+  if (handleManuscriptInlineFormatKeyboardShortcut(event, behaviorId)) {
+    return;
+  }
+
+  if (behaviorId === "manuscript.dictionaryLookup") {
+    if (resolveManuscriptShortcutTextarea(event.target) instanceof HTMLTextAreaElement) {
+      event.preventDefault();
+      hideFileMenu();
+      openDictionaryLookupFromShortcut(event);
+    }
+    return;
+  }
+
+  if (!isTextEditingTarget(event.target) && (behaviorId === "history.undo" || behaviorId === "history.redo")) {
+    const handled = state.activePane === "world"
+      ? behaviorId === "history.undo"
+        ? undoWorldSpineInteraction()
+        : redoWorldSpineInteraction()
+      : behaviorId === "history.undo"
+        ? undoBinderSceneMove()
+        : redoBinderSceneMove();
     if (handled) {
       event.preventDefault();
       hideFileMenu();
@@ -3237,95 +5459,110 @@ function handleGlobalKeyboardShortcut(event) {
     }
   }
 
-  if (!event.altKey && isTextEditingTarget(event.target)) {
-    if (key === "z") {
+  if (isTextEditingTarget(event.target)) {
+    if (behaviorId === "history.undo") {
+      if (handleManuscriptMarkHistoryKeyboardShortcut(event, "undo")) {
+        return;
+      }
+
       event.preventDefault();
-      runNativeTextEditCommand(event.shiftKey ? "redo" : "undo");
+      runNativeTextEditCommand("undo");
       return;
     }
 
-    if (key === "y") {
+    if (behaviorId === "history.redo") {
+      if (handleManuscriptMarkHistoryKeyboardShortcut(event, "redo")) {
+        return;
+      }
+
       event.preventDefault();
       runNativeTextEditCommand("redo");
       return;
     }
   }
 
-  if (event.altKey && key === "t") {
+  if (behaviorId === "writingTargets.toggle") {
     event.preventDefault();
     hideFileMenu();
     closeRevisionWindow();
+    closeLocalAiPanel();
+    closeKeyboardShortcutSettingsWindow();
+    closeSpotifyMusicPanel();
     toggleWritingTargetWindow();
     return;
   }
 
-  if (event.shiftKey && key === "s") {
+  if (behaviorId === "project.saveAs") {
     event.preventDefault();
     hideFileMenu();
     void saveCurrentProjectFileAs();
     return;
   }
 
-  if (event.shiftKey && key === "o") {
+  if (behaviorId === "project.load") {
     event.preventDefault();
     hideFileMenu();
     void loadProjectLibraryFromFile();
     return;
   }
 
-  if (event.shiftKey && key === "l") {
+  if (behaviorId === "project.developerLogs") {
     event.preventDefault();
     hideFileMenu();
     openDeveloperLogsWindow();
     return;
   }
 
-  if (!event.altKey && !event.shiftKey && key === "s") {
+  if (behaviorId === "project.save") {
     event.preventDefault();
     hideFileMenu();
     void saveCurrentProject();
     return;
   }
 
-  if (!event.altKey && !event.shiftKey && key === "n") {
+  if (behaviorId === "project.new") {
     event.preventDefault();
     hideFileMenu();
     createProject();
     return;
   }
 
-  if (!event.altKey && !event.shiftKey && key === "o") {
+  if (behaviorId === "project.openMenu") {
     event.preventDefault();
     toggleFileMenu();
     if (state.fileMenuOpen) {
       window.requestAnimationFrame(() => {
         if (state.fileMenuOpen) {
-          focusProjectLibrarySelect();
+          focusProjectFilePathInput();
         }
       });
     }
     return;
   }
 
-  if (!event.altKey && !event.shiftKey && /^[1-4]$/.test(key)) {
+  if (behaviorId === "manuscript.find") {
     event.preventDefault();
     hideFileMenu();
+    openManuscriptFind();
+    return;
+  }
+
+  if (behaviorId === "pane.manuscript" || behaviorId === "pane.world" || behaviorId === "pane.narration" || behaviorId === "pane.voice") {
+    event.preventDefault();
+    hideFileMenu();
+    closeKeyboardShortcutSettingsWindow();
     selectWorkspacePane({
-      "1": "manuscript",
-      "2": "world",
-      "3": "narration",
-      "4": "voice",
-    }[key]);
+      "pane.manuscript": "manuscript",
+      "pane.world": "world",
+      "pane.narration": "narration",
+      "pane.voice": "voice",
+    }[behaviorId]);
   }
 }
 
 // Intent: make manuscript decoration shortcuts behave like pressing the matching toolbar control.
-function handleManuscriptInlineFormatKeyboardShortcut(event, key) {
-  if (event.altKey || event.shiftKey) {
-    return false;
-  }
-
-  const formatId = MANUSCRIPT_INLINE_FORMAT_SHORTCUTS[key];
+function handleManuscriptInlineFormatKeyboardShortcut(event, behaviorId) {
+  const formatId = MANUSCRIPT_INLINE_FORMAT_SHORTCUT_BEHAVIORS[behaviorId];
   if (!formatId) {
     return false;
   }
@@ -3360,10 +5597,514 @@ function resolveManuscriptShortcutTextarea(target) {
   return null;
 }
 
+function getTopPanelCustomizationContextFromContextMenu(target) {
+  return getTopPanelCustomizationContextFromContextMenuTarget(target);
+}
+
+function openTopPanelCustomization(groupId = "", position = null) {
+  hideTaskSurfaces();
+  if (state.sidePanelCustomizationOpen) {
+    closeSidePanelCustomization();
+  }
+  state.topPanelCustomizationOpen = true;
+  state.topPanelCustomizationGroupId = String(groupId ?? "").trim();
+  state.topPanelCustomizationPosition = clampTopPanelCustomizationPosition(position);
+  renderHeader();
+}
+
+function closeTopPanelCustomization() {
+  if (!state.topPanelCustomizationOpen) {
+    return;
+  }
+
+  state.topPanelCustomizationOpen = false;
+  state.topPanelCustomizationPosition = null;
+  state.topPanelCustomizationGroupId = "";
+  renderHeader();
+}
+
+function resetTopPanelCustomization(groupId = "") {
+  setTopPanelCustomizationGroupVisibility(groupId, true, {
+    dirtyReason: "top-panel-visibility-reset",
+    source: "resetTopPanelCustomization",
+  });
+}
+
+function hideTopPanelCustomizationGroup(groupId = "") {
+  setTopPanelCustomizationGroupVisibility(groupId, false, {
+    dirtyReason: "top-panel-visibility-hide-all",
+    source: "hideTopPanelCustomizationGroup",
+  });
+}
+
+// Intent: apply top-card bulk visibility through the same settings persistence path as one-card changes.
+function setTopPanelCustomizationGroupVisibility(groupId = "", isVisible = true, options = {}) {
+  const features = getTopPanelCustomizationFeatures({
+    groupId,
+    activePane: state.activePane,
+  });
+  let nextVisibility = createTopPanelVisibilityState(state.topPanelVisibility);
+  for (const feature of features) {
+    nextVisibility = setTopPanelCardVisible(nextVisibility, feature.id, isVisible, state.activePane);
+  }
+  state.topPanelVisibility = nextVisibility;
+  persistTopPanelVisibilityState({
+    dirtyReason: options.dirtyReason ?? "top-panel-visibility-bulk-updated",
+    source: options.source ?? "setTopPanelCustomizationGroupVisibility",
+  });
+  uiEventDispatcherLog.info("user-action", "top-panel.visibility.bulk-updated", "Updated top panel group visibility.", {
+    groupId: String(groupId ?? "").trim(),
+    paneId: state.activePane,
+    visible: isVisible === true,
+    cardIds: features.map((feature) => feature.id),
+  });
+  renderHeader();
+}
+
+function hideTopPanelCard(cardId = "") {
+  updateTopPanelCardVisibility(cardId, false, {
+    dirtyReason: "top-panel-card-hidden",
+    source: "hideTopPanelCard",
+  });
+}
+
+function updateTopPanelCardVisibility(cardId = "", isVisible = true, options = {}) {
+  state.topPanelVisibility = setTopPanelCardVisible(state.topPanelVisibility, cardId, isVisible, state.activePane);
+  persistTopPanelVisibilityState({
+    dirtyReason: options.dirtyReason ?? "top-panel-visibility-updated",
+    source: options.source ?? "updateTopPanelCardVisibility",
+  });
+  uiEventDispatcherLog.info("user-action", "top-panel.visibility.updated", "Updated top panel card visibility.", {
+    cardId: String(cardId ?? "").trim(),
+    paneId: state.activePane,
+    visible: isVisible === true,
+  });
+  renderHeader();
+}
+
+function persistTopPanelVisibilityState(options = {}) {
+  state.topPanelVisibility = createTopPanelVisibilityState(state.topPanelVisibility);
+  writeStoredJsonRaw(EDITOR_TOP_PANEL_VISIBILITY_KEY, state.topPanelVisibility);
+  persistCurrentProjectRecord({
+    domain: "app-settings",
+    dirtyReason: options.dirtyReason ?? "top-panel-visibility-updated",
+    source: options.source ?? "persistTopPanelVisibilityState",
+  });
+}
+
+function clampTopPanelCustomizationPosition(position = null) {
+  const width = 300;
+  const height = 320;
+  const rawX = Number(position?.x);
+  const rawY = Number(position?.y);
+  const maxX = Math.max(8, window.innerWidth - width - 8);
+  const maxY = Math.max(8, window.innerHeight - height - 8);
+  return {
+    x: Math.max(8, Math.min(Number.isFinite(rawX) ? Math.round(rawX) : maxX, maxX)),
+    y: Math.max(8, Math.min(Number.isFinite(rawY) ? Math.round(rawY) : 120, maxY)),
+  };
+}
+
+function shouldOpenSidePanelCustomizationFromContextMenu(target) {
+  if (!(target instanceof Element)) {
+    return false;
+  }
+
+  const consoleDockBody = target.closest(".console-dock-body");
+  if (!(consoleDockBody instanceof HTMLElement)) {
+    return false;
+  }
+
+  if (!(target.closest(".side-panel-body") instanceof HTMLElement)) {
+    return false;
+  }
+
+  if (target.closest("[data-side-panel-customization]")) {
+    return false;
+  }
+
+  // Intent: reserve existing item, button, and form context menus for their current feature behavior.
+  if (target.closest("button, input, textarea, select, a, [role='button'], [data-action], .side-panel-tabs, .console-item, .task-item, .event-list, .entity-card, .node-card")) {
+    return false;
+  }
+
+  return true;
+}
+
+function openSidePanelCustomization(position = null) {
+  hideTaskSurfaces();
+  if (state.topPanelCustomizationOpen) {
+    closeTopPanelCustomization();
+  }
+  state.sidePanelCustomizationOpen = true;
+  state.sidePanelCustomizationPosition = clampSidePanelCustomizationPosition(position);
+  renderConsolePanel();
+}
+
+function closeSidePanelCustomization() {
+  if (!state.sidePanelCustomizationOpen) {
+    return;
+  }
+
+  state.sidePanelCustomizationOpen = false;
+  state.sidePanelCustomizationPosition = null;
+  renderConsolePanel();
+}
+
+function openCustomMetadataForm() {
+  hideTaskSurfaces();
+  closeSidePanelCustomization();
+  state.customMetadataFormOpen = true;
+  state.customMetadataFormError = "";
+  renderConsolePanel();
+  window.requestAnimationFrame(() => {
+    const nameField = document.querySelector("[data-custom-metadata-name]");
+    if (nameField instanceof HTMLInputElement) {
+      nameField.focus();
+      nameField.select();
+    }
+  });
+}
+
+function closeCustomMetadataForm() {
+  if (!state.customMetadataFormOpen) {
+    return;
+  }
+
+  state.customMetadataFormOpen = false;
+  state.customMetadataFormError = "";
+  renderConsolePanel();
+}
+
+async function saveCustomMetadataDefinitionFromForm() {
+  const nameField = document.querySelector("[data-custom-metadata-name]");
+  const colorField = document.querySelector("[data-custom-metadata-color]");
+  const label = nameField instanceof HTMLInputElement ? nameField.value : "";
+  if (!String(label ?? "").trim()) {
+    state.customMetadataFormError = "Name the metadata tag before creating it.";
+    renderConsolePanel();
+    window.requestAnimationFrame(() => {
+      const field = document.querySelector("[data-custom-metadata-name]");
+      if (field instanceof HTMLInputElement) {
+        field.focus();
+      }
+    });
+    return;
+  }
+
+  let icon = null;
+  try {
+    const iconResult = await readCustomMetadataIconFromForm();
+    if (iconResult.error) {
+      state.customMetadataFormError = iconResult.error;
+      renderConsolePanel();
+      return;
+    }
+    icon = iconResult.icon;
+  } catch {
+    state.customMetadataFormError = "The metadata icon could not be read.";
+    renderConsolePanel();
+    return;
+  }
+
+  const result = createCustomMetadataDefinition({
+    label,
+    highlightColor: colorField instanceof HTMLInputElement ? colorField.value : DEFAULT_CUSTOM_METADATA_HIGHLIGHT_COLOR,
+    ...(icon ? { icon } : {}),
+  }, getCustomMetadataDefinitions());
+
+  if (!result.definition) {
+    state.customMetadataFormError = result.error === "icon-invalid"
+      ? "Choose a PNG, JPG, WebP, or GIF icon under the metadata icon limit."
+      : "Name the metadata tag before creating it.";
+    renderConsolePanel();
+    window.requestAnimationFrame(() => {
+      const field = document.querySelector("[data-custom-metadata-name]");
+      if (field instanceof HTMLInputElement) {
+        field.focus();
+      }
+    });
+    return;
+  }
+
+  state.customMetadataDefinitions = result.definitions;
+  state.sidePanelVisibility = setSidePanelFeatureVisible(state.sidePanelVisibility, result.definition.id, true);
+  state.sidePanelMode = result.definition.id;
+  state.customMetadataFormOpen = false;
+  state.customMetadataFormError = "";
+  persistCustomMetadataDefinitionsState({
+    dirtyReason: "custom-metadata-definition-created",
+    source: "saveCustomMetadataDefinitionFromForm",
+  });
+  renderConsolePanel();
+}
+
+// Intent: read only small validated image uploads into project-local metadata definition icons.
+async function readCustomMetadataIconFromForm() {
+  const iconField = document.querySelector("[data-custom-metadata-icon]");
+  if (!(iconField instanceof HTMLInputElement) || !iconField.files?.length) {
+    return {
+      icon: null,
+      error: "",
+    };
+  }
+
+  const file = iconField.files[0];
+  const validationError = validateCustomMetadataIconFile(file);
+  if (validationError) {
+    return {
+      icon: null,
+      error: formatCustomMetadataIconUploadError(validationError),
+    };
+  }
+
+  const dataUrl = await readFileAsDataUrl(file);
+  const icon = normalizeCustomMetadataIcon({
+    dataUrl,
+    mediaType: file.type,
+    name: file.name,
+    size: file.size,
+  });
+  return {
+    icon,
+    error: icon ? "" : "Choose a PNG, JPG, WebP, or GIF icon under the metadata icon limit.",
+  };
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    if (typeof FileReader !== "function") {
+      reject(new Error("FileReader is unavailable."));
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.addEventListener("load", () => {
+      resolve(typeof reader.result === "string" ? reader.result : "");
+    });
+    reader.addEventListener("error", () => {
+      reject(reader.error ?? new Error("The file could not be read."));
+    });
+    reader.readAsDataURL(file);
+  });
+}
+
+async function readFileAsBase64(file) {
+  if (!file || typeof file.arrayBuffer !== "function") {
+    throw new Error("The file could not be read.");
+  }
+
+  const buffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  if (typeof globalThis.Buffer !== "undefined") {
+    return globalThis.Buffer.from(bytes).toString("base64");
+  }
+
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+  }
+  return btoa(binary);
+}
+
+// Intent: keep metadata icon validation messages short enough for the compact console form.
+function formatCustomMetadataIconUploadError(errorCode) {
+  if (errorCode === "icon-too-large") {
+    return `Choose an icon under ${Math.round(CUSTOM_METADATA_ICON_MAX_BYTES / 1024)} KB.`;
+  }
+
+  if (errorCode === "icon-empty") {
+    return "Choose a non-empty image file for the metadata icon.";
+  }
+
+  return "Choose a PNG, JPG, WebP, or GIF image for the metadata icon.";
+}
+
+function persistCustomMetadataDefinitionsState(options = {}) {
+  state.customMetadataDefinitions = getCustomMetadataDefinitions();
+  state.sidePanelVisibility = createSidePanelVisibilityState(state.sidePanelVisibility, getMetadataSidePanelIds());
+  persistCurrentProjectRecord({
+    domain: "app-settings",
+    dirtyReason: options.dirtyReason ?? "custom-metadata-definitions-updated",
+    source: options.source ?? "persistCustomMetadataDefinitionsState",
+  });
+}
+
+function resetSidePanelCustomization() {
+  state.sidePanelVisibility = createSidePanelVisibilityState({}, getMetadataSidePanelIds());
+  persistSidePanelVisibilityState();
+  renderConsolePanel();
+}
+
+function updateSidePanelFeatureVisibility(panelId, isVisible) {
+  state.sidePanelVisibility = setSidePanelFeatureVisible(state.sidePanelVisibility, panelId, isVisible);
+  const resolvedPanelMode = resolveVisibleSidePanelMode(state.sidePanelMode, state.sidePanelVisibility, getMetadataSidePanelIds());
+  if (resolvedPanelMode) {
+    state.sidePanelMode = resolvedPanelMode;
+  }
+  persistSidePanelVisibilityState();
+  renderConsolePanel();
+}
+
+function persistSidePanelVisibilityState() {
+  state.sidePanelVisibility = createSidePanelVisibilityState(state.sidePanelVisibility, getMetadataSidePanelIds());
+  writeStoredJsonRaw(EDITOR_SIDE_PANEL_VISIBILITY_KEY, state.sidePanelVisibility);
+  persistCurrentProjectRecord({
+    domain: "app-settings",
+    dirtyReason: "side-panel-visibility-updated",
+    source: "persistSidePanelVisibilityState",
+  });
+}
+
+function clampSidePanelCustomizationPosition(position = null) {
+  const width = 300;
+  const height = 360;
+  const rawX = Number(position?.x);
+  const rawY = Number(position?.y);
+  const maxX = Math.max(8, window.innerWidth - width - 8);
+  const maxY = Math.max(8, window.innerHeight - height - 8);
+  return {
+    x: Math.max(8, Math.min(Number.isFinite(rawX) ? Math.round(rawX) : maxX, maxX)),
+    y: Math.max(8, Math.min(Number.isFinite(rawY) ? Math.round(rawY) : 120, maxY)),
+  };
+}
+
+function syncSidePanelsHiddenClass() {
+  appRoot.classList.toggle("is-side-panels-hidden", state.sidePanelsHidden === true);
+}
+
+// Intent: keep appearance mode as editor preference state while the resolved theme stays a render concern.
+function setAppearanceModePreference(candidateMode) {
+  const previousMode = normalizeEditorAppearanceMode(state.editorPrefs?.appearanceMode);
+  const nextMode = normalizeEditorAppearanceMode(candidateMode, previousMode);
+  if (nextMode === previousMode) {
+    syncAppearanceMode({ reason: "appearance-mode-noop" });
+    return;
+  }
+
+  state.editorPrefs = normalizeEditorPrefs({
+    ...state.editorPrefs,
+    appearanceMode: nextMode,
+  });
+  writeStoredJson(EDITOR_PREFS_KEY, state.editorPrefs);
+  syncAppearanceMode({ reason: "appearance-mode-preference" });
+  renderHeader();
+  renderDraftProofSettingsWindow();
+  uiEventDispatcherLog.info("user-action", "appearance-mode.updated", "Updated editor appearance mode.", {
+    previousMode,
+    nextMode,
+    resolvedTheme: resolveAppearanceTheme(nextMode),
+  });
+}
+
+// Intent: apply the current theme to document-level attributes so feature styles can inherit tokens.
+function syncAppearanceMode({ reason = "" } = {}) {
+  const appearanceMode = normalizeEditorAppearanceMode(state.editorPrefs?.appearanceMode);
+  const resolvedTheme = resolveAppearanceTheme(appearanceMode);
+  document.documentElement.dataset.appearanceMode = appearanceMode;
+  document.documentElement.dataset.theme = resolvedTheme;
+  document.documentElement.style.colorScheme = resolvedTheme;
+  appRoot.dataset.appearanceMode = appearanceMode;
+  appRoot.dataset.theme = resolvedTheme;
+  appRoot.classList.toggle("is-dark-mode", resolvedTheme === "dark");
+  appRoot.classList.toggle("is-light-mode", resolvedTheme !== "dark");
+
+  if (reason && reason !== "render") {
+    uiEventDispatcherLog.debug("render", "appearance-mode.sync", "Synchronized document appearance mode.", {
+      reason,
+      appearanceMode,
+      resolvedTheme,
+    });
+  }
+}
+
+function resolveAppearanceTheme(appearanceMode) {
+  const normalizedMode = normalizeEditorAppearanceMode(appearanceMode);
+  if (normalizedMode === "dark") {
+    return "dark";
+  }
+
+  if (normalizedMode === "system" && systemPrefersDarkMode()) {
+    return "dark";
+  }
+
+  return "light";
+}
+
+function systemPrefersDarkMode() {
+  if (typeof window.matchMedia !== "function") {
+    return false;
+  }
+
+  try {
+    return window.matchMedia(APPEARANCE_MODE_MEDIA_QUERY).matches === true;
+  } catch {
+    return false;
+  }
+}
+
+function wireAppearanceModeSystemPreferenceListener() {
+  if (appearanceModeMediaQueryList || typeof window.matchMedia !== "function") {
+    return;
+  }
+
+  try {
+    appearanceModeMediaQueryList = window.matchMedia(APPEARANCE_MODE_MEDIA_QUERY);
+  } catch {
+    appearanceModeMediaQueryList = null;
+    return;
+  }
+
+  appearanceModeSystemPreferenceListener = () => {
+    if (normalizeEditorAppearanceMode(state.editorPrefs?.appearanceMode) !== "system") {
+      return;
+    }
+
+    syncAppearanceMode({ reason: "system-appearance-change" });
+    renderDraftProofSettingsWindow();
+  };
+
+  if (typeof appearanceModeMediaQueryList.addEventListener === "function") {
+    appearanceModeMediaQueryList.addEventListener("change", appearanceModeSystemPreferenceListener);
+  } else if (typeof appearanceModeMediaQueryList.addListener === "function") {
+    appearanceModeMediaQueryList.addListener(appearanceModeSystemPreferenceListener);
+  }
+}
+
+function toggleSidePanelsHidden() {
+  state.sidePanelsHidden = toggleSidePanelsHiddenState(state.sidePanelsHidden);
+  persistSidePanelsHiddenState({
+    dirtyReason: state.sidePanelsHidden ? "side-panels-hidden" : "side-panels-shown",
+    source: "toggleSidePanelsHidden",
+  });
+  uiEventDispatcherLog.info("user-action", "layout.side-panels-hidden.toggled", "Toggled side-panel focus mode.", {
+    hidden: state.sidePanelsHidden === true,
+    paneId: state.activePane,
+  });
+  syncSidePanelsHiddenClass();
+  renderHeader();
+  syncLayoutWidths({ reason: "side-panels-hidden-toggle" });
+  syncWorldSpinePanelLayout({ reason: "side-panels-hidden-toggle" });
+  if (state.activePane === "manuscript" || state.activePane === "narration") {
+    syncSceneDocumentLayout();
+  }
+}
+
+function persistSidePanelsHiddenState(options = {}) {
+  state.sidePanelsHidden = normalizeSidePanelsHiddenState(state.sidePanelsHidden);
+  writeStoredJsonRaw(EDITOR_SIDE_PANELS_HIDDEN_KEY, state.sidePanelsHidden);
+  persistCurrentProjectRecord({
+    domain: "app-settings",
+    dirtyReason: options.dirtyReason ?? "side-panels-hidden-updated",
+    source: options.source ?? "persistSidePanelsHiddenState",
+  });
+}
+
 function toggleConsoleCollapse() {
   state.consoleDockCollapsed = !state.consoleDockCollapsed;
   persistConsoleDockCollapsedState(state.consoleDockCollapsed);
-  syncLayoutWidths(true);
+  syncLayoutWidths({ reason: "console-collapse" });
   renderConsolePanel();
 }
 
@@ -3374,9 +6115,12 @@ function beginLayoutResize(handleId, event) {
 
   layoutResizeSession = {
     handleId,
+    startBinderPanelWidth: state.binderPanelWidth,
+    startConsoleDockWidth: state.consoleDockWidth,
+    moved: false,
   };
   document.body.classList.add("is-resizing-layout");
-  syncLayoutWidths();
+  syncLayoutWidths({ reason: "panel-resize-begin" });
   event.preventDefault();
 }
 
@@ -3393,7 +6137,7 @@ function handleLayoutResizePointerMove(event) {
   }
 
   const rect = workspace.getBoundingClientRect();
-  const availableWidth = Math.max(0, rect.width - (PANEL_RESIZER_WIDTH * 2));
+  const availableWidth = resolveWorkspaceGridAvailableWidth(rect.width);
   const currentConsoleWidth = state.consoleDockCollapsed
     ? CONSOLE_DOCK_COLLAPSED_WIDTH
     : state.consoleDockWidth;
@@ -3408,7 +6152,8 @@ function handleLayoutResizePointerMove(event) {
       MIN_BINDER_PANEL_WIDTH,
       maxBinderWidth,
     );
-    syncLayoutWidths();
+    markLayoutResizeSessionMoved();
+    syncLayoutWidths({ reason: "panel-resize-move" });
     return;
   }
 
@@ -3422,7 +6167,8 @@ function handleLayoutResizePointerMove(event) {
       MIN_CONSOLE_PANEL_WIDTH,
       maxConsoleWidth,
     );
-    syncLayoutWidths();
+    markLayoutResizeSessionMoved();
+    syncLayoutWidths({ reason: "panel-resize-move" });
   }
 }
 
@@ -3431,9 +6177,154 @@ function endLayoutResize() {
     return;
   }
 
+  const completedSession = layoutResizeSession;
   layoutResizeSession = null;
   document.body.classList.remove("is-resizing-layout");
-  syncLayoutWidths(true);
+  layoutStateLog.debug("layout", "panel-layout.resize-end", "Ended manuscript side-panel resize session.", {
+    handleId: completedSession.handleId,
+    moved: completedSession.moved === true,
+    startBinderPanelWidth: completedSession.startBinderPanelWidth,
+    startConsoleDockWidth: completedSession.startConsoleDockWidth,
+    binderPanelWidth: state.binderPanelWidth,
+    consoleDockWidth: state.consoleDockWidth,
+  });
+  syncLayoutWidths({
+    persistProfile: completedSession.moved === true,
+    reason: "panel-resize",
+    handleId: completedSession.handleId,
+  });
+}
+
+function markLayoutResizeSessionMoved() {
+  // Intent: only explicit drag movement should persist a size profile.
+  if (!layoutResizeSession) {
+    return;
+  }
+
+  layoutResizeSession.moved =
+    Math.abs(state.binderPanelWidth - layoutResizeSession.startBinderPanelWidth) > 1 ||
+    Math.abs(state.consoleDockWidth - layoutResizeSession.startConsoleDockWidth) > 1;
+}
+
+function getWorldSpineLayoutSnapshot() {
+  // Intent: pass the persisted World Spine rail widths into the feature renderer without letting it own app state.
+  return {
+    eventRailWidth: state.worldSpineEventRailWidth,
+    manuscriptPaneWidth: state.worldSpineManuscriptPaneWidth,
+  };
+}
+
+function beginWorldSpineLayoutResize(handleId, event) {
+  // Intent: treat the World Spine event rail and manuscript pane as independently draggable fixed side panels.
+  if (!(event instanceof PointerEvent) || !["event-rail", "manuscript-pane"].includes(handleId)) {
+    return;
+  }
+
+  const workspace = document.querySelector("[data-world-spine-root]");
+  if (!(workspace instanceof HTMLElement)) {
+    return;
+  }
+
+  worldSpineLayoutResizeSession = {
+    handleId,
+    startEventRailWidth: state.worldSpineEventRailWidth,
+    startManuscriptPaneWidth: state.worldSpineManuscriptPaneWidth,
+    historyBefore: captureWorldSpineHistorySnapshot(),
+    moved: false,
+  };
+  document.body.classList.add("is-resizing-layout", "is-resizing-world-spine-layout");
+  syncWorldSpinePanelLayout({ reason: "world-spine-resize-begin" });
+  event.preventDefault();
+}
+
+function handleWorldSpineLayoutResizePointerMove(event) {
+  // Intent: resize only the grabbed fixed rail while keeping the central timeline usable.
+  if (!worldSpineLayoutResizeSession || !(event instanceof PointerEvent)) {
+    return;
+  }
+
+  event.preventDefault();
+  const workspace = document.querySelector("[data-world-spine-root]");
+  if (!(workspace instanceof HTMLElement)) {
+    return;
+  }
+
+  const rect = workspace.getBoundingClientRect();
+  const availableWidth = Math.max(0, rect.width - (PANEL_RESIZER_WIDTH * 2));
+  if (worldSpineLayoutResizeSession.handleId === "event-rail") {
+    const maxEventRailWidth = Math.max(
+      MIN_WORLD_SPINE_EVENT_RAIL_WIDTH,
+      availableWidth - MIN_WORLD_SPINE_TIMELINE_WIDTH - state.worldSpineManuscriptPaneWidth,
+    );
+    state.worldSpineEventRailWidth = clampNumber(
+      Math.round(event.clientX - rect.left),
+      MIN_WORLD_SPINE_EVENT_RAIL_WIDTH,
+      maxEventRailWidth,
+    );
+    markWorldSpineLayoutResizeSessionMoved();
+    syncWorldSpinePanelLayout({ reason: "world-spine-resize-move", handleId: "event-rail" });
+    return;
+  }
+
+  if (worldSpineLayoutResizeSession.handleId === "manuscript-pane") {
+    const maxManuscriptPaneWidth = Math.max(
+      MIN_WORLD_SPINE_MANUSCRIPT_PANE_WIDTH,
+      availableWidth - MIN_WORLD_SPINE_TIMELINE_WIDTH - state.worldSpineEventRailWidth,
+    );
+    state.worldSpineManuscriptPaneWidth = clampNumber(
+      Math.round(rect.right - event.clientX),
+      MIN_WORLD_SPINE_MANUSCRIPT_PANE_WIDTH,
+      maxManuscriptPaneWidth,
+    );
+    markWorldSpineLayoutResizeSessionMoved();
+    syncWorldSpinePanelLayout({ reason: "world-spine-resize-move", handleId: "manuscript-pane" });
+  }
+}
+
+function endWorldSpineLayoutResize() {
+  // Intent: persist World Spine side-panel settings only after the pointer drag actually changed a width.
+  if (!worldSpineLayoutResizeSession) {
+    return;
+  }
+
+  const completedSession = worldSpineLayoutResizeSession;
+  worldSpineLayoutResizeSession = null;
+  document.body.classList.remove("is-resizing-world-spine-layout");
+  if (!layoutResizeSession) {
+    document.body.classList.remove("is-resizing-layout");
+  }
+  layoutStateLog.debug("layout", "world-spine-panel-layout.resize-end", "Ended World Spine side-panel resize session.", {
+    handleId: completedSession.handleId,
+    moved: completedSession.moved === true,
+    startEventRailWidth: completedSession.startEventRailWidth,
+    startManuscriptPaneWidth: completedSession.startManuscriptPaneWidth,
+    eventRailWidth: state.worldSpineEventRailWidth,
+    manuscriptPaneWidth: state.worldSpineManuscriptPaneWidth,
+  });
+  syncWorldSpinePanelLayout({
+    persistProfile: completedSession.moved === true,
+    reason: "world-spine-panel-resize",
+    handleId: completedSession.handleId,
+  });
+  if (completedSession.moved === true) {
+    pushWorldSpineHistoryChange(completedSession.historyBefore, {
+      label: "Resized World Spine panels",
+      dirtyReason: "world-spine-panel-resize",
+      source: "endWorldSpineLayoutResize",
+    });
+    renderWorldPanel();
+  }
+}
+
+function markWorldSpineLayoutResizeSessionMoved() {
+  // Intent: avoid writing profile records for pointer taps that never resized a World Spine rail.
+  if (!worldSpineLayoutResizeSession) {
+    return;
+  }
+
+  worldSpineLayoutResizeSession.moved =
+    Math.abs(state.worldSpineEventRailWidth - worldSpineLayoutResizeSession.startEventRailWidth) > 1 ||
+    Math.abs(state.worldSpineManuscriptPaneWidth - worldSpineLayoutResizeSession.startManuscriptPaneWidth) > 1;
 }
 
 // Intent: render the binder as the navigable manuscript structure, not a flat document outline.
@@ -3681,12 +6572,13 @@ function renderManuscriptPanel() {
     projectIndex: getActiveProjectRecord()?.projectIndex ?? null,
     buildEditorStyle,
     getInlinePassageDraftAnchor,
+    narrationPlaybackState: voiceRecordingPreviewController.getPlaybackState(),
     formatChapterDisplayTitle,
   });
   renderGrammarCheckPanel();
 }
 
-// Intent: render diagnostics, passage notes, and task panels as IDE-like actionable consoles.
+// Intent: render the right dock as metadata console or narration audio console for the active pane.
 function renderConsolePanel() {
   const slot = document.querySelector("#console-slot");
   if (!(slot instanceof HTMLElement)) {
@@ -3695,28 +6587,40 @@ function renderConsolePanel() {
 
   slot.classList.toggle("is-collapsed", state.consoleDockCollapsed);
   appRoot.classList.toggle("is-console-dock-collapsed", state.consoleDockCollapsed);
-  if (!["issues", "inspiration", "research"].includes(state.sidePanelMode)) {
-    state.sidePanelMode = "issues";
-  }
+  const isNarrationConsole = state.activePane === "narration";
+  const visiblePanelIds = isNarrationConsole
+    ? [NARRATION_AUDIO_PANEL_ID]
+    : syncSidePanelVisibilityRuntimeState();
+  const consoleTitle = isNarrationConsole ? "Narration Console" : "Metadata Console";
   slot.innerHTML = `
     <div class="console-dock ${state.consoleDockCollapsed ? "is-collapsed" : ""}">
-      <button
-        class="console-dock-toggle"
-        type="button"
-        data-action="toggle-console-collapse"
-        aria-expanded="${state.consoleDockCollapsed ? "false" : "true"}"
-        aria-label="${state.consoleDockCollapsed ? "Open right console" : "Collapse right console"}"
-        title="${state.consoleDockCollapsed ? "Open right console" : "Collapse right console"}"
-      >
-        <span aria-hidden="true">${state.consoleDockCollapsed ? "◀" : "▶"}</span>
-        <strong>${state.consoleDockCollapsed ? "Open" : "Hide"}</strong>
-      </button>
+      <div class="console-dock-header">
+        <p class="panel-kicker console-dock-title">${escapeHtml(consoleTitle)}</p>
+        <button
+          class="console-dock-toggle"
+          type="button"
+          data-action="toggle-console-collapse"
+          aria-expanded="${state.consoleDockCollapsed ? "false" : "true"}"
+          aria-label="${state.consoleDockCollapsed ? "Open right console" : "Collapse right console"}"
+          title="${state.consoleDockCollapsed ? "Open right console" : "Collapse right console"}"
+        >
+          <span aria-hidden="true">${state.consoleDockCollapsed ? "◀" : "▶"}</span>
+          <strong>${state.consoleDockCollapsed ? "Open" : "Hide"}</strong>
+        </button>
+      </div>
       <div class="console-dock-body">
         ${renderSidePanelTabs()}
-        ${state.sidePanelMode === "issues"
-          ? renderIssuePanelBody()
-          : renderPassageNotePanel(state.sidePanelMode)}
+        <div class="console-dock-scroll">
+          ${visiblePanelIds.length
+            ? renderVisibleSidePanelBody()
+            : renderHiddenSidePanelOverviewHTML({
+              features: getMetadataConsoleFeatures(),
+              visibility: state.sidePanelVisibility,
+              counts: getSidePanelFeatureCounts(),
+            })}
+        </div>
       </div>
+      ${isNarrationConsole ? "" : renderSidePanelCustomizationSurface()}
     </div>
   `;
 }
@@ -3892,6 +6796,7 @@ function renderGrammarCheckPanel(options = {}) {
     return;
   }
 
+  hideGrammarCheckSuggestionMenu();
   const grammarCheckState = state.grammarCheckPanel ?? {};
   if (!grammarCheckState.open) {
     slot.innerHTML = "";
@@ -3916,8 +6821,18 @@ function renderGrammarCheckPanel(options = {}) {
       : [],
   );
   const selectedCount = entries.filter((entry) => selectionSet.has(entry.normalizedWord)).length;
-  syncGrammarCheckSlotPosition(slot, grammarCheckState.position);
+  const panelBounds = normalizeGrammarCheckPanelBounds(
+    grammarCheckState.bounds ?? state.editorPrefs?.grammarCheckPanelBounds,
+    { viewport: getGrammarCheckPanelViewport() },
+  );
+  if (panelBounds) {
+    state.grammarCheckPanel = setGrammarCheckPanelBoundsState(state.grammarCheckPanel, panelBounds, {
+      viewport: getGrammarCheckPanelViewport(),
+    });
+  }
+  syncGrammarCheckSlotBounds(slot, panelBounds, grammarCheckState.position);
   slot.innerHTML = renderGrammarCheckPanelHTML({
+    selectedSceneId: selectedScene?.sceneId ?? "",
     selectedSceneTitle,
     selectedSceneChapter,
     entries,
@@ -3933,18 +6848,30 @@ function renderGrammarCheckPanel(options = {}) {
   }
 }
 
-function syncGrammarCheckSlotPosition(slot, position) {
+function syncGrammarCheckSlotBounds(slot, bounds = null, position = null) {
   if (!(slot instanceof HTMLElement)) {
     return;
   }
 
-  const left = Number(position?.left);
-  const top = Number(position?.top);
+  const normalizedBounds = normalizeGrammarCheckPanelBounds(bounds, {
+    viewport: getGrammarCheckPanelViewport(),
+  });
+  const left = Number(normalizedBounds?.left ?? position?.left);
+  const top = Number(normalizedBounds?.top ?? position?.top);
   if (Number.isFinite(left) && Number.isFinite(top)) {
     slot.style.left = `${Math.round(left)}px`;
     slot.style.top = `${Math.round(top)}px`;
     slot.style.right = "auto";
     slot.style.transform = "none";
+    if (normalizedBounds) {
+      slot.style.width = `${Math.round(normalizedBounds.width)}px`;
+      slot.style.height = `${Math.round(normalizedBounds.height)}px`;
+      slot.classList.add("is-sized");
+    } else {
+      slot.style.removeProperty("width");
+      slot.style.removeProperty("height");
+      slot.classList.remove("is-sized");
+    }
     return;
   }
 
@@ -3952,25 +6879,193 @@ function syncGrammarCheckSlotPosition(slot, position) {
   slot.style.removeProperty("top");
   slot.style.removeProperty("right");
   slot.style.removeProperty("transform");
+  slot.style.removeProperty("width");
+  slot.style.removeProperty("height");
+  slot.classList.remove("is-sized");
+}
+
+// Intent: let alternate spelling suggestions escape the scrollable word list without changing panel data.
+function positionGrammarCheckSuggestionMenu(target) {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  const primarySuggestion = target.querySelector(".grammar-check-item__suggestion-primary");
+  const suggestionMenu = target.querySelector(".grammar-check-item__suggestion-menu");
+  if (!(primarySuggestion instanceof HTMLElement) || !(suggestionMenu instanceof HTMLElement)) {
+    return false;
+  }
+
+  const primaryRect = primarySuggestion.getBoundingClientRect();
+  if (!primaryRect.width || !primaryRect.height) {
+    return false;
+  }
+
+  const top = Math.max(8, Math.round(primaryRect.bottom - 1));
+  const availableHeight = Math.max(88, Math.round(window.innerHeight - top - 8));
+  const floatingMenu = ensureGrammarCheckSuggestionMenu();
+  target.classList.add("is-menu-active");
+  floatingMenu.innerHTML = suggestionMenu.innerHTML;
+  floatingMenu.classList.add("is-open");
+  floatingMenu.style.setProperty("--grammar-check-suggestion-menu-left", `${Math.round(primaryRect.left)}px`);
+  floatingMenu.style.setProperty("--grammar-check-suggestion-menu-top", `${top}px`);
+  floatingMenu.style.setProperty("--grammar-check-suggestion-menu-width", `${Math.ceil(primaryRect.width)}px`);
+  floatingMenu.style.setProperty("--grammar-check-suggestion-menu-max-height", `${availableHeight}px`);
+  return true;
+}
+
+function deactivateGrammarCheckSuggestionMenu(target) {
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+
+  target.classList.remove("is-menu-active");
+  hideGrammarCheckSuggestionMenu();
+}
+
+function ensureGrammarCheckSuggestionMenu() {
+  const existingMenu = document.querySelector("[data-grammar-check-floating-suggestion-menu]");
+  if (existingMenu instanceof HTMLElement) {
+    return existingMenu;
+  }
+
+  const floatingMenu = document.createElement("div");
+  floatingMenu.className = "grammar-check-item__suggestion-menu grammar-check-item__suggestion-menu--portal";
+  floatingMenu.setAttribute("role", "menu");
+  floatingMenu.setAttribute("data-grammar-check-floating-suggestion-menu", "");
+  document.body.appendChild(floatingMenu);
+  return floatingMenu;
+}
+
+function hideGrammarCheckSuggestionMenu() {
+  document.querySelectorAll("[data-grammar-check-floating-suggestion-menu]").forEach((menu) => {
+    menu.remove();
+  });
+  document.querySelectorAll("[data-grammar-check-suggestion].is-menu-active").forEach((target) => {
+    target.classList.remove("is-menu-active");
+  });
+}
+
+function getGrammarCheckPanelViewport() {
+  return {
+    width: window.innerWidth,
+    height: window.innerHeight,
+  };
+}
+
+function getCurrentGrammarCheckPanelBounds(slot = document.querySelector("#grammar-check-slot")) {
+  const viewport = getGrammarCheckPanelViewport();
+  if (slot instanceof HTMLElement) {
+    const rect = slot.getBoundingClientRect();
+    const rectBounds = normalizeGrammarCheckPanelBounds({
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
+    }, { viewport });
+    if (rectBounds) {
+      return rectBounds;
+    }
+  }
+
+  return normalizeGrammarCheckPanelBounds(
+    state.grammarCheckPanel?.bounds ?? state.editorPrefs?.grammarCheckPanelBounds,
+    { viewport },
+  );
+}
+
+function setGrammarCheckPanelBounds(bounds) {
+  state.grammarCheckPanel = setGrammarCheckPanelBoundsState(state.grammarCheckPanel, bounds, {
+    viewport: getGrammarCheckPanelViewport(),
+  });
+
+  const slot = document.querySelector("#grammar-check-slot");
+  syncGrammarCheckSlotBounds(slot, state.grammarCheckPanel.bounds, state.grammarCheckPanel.position);
+  hideGrammarCheckSuggestionMenu();
 }
 
 function setGrammarCheckPanelPosition(left, top) {
-  state.grammarCheckPanel = setGrammarCheckPanelPositionState(state.grammarCheckPanel, left, top);
-
   const slot = document.querySelector("#grammar-check-slot");
-  syncGrammarCheckSlotPosition(slot, state.grammarCheckPanel.position);
+  const currentBounds = getCurrentGrammarCheckPanelBounds(slot);
+  state.grammarCheckPanel = setGrammarCheckPanelPositionState(state.grammarCheckPanel, left, top, {
+    width: currentBounds?.width,
+    height: currentBounds?.height,
+    viewport: getGrammarCheckPanelViewport(),
+  });
+
+  syncGrammarCheckSlotBounds(slot, state.grammarCheckPanel.bounds, state.grammarCheckPanel.position);
+  hideGrammarCheckSuggestionMenu();
 }
 
 function handleGrammarCheckPointerDown(event) {
+  if (grammarCheckPanelResizeController.begin(event) === true) {
+    return;
+  }
+
   grammarCheckPanelDragController.begin(event);
 }
 
 function handleGrammarCheckPointerMove(event) {
+  if (grammarCheckPanelResizeController.move(event) === true) {
+    return;
+  }
+
   grammarCheckPanelDragController.move(event);
 }
 
 function handleGrammarCheckPointerEnd(event) {
-  grammarCheckPanelDragController.end(event);
+  const resized = grammarCheckPanelResizeController.end(event);
+  const dragged = grammarCheckPanelDragController.end(event);
+  if (resized || dragged) {
+    persistGrammarCheckPanelBoundsPreference({
+      dirtyReason: resized ? "grammar-check-panel-resized" : "grammar-check-panel-moved",
+      source: resized ? "handleGrammarCheckResizeEnd" : "handleGrammarCheckDragEnd",
+    });
+  }
+}
+
+function persistGrammarCheckPanelBoundsPreference(options = {}) {
+  const bounds = getCurrentGrammarCheckPanelBounds();
+  if (!bounds) {
+    return;
+  }
+
+  const previousBounds = JSON.stringify(normalizeGrammarCheckPanelBounds(state.editorPrefs?.grammarCheckPanelBounds));
+  state.grammarCheckPanel = setGrammarCheckPanelBoundsState(state.grammarCheckPanel, bounds, {
+    viewport: getGrammarCheckPanelViewport(),
+  });
+  state.editorPrefs = normalizeEditorPrefs({
+    ...state.editorPrefs,
+    grammarCheckPanelBounds: state.grammarCheckPanel.bounds,
+  });
+  const nextBounds = JSON.stringify(state.editorPrefs.grammarCheckPanelBounds);
+  if (previousBounds === nextBounds) {
+    return;
+  }
+
+  writeStoredJson(EDITOR_PREFS_KEY, state.editorPrefs);
+  persistCurrentProjectRecord({
+    domain: "app-settings",
+    dirtyReason: options.dirtyReason ?? "grammar-check-panel-layout-updated",
+    source: options.source ?? "persistGrammarCheckPanelBoundsPreference",
+  });
+}
+
+function syncGrammarCheckPanelBoundsToViewport() {
+  if (!state.grammarCheckPanel?.open) {
+    return;
+  }
+
+  const bounds = getCurrentGrammarCheckPanelBounds();
+  if (!bounds) {
+    return;
+  }
+
+  state.grammarCheckPanel = setGrammarCheckPanelBoundsState(state.grammarCheckPanel, bounds, {
+    viewport: getGrammarCheckPanelViewport(),
+  });
+  const slot = document.querySelector("#grammar-check-slot");
+  syncGrammarCheckSlotBounds(slot, state.grammarCheckPanel.bounds, state.grammarCheckPanel.position);
 }
 
 function toggleGrammarCheckPanel() {
@@ -4069,6 +7164,52 @@ function addSelectedGrammarCheckWordsToProjectDictionary() {
   state.grammarCheckPanel = {
     ...state.grammarCheckPanel,
     selectedWords: [],
+    selectionAnchorIndex: null,
+  };
+
+  if (changed) {
+    renderManuscriptPanel();
+    syncSceneDocumentLayout();
+  } else {
+    renderGrammarCheckPanel();
+  }
+
+  if (editorBookmark) {
+    window.requestAnimationFrame(() => {
+      restoreManuscriptEditorBookmark(editorBookmark);
+    });
+  }
+}
+
+// Intent: approve a single grammar-check row as project vocabulary without using selection state.
+function addGrammarCheckPanelWordToProjectDictionary(target) {
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+
+  const grammarCheckTarget = target.closest("[data-grammar-check-word]");
+  if (!(grammarCheckTarget instanceof HTMLElement)) {
+    return;
+  }
+
+  const sourceWord = String(
+    target.dataset.grammarCheckDictionaryWord ||
+    grammarCheckTarget.dataset.grammarCheckWord ||
+    "",
+  ).trim();
+  const normalizedWord = normalizeSpellcheckWord(sourceWord);
+  if (!normalizedWord) {
+    return;
+  }
+
+  const editorBookmark = captureManuscriptEditorBookmark();
+  const changed = applyGrammarCheckWordsToProjectList("dictionaryWords", [sourceWord]);
+  hideSpellcheckContextMenu();
+  state.grammarCheckPanel = {
+    ...state.grammarCheckPanel,
+    selectedWords: Array.isArray(state.grammarCheckPanel?.selectedWords)
+      ? state.grammarCheckPanel.selectedWords.filter((word) => normalizeSpellcheckWord(word) !== normalizedWord)
+      : [],
     selectionAnchorIndex: null,
   };
 
@@ -4374,6 +7515,13 @@ function updateInlineFormatToolbarState(textarea = null) {
     button.setAttribute("aria-pressed", isActive ? "true" : "false");
     button.classList.toggle("is-active", isActive);
   }
+
+  const eraserButton = document.querySelector('[data-action="toggle-decoration-eraser"]');
+  if (eraserButton instanceof HTMLButtonElement) {
+    const isEraserActive = inlineFormattingState.pendingClearDecorations === true;
+    eraserButton.setAttribute("aria-pressed", isEraserActive ? "true" : "false");
+    eraserButton.classList.toggle("is-active", isEraserActive);
+  }
 }
 
 // Intent: keep visual manuscript styling as scene-draft metadata instead of embedding markup in the manuscript text.
@@ -4499,33 +7647,271 @@ function getSceneEditorSelectionWordCount(textarea) {
   return countWords(String(textarea.value ?? "").slice(startOffset, endOffset));
 }
 
+function getNarrationMetadataScene() {
+  return getSelectedScene() ?? state.scenes[0] ?? null;
+}
+
+function getNarrationSavedTakeCountForSelectedScene() {
+  const scene = getNarrationMetadataScene();
+  return scene ? createNarrationRecordingPreviewsForScene(state, scene).length : 0;
+}
+
+function renderNarrationMetadataSidePanel() {
+  // Intent: route narration workflow metadata into the right console while the text host stays script-focused.
+  const scene = getNarrationMetadataScene();
+  const selection = scene && state.narrationTakeSelection?.sceneId === scene.sceneId
+    ? state.narrationTakeSelection
+    : null;
+  const session = state.narrationTakeSession ?? null;
+  const recordings = scene ? createDisplayNarrationRecordingPreviewsForScene(scene) : [];
+  return renderNarrationMetadataPanelHTML({
+    scene,
+    selection,
+    session,
+    recordings,
+    followSettings: state.narrationFollowSettings,
+    playbackState: voiceRecordingPreviewController.getPlaybackState(),
+  });
+}
+
+// Intent: derive display-only saved-take labels from current manuscript geometry without changing durable anchors.
+function createDisplayNarrationRecordingPreviewsForScene(scene) {
+  return createNarrationRecordingPreviewsForScene(state, scene)
+    .map((recording) => enrichNarrationRecordingDisplayLineRange(scene, recording));
+}
+
+function enrichNarrationRecordingDisplayLineRange(scene, recording) {
+  const lineRange = resolveNarrationRecordingDisplayLineRange(scene, recording);
+  if (!lineRange) {
+    return recording;
+  }
+
+  return {
+    ...recording,
+    displayLineNumber: lineRange.startLineNumber,
+    displayStartLineNumber: lineRange.startLineNumber,
+    displayEndLineNumber: lineRange.endLineNumber,
+  };
+}
+
+function resolveNarrationRecordingDisplayLineRange(scene, recording) {
+  if (!scene || !recording) {
+    return null;
+  }
+
+  const textarea = getEditorTextareaForScene(scene.sceneId);
+  const sceneText = textarea instanceof HTMLTextAreaElement
+    ? String(textarea.value ?? "")
+    : String(scene.editorText ?? "");
+  const startOffset = Number.isInteger(recording.startOffset)
+    ? clampEditorOffset(recording.startOffset, sceneText.length)
+    : null;
+  const endOffset = Number.isInteger(recording.endOffset)
+    ? clampEditorOffset(recording.endOffset, sceneText.length)
+    : startOffset;
+  if (!Number.isInteger(startOffset) || !Number.isInteger(endOffset) || endOffset <= startOffset) {
+    return null;
+  }
+
+  if (textarea instanceof HTMLTextAreaElement && textarea.clientWidth > 0) {
+    const editorHost = resolveTextareaEditorHost(textarea);
+    const { charactersPerLine } = getTextareaEditorHostWrapMetrics(editorHost);
+    const sceneMetrics = buildSceneLineMetrics(
+      state.scenes,
+      charactersPerLine,
+      { [scene.sceneId]: sceneText },
+    ).find((candidate) => candidate.sceneId === scene.sceneId);
+    const baseLineNumber = sceneMetrics?.startLineNumber ?? 1;
+    const endReferenceOffset = Math.max(startOffset, Math.min(sceneText.length, endOffset) - 1);
+    return {
+      startLineNumber: baseLineNumber + resolveTextareaVisualLineIndexForOffset(editorHost, startOffset),
+      endLineNumber: baseLineNumber + resolveTextareaVisualLineIndexForOffset(editorHost, endReferenceOffset),
+    };
+  }
+
+  const charactersPerLine = resolveNarrationRecordingFallbackCharactersPerLine();
+  const sceneMetrics = buildSceneLineMetrics(
+    state.scenes,
+    charactersPerLine,
+    { [scene.sceneId]: sceneText },
+  ).find((candidate) => candidate.sceneId === scene.sceneId);
+  const baseLineNumber = sceneMetrics?.startLineNumber ?? 1;
+  return {
+    startLineNumber: baseLineNumber + estimateTextareaVisualLineBeforeOffset(sceneText, startOffset, charactersPerLine),
+    endLineNumber: baseLineNumber + estimateTextareaVisualLineBeforeOffset(sceneText, Math.max(startOffset, endOffset - 1), charactersPerLine),
+  };
+}
+
+function resolveNarrationRecordingFallbackCharactersPerLine() {
+  const editorWidth = Number(state.editorPrefs?.editorWidth);
+  const fontSize = Number(state.editorPrefs?.fontSize);
+  const contentWidth = Number.isFinite(editorWidth) && editorWidth > 0 ? editorWidth : 760;
+  const resolvedFontSize = Number.isFinite(fontSize) && fontSize > 0 ? fontSize : 18;
+  const approximateCharacterWidth = Math.max(6, resolvedFontSize * 0.56);
+  return Math.max(8, Math.floor(contentWidth / approximateCharacterWidth));
+}
+
 function renderSidePanelTabs() {
-  const taskCount = getOpenManuscriptTasks().length;
-  const inspirationCount = state.passageNotes.filter((note) => note.noteType === "inspiration").length;
-  const researchCount = state.passageNotes.filter((note) => note.noteType === "research").length;
+  if (state.activePane === "narration") {
+    return renderSidePanelTabsHTML({
+      activePanelId: NARRATION_AUDIO_PANEL_ID,
+      visiblePanelIds: [NARRATION_AUDIO_PANEL_ID],
+      counts: {
+        [NARRATION_AUDIO_PANEL_ID]: getNarrationSavedTakeCountForSelectedScene(),
+      },
+      features: [{
+        id: NARRATION_AUDIO_PANEL_ID,
+        label: "Audio",
+      }],
+      showCreateButton: false,
+    });
+  }
+
+  return renderSidePanelTabsHTML({
+    activePanelId: state.sidePanelMode,
+    visiblePanelIds: getVisibleSidePanelIds(state.sidePanelVisibility, getMetadataSidePanelIds()),
+    counts: getSidePanelFeatureCounts(),
+    features: getMetadataConsoleFeatures(),
+    showCreateButton: true,
+  });
+}
+
+function handleSidePanelTabsWheel(event) {
+  const target = event.target instanceof Element ? event.target : null;
+  const tabs = target?.closest("[data-side-panel-tabs]");
+  if (!(tabs instanceof HTMLElement)) {
+    return;
+  }
+
+  const canScroll = tabs.scrollWidth > tabs.clientWidth + 1;
+  if (!canScroll) {
+    return;
+  }
+
+  const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY)
+    ? event.deltaX
+    : event.deltaY;
+  if (!delta) {
+    return;
+  }
+
+  tabs.scrollLeft += delta;
+  event.preventDefault();
+}
+
+function renderVisibleSidePanelBody() {
+  const activeSidePanelId = state.activePane === "narration"
+    ? NARRATION_AUDIO_PANEL_ID
+    : state.sidePanelMode;
+  const bodyHtml = state.activePane === "narration"
+    ? renderNarrationMetadataSidePanel()
+    : state.sidePanelMode === "issues"
+    ? renderIssuePanelBody()
+    : renderPassageNotePanel(state.sidePanelMode);
   return `
-    <div class="side-panel-tabs" aria-label="Editor side panel modes">
-      ${renderSidePanelTab("issues", "Tasks", taskCount)}
-      ${renderSidePanelTab("inspiration", "Inspiration", inspirationCount)}
-      ${renderSidePanelTab("research", "Research", researchCount)}
+    <div class="side-panel-body" data-active-side-panel="${escapeHtml(activeSidePanelId)}">
+      ${bodyHtml}
     </div>
   `;
 }
 
-function renderSidePanelTab(panelId, label, count) {
-  const isActive = state.sidePanelMode === panelId;
+function renderSidePanelCustomizationSurface() {
   return `
-    <button
-      class="side-panel-tab ${isActive ? "is-active" : ""}"
-      type="button"
-      data-action="select-side-panel"
-      data-side-panel="${escapeHtml(panelId)}"
-      aria-pressed="${isActive ? "true" : "false"}"
-    >
-      <span>${escapeHtml(label)}</span>
-      <strong>${escapeHtml(String(count))}</strong>
-    </button>
+    ${renderSidePanelCustomizationPopoverHTML({
+    open: state.sidePanelCustomizationOpen,
+    position: state.sidePanelCustomizationPosition,
+    visibility: state.sidePanelVisibility,
+    counts: getSidePanelFeatureCounts(),
+      features: getMetadataConsoleFeatures(),
+    })}
+    ${renderCustomMetadataFormHTML({
+      open: state.customMetadataFormOpen,
+      draft: {
+        highlightColor: DEFAULT_CUSTOM_METADATA_HIGHLIGHT_COLOR,
+      },
+      error: state.customMetadataFormError,
+    })}
   `;
+}
+
+function getSidePanelFeatureCounts() {
+  const subgroupCounts = getMetadataSubgroupNoteCountsByGroup();
+  const counts = {
+    issues: getOpenManuscriptTasks().length,
+    inspiration: state.passageNotes.filter((note) => note.noteType === "inspiration").length + (subgroupCounts.inspiration ?? 0),
+    research: state.passageNotes.filter((note) => note.noteType === "research").length + (subgroupCounts.research ?? 0),
+  };
+  for (const definition of getCustomMetadataDefinitions()) {
+    counts[definition.id] = state.passageNotes.filter((note) => note.noteType === definition.id).length + (subgroupCounts[definition.id] ?? 0);
+  }
+  return counts;
+}
+
+function getMetadataSubgroupNoteCountsByGroup() {
+  return countMetadataSubgroupNotesByGroup(state.metadataSubgroups, getMetadataSubgroupGroupIds());
+}
+
+function syncSidePanelVisibilityRuntimeState() {
+  state.customMetadataDefinitions = getCustomMetadataDefinitions();
+  state.metadataSubgroups = normalizeMetadataSubgroups(state.metadataSubgroups, getMetadataSubgroupGroupIds());
+  const panelIds = getMetadataSidePanelIds();
+  state.sidePanelVisibility = createSidePanelVisibilityState(state.sidePanelVisibility, panelIds);
+  if (!panelIds.includes(state.sidePanelMode)) {
+    state.sidePanelMode = "issues";
+  }
+
+  const visiblePanelIds = getVisibleSidePanelIds(state.sidePanelVisibility, panelIds);
+  const resolvedPanelMode = resolveVisibleSidePanelMode(state.sidePanelMode, state.sidePanelVisibility, panelIds);
+  if (resolvedPanelMode) {
+    state.sidePanelMode = resolvedPanelMode;
+  }
+  return visiblePanelIds;
+}
+
+function getCustomMetadataDefinitions() {
+  state.customMetadataDefinitions = normalizeCustomMetadataDefinitions(state.customMetadataDefinitions);
+  return state.customMetadataDefinitions;
+}
+
+function getMetadataConsoleFeatures() {
+  return [
+    ...SIDE_PANEL_FEATURES,
+    ...buildCustomMetadataSidePanelFeatures(getCustomMetadataDefinitions()),
+  ];
+}
+
+function getMetadataSidePanelIds() {
+  return getMetadataConsoleFeatures().map((feature) => feature.id);
+}
+
+function getMetadataSubgroupGroupIds(customDefinitions = getCustomMetadataDefinitions()) {
+  return [
+    "inspiration",
+    "research",
+    ...normalizeCustomMetadataDefinitions(customDefinitions).map((definition) => definition.id),
+  ];
+}
+
+function isPassageNoteSidePanelMode(panelId) {
+  const normalizedPanelId = String(panelId ?? "").trim();
+  return normalizedPanelId === "inspiration" ||
+    normalizedPanelId === "research" ||
+    getCustomMetadataDefinitions().some((definition) => definition.id === normalizedPanelId);
+}
+
+function getPassageNoteDisplayLabel(noteType) {
+  return getMetadataNoteLabel(noteType, getCustomMetadataDefinitions());
+}
+
+function getCustomMetadataDefinitionFields(noteType) {
+  const definition = findCustomMetadataDefinition(getCustomMetadataDefinitions(), noteType);
+  return definition
+    ? {
+        metadataDefinitionId: definition.id,
+        metadataLabel: definition.label,
+        metadataHighlightColor: definition.highlightColor,
+      }
+    : {};
 }
 
 function renderIssuePanelBody() {
@@ -4533,9 +7919,6 @@ function renderIssuePanelBody() {
   const openTasks = getOpenManuscriptTasks();
 
   return `
-    <div class="panel-heading">
-      <p class="panel-kicker">Task Console</p>
-    </div>
     ${renderTaskChapterList(openTasks)}
     <div class="panel-heading split-heading">
       <p class="panel-kicker">Event Pinning</p>
@@ -4553,15 +7936,28 @@ function getOpenManuscriptTasks() {
 }
 
 function renderPassageNotePanel(noteType) {
+  const metadataSubgroupsHtml = renderMetadataSubgroupPanelHTML({
+    groupId: noteType,
+    subgroups: selectMetadataSubgroupsByGroupId(
+      state.metadataSubgroups,
+      noteType,
+      getMetadataSubgroupGroupIds(),
+    ),
+    selectedNoteId: state.selectedMetadataSubgroupNoteId ?? "",
+  });
   const panelModel = buildPassageNotePanelModel(
     state.passageNotes,
     noteType,
     groupScenesByChapter(state.scenes),
+    {
+      customMetadataDefinitions: getCustomMetadataDefinitions(),
+    },
   );
   return renderPassageNotePanelHTML(panelModel, {
     selectedNoteId: state.selectedPassageNoteId,
     previewNoteId: state.taskPreview?.taskId,
     collapsedChapterIds: state.collapsedConsoleChapterIds?.[noteType],
+    metadataSubgroupsHtml,
     formatChapterTitle: formatChapterDisplayTitle,
   });
 }
@@ -4603,6 +7999,10 @@ function toggleRevisionWindow() {
   }
 
   closeWritingTargetWindow();
+  closeDraftProofSettingsWindow();
+  closeLocalAiPanel();
+  closeKeyboardShortcutSettingsWindow();
+  closeSpotifyMusicPanel();
   ensureSelectedRevisionSession();
   state.revisionWindowOpen = true;
   revisionServiceLog.info("user-action", "revision.window.open", "Opened revisions window.", {
@@ -4624,6 +8024,1818 @@ function closeRevisionWindow() {
   });
   renderHeader();
   renderRevisionWindow();
+}
+
+// Intent: render project-owned proof-read settings without moving durable run data into the chrome.
+function renderDraftProofSettingsWindow() {
+  const slot = document.querySelector("#draft-proof-settings-slot");
+  if (!(slot instanceof HTMLElement)) {
+    return;
+  }
+
+  slot.innerHTML = state.draftProofSettingsWindowOpen
+    ? renderDraftProofSettingsWindowHTML({
+        draftProofing: state.draftProofing,
+        clearConfirmationArmed: state.draftProofClearConfirmationArmed,
+        selectedRunId: state.draftProofSettingsSelectedRunId,
+        activeTheme: resolveAppearanceTheme(state.editorPrefs?.appearanceMode),
+      })
+    : "";
+}
+
+function openDraftProofSettingsWindow() {
+  if (state.draftProofSettingsWindowOpen) {
+    renderDraftProofSettingsWindow();
+    return;
+  }
+
+  closeWritingTargetWindow();
+  closeRevisionWindow();
+  closeLocalAiPanel();
+  closeKeyboardShortcutSettingsWindow();
+  closeSpotifyMusicPanel();
+  state.draftProofSettingsWindowOpen = true;
+  state.draftProofClearConfirmationArmed = false;
+  state.draftProofSettingsSelectedRunId = resolveDraftProofSettingsRunId(
+    state.draftProofing,
+    state.draftProofSettingsSelectedRunId,
+  );
+  editorInteractionLog.info("user-action", "draft-proof.settings.open", "Opened proof-read settings.", {
+    projectId: state.activeProjectId ?? "",
+  });
+  renderHeader();
+  renderDraftProofSettingsWindow();
+}
+
+function closeDraftProofSettingsWindow() {
+  if (!state.draftProofSettingsWindowOpen) {
+    return;
+  }
+
+  state.draftProofSettingsWindowOpen = false;
+  state.draftProofClearConfirmationArmed = false;
+  state.draftProofSettingsSelectedRunId = "";
+  editorInteractionLog.info("user-action", "draft-proof.settings.close", "Closed proof-read settings.", {
+    projectId: state.activeProjectId ?? "",
+  });
+  renderHeader();
+  renderDraftProofSettingsWindow();
+}
+
+// Intent: render desktop-backed Local AI model settings without giving browser code filesystem ownership.
+function renderLocalAiPanel() {
+  const slot = document.querySelector("#local-ai-panel-slot");
+  if (!(slot instanceof HTMLElement)) {
+    return;
+  }
+
+  slot.innerHTML = state.localAiPanelOpen
+    ? renderLocalAiPanelHTML({
+        localAiPrefs: state.localAiPrefs,
+        modelLibrary: state.localAiModelLibrary,
+        modelRootDraft: state.localAiModelRootDraft,
+        statusMessage: state.localAiModelLibraryStatus,
+        loading: state.localAiModelLibraryLoading,
+      })
+    : "";
+}
+
+async function openLocalAiPanel() {
+  if (state.localAiPanelOpen) {
+    renderLocalAiPanel();
+    return;
+  }
+
+  closeWritingTargetWindow();
+  closeRevisionWindow();
+  closeDraftProofSettingsWindow();
+  closeKeyboardShortcutSettingsWindow();
+  closeSpotifyMusicPanel();
+  state.localAiPanelOpen = true;
+  editorInteractionLog.info("user-action", "local-ai.panel.open", "Opened Local AI model panel.", {
+    projectId: state.activeProjectId ?? "",
+  });
+  renderHeader();
+  renderLocalAiPanel();
+  await refreshLocalAiModelLibrary();
+}
+
+function closeLocalAiPanel() {
+  if (!state.localAiPanelOpen) {
+    return;
+  }
+
+  state.localAiPanelOpen = false;
+  state.localAiModelLibraryStatus = "";
+  editorInteractionLog.info("user-action", "local-ai.panel.close", "Closed Local AI model panel.", {
+    projectId: state.activeProjectId ?? "",
+  });
+  renderHeader();
+  renderLocalAiPanel();
+}
+
+// Intent: render project-owned shortcut preferences without moving command execution into the window module.
+function renderKeyboardShortcutSettingsWindow() {
+  const slot = document.querySelector("#keyboard-shortcut-settings-slot");
+  if (!(slot instanceof HTMLElement)) {
+    return;
+  }
+
+  slot.innerHTML = state.keyboardShortcutSettingsWindowOpen
+    ? renderKeyboardShortcutSettingsWindowHTML({
+        settings: state.editorPrefs?.keyboardShortcuts,
+        captureBehaviorId: state.keyboardShortcutCaptureBehaviorId,
+        statusMessage: state.keyboardShortcutSettingsStatus,
+      })
+    : "";
+}
+
+// Intent: render the transient dictionary lookup window without persisting lookup state into projects.
+function renderDictionaryLookupWindow() {
+  const slot = document.querySelector("#dictionary-window-slot");
+  if (!(slot instanceof HTMLElement)) {
+    return;
+  }
+
+  slot.innerHTML = renderDictionaryWindowHTML(state.dictionaryLookup, {
+    width: window.innerWidth,
+    height: window.innerHeight,
+  });
+}
+
+function openDictionaryLookup(context = null, source = "contextmenu") {
+  const lookupContext = buildDictionaryLookupContext({
+    ...context,
+    source,
+  });
+  if (!lookupContext) {
+    return false;
+  }
+
+  const requestId = state.dictionaryLookupRequestId + 1;
+  state.dictionaryLookupRequestId = requestId;
+  clearSpellcheckHoverMenuHideTimer();
+  state.taskContextMenu = null;
+  state.binderContextMenu = null;
+  state.spellcheckContextMenu = null;
+  state.worldSpineContextMenu = null;
+  state.dictionaryLookup = {
+    ...lookupContext,
+    status: "loading",
+    entry: null,
+    matchedWord: "",
+    errorMessage: "",
+  };
+  renderTaskContextMenu();
+  renderDictionaryLookupWindow();
+  void resolveDictionaryLookupRequest(requestId, lookupContext);
+  editorInteractionLog.info("user-action", "dictionary.lookup.open", "Opened dictionary lookup.", {
+    word: lookupContext.word,
+    sceneId: lookupContext.sceneId,
+    source: lookupContext.source,
+  });
+  return true;
+}
+
+async function resolveDictionaryLookupRequest(requestId, lookupContext) {
+  try {
+    const lexicon = await ensureEnglishDefinitionLexicon();
+    const result = await lookupEnglishDefinition(lexicon, lookupContext.normalizedWord);
+    if (requestId !== state.dictionaryLookupRequestId || !state.dictionaryLookup) {
+      return;
+    }
+
+    state.dictionaryLookup = {
+      ...state.dictionaryLookup,
+      status: result?.entry ? "found" : "not-found",
+      entry: result?.entry ?? null,
+      matchedWord: result?.matchedWord ?? "",
+      errorMessage: "",
+    };
+    renderDictionaryLookupWindow();
+  } catch (error) {
+    if (requestId !== state.dictionaryLookupRequestId || !state.dictionaryLookup) {
+      return;
+    }
+
+    state.dictionaryLookup = {
+      ...state.dictionaryLookup,
+      status: "error",
+      entry: null,
+      matchedWord: "",
+      errorMessage: error instanceof Error ? error.message : "Dictionary definitions could not be loaded.",
+    };
+    renderDictionaryLookupWindow();
+    editorInteractionLog.warn("user-action", "dictionary.lookup.error", "Dictionary lookup failed.", {
+      word: lookupContext.word,
+      error: state.dictionaryLookup.errorMessage,
+    });
+  }
+}
+
+function closeDictionaryWindow() {
+  if (!state.dictionaryLookup) {
+    return;
+  }
+
+  state.dictionaryLookup = null;
+  state.dictionaryLookupRequestId += 1;
+  renderDictionaryLookupWindow();
+  editorInteractionLog.info("user-action", "dictionary.lookup.close", "Closed dictionary lookup.", {
+    projectId: state.activeProjectId ?? "",
+  });
+}
+
+function openDictionaryLookupFromMenuTarget(target) {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return openDictionaryLookup({
+    word: target.dataset.dictionaryWord ?? "",
+    normalizedWord: target.dataset.dictionaryNormalizedWord ?? "",
+    sceneId: target.dataset.dictionarySceneId ?? "",
+    startOffset: Number(target.dataset.dictionaryStartOffset),
+    endOffset: Number(target.dataset.dictionaryEndOffset),
+    x: Number(target.dataset.dictionaryX),
+    y: Number(target.dataset.dictionaryY),
+  }, "contextmenu");
+}
+
+function openDictionaryLookupFromShortcut(event) {
+  const textarea = resolveManuscriptShortcutTextarea(event?.target);
+  if (!(textarea instanceof HTMLTextAreaElement)) {
+    return false;
+  }
+
+  const rect = textarea.getBoundingClientRect();
+  const context = buildDictionaryShortcutContext(textarea, {
+    x: Math.round(rect.left + Math.min(rect.width - 24, Math.max(24, rect.width * 0.58))),
+    y: Math.round(rect.top + 76),
+  });
+  return openDictionaryLookup(context, "shortcut");
+}
+
+function openKeyboardShortcutSettingsWindow() {
+  if (state.keyboardShortcutSettingsWindowOpen) {
+    renderKeyboardShortcutSettingsWindow();
+    return;
+  }
+
+  closeWritingTargetWindow();
+  closeRevisionWindow();
+  closeDraftProofSettingsWindow();
+  closeLocalAiPanel();
+  closeSpotifyMusicPanel();
+  state.keyboardShortcutSettingsWindowOpen = true;
+  state.keyboardShortcutCaptureBehaviorId = "";
+  state.keyboardShortcutSettingsStatus = "";
+  state.editorPrefs = normalizeEditorPrefs({
+    ...state.editorPrefs,
+    keyboardShortcuts: normalizeKeyboardShortcutSettings(state.editorPrefs?.keyboardShortcuts),
+  });
+  editorInteractionLog.info("user-action", "keyboard-shortcuts.settings.open", "Opened keyboard shortcut settings.", {
+    projectId: state.activeProjectId ?? "",
+  });
+  renderHeader();
+  renderKeyboardShortcutSettingsWindow();
+}
+
+function closeKeyboardShortcutSettingsWindow() {
+  if (!state.keyboardShortcutSettingsWindowOpen) {
+    return;
+  }
+
+  state.keyboardShortcutSettingsWindowOpen = false;
+  state.keyboardShortcutCaptureBehaviorId = "";
+  state.keyboardShortcutSettingsStatus = "";
+  editorInteractionLog.info("user-action", "keyboard-shortcuts.settings.close", "Closed keyboard shortcut settings.", {
+    projectId: state.activeProjectId ?? "",
+  });
+  renderHeader();
+  renderKeyboardShortcutSettingsWindow();
+}
+
+// Intent: start one explicit capture target so ordinary typing never rewrites the keymap.
+function startKeyboardShortcutCapture(behaviorId) {
+  const behavior = getKeyboardShortcutBehavior(behaviorId);
+  if (!behavior) {
+    state.keyboardShortcutSettingsStatus = "Shortcut behavior unavailable.";
+    renderKeyboardShortcutSettingsWindow();
+    return;
+  }
+
+  state.keyboardShortcutCaptureBehaviorId = behavior.id;
+  state.keyboardShortcutSettingsStatus = `Capturing ${behavior.label}.`;
+  renderKeyboardShortcutSettingsWindow();
+  window.requestAnimationFrame(() => {
+    const input = document.querySelector(`[data-keyboard-shortcut-input="${CSS.escape(behavior.id)}"]`);
+    if (input instanceof HTMLInputElement) {
+      input.focus({ preventScroll: true });
+      input.select();
+    }
+  });
+}
+
+// Intent: consume keypresses while capture mode is active before global shortcuts or feature controllers see them.
+function handleKeyboardShortcutCapture(event) {
+  const behaviorId = state.keyboardShortcutCaptureBehaviorId;
+  if (!behaviorId) {
+    return false;
+  }
+
+  const behavior = getKeyboardShortcutBehavior(behaviorId);
+  const result = captureKeyboardShortcutFromEvent(event);
+  event.preventDefault();
+  event.stopPropagation();
+  if (typeof event.stopImmediatePropagation === "function") {
+    event.stopImmediatePropagation();
+  }
+
+  if (!behavior) {
+    state.keyboardShortcutCaptureBehaviorId = "";
+    state.keyboardShortcutSettingsStatus = "Shortcut behavior unavailable.";
+    renderKeyboardShortcutSettingsWindow();
+    return true;
+  }
+
+  if (result.status === "pending") {
+    return true;
+  }
+
+  if (result.status === "cancelled") {
+    state.keyboardShortcutCaptureBehaviorId = "";
+    state.keyboardShortcutSettingsStatus = result.message;
+    renderKeyboardShortcutSettingsWindow();
+    return true;
+  }
+
+  if (result.status === "invalid") {
+    state.keyboardShortcutSettingsStatus = result.message;
+    renderKeyboardShortcutSettingsWindow();
+    return true;
+  }
+
+  const conflict = findKeyboardShortcutConflict(
+    state.editorPrefs?.keyboardShortcuts,
+    behavior.id,
+    result.shortcut,
+  );
+  if (conflict) {
+    state.keyboardShortcutSettingsStatus = `${result.shortcut} is already assigned to ${conflict.label}.`;
+    renderKeyboardShortcutSettingsWindow();
+    return true;
+  }
+
+  setKeyboardShortcutPreference(behavior.id, result.shortcut, {
+    statusMessage: `${behavior.label} set to ${result.shortcut}.`,
+    dirtyReason: "keyboard-shortcut-updated",
+  });
+  state.keyboardShortcutCaptureBehaviorId = "";
+  renderKeyboardShortcutSettingsWindow();
+  return true;
+}
+
+// Intent: persist shortcut mutations through editorPrefs so project-file saves carry user keymaps.
+function setKeyboardShortcutPreference(behaviorId, shortcut, options = {}) {
+  const behavior = getKeyboardShortcutBehavior(behaviorId);
+  if (!behavior) {
+    state.keyboardShortcutSettingsStatus = "Shortcut behavior unavailable.";
+    renderKeyboardShortcutSettingsWindow();
+    return false;
+  }
+
+  const result = setKeyboardShortcutBinding(state.editorPrefs?.keyboardShortcuts, behavior.id, shortcut);
+  state.editorPrefs = normalizeEditorPrefs({
+    ...state.editorPrefs,
+    keyboardShortcuts: result.settings,
+  });
+  state.keyboardShortcutSettingsStatus = options.statusMessage ?? `${behavior.label} shortcut updated.`;
+  writeStoredJson(EDITOR_PREFS_KEY, state.editorPrefs);
+  persistCurrentProjectRecord({
+    domain: "app-settings",
+    dirtyReason: options.dirtyReason ?? "keyboard-shortcuts-updated",
+    source: "setKeyboardShortcutPreference",
+  });
+  editorInteractionLog.info("user-action", "keyboard-shortcuts.settings.update", "Updated keyboard shortcut binding.", {
+    projectId: state.activeProjectId ?? "",
+    behaviorId: behavior.id,
+    shortcut: result.settings.bindings[behavior.id] ?? "",
+    changed: result.changed,
+  });
+  return result.changed;
+}
+
+// Intent: clear a single behavior while keeping the rest of the project keymap intact.
+function clearKeyboardShortcutBinding(behaviorId) {
+  const behavior = getKeyboardShortcutBehavior(behaviorId);
+  if (!behavior) {
+    state.keyboardShortcutSettingsStatus = "Shortcut behavior unavailable.";
+    renderKeyboardShortcutSettingsWindow();
+    return;
+  }
+
+  state.keyboardShortcutCaptureBehaviorId = "";
+  setKeyboardShortcutPreference(behavior.id, "", {
+    statusMessage: `${behavior.label} unassigned.`,
+    dirtyReason: "keyboard-shortcut-cleared",
+  });
+  renderKeyboardShortcutSettingsWindow();
+}
+
+// Intent: restore one behavior default unless another customized binding already owns that key.
+function resetKeyboardShortcutPreference(behaviorId) {
+  const behavior = getKeyboardShortcutBehavior(behaviorId);
+  if (!behavior) {
+    state.keyboardShortcutSettingsStatus = "Shortcut behavior unavailable.";
+    renderKeyboardShortcutSettingsWindow();
+    return;
+  }
+
+  const conflict = findKeyboardShortcutConflict(
+    state.editorPrefs?.keyboardShortcuts,
+    behavior.id,
+    behavior.defaultShortcut,
+  );
+  if (conflict) {
+    state.keyboardShortcutSettingsStatus = `${behavior.defaultShortcut} is already assigned to ${conflict.label}.`;
+    state.keyboardShortcutCaptureBehaviorId = "";
+    renderKeyboardShortcutSettingsWindow();
+    return;
+  }
+
+  const result = resetKeyboardShortcutBinding(state.editorPrefs?.keyboardShortcuts, behavior.id);
+  state.editorPrefs = normalizeEditorPrefs({
+    ...state.editorPrefs,
+    keyboardShortcuts: result.settings,
+  });
+  state.keyboardShortcutCaptureBehaviorId = "";
+  state.keyboardShortcutSettingsStatus = `${behavior.label} reset to ${behavior.defaultShortcut}.`;
+  writeStoredJson(EDITOR_PREFS_KEY, state.editorPrefs);
+  persistCurrentProjectRecord({
+    domain: "app-settings",
+    dirtyReason: "keyboard-shortcut-reset",
+    source: "resetKeyboardShortcutPreference",
+  });
+  renderKeyboardShortcutSettingsWindow();
+}
+
+// Intent: restore all built-in bindings as one explicit user-settings action.
+function resetAllKeyboardShortcutPreferences() {
+  state.editorPrefs = normalizeEditorPrefs({
+    ...state.editorPrefs,
+    keyboardShortcuts: resetKeyboardShortcutSettings(),
+  });
+  state.keyboardShortcutCaptureBehaviorId = "";
+  state.keyboardShortcutSettingsStatus = "Shortcuts reset.";
+  writeStoredJson(EDITOR_PREFS_KEY, state.editorPrefs);
+  persistCurrentProjectRecord({
+    domain: "app-settings",
+    dirtyReason: "keyboard-shortcuts-reset",
+    source: "resetAllKeyboardShortcutPreferences",
+  });
+  renderKeyboardShortcutSettingsWindow();
+}
+
+async function refreshLocalAiModelLibrary() {
+  if (!state.localAiPanelOpen) {
+    return;
+  }
+
+  state.localAiModelLibraryLoading = true;
+  state.localAiModelLibraryStatus = "Scanning model folders";
+  renderLocalAiPanel();
+  const result = await localAiModelLibraryClient.loadModelLibrary();
+  applyLocalAiModelLibraryResult(result, {
+    successMessage: "Model folders scanned",
+  });
+}
+
+async function saveLocalAiModelSettings() {
+  if (!state.localAiPanelOpen) {
+    return;
+  }
+
+  const modelRoot = state.localAiModelRootDraft || state.localAiModelLibrary?.modelRoot || "";
+  state.localAiModelLibraryLoading = true;
+  state.localAiModelLibraryStatus = "Saving model folder";
+  renderLocalAiPanel();
+  const result = await localAiModelLibraryClient.saveModelSettings({
+    modelRoot,
+    executionMode: "local-only",
+  });
+  applyLocalAiModelLibraryResult(result, {
+    successMessage: "Model folder saved",
+  });
+}
+
+async function ensureLocalAiModelFolders() {
+  if (!state.localAiPanelOpen) {
+    return;
+  }
+
+  const modelRoot = state.localAiModelRootDraft || state.localAiModelLibrary?.modelRoot || "";
+  state.localAiModelLibraryLoading = true;
+  state.localAiModelLibraryStatus = "Creating model folders";
+  renderLocalAiPanel();
+  const result = await localAiModelLibraryClient.ensureModelFolders({
+    modelRoot,
+    executionMode: "local-only",
+  });
+  applyLocalAiModelLibraryResult(result, {
+    successMessage: "Model folders ready",
+  });
+}
+
+function applyLocalAiModelLibraryResult(result, {
+  successMessage,
+} = {}) {
+  // Intent: keep desktop bridge failures visible in the panel without blocking other editor workflows.
+  state.localAiModelLibraryLoading = false;
+  if (!result?.ok) {
+    state.localAiModelLibraryStatus = result?.message ?? "Local AI model library unavailable";
+    renderLocalAiPanel();
+    return;
+  }
+
+  state.localAiModelLibrary = result.modelLibrary ?? state.localAiModelLibrary;
+  state.localAiModelRootDraft = state.localAiModelLibrary?.modelRoot ?? state.localAiModelRootDraft;
+  state.localAiModelLibraryStatus = successMessage ?? "Local AI model library updated";
+  renderLocalAiPanel();
+}
+
+// Intent: keep Spotify as a top-chrome integration surface without making it a Metadata Console mode.
+function renderSpotifyMusicSurface() {
+  renderHeader();
+  syncSpotifyPlaybackProgressDom({ preserveActiveSeek: false });
+  syncSpotifyPlaybackPositionTicker();
+}
+
+function toggleSpotifyMusicPanel() {
+  if (state.spotifyMusicPanelOpen) {
+    closeSpotifyMusicPanel();
+    return;
+  }
+
+  openSpotifyMusicPanel();
+}
+
+function openSpotifyMusicPanel() {
+  if (state.spotifyMusicPanelOpen) {
+    renderSpotifyMusicSurface();
+    return;
+  }
+
+  hideFileMenu();
+  hideProjectSettingsMenu();
+  hideDeveloperOptionsMenu();
+  closeWritingTargetWindow();
+  closeRevisionWindow();
+  closeDraftProofSettingsWindow();
+  closeLocalAiPanel();
+  closeKeyboardShortcutSettingsWindow();
+  state.spotifyMusicPanelOpen = true;
+  spotifyMusicLog.info("user-action", "spotify.panel.open", "Opened Spotify music panel.", {
+    projectId: state.activeProjectId ?? "",
+  });
+  renderSpotifyMusicSurface();
+}
+
+function closeSpotifyMusicPanel() {
+  if (!state.spotifyMusicPanelOpen) {
+    return;
+  }
+
+  state.spotifyMusicPanelOpen = false;
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    accountMenuOpen: false,
+  });
+  spotifyMusicLog.info("user-action", "spotify.panel.close", "Closed Spotify music panel.", {
+    projectId: state.activeProjectId ?? "",
+  });
+  renderSpotifyMusicSurface();
+}
+
+// Intent: keep Spotify account state machine-local so queue access never becomes project data.
+function initializeSpotifyMusicState() {
+  const storedClientId = loadStoredString(SPOTIFY_MUSIC_CLIENT_ID_STORAGE_KEY) ?? "";
+  const desktopClientId = String(state.spotifyMusicDesktopClientId ?? "").trim();
+  const clientId = storedClientId || desktopClientId;
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    clientId,
+    clientIdDraft: state.spotifyMusic?.clientIdDraft || clientId,
+    clientIdSource: storedClientId ? "manual" : desktopClientId ? "desktop" : "",
+    redirectUri: spotifyMusicService.resolveRedirectUri(window.location.href),
+    token: spotifyMusicService.getStoredToken(),
+  });
+}
+
+function hydrateSpotifyMusicPlaybackFromStoredSnapshot() {
+  const resumeState = spotifyMusicService.getStoredPlaybackState();
+  if (!resumeState?.currentTrack?.uri || !state.spotifyMusic?.token?.accessToken) {
+    return null;
+  }
+
+  const title = resumeState.currentTrack.title || "track";
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    playbackCurrentTrack: resumeState.currentTrack,
+    playbackCurrentPlaylist: resumeState.currentPlaylist,
+    playbackContextUri: resumeState.contextUri,
+    playbackPaused: resumeState.paused,
+    playbackPositionMs: resumeState.positionMs,
+    playbackDurationMs: resumeState.durationMs,
+    playbackStateUpdatedAt: resumeState.savedAt,
+    playbackStatus: resumeState.paused
+      ? `Ready to resume ${title}.`
+      : `Restoring ${title} after refresh...`,
+  });
+  return resumeState;
+}
+
+function createSpotifyMusicPlaybackSnapshotCandidate() {
+  const spotifyState = state.spotifyMusic ?? {};
+  const currentTrack = spotifyState.playbackCurrentTrack;
+  if (!currentTrack?.uri) {
+    return null;
+  }
+
+  const savedAt = Date.now();
+  const lastStateAt = Math.max(0, Math.round(Number(spotifyState.playbackStateUpdatedAt) || 0));
+  const durationMs = Math.max(0, Math.round(Number(
+    spotifyState.playbackDurationMs
+    || currentTrack.durationMs
+  ) || 0));
+  const basePositionMs = Math.max(0, Math.round(Number(spotifyState.playbackPositionMs) || 0));
+  const elapsedMs = spotifyState.playbackPaused === true || !lastStateAt
+    ? 0
+    : Math.max(0, savedAt - lastStateAt);
+  const estimatedPositionMs = basePositionMs + elapsedMs;
+  const positionMs = durationMs > 0
+    ? Math.min(estimatedPositionMs, durationMs)
+    : estimatedPositionMs;
+
+  return {
+    playbackCurrentTrack: currentTrack,
+    playbackCurrentPlaylist: spotifyState.playbackCurrentPlaylist,
+    playbackContextUri: spotifyState.playbackContextUri,
+    playbackPaused: spotifyState.playbackPaused === true,
+    playbackPositionMs: positionMs,
+    playbackDurationMs: durationMs,
+    playbackStateUpdatedAt: savedAt,
+  };
+}
+
+function persistSpotifyMusicPlaybackSnapshot({ reason = "runtime" } = {}) {
+  const snapshot = createSpotifyMusicPlaybackSnapshotCandidate();
+  if (!snapshot) {
+    return null;
+  }
+
+  const savedState = spotifyMusicService.savePlaybackState(snapshot);
+  if (savedState && reason !== "pagehide") {
+    spotifyMusicLog.debug("file-access", "spotify.playback.snapshot.save", "Stored Spotify playback resume point.", {
+      positionMs: savedState.positionMs,
+      reason,
+      trackUri: savedState.trackUri,
+    });
+  }
+  return savedState;
+}
+
+async function restoreSpotifyMusicPlaybackFromStoredSnapshot({
+  force = false,
+  openPanel = false,
+  reason = "runtime",
+} = {}) {
+  const resumeState = spotifyMusicService.getStoredPlaybackState();
+  if (!resumeState?.currentTrack?.uri) {
+    return {
+      ok: false,
+      skipped: true,
+      message: "No saved Spotify playback point.",
+    };
+  }
+  if (!force && resumeState.paused === true) {
+    return {
+      ok: false,
+      skipped: true,
+      message: "Spotify playback was paused before refresh.",
+    };
+  }
+
+  if (openPanel) {
+    state.spotifyMusicPanelOpen = true;
+  }
+
+  const title = resumeState.currentTrack.title || "track";
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    playbackCurrentTrack: resumeState.currentTrack,
+    playbackCurrentPlaylist: resumeState.currentPlaylist,
+    playbackContextUri: resumeState.contextUri,
+    playbackPaused: resumeState.paused,
+    playbackPositionMs: resumeState.positionMs,
+    playbackDurationMs: resumeState.durationMs,
+    playbackStatus: `Restoring ${title}...`,
+  });
+  renderSpotifyMusicSurface();
+
+  const tokenResult = await ensureSpotifyMusicToken();
+  if (!tokenResult.ok) {
+    state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+      ...state.spotifyMusic,
+      playbackStatus: tokenResult.message,
+    });
+    renderSpotifyMusicSurface();
+    return tokenResult;
+  }
+  if (!spotifyMusicService.hasPlaybackScope(tokenResult.token)) {
+    const message = "Reconnect Spotify to grant in-app playback.";
+    state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+      ...state.spotifyMusic,
+      playbackStatus: message,
+    });
+    renderSpotifyMusicSurface();
+    return {
+      ok: false,
+      message,
+    };
+  }
+
+  const playerResult = await startSpotifyInAppPlayer({
+    openPanel,
+    statusText: "Reconnecting ABE player...",
+  });
+  if (!playerResult.ok) {
+    state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+      ...state.spotifyMusic,
+      playbackStatus: playerResult.message,
+    });
+    renderSpotifyMusicSurface();
+    return playerResult;
+  }
+
+  const contextUri = String(resumeState.contextUri || resumeState.playlistUri || "").trim();
+  const result = contextUri.startsWith("spotify:playlist:")
+    ? await spotifyMusicService.startPlaylistPlayback({
+      accessToken: tokenResult.token.accessToken,
+      deviceId: playerResult.deviceId,
+      playlistUri: contextUri,
+      positionMs: resumeState.positionMs,
+      trackUri: resumeState.trackUri,
+    })
+    : await spotifyMusicService.startTrackPlayback({
+      accessToken: tokenResult.token.accessToken,
+      deviceId: playerResult.deviceId,
+      positionMs: resumeState.positionMs,
+      trackUri: resumeState.trackUri,
+    });
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    playbackCurrentTrack: resumeState.currentTrack,
+    playbackCurrentPlaylist: resumeState.currentPlaylist,
+    playbackContextUri: contextUri,
+    playbackPaused: result.ok ? false : state.spotifyMusic.playbackPaused,
+    playbackPositionMs: resumeState.positionMs,
+    playbackDurationMs: resumeState.durationMs,
+    playbackReady: result.ok || state.spotifyMusic.playbackReady,
+    playbackDeviceId: playerResult.deviceId,
+    playbackStateUpdatedAt: Date.now(),
+    playbackStatus: result.ok ? `Resumed ${title}.` : result.message,
+  });
+  if (result.ok) {
+    persistSpotifyMusicPlaybackSnapshot({ reason: `restore-${reason}` });
+  }
+  spotifyMusicLog.info("user-action", "spotify.playback.restore", "Restored Spotify playback after refresh.", {
+    ok: result.ok === true,
+    reason,
+    trackUri: resumeState.trackUri,
+  });
+  renderSpotifyMusicSurface();
+  return result;
+}
+
+async function completeSpotifyAuthorizationFromCurrentLocation() {
+  initializeSpotifyMusicState();
+  if (!spotifyMusicService.hasAuthorizationResponse(window.location.href)) {
+    return;
+  }
+
+  state.spotifyMusicPanelOpen = true;
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    authBusy: true,
+    authStatus: "Connecting Spotify...",
+  });
+  const result = await spotifyMusicService.exchangeAuthorizationCode({
+    clientId: state.spotifyMusic.clientId,
+    redirectUri: state.spotifyMusic.redirectUri,
+    href: window.location.href,
+  });
+  const profileResult = result.ok
+    ? await spotifyMusicService.loadCurrentUserProfile({
+      accessToken: result.token.accessToken,
+    })
+    : null;
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    token: result.ok ? result.token : null,
+    currentUserId: profileResult?.ok ? profileResult.userId : state.spotifyMusic.currentUserId,
+    currentUserDisplayName: profileResult?.ok ? profileResult.displayName : state.spotifyMusic.currentUserDisplayName,
+    currentUserImageUrl: profileResult?.ok ? profileResult.imageUrl : state.spotifyMusic.currentUserImageUrl,
+    currentUserExternalUrl: profileResult?.ok ? profileResult.externalUrl : state.spotifyMusic.currentUserExternalUrl,
+    authBusy: false,
+    authStatus: result.message,
+  });
+  if (result.cleanUrl && window.history?.replaceState) {
+    window.history.replaceState({}, document.title, result.cleanUrl);
+  }
+  spotifyMusicLog.info("user-action", "spotify.authorization.callback", "Handled Spotify authorization callback.", {
+    ok: result.ok === true,
+    handled: result.handled === true,
+  });
+}
+
+async function refreshSpotifyMusicProfileFromCurrentToken() {
+  if (!state.spotifyMusic?.token?.accessToken) {
+    return;
+  }
+
+  const tokenResult = await ensureSpotifyMusicToken();
+  if (!tokenResult.ok) {
+    return;
+  }
+
+  const profileResult = await spotifyMusicService.loadCurrentUserProfile({
+    accessToken: tokenResult.token.accessToken,
+  });
+  if (!profileResult.ok) {
+    return;
+  }
+
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    currentUserId: profileResult.userId,
+    currentUserDisplayName: profileResult.displayName,
+    currentUserImageUrl: profileResult.imageUrl,
+    currentUserExternalUrl: profileResult.externalUrl,
+  });
+}
+
+function updateSpotifyClientIdDraft(value) {
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    clientIdDraft: value,
+    authStatus: "",
+  });
+}
+
+function updateSpotifySearchQuery(value) {
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    query: value,
+    sourceMode: "search",
+    searchStatus: "",
+  });
+}
+
+function setSpotifyMusicSource(sourceMode) {
+  const normalizedSourceMode = sourceMode === "playlists" ? "playlists" : "search";
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    sourceMode: normalizedSourceMode,
+    searchStatus: "",
+    playlistStatus: "",
+  });
+  renderSpotifyMusicSurface();
+
+  // Intent: make the playlist surface useful on first open without persisting library data to the project.
+  if (
+    normalizedSourceMode === "playlists"
+    && state.spotifyMusic.playlistResults.length === 0
+    && !state.spotifyMusic.playlistBusy
+  ) {
+    void loadSpotifyMusicPlaylists();
+  }
+}
+
+function saveSpotifyClientId() {
+  const clientId = String(state.spotifyMusic?.clientIdDraft ?? "").trim();
+  const desktopClientId = String(state.spotifyMusicDesktopClientId ?? "").trim();
+  const resolvedClientId = clientId || desktopClientId;
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    clientId: resolvedClientId,
+    clientIdDraft: clientId || resolvedClientId,
+    clientIdSource: clientId ? "manual" : desktopClientId ? "desktop" : "",
+    authStatus: resolvedClientId ? "Spotify app ID ready." : "Spotify app setup required before sign-in.",
+  });
+  writeStoredJsonRaw(SPOTIFY_MUSIC_CLIENT_ID_STORAGE_KEY, clientId);
+  renderSpotifyMusicSurface();
+}
+
+async function connectSpotifyMusicAccount() {
+  saveSpotifyClientId();
+  state.spotifyMusicPanelOpen = true;
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    authBusy: true,
+    authStatus: "Opening Spotify...",
+  });
+  renderSpotifyMusicSurface();
+  const result = await spotifyMusicService.beginAuthorization({
+    clientId: state.spotifyMusic.clientId,
+    redirectUri: state.spotifyMusic.redirectUri,
+  });
+  if (!result.ok) {
+    state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+      ...state.spotifyMusic,
+      authBusy: false,
+      authStatus: result.message,
+    });
+    renderSpotifyMusicSurface();
+    return;
+  }
+
+  spotifyMusicLog.info("user-action", "spotify.authorization.start", "Redirecting to Spotify authorization.", {
+    scope: result.scope,
+  });
+  window.location.assign(result.authorizationUrl);
+}
+
+function disconnectSpotifyMusicAccount() {
+  spotifyMusicService.clearToken();
+  spotifyMusicService.clearPlaybackState();
+  spotifyMusicService.disconnectWebPlayback();
+  stopSpotifyPlaybackPositionTicker();
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    token: null,
+    currentUserId: "",
+    currentUserDisplayName: "",
+    currentUserImageUrl: "",
+    currentUserExternalUrl: "",
+    accountMenuOpen: false,
+    searchResults: [],
+    playlistResults: [],
+    playlistTrackResults: [],
+    selectedPlaylistId: "",
+    selectedPlaylistName: "",
+    queueHistory: [],
+    authStatus: "Spotify disconnected.",
+    searchStatus: "",
+    playlistStatus: "",
+    tempoStatus: "",
+    queueStatus: "",
+    playbackStatus: "",
+    playbackDeviceId: "",
+    playbackReady: false,
+    playbackConnecting: false,
+    playbackBusyPlaylistUri: "",
+    playbackCurrentTrack: null,
+    playbackCurrentPlaylist: null,
+    playbackContextUri: "",
+    playbackPositionMs: 0,
+    playbackDurationMs: 0,
+    playbackStateUpdatedAt: 0,
+    playbackControlBusy: false,
+  });
+  renderSpotifyMusicSurface();
+}
+
+function toggleSpotifyMusicAccountMenu() {
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    accountMenuOpen: !state.spotifyMusic?.accountMenuOpen,
+  });
+  renderSpotifyMusicSurface();
+}
+
+async function searchSpotifyMusicTracks() {
+  state.spotifyMusicPanelOpen = true;
+  const tokenResult = await ensureSpotifyMusicToken();
+  if (!tokenResult.ok) {
+    state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+      ...state.spotifyMusic,
+      searchStatus: tokenResult.message,
+    });
+    renderSpotifyMusicSurface();
+    return;
+  }
+
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    sourceMode: "search",
+    searchBusy: true,
+    searchStatus: "Searching Spotify...",
+    tempoStatus: "",
+  });
+  renderSpotifyMusicSurface();
+  const result = await spotifyMusicService.searchTracks({
+    accessToken: tokenResult.token.accessToken,
+    query: state.spotifyMusic.query,
+  });
+  const tempoResult = result.ok
+    ? await spotifyMusicService.enrichTracksWithTempo({
+      accessToken: tokenResult.token.accessToken,
+      tracks: result.tracks,
+    })
+    : null;
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    searchBusy: false,
+    searchResults: result.ok ? tempoResult.tracks : state.spotifyMusic.searchResults,
+    searchStatus: result.message,
+    tempoStatus: tempoResult?.message ?? state.spotifyMusic.tempoStatus,
+  });
+  spotifyMusicLog.info("user-action", "spotify.search", "Searched Spotify tracks.", {
+    ok: result.ok === true,
+    queryLength: state.spotifyMusic.query.length,
+    trackCount: result.tracks?.length ?? 0,
+    tempoReady: tempoResult?.tempoReference?.count ?? 0,
+  });
+  renderSpotifyMusicSurface();
+}
+
+async function loadSpotifyMusicPlaylists() {
+  state.spotifyMusicPanelOpen = true;
+  const tokenResult = await ensureSpotifyMusicToken();
+  if (!tokenResult.ok) {
+    state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+      ...state.spotifyMusic,
+      sourceMode: "playlists",
+      playlistStatus: tokenResult.message,
+    });
+    renderSpotifyMusicSurface();
+    return;
+  }
+
+  if (!spotifyMusicService.hasPlaylistScope(tokenResult.token)) {
+    const message = "Reconnect Spotify to grant playlist browsing.";
+    state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+      ...state.spotifyMusic,
+      sourceMode: "playlists",
+      playlistStatus: message,
+    });
+    renderSpotifyMusicSurface();
+    return;
+  }
+
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    accountMenuOpen: false,
+    sourceMode: "playlists",
+    playlistBusy: true,
+    playlistStatus: "Loading Spotify playlists...",
+  });
+  renderSpotifyMusicSurface();
+  const profileResult = await spotifyMusicService.loadCurrentUserProfile({
+    accessToken: tokenResult.token.accessToken,
+  });
+  const result = await spotifyMusicService.loadPlaylists({
+    accessToken: tokenResult.token.accessToken,
+    currentUserId: profileResult.userId,
+  });
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    sourceMode: "playlists",
+    currentUserId: profileResult.ok ? profileResult.userId : state.spotifyMusic.currentUserId,
+    currentUserDisplayName: profileResult.ok ? profileResult.displayName : state.spotifyMusic.currentUserDisplayName,
+    currentUserImageUrl: profileResult.ok ? profileResult.imageUrl : state.spotifyMusic.currentUserImageUrl,
+    currentUserExternalUrl: profileResult.ok ? profileResult.externalUrl : state.spotifyMusic.currentUserExternalUrl,
+    playlistBusy: false,
+    playlistResults: result.ok ? result.playlists : state.spotifyMusic.playlistResults,
+    playlistStatus: result.ok && result.playlists.some((playlist) => playlist.canReadTracks === false)
+      ? `${result.message} Some followed playlists are limited by Spotify.`
+      : result.message,
+  });
+  spotifyMusicLog.info("user-action", "spotify.playlists.load", "Loaded Spotify playlists.", {
+    ok: result.ok === true,
+    playlistCount: result.playlists?.length ?? 0,
+    limitedCount: result.playlists?.filter((playlist) => playlist.canReadTracks === false).length ?? 0,
+  });
+  renderSpotifyMusicSurface();
+}
+
+async function loadSpotifyMusicPlaylistTracks(playlistId) {
+  state.spotifyMusicPanelOpen = true;
+  const selectedPlaylist = state.spotifyMusic.playlistResults.find((playlist) => playlist.id === playlistId) ?? null;
+  if (selectedPlaylist?.canReadTracks === false) {
+    state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+      ...state.spotifyMusic,
+      sourceMode: "playlists",
+      selectedPlaylistId: playlistId,
+      selectedPlaylistName: selectedPlaylist.title,
+      playlistTrackResults: [],
+      playlistStatus: SPOTIFY_LIMITED_PLAYLIST_MESSAGE,
+    });
+    renderSpotifyMusicSurface();
+    return;
+  }
+
+  const tokenResult = await ensureSpotifyMusicToken();
+  if (!tokenResult.ok) {
+    state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+      ...state.spotifyMusic,
+      sourceMode: "playlists",
+      playlistStatus: tokenResult.message,
+    });
+    renderSpotifyMusicSurface();
+    return;
+  }
+
+  if (!spotifyMusicService.hasPlaylistScope(tokenResult.token)) {
+    state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+      ...state.spotifyMusic,
+      sourceMode: "playlists",
+      playlistStatus: "Reconnect Spotify to grant playlist browsing.",
+    });
+    renderSpotifyMusicSurface();
+    return;
+  }
+
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    sourceMode: "playlists",
+    selectedPlaylistId: playlistId,
+    selectedPlaylistName: selectedPlaylist?.title ?? state.spotifyMusic.selectedPlaylistName,
+    playlistTracksBusy: true,
+    playlistStatus: selectedPlaylist ? `Loading ${selectedPlaylist.title}...` : "Loading playlist tracks...",
+    tempoStatus: "",
+  });
+  renderSpotifyMusicSurface();
+  const result = await spotifyMusicService.loadPlaylistTracks({
+    accessToken: tokenResult.token.accessToken,
+    playlistId,
+  });
+  const tempoResult = result.ok
+    ? await spotifyMusicService.enrichTracksWithTempo({
+      accessToken: tokenResult.token.accessToken,
+      tracks: result.tracks,
+    })
+    : null;
+  const limitedPlaylist = !result.ok && isSpotifyLimitedPlaylistResponse(result.message);
+  const playlistResults = limitedPlaylist
+    ? markSpotifyPlaylistTracksLimited(state.spotifyMusic.playlistResults, playlistId)
+    : state.spotifyMusic.playlistResults;
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    sourceMode: "playlists",
+    selectedPlaylistId: playlistId,
+    selectedPlaylistName: selectedPlaylist?.title ?? state.spotifyMusic.selectedPlaylistName,
+    playlistTracksBusy: false,
+    playlistResults,
+    playlistTrackResults: result.ok ? tempoResult.tracks : limitedPlaylist ? [] : state.spotifyMusic.playlistTrackResults,
+    playlistStatus: normalizeSpotifyPlaylistFailureMessage(result.message),
+    tempoStatus: tempoResult?.message ?? state.spotifyMusic.tempoStatus,
+  });
+  spotifyMusicLog.info("user-action", "spotify.playlists.tracks", "Loaded Spotify playlist tracks.", {
+    ok: result.ok === true,
+    playlistId,
+    trackCount: result.tracks?.length ?? 0,
+    tempoReady: tempoResult?.tempoReference?.count ?? 0,
+    limited: limitedPlaylist,
+  });
+  renderSpotifyMusicSurface();
+}
+
+async function analyzeSpotifyVisibleTrackTempo() {
+  state.spotifyMusicPanelOpen = true;
+  const tokenResult = await ensureSpotifyMusicToken();
+  if (!tokenResult.ok) {
+    state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+      ...state.spotifyMusic,
+      tempoStatus: tokenResult.message,
+    });
+    renderSpotifyMusicSurface();
+    return;
+  }
+
+  const sourceMode = state.spotifyMusic.sourceMode === "playlists" ? "playlists" : "search";
+  const tracks = sourceMode === "playlists"
+    ? state.spotifyMusic.playlistTrackResults
+    : state.spotifyMusic.searchResults;
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    tempoBusy: true,
+    tempoStatus: "Analyzing tempo...",
+  });
+  renderSpotifyMusicSurface();
+  const result = await spotifyMusicService.enrichTracksWithTempo({
+    accessToken: tokenResult.token.accessToken,
+    tracks,
+  });
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    tempoBusy: false,
+    searchResults: sourceMode === "search" ? result.tracks : state.spotifyMusic.searchResults,
+    playlistTrackResults: sourceMode === "playlists" ? result.tracks : state.spotifyMusic.playlistTrackResults,
+    tempoStatus: result.message,
+  });
+  spotifyMusicLog.info("user-action", "spotify.tempo.analyze", "Analyzed visible Spotify track tempos.", {
+    ok: result.ok === true,
+    sourceMode,
+    trackCount: result.tracks?.length ?? 0,
+    tempoReady: result.tempoReference?.count ?? 0,
+  });
+  renderSpotifyMusicSurface();
+}
+
+function findSpotifyMusicTrackByUri(trackUri) {
+  const normalizedTrackUri = String(trackUri ?? "").trim();
+  if (!normalizedTrackUri) {
+    return null;
+  }
+
+  return [
+    ...state.spotifyMusic.searchResults,
+    ...state.spotifyMusic.playlistTrackResults,
+    ...state.spotifyMusic.queueHistory,
+  ].find((candidate) => candidate.uri === normalizedTrackUri) ?? null;
+}
+
+function isSpotifyLimitedPlaylistResponse(message) {
+  return /forbidden|own or collaborate|only exposes tracks/i.test(String(message ?? ""));
+}
+
+function normalizeSpotifyPlaylistFailureMessage(message) {
+  return isSpotifyLimitedPlaylistResponse(message)
+    ? SPOTIFY_LIMITED_PLAYLIST_MESSAGE
+    : String(message ?? "").trim();
+}
+
+function markSpotifyPlaylistTracksLimited(playlists = [], playlistId = "") {
+  const normalizedPlaylistId = String(playlistId ?? "").trim();
+  return (Array.isArray(playlists) ? playlists : []).map((playlist) => {
+    if (playlist?.id !== normalizedPlaylistId) {
+      return playlist;
+    }
+
+    return {
+      ...playlist,
+      canReadTracks: false,
+    };
+  });
+}
+
+async function startSpotifyInAppPlayer({
+  statusText = "Starting ABE player...",
+} = {}) {
+  const tokenResult = await ensureSpotifyMusicToken();
+  if (!tokenResult.ok) {
+    state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+      ...state.spotifyMusic,
+      playbackStatus: tokenResult.message,
+    });
+    renderSpotifyMusicSurface();
+    return tokenResult;
+  }
+
+  if (!spotifyMusicService.hasPlaybackScope(tokenResult.token)) {
+    const message = "Reconnect Spotify to grant in-app playback.";
+    state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+      ...state.spotifyMusic,
+      playbackStatus: message,
+    });
+    renderSpotifyMusicSurface();
+    return {
+      ok: false,
+      message,
+    };
+  }
+
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    playbackConnecting: true,
+    playbackStatus: statusText,
+  });
+  renderSpotifyMusicSurface();
+  const result = await spotifyMusicService.connectWebPlayback({
+    accessToken: tokenResult.token.accessToken,
+    onEvent: handleSpotifyWebPlaybackEvent,
+  });
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    playbackConnecting: false,
+    playbackReady: result.ok,
+    playbackDeviceId: result.ok ? result.deviceId : state.spotifyMusic.playbackDeviceId,
+    playbackStatus: result.message,
+  });
+  spotifyMusicLog.info("user-action", "spotify.playback.player", "Started Spotify Web Playback player.", {
+    ok: result.ok === true,
+    hasDeviceId: Boolean(result.deviceId),
+  });
+  renderSpotifyMusicSurface();
+  syncSpotifyPlaybackPositionTicker({ resetClock: true });
+  return result;
+}
+
+function updateSpotifyPlaybackSeekDraft(value) {
+  spotifyPlaybackPositionSyncedAtMs = Date.now();
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    playbackPositionMs: Math.max(0, Math.round(Number(value) || 0)),
+    playbackStateUpdatedAt: spotifyPlaybackPositionSyncedAtMs,
+  });
+  syncSpotifyPlaybackProgressDom({ preserveActiveSeek: false });
+}
+
+// Intent: keep the compact player progress moving while Spotify is playing even when the SDK only emits occasional snapshots.
+function syncSpotifyPlaybackPositionTicker({
+  resetClock = false,
+} = {}) {
+  if (resetClock || !spotifyPlaybackPositionSyncedAtMs) {
+    spotifyPlaybackPositionSyncedAtMs = Date.now();
+  }
+
+  if (!shouldAdvanceSpotifyPlaybackPosition()) {
+    stopSpotifyPlaybackPositionTicker();
+    return;
+  }
+
+  if (spotifyPlaybackPositionTickerId !== null) {
+    return;
+  }
+
+  spotifyPlaybackPositionTickerId = window.setInterval(
+    advanceSpotifyPlaybackPositionTick,
+    SPOTIFY_PLAYBACK_POSITION_TICK_MS,
+  );
+}
+
+function stopSpotifyPlaybackPositionTicker() {
+  if (spotifyPlaybackPositionTickerId === null) {
+    spotifyPlaybackPositionSyncedAtMs = 0;
+    return;
+  }
+
+  window.clearInterval(spotifyPlaybackPositionTickerId);
+  spotifyPlaybackPositionTickerId = null;
+  spotifyPlaybackPositionSyncedAtMs = 0;
+}
+
+function shouldAdvanceSpotifyPlaybackPosition() {
+  const spotifyMusic = state.spotifyMusic ?? {};
+  const durationMs = Math.max(0, Number(spotifyMusic.playbackDurationMs) || 0);
+  const positionMs = Math.max(0, Number(spotifyMusic.playbackPositionMs) || 0);
+  return Boolean(
+    spotifyMusic.playbackReady === true
+    && spotifyMusic.playbackPaused !== true
+    && spotifyMusic.playbackControlBusy !== true
+    && durationMs > 0
+    && positionMs < durationMs
+  );
+}
+
+function advanceSpotifyPlaybackPositionTick() {
+  if (!shouldAdvanceSpotifyPlaybackPosition()) {
+    stopSpotifyPlaybackPositionTicker();
+    return;
+  }
+
+  if (isSpotifyPlaybackSeekInputActive()) {
+    spotifyPlaybackPositionSyncedAtMs = Date.now();
+    return;
+  }
+
+  const nowMs = Date.now();
+  const elapsedMs = Math.max(0, nowMs - (spotifyPlaybackPositionSyncedAtMs || nowMs));
+  if (elapsedMs < 250) {
+    return;
+  }
+
+  const durationMs = Math.max(0, Number(state.spotifyMusic.playbackDurationMs) || 0);
+  const currentPositionMs = Math.max(0, Number(state.spotifyMusic.playbackPositionMs) || 0);
+  const nextPositionMs = Math.min(durationMs, currentPositionMs + elapsedMs);
+  spotifyPlaybackPositionSyncedAtMs = nowMs;
+  if (Math.round(nextPositionMs) === Math.round(currentPositionMs)) {
+    return;
+  }
+
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    playbackPositionMs: nextPositionMs,
+    playbackStateUpdatedAt: nowMs,
+  });
+  syncSpotifyPlaybackProgressDom();
+  if (nextPositionMs >= durationMs) {
+    stopSpotifyPlaybackPositionTicker();
+  }
+}
+
+function isSpotifyPlaybackSeekInputActive() {
+  const activeElement = document.activeElement;
+  return activeElement instanceof HTMLInputElement && activeElement.dataset.spotifyPlaybackSeek !== undefined;
+}
+
+function syncSpotifyPlaybackProgressDom({
+  preserveActiveSeek = true,
+} = {}) {
+  const spotifyMusic = createDefaultSpotifyMusicPanelState(state.spotifyMusic);
+  const durationMs = Math.max(0, Number(spotifyMusic.playbackDurationMs) || 0);
+  const positionMs = Math.min(Math.max(0, Number(spotifyMusic.playbackPositionMs) || 0), Math.max(durationMs, 0));
+  const canSeek = spotifyMusic.playbackReady === true && spotifyMusic.playbackControlBusy !== true && durationMs > 0;
+  document.querySelectorAll("[data-spotify-playback-position-label]").forEach((element) => {
+    element.textContent = formatSpotifyPlaybackTimeLabel(positionMs);
+  });
+  document.querySelectorAll("[data-spotify-playback-duration-label]").forEach((element) => {
+    element.textContent = formatSpotifyPlaybackTimeLabel(durationMs);
+  });
+  document.querySelectorAll("[data-spotify-playback-seek]").forEach((element) => {
+    if (!(element instanceof HTMLInputElement)) {
+      return;
+    }
+    if (preserveActiveSeek && element === document.activeElement) {
+      return;
+    }
+    element.max = String(Math.max(durationMs, 1));
+    element.value = String(Math.round(positionMs));
+    element.disabled = !canSeek;
+  });
+}
+
+async function toggleSpotifyMusicPlayback() {
+  if (!state.spotifyMusic.playbackReady) {
+    const storedResumeState = spotifyMusicService.getStoredPlaybackState();
+    if (storedResumeState?.currentTrack?.uri) {
+      const restoreResult = await restoreSpotifyMusicPlaybackFromStoredSnapshot({
+        force: true,
+        openPanel: true,
+        reason: "manual-toggle",
+      });
+      if (restoreResult.ok) {
+        return;
+      }
+    }
+
+    const playerResult = await startSpotifyInAppPlayer();
+    if (!playerResult.ok) {
+      return;
+    }
+  }
+
+  const previousPaused = state.spotifyMusic.playbackPaused === true;
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    playbackControlBusy: true,
+    playbackStatus: previousPaused ? "Resuming Spotify playback..." : "Pausing Spotify playback...",
+  });
+  renderSpotifyMusicSurface();
+  const result = await spotifyMusicService.togglePlayback();
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    playbackControlBusy: false,
+    playbackPaused: result.ok ? !previousPaused : state.spotifyMusic.playbackPaused,
+    playbackStateUpdatedAt: Date.now(),
+    playbackStatus: result.message,
+  });
+  spotifyMusicLog.info("user-action", "spotify.playback.toggle", "Sent Spotify play/pause command.", {
+    ok: result.ok === true,
+    previousPaused,
+  });
+  renderSpotifyMusicSurface();
+  persistSpotifyMusicPlaybackSnapshot({ reason: "toggle" });
+  syncSpotifyPlaybackPositionTicker({ resetClock: true });
+}
+
+async function skipSpotifyMusicPlayback(direction) {
+  if (!state.spotifyMusic.playbackReady) {
+    const playerResult = await startSpotifyInAppPlayer();
+    if (!playerResult.ok) {
+      return;
+    }
+  }
+
+  const normalizedDirection = direction === "previous" ? "previous" : "next";
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    playbackControlBusy: true,
+    playbackStatus: normalizedDirection === "previous" ? "Returning to previous track..." : "Skipping to next track...",
+  });
+  renderSpotifyMusicSurface();
+  const result = normalizedDirection === "previous"
+    ? await spotifyMusicService.previousTrack()
+    : await spotifyMusicService.nextTrack();
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    playbackControlBusy: false,
+    playbackPositionMs: result.ok ? 0 : state.spotifyMusic.playbackPositionMs,
+    playbackStateUpdatedAt: Date.now(),
+    playbackStatus: result.message,
+  });
+  spotifyMusicLog.info("user-action", `spotify.playback.${normalizedDirection}`, "Sent Spotify track-skip command.", {
+    ok: result.ok === true,
+  });
+  renderSpotifyMusicSurface();
+  syncSpotifyPlaybackPositionTicker({ resetClock: true });
+}
+
+async function seekSpotifyMusicPlayback(value) {
+  const positionMs = Math.max(0, Math.round(Number(value) || 0));
+  spotifyPlaybackPositionSyncedAtMs = Date.now();
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    playbackControlBusy: true,
+    playbackPositionMs: positionMs,
+    playbackStateUpdatedAt: spotifyPlaybackPositionSyncedAtMs,
+    playbackStatus: "Seeking Spotify playback...",
+  });
+  renderSpotifyMusicSurface();
+  const result = await spotifyMusicService.seekPlayback({ positionMs });
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    playbackControlBusy: false,
+    playbackPositionMs: result.ok ? result.positionMs : state.spotifyMusic.playbackPositionMs,
+    playbackStateUpdatedAt: Date.now(),
+    playbackStatus: result.message,
+  });
+  spotifyMusicLog.info("user-action", "spotify.playback.seek", "Sent Spotify seek command.", {
+    ok: result.ok === true,
+    positionMs,
+  });
+  renderSpotifyMusicSurface();
+  persistSpotifyMusicPlaybackSnapshot({ reason: "seek" });
+  syncSpotifyPlaybackPositionTicker({ resetClock: true });
+}
+
+async function playSpotifyMusicTrack(trackUri) {
+  state.spotifyMusicPanelOpen = true;
+  const tokenResult = await ensureSpotifyMusicToken();
+  if (!tokenResult.ok) {
+    state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+      ...state.spotifyMusic,
+      playbackStatus: tokenResult.message,
+    });
+    renderSpotifyMusicSurface();
+    return;
+  }
+
+  const track = findSpotifyMusicTrackByUri(trackUri);
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    accountMenuOpen: false,
+    playbackBusyTrackUri: trackUri,
+    playbackStatus: "Preparing ABE player...",
+  });
+  renderSpotifyMusicSurface();
+
+  const playerResult = await startSpotifyInAppPlayer();
+  if (!playerResult.ok) {
+    state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+      ...state.spotifyMusic,
+      playbackBusyTrackUri: "",
+      playbackStatus: playerResult.message,
+    });
+    renderSpotifyMusicSurface();
+    return;
+  }
+
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    playbackBusyTrackUri: trackUri,
+    playbackStatus: "Starting track in ABE...",
+  });
+  renderSpotifyMusicSurface();
+  const result = await spotifyMusicService.startTrackPlayback({
+    accessToken: tokenResult.token.accessToken,
+    deviceId: playerResult.deviceId,
+    trackUri,
+  });
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    playbackBusyTrackUri: "",
+    playbackCurrentTrack: result.ok && track ? track : state.spotifyMusic.playbackCurrentTrack,
+    playbackCurrentPlaylist: result.ok ? null : state.spotifyMusic.playbackCurrentPlaylist,
+    playbackContextUri: result.ok ? "" : state.spotifyMusic.playbackContextUri,
+    playbackPaused: false,
+    playbackPositionMs: 0,
+    playbackDurationMs: result.ok && track?.durationMs ? track.durationMs : state.spotifyMusic.playbackDurationMs,
+    playbackReady: true,
+    playbackDeviceId: playerResult.deviceId,
+    playbackStateUpdatedAt: Date.now(),
+    playbackStatus: result.ok && track ? `Playing ${track.title || "track"} in ABE.` : result.message,
+  });
+  spotifyMusicLog.info("user-action", "spotify.playback.track", "Sent Spotify in-app playback command.", {
+    ok: result.ok === true,
+    trackUri,
+    trackTitle: track?.title ?? "",
+  });
+  renderSpotifyMusicSurface();
+  if (result.ok) {
+    persistSpotifyMusicPlaybackSnapshot({ reason: "track-play" });
+  }
+}
+
+async function playSpotifyMusicPlaylist(playlistUriOrId) {
+  state.spotifyMusicPanelOpen = true;
+  const selectedPlaylist = state.spotifyMusic.playlistResults.find((playlist) => (
+    playlist.uri === playlistUriOrId
+    || playlist.id === playlistUriOrId
+  )) ?? null;
+  const playlistUri = selectedPlaylist?.uri || String(playlistUriOrId ?? "").trim();
+  const playlistId = selectedPlaylist?.id ?? "";
+  const tokenResult = await ensureSpotifyMusicToken();
+  if (!tokenResult.ok) {
+    state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+      ...state.spotifyMusic,
+      playbackStatus: tokenResult.message,
+    });
+    renderSpotifyMusicSurface();
+    return;
+  }
+
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    sourceMode: "playlists",
+    selectedPlaylistId: playlistId || state.spotifyMusic.selectedPlaylistId,
+    selectedPlaylistName: selectedPlaylist?.title ?? state.spotifyMusic.selectedPlaylistName,
+    playbackCurrentPlaylist: selectedPlaylist ?? state.spotifyMusic.playbackCurrentPlaylist,
+    playbackContextUri: playlistUri,
+    playbackBusyPlaylistUri: playlistUri,
+    playbackStatus: "Preparing ABE player...",
+    playlistStatus: selectedPlaylist?.canReadTracks === false
+      ? SPOTIFY_LIMITED_PLAYLIST_MESSAGE
+      : state.spotifyMusic.playlistStatus,
+  });
+  renderSpotifyMusicSurface();
+
+  const playerResult = await startSpotifyInAppPlayer();
+  if (!playerResult.ok) {
+    state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+      ...state.spotifyMusic,
+      playbackBusyPlaylistUri: "",
+      playbackStatus: playerResult.message,
+    });
+    renderSpotifyMusicSurface();
+    return;
+  }
+
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    playbackBusyPlaylistUri: playlistUri,
+    playbackStatus: "Starting playlist in ABE...",
+  });
+  renderSpotifyMusicSurface();
+  const result = await spotifyMusicService.startPlaylistPlayback({
+    accessToken: tokenResult.token.accessToken,
+    deviceId: playerResult.deviceId,
+    playlistUri,
+  });
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    selectedPlaylistId: playlistId || state.spotifyMusic.selectedPlaylistId,
+    selectedPlaylistName: selectedPlaylist?.title ?? state.spotifyMusic.selectedPlaylistName,
+    playbackBusyPlaylistUri: "",
+    playbackCurrentPlaylist: result.ok && selectedPlaylist ? selectedPlaylist : state.spotifyMusic.playbackCurrentPlaylist,
+    playbackCurrentTrack: result.ok ? null : state.spotifyMusic.playbackCurrentTrack,
+    playbackContextUri: result.ok ? playlistUri : state.spotifyMusic.playbackContextUri,
+    playbackPaused: false,
+    playbackPositionMs: 0,
+    playbackDurationMs: 0,
+    playbackReady: true,
+    playbackDeviceId: playerResult.deviceId,
+    playbackStateUpdatedAt: Date.now(),
+    playbackStatus: result.ok && selectedPlaylist
+      ? `Playing ${selectedPlaylist.title || "playlist"} in ABE.`
+      : result.message,
+  });
+  spotifyMusicLog.info("user-action", "spotify.playback.playlist", "Sent Spotify playlist playback command.", {
+    ok: result.ok === true,
+    playlistTitle: selectedPlaylist?.title ?? "",
+    playlistUri,
+  });
+  renderSpotifyMusicSurface();
+  if (result.ok && selectedPlaylist?.id && selectedPlaylist.canReadTracks !== false) {
+    void loadSpotifyMusicPlaylistTracks(selectedPlaylist.id);
+  }
+}
+
+async function queueSpotifyMusicTrack(trackUri) {
+  state.spotifyMusicPanelOpen = true;
+  const tokenResult = await ensureSpotifyMusicToken();
+  if (!tokenResult.ok) {
+    state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+      ...state.spotifyMusic,
+      queueStatus: tokenResult.message,
+    });
+    renderSpotifyMusicSurface();
+    return;
+  }
+
+  const track = findSpotifyMusicTrackByUri(trackUri);
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    queueBusyTrackUri: trackUri,
+    queueStatus: "Queueing track...",
+  });
+  renderSpotifyMusicSurface();
+  const result = await spotifyMusicService.queueTrack({
+    accessToken: tokenResult.token.accessToken,
+    trackUri,
+  });
+  state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+    ...state.spotifyMusic,
+    queueBusyTrackUri: "",
+    queueStatus: result.message,
+    queueHistory: result.ok && track
+      ? [track, ...state.spotifyMusic.queueHistory].slice(0, 8)
+      : state.spotifyMusic.queueHistory,
+  });
+  spotifyMusicLog.info("user-action", "spotify.queue", "Sent Spotify queue command.", {
+    ok: result.ok === true,
+    trackUri,
+    trackTitle: track?.title ?? "",
+  });
+  renderSpotifyMusicSurface();
+}
+
+function handleSpotifyWebPlaybackEvent(event = {}) {
+  if (!event || typeof event !== "object") {
+    return;
+  }
+
+  if (event.type === "ready") {
+    state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+      ...state.spotifyMusic,
+      playbackDeviceId: event.deviceId,
+      playbackDeviceName: event.deviceName,
+      playbackReady: true,
+      playbackConnecting: false,
+      playbackStatus: "ABE player ready.",
+    });
+    renderSpotifyMusicSurface();
+    return;
+  }
+
+  if (event.type === "not_ready") {
+    state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+      ...state.spotifyMusic,
+      playbackDeviceId: "",
+      playbackReady: false,
+      playbackStatus: event.message || "ABE player went offline.",
+    });
+    renderSpotifyMusicSurface();
+    return;
+  }
+
+  if (event.type === "error" || event.type === "autoplay_failed") {
+    state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+      ...state.spotifyMusic,
+      playbackStatus: event.message || "Spotify player error.",
+      playbackConnecting: false,
+    });
+    renderSpotifyMusicSurface();
+    return;
+  }
+
+  if (event.type === "state_changed") {
+    const visibleTrack = event.currentTrack?.uri ? findSpotifyMusicTrackByUri(event.currentTrack.uri) : null;
+    const currentTrack = visibleTrack
+      ? { ...event.currentTrack, ...visibleTrack }
+      : event.currentTrack?.uri ? event.currentTrack : state.spotifyMusic.playbackCurrentTrack;
+    const title = currentTrack?.title || "";
+    const stateChangedAt = Date.now();
+    state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+      ...state.spotifyMusic,
+      playbackCurrentTrack: currentTrack,
+      playbackContextUri: event.contextUri || state.spotifyMusic.playbackContextUri,
+      playbackPaused: event.paused === true,
+      playbackPositionMs: event.positionMs,
+      playbackDurationMs: event.durationMs || currentTrack?.durationMs || state.spotifyMusic.playbackDurationMs,
+      playbackStateUpdatedAt: stateChangedAt,
+      playbackStatus: title
+        ? event.paused === true ? `Paused ${title}.` : `Playing ${title}.`
+        : state.spotifyMusic.playbackStatus,
+    });
+    spotifyPlaybackPositionSyncedAtMs = stateChangedAt;
+    renderSpotifyMusicSurface();
+    persistSpotifyMusicPlaybackSnapshot({ reason: "sdk-state" });
+    syncSpotifyPlaybackPositionTicker({ resetClock: true });
+  }
+}
+
+async function ensureSpotifyMusicToken() {
+  const result = await spotifyMusicService.ensureFreshToken({
+    clientId: state.spotifyMusic?.clientId ?? "",
+    token: state.spotifyMusic?.token,
+  });
+  if (result.ok) {
+    state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+      ...state.spotifyMusic,
+      token: result.token,
+      authStatus: result.refreshed ? "Spotify connection refreshed." : state.spotifyMusic.authStatus,
+    });
+  } else {
+    state.spotifyMusic = createDefaultSpotifyMusicPanelState({
+      ...state.spotifyMusic,
+      token: null,
+      authStatus: result.message,
+    });
+  }
+  return result;
 }
 
 function renderDeleteConfirmationDialog() {
@@ -4667,8 +9879,8 @@ function requestDeletePassageNoteFromPanel(noteId) {
     kind: "passage-note",
     noteId: note.id,
     preferenceKey,
-    title: `Delete ${note.noteType === "research" ? "research" : "inspiration"} note?`,
-    message: `Delete "${note.title || (note.noteType === "research" ? "Research note" : "Inspiration note")}"?\n\nThis removes the note from the side panel and clears any active preview.`,
+    title: `Delete ${getPassageNoteDisplayLabel(note.noteType).toLowerCase()} note?`,
+    message: `Delete "${note.title || `${getPassageNoteDisplayLabel(note.noteType)} note`}"?\n\nThis removes the note from the side panel and clears any active preview.`,
   };
   renderDeleteConfirmationDialog();
   return true;
@@ -4759,6 +9971,439 @@ function performPassageNoteDeletion(noteId) {
   return true;
 }
 
+function addMetadataSubgroupForPanel(groupId, parentSubgroupId = "") {
+  const supportedGroupIds = getMetadataSubgroupGroupIds();
+  const normalizedGroupId = String(groupId ?? "").trim();
+  if (!isSupportedMetadataSubgroupGroupId(normalizedGroupId, supportedGroupIds)) {
+    return false;
+  }
+
+  const result = createMetadataSubgroup({
+    groupId: normalizedGroupId,
+    parentSubgroupId,
+  }, state.metadataSubgroups, supportedGroupIds);
+  if (!result.subgroup) {
+    return false;
+  }
+
+  state.metadataSubgroups = result.subgroups;
+  state.sidePanelMode = normalizedGroupId;
+  persistMetadataSubgroupsState({
+    dirtyReason: "metadata-folder-created",
+    source: "addMetadataSubgroupForPanel",
+  });
+  renderConsolePanel();
+  focusMetadataSubgroupTitle(result.subgroup.id);
+  return true;
+}
+
+function removeMetadataSubgroup(subgroupId) {
+  const existingSubgroup = getMetadataSubgroupRecord(subgroupId);
+  if (!existingSubgroup) {
+    return false;
+  }
+
+  state.metadataSubgroups = deleteMetadataSubgroup(
+    state.metadataSubgroups,
+    subgroupId,
+    getMetadataSubgroupGroupIds(),
+  );
+
+  state.selectedMetadataSubgroupNoteId = null;
+  persistMetadataSubgroupsState({
+    dirtyReason: "metadata-folder-deleted",
+    source: "removeMetadataSubgroup",
+  });
+  renderConsolePanel();
+  return true;
+}
+
+function addMetadataSubgroupNote(subgroupId) {
+  const result = createMetadataSubgroupNote({
+    subgroupId,
+  }, state.metadataSubgroups, getMetadataSubgroupGroupIds());
+  if (!result.note) {
+    return false;
+  }
+
+  state.metadataSubgroups = result.subgroups;
+  state.selectedMetadataSubgroupNoteId = result.note.id;
+  persistMetadataSubgroupsState({
+    dirtyReason: "metadata-folder-note-created",
+    source: "addMetadataSubgroupNote",
+  });
+  renderConsolePanel();
+  focusMetadataSubgroupNoteBody(subgroupId, result.note.id);
+  return true;
+}
+
+function removeMetadataSubgroupNote(subgroupId, noteId) {
+  state.metadataSubgroups = deleteMetadataSubgroupNote(
+    state.metadataSubgroups,
+    subgroupId,
+    noteId,
+    getMetadataSubgroupGroupIds(),
+  );
+  if (state.selectedMetadataSubgroupNoteId === noteId) {
+    state.selectedMetadataSubgroupNoteId = null;
+  }
+  persistMetadataSubgroupsState({
+    dirtyReason: "metadata-folder-note-deleted",
+    source: "removeMetadataSubgroupNote",
+  });
+  renderConsolePanel();
+  return true;
+}
+
+function updateMetadataSubgroupTitle(subgroupId, title) {
+  state.metadataSubgroups = updateMetadataSubgroup(
+    state.metadataSubgroups,
+    subgroupId,
+    { title },
+    getMetadataSubgroupGroupIds(),
+  );
+  persistMetadataSubgroupsState({
+    dirtyReason: "metadata-folder-renamed",
+    source: "updateMetadataSubgroupTitle",
+  });
+}
+
+function updateMetadataSubgroupNoteTitle(subgroupId, noteId, title) {
+  updateMetadataSubgroupNoteFields(subgroupId, noteId, {
+    title,
+  }, "metadata-folder-note-title-edited", "updateMetadataSubgroupNoteTitle");
+}
+
+function updateMetadataSubgroupNoteBody(subgroupId, noteId, body) {
+  updateMetadataSubgroupNoteFields(subgroupId, noteId, {
+    body,
+  }, "metadata-folder-note-body-edited", "updateMetadataSubgroupNoteBody");
+}
+
+function pointMetadataSubgroupNoteToCurrentSelection(subgroupId, noteId) {
+  const anchor = getCurrentMetadataSubgroupSelectionAnchor();
+  if (!anchor) {
+    return false;
+  }
+
+  updateMetadataSubgroupNoteFields(subgroupId, noteId, {
+    anchor,
+  }, "metadata-folder-note-anchor-pointed", "pointMetadataSubgroupNoteToCurrentSelection");
+  state.selectedMetadataSubgroupNoteId = noteId;
+  renderConsolePanel();
+  return true;
+}
+
+function clearMetadataSubgroupNoteAnchor(subgroupId, noteId) {
+  updateMetadataSubgroupNoteFields(subgroupId, noteId, {
+    anchor: null,
+  }, "metadata-folder-note-anchor-cleared", "clearMetadataSubgroupNoteAnchor");
+  state.selectedMetadataSubgroupNoteId = noteId;
+  renderConsolePanel();
+  return true;
+}
+
+function openMetadataSubgroupNoteAnchor(subgroupId, noteId) {
+  const subgroup = getMetadataSubgroupRecord(subgroupId);
+  const note = findMetadataSubgroupNote(
+    state.metadataSubgroups,
+    subgroupId,
+    noteId,
+    getMetadataSubgroupGroupIds(),
+  );
+  if (!note?.anchor) {
+    return false;
+  }
+
+  state.sidePanelMode = subgroup?.groupId ?? state.sidePanelMode;
+  state.selectedMetadataSubgroupNoteId = note.id;
+  selectWorkspacePane("manuscript");
+  renderConsolePanel();
+  return takeToSceneRange(note.anchor.sceneId, note.anchor.startOffset, note.anchor.endOffset, {
+    behavior: "smooth",
+  });
+}
+
+function updateMetadataSubgroupNoteFields(subgroupId, noteId, patch, dirtyReason, source) {
+  state.metadataSubgroups = updateMetadataSubgroupNote(
+    state.metadataSubgroups,
+    subgroupId,
+    noteId,
+    patch,
+    getMetadataSubgroupGroupIds(),
+  );
+  persistMetadataSubgroupsState({
+    dirtyReason,
+    source,
+  });
+}
+
+function persistMetadataSubgroupsState(options = {}) {
+  state.metadataSubgroups = normalizeMetadataSubgroups(
+    state.metadataSubgroups,
+    getMetadataSubgroupGroupIds(),
+  );
+  persistCurrentProjectRecord({
+    domain: "metadata-folders",
+    dirtyReason: options.dirtyReason ?? "metadata-folder-updated",
+    source: options.source ?? "persistMetadataSubgroupsState",
+  });
+}
+
+function getMetadataSubgroupRecord(subgroupId) {
+  return findMetadataSubgroup(
+    state.metadataSubgroups,
+    subgroupId,
+    getMetadataSubgroupGroupIds(),
+  );
+}
+
+// Intent: allow loose anchored metadata notes to become folder notes while preserving their manuscript anchor.
+function movePassageNoteIntoMetadataFolder(noteId, subgroupId) {
+  const note = state.passageNotes.find((candidate) => candidate.id === noteId);
+  const subgroup = getMetadataSubgroupRecord(subgroupId);
+  if (!note || !subgroup || subgroup.groupId !== note.noteType) {
+    return false;
+  }
+
+  const folderNoteInput = createMetadataSubgroupNoteInputFromPassageNote(note, subgroup.id);
+  if (!folderNoteInput) {
+    return false;
+  }
+
+  const result = createMetadataSubgroupNote(
+    folderNoteInput,
+    state.metadataSubgroups,
+    getMetadataSubgroupGroupIds(),
+  );
+  if (!result.note) {
+    return false;
+  }
+
+  const wasSelected = state.selectedPassageNoteId === note.id;
+  const wasPreviewing = state.taskPreview?.taskId === note.id;
+  const viewport = captureSceneEditorViewport(note.sceneId);
+  state.metadataSubgroups = result.subgroups;
+  state.selectedMetadataSubgroupNoteId = result.note.id;
+  state.sidePanelMode = subgroup.groupId;
+
+  const deletion = anchoredRecordService.deletePassageNote(note.id, {
+    dirtyReason: `${note.noteType}-note-moved-to-folder`,
+    source: "movePassageNoteIntoMetadataFolder",
+  });
+  if (!deletion) {
+    return false;
+  }
+
+  if (wasPreviewing) {
+    clearTaskAnchorPreview({ restoreSelection: false });
+  }
+
+  if (wasSelected) {
+    state.selectedPassageNoteId = null;
+  }
+
+  persistMetadataSubgroupsState({
+    dirtyReason: "metadata-folder-note-imported",
+    source: "movePassageNoteIntoMetadataFolder",
+  });
+  renderConsolePanel();
+  focusMetadataSubgroupNoteBody(subgroup.id, result.note.id);
+  if (wasPreviewing || wasSelected) {
+    window.requestAnimationFrame(() => {
+      restoreSceneEditorViewport(note.sceneId, viewport);
+    });
+  }
+  return true;
+}
+
+// Intent: bridge native drag/drop events into folder-note moves without storing drag state in the project record.
+function handleMetadataFolderDragStart(event) {
+  const target = event.target instanceof Element ? event.target : null;
+  const sourceItem = target?.closest(".passage-note-item[data-note-id]");
+  if (!(sourceItem instanceof HTMLElement) || isEditableDragSource(target)) {
+    return;
+  }
+
+  const note = state.passageNotes.find((candidate) => candidate.id === sourceItem.dataset.noteId);
+  if (!note) {
+    return;
+  }
+
+  metadataFolderDragState = {
+    noteId: note.id,
+    noteType: note.noteType,
+    sourceElement: sourceItem,
+  };
+  sourceItem.classList.add("is-dragging");
+  sourceItem.setAttribute("aria-grabbed", "true");
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("application/x-abe-passage-note-id", note.id);
+    event.dataTransfer.setData("text/plain", note.id);
+  }
+}
+
+function handleMetadataFolderDragOver(event) {
+  if (!metadataFolderDragState) {
+    return;
+  }
+
+  const dropTarget = resolveMetadataFolderDropTarget(event);
+  if (!dropTarget) {
+    clearMetadataFolderDropTargets();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = "none";
+    }
+    return;
+  }
+
+  event.preventDefault();
+  clearMetadataFolderDropTargets(dropTarget);
+  dropTarget.classList.add("is-drop-target");
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = "move";
+  }
+}
+
+function handleMetadataFolderDrop(event) {
+  if (!metadataFolderDragState) {
+    return;
+  }
+
+  const dropTarget = resolveMetadataFolderDropTarget(event);
+  if (!dropTarget) {
+    resetMetadataFolderDragState();
+    return;
+  }
+
+  event.preventDefault();
+  const noteId = metadataFolderDragState.noteId ||
+    event.dataTransfer?.getData("application/x-abe-passage-note-id") ||
+    event.dataTransfer?.getData("text/plain") ||
+    "";
+  movePassageNoteIntoMetadataFolder(noteId, dropTarget.dataset.metadataSubgroupId);
+  resetMetadataFolderDragState();
+}
+
+function handleMetadataFolderDragLeave(event) {
+  if (!metadataFolderDragState) {
+    return;
+  }
+
+  const dropTarget = resolveMetadataFolderDropTarget(event);
+  const relatedTarget = event.relatedTarget instanceof Node ? event.relatedTarget : null;
+  if (dropTarget && (!relatedTarget || !dropTarget.contains(relatedTarget))) {
+    dropTarget.classList.remove("is-drop-target");
+  }
+}
+
+function handleMetadataFolderDragEnd() {
+  if (metadataFolderDragState) {
+    resetMetadataFolderDragState();
+  }
+}
+
+function resolveMetadataFolderDropTarget(event) {
+  const target = event.target instanceof Element ? event.target : null;
+  const dropTarget = target?.closest("[data-metadata-folder-drop-target]");
+  if (!(dropTarget instanceof HTMLElement) || !metadataFolderDragState) {
+    return null;
+  }
+
+  const note = state.passageNotes.find((candidate) => candidate.id === metadataFolderDragState.noteId);
+  const subgroup = getMetadataSubgroupRecord(dropTarget.dataset.metadataSubgroupId);
+  if (!note || !subgroup || subgroup.groupId !== note.noteType || dropTarget.dataset.metadataGroupId !== subgroup.groupId) {
+    return null;
+  }
+
+  return dropTarget;
+}
+
+function resetMetadataFolderDragState() {
+  if (metadataFolderDragState?.sourceElement instanceof HTMLElement) {
+    metadataFolderDragState.sourceElement.classList.remove("is-dragging");
+    metadataFolderDragState.sourceElement.removeAttribute("aria-grabbed");
+  }
+  clearMetadataFolderDropTargets();
+  metadataFolderDragState = null;
+}
+
+function clearMetadataFolderDropTargets(except = null) {
+  document.querySelectorAll(".metadata-subgroup-card.is-drop-target").forEach((node) => {
+    if (node !== except) {
+      node.classList.remove("is-drop-target");
+    }
+  });
+}
+
+function isEditableDragSource(target) {
+  return target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLButtonElement ||
+    Boolean(target?.closest("button"));
+}
+
+function getCurrentMetadataSubgroupSelectionAnchor() {
+  const sceneId = typeof state.selectedSceneId === "string" ? state.selectedSceneId.trim() : "";
+  const scene = sceneId ? getScene(sceneId) : null;
+  if (!scene) {
+    return null;
+  }
+
+  const textarea = getEditorTextareaForScene(scene.sceneId);
+  const editorText = getCurrentSceneEditorText(scene.sceneId, scene.editorText ?? "");
+  const liveStart = Number.isInteger(textarea?.selectionStart) ? textarea.selectionStart : null;
+  const liveEnd = Number.isInteger(textarea?.selectionEnd) ? textarea.selectionEnd : null;
+  const cachedSelection = state.sceneEditorSelectionSnapshot?.sceneId === scene.sceneId
+    ? state.sceneEditorSelectionSnapshot
+    : null;
+  const startOffset = liveStart !== null && liveEnd !== null && liveEnd > liveStart
+    ? liveStart
+    : cachedSelection?.startOffset;
+  const endOffset = liveStart !== null && liveEnd !== null && liveEnd > liveStart
+    ? liveEnd
+    : cachedSelection?.endOffset;
+  const range = manuscriptSelectionController.trimTextRange(editorText, startOffset, endOffset, true);
+  if (!range) {
+    return null;
+  }
+
+  return {
+    sceneId: scene.sceneId,
+    sceneTitle: scene.sceneTitle ?? "",
+    chapterId: scene.chapterId ?? "",
+    chapterTitle: scene.chapterTitle ?? "",
+    selectedText: range.selectedText,
+    startOffset: range.startOffset,
+    endOffset: range.endOffset,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function focusMetadataSubgroupTitle(subgroupId) {
+  window.requestAnimationFrame(() => {
+    const field = document.querySelector(
+      `[data-edit-field="metadata-subgroup-title"][data-metadata-subgroup-id="${CSS.escape(String(subgroupId ?? ""))}"]`,
+    );
+    if (field instanceof HTMLInputElement) {
+      field.focus();
+      field.select();
+    }
+  });
+}
+
+function focusMetadataSubgroupNoteBody(subgroupId, noteId) {
+  window.requestAnimationFrame(() => {
+    const field = document.querySelector(
+      `[data-edit-field="metadata-subgroup-note-body"][data-metadata-subgroup-id="${CSS.escape(String(subgroupId ?? ""))}"][data-metadata-note-id="${CSS.escape(String(noteId ?? ""))}"]`,
+    );
+    if (field instanceof HTMLTextAreaElement) {
+      field.focus();
+    }
+  });
+}
+
 // Intent: reopen the inline passage-note bubble with an existing note already seeded.
 function openPassageNoteEditorFromPanel(noteId) {
   const note = state.passageNotes.find((candidate) => candidate.id === noteId);
@@ -4769,6 +10414,9 @@ function openPassageNoteEditorFromPanel(noteId) {
   state.inlinePassageDraft = {
     sceneId: note.sceneId,
     noteType: note.noteType,
+    metadataDefinitionId: note.metadataDefinitionId ?? "",
+    metadataLabel: note.metadataLabel ?? getPassageNoteDisplayLabel(note.noteType),
+    metadataHighlightColor: note.metadataHighlightColor ?? "",
     selectedText: String(note.selectedText ?? ""),
     startOffset: Number.isInteger(note.startOffset) ? note.startOffset : 0,
     endOffset: Number.isInteger(note.endOffset) ? note.endOffset : 0,
@@ -4892,111 +10540,246 @@ function formatChapterDisplayTitle(chapterTitle) {
   return stripped || "Untitled chapter";
 }
 
-// Intent: render structured world spine data as timelines and linked nodes, not loose notes.
+// Intent: render the World Spine from a feature-owned chronological node-map model.
+function buildWorldSpineModelForState() {
+  return buildWorldSpineTimelineModel({
+    workspace: state.workspace,
+    scenes: buildWorldSpineSceneRecordsForState(),
+    selectedNodeId: state.selectedNodeId,
+    selectedBlockId: state.selectedBlockId,
+    customMetadataDefinitions: getCustomMetadataDefinitions(),
+  });
+}
+
+// Intent: keep World Spine renders on draft-overlay scene/event metadata instead of stale loaded scene mirrors.
+function buildWorldSpineSceneRecordsForState() {
+  return buildSceneRecords(
+    state.workspace,
+    buildSceneDraftsWithLoadedSceneStoreBodies(),
+    state.structureDrafts,
+  );
+}
+
+// Intent: give pointer/scroll hit-testing the same location-filter fit projection as the rendered timeline.
+function buildWorldSpineViewportModelForState() {
+  return createWorldSpineLocationFilterViewportModel(
+    buildWorldSpineModelForState(),
+    state.worldSpineLocationFilter,
+  );
+}
+
 function renderWorldPanel() {
-  const workspace = state.workspace;
-  document.querySelector("#world-slot").innerHTML = `
-    <div class="panel-heading">
-      <p class="panel-kicker">World Spine View</p>
-      <h2>${escapeHtml(workspace.world.title)}</h2>
-    </div>
-    <div class="spine-stack">
-      ${workspace.world.spines.map((spine) => renderSpine(spine)).join("")}
-    </div>
-    <div class="edge-list">
-      <h3>Cross-Spine Links</h3>
-      ${workspace.world.edges.map((edge) => renderEdge(edge)).join("")}
-    </div>
-  `;
+  const slot = document.querySelector("#world-slot");
+  if (!slot) {
+    return;
+  }
+
+  const previousTimelineScroll = slot.querySelector("[data-world-spine-timeline-scroll]");
+  const previousManuscriptScroll = slot.querySelector("[data-world-spine-manuscript-scroll]");
+  const timelineScrollLeft = previousTimelineScroll instanceof HTMLElement
+    ? previousTimelineScroll.scrollLeft
+    : state.worldSpineTimelineScrollLeft;
+  const manuscriptScrollTop = previousManuscriptScroll instanceof HTMLElement
+    ? previousManuscriptScroll.scrollTop
+    : state.worldSpineManuscriptScrollTop;
+
+  const worldSpineModel = buildWorldSpineModelForState();
+  const catalogueScope = buildWorldbuildingCatalogueScopeForState(worldSpineModel);
+  const relatedCards = buildWorldbuildingRelatedCatalogueCardsModel({
+    world: state.workspace?.world ?? {},
+    catalogueScope,
+  });
+
+  slot.innerHTML = renderWorldSpinePanelHTML(worldSpineModel, {
+    layout: getWorldSpineLayoutSnapshot(),
+    implicationComposer: state.worldSpineImplicationComposer,
+    history: getWorldSpineHistoryRenderState(),
+    timelineZoom: worldSpineController.getTimelineZoom(),
+    rightPaneMode: state.worldSpineRightPaneMode,
+    relatedCards,
+    relatedCardExpandedKey: state.worldSpineRelatedCardExpandedKey,
+    sublocationComposer: state.worldSpineSublocationComposer,
+    locationFilter: state.worldSpineLocationFilter,
+    locationFilterOpen: state.worldSpineLocationFilterOpen,
+  });
+  window.requestAnimationFrame(() => {
+    syncWorldSpinePanelLayout({ reason: "world-panel-render" });
+    restoreWorldSpineScrollPositions({
+      timelineScrollLeft,
+      manuscriptScrollTop,
+    });
+    worldSpineController.syncAfterRender();
+    focusWorldSpineImplicationComposer();
+  });
 }
 
-function renderSpine(spine) {
-  return `
-    <section class="spine-lane">
-      <div class="spine-header">
-        <div>
-          <p class="selection-label">${escapeHtml(spine.kind)}</p>
-          <h3>${escapeHtml(spine.label)}</h3>
-        </div>
-        <p>${escapeHtml(spine.description)}</p>
-      </div>
-      <div class="spine-track">
-        ${spine.nodes.map((node) => renderNode(node)).join("")}
-      </div>
-    </section>
-  `;
+function getWorldSpineHistoryRenderState() {
+  return {
+    canUndo: canUndoWorldSpineHistory(state.worldSpineHistory) || canUndoBinderSceneMoveHistory(),
+    canRedo: canRedoWorldSpineHistory(state.worldSpineHistory) || canRedoBinderSceneMoveHistory(),
+  };
 }
 
-function renderNode(node) {
-  const isSelected = node.id === state.selectedNodeId;
-  return `
-    <button class="node-card ${isSelected ? "is-selected" : ""}" data-action="select-node" data-node-id="${escapeHtml(node.id)}">
-      <span class="node-order">0${node.order}</span>
-      <strong>${escapeHtml(node.label)}</strong>
-      <span>${escapeHtml(node.summary)}</span>
-      <span class="node-meta">${escapeHtml(node.lineNumbers.length ? `Lines ${node.lineNumbers.join(", ")}` : "World-only")}</span>
-    </button>
-  `;
+// Intent: capture the World Spine state that author-facing graph, pinning, and layout actions can mutate.
+function captureWorldSpineHistorySnapshot() {
+  const project = state.workspace?.project ?? {};
+  return {
+    world: cloneValue(state.workspace?.world ?? {}),
+    projectEventTags: cloneValue(project.eventTags ?? []),
+    projectSequences: cloneValue(project.sequences ?? {}),
+    projectStats: cloneValue(project.stats ?? {}),
+    projectLines: cloneValue(project.lines ?? []),
+    sceneDrafts: cloneValue(state.sceneDrafts ?? {}),
+    structureDrafts: cloneValue(state.structureDrafts ?? {}),
+    selectedNodeId: state.selectedNodeId ?? "",
+    selectedBlockId: state.selectedBlockId ?? "",
+    selectedIssueId: state.selectedIssueId ?? null,
+    selectedEntityId: state.selectedEntityId ?? null,
+    worldSpineEventRailWidth: state.worldSpineEventRailWidth,
+    worldSpineManuscriptPaneWidth: state.worldSpineManuscriptPaneWidth,
+    worldSpinePanelLayoutProfiles: cloneValue(state.worldSpinePanelLayoutProfiles ?? {}),
+    worldSpineTimelineScrollLeft: state.worldSpineTimelineScrollLeft,
+    worldSpineManuscriptScrollTop: state.worldSpineManuscriptScrollTop,
+    timelineZoom: worldSpineController.getTimelineZoom(),
+  };
 }
 
-function renderEdge(edge) {
-  const isRelated = edge.fromNodeId === state.selectedNodeId || edge.toNodeId === state.selectedNodeId;
-  return `
-    <div class="edge-card ${isRelated ? "is-related" : ""}">
-      <span class="console-meta">${escapeHtml(edge.kind)}</span>
-      <strong>${escapeHtml(edge.label ?? `${edge.fromNodeLabel} -> ${edge.toNodeLabel}`)}</strong>
-      <span>${escapeHtml(edge.fromSpineLabel)} / ${escapeHtml(edge.fromNodeLabel)}</span>
-      <span>${escapeHtml(edge.toSpineLabel)} / ${escapeHtml(edge.toNodeLabel)}</span>
-    </div>
-  `;
+function pushWorldSpineHistoryChange(beforeSnapshot, { label = "", dirtyReason = "", source = "", afterSnapshot = null } = {}) {
+  state.worldSpineHistory = pushWorldSpineHistoryEntry(state.worldSpineHistory, {
+    id: createWorldSpineHistoryEntryId(),
+    label,
+    dirtyReason,
+    source,
+    before: beforeSnapshot,
+    after: afterSnapshot ?? captureWorldSpineHistorySnapshot(),
+  });
+}
+
+function createWorldSpineHistoryEntryId() {
+  const history = createWorldSpineHistoryState(state.worldSpineHistory);
+  const nextIndex = history.undoStack.length + history.redoStack.length + 1;
+  return `world-spine-history-${String(nextIndex).padStart(4, "0")}-${Date.now()}`;
+}
+
+// Intent: restore a history snapshot through the same render and persistence boundaries as normal World Spine edits.
+function applyWorldSpineHistorySnapshot(snapshot, { entry = null, direction = "undo" } = {}) {
+  if (!snapshot || typeof snapshot !== "object" || !state.workspace?.project) {
+    return false;
+  }
+
+  state.workspace.world = cloneValue(snapshot.world ?? {});
+  state.workspace.project = {
+    ...state.workspace.project,
+    eventTags: cloneValue(snapshot.projectEventTags ?? []),
+    sequences: cloneValue(snapshot.projectSequences ?? {}),
+    stats: cloneValue(snapshot.projectStats ?? state.workspace.project.stats ?? {}),
+    lines: cloneValue(snapshot.projectLines ?? state.workspace.project.lines ?? []),
+  };
+  state.sceneDrafts = cloneValue(snapshot.sceneDrafts ?? {});
+  state.structureDrafts = cloneValue(snapshot.structureDrafts ?? createStructureDrafts());
+  setWorldSpineSelectedNodeId(snapshot.selectedNodeId || null);
+  state.selectedBlockId = snapshot.selectedBlockId || null;
+  state.selectedIssueId = snapshot.selectedIssueId || null;
+  state.selectedEntityId = snapshot.selectedEntityId || null;
+  if (Number.isFinite(Number(snapshot.worldSpineEventRailWidth))) {
+    state.worldSpineEventRailWidth = Number(snapshot.worldSpineEventRailWidth);
+  }
+  if (Number.isFinite(Number(snapshot.worldSpineManuscriptPaneWidth))) {
+    state.worldSpineManuscriptPaneWidth = Number(snapshot.worldSpineManuscriptPaneWidth);
+  }
+  state.worldSpinePanelLayoutProfiles = normalizeWorldSpineLayoutProfiles(snapshot.worldSpinePanelLayoutProfiles);
+  state.worldSpineTimelineScrollLeft = Math.max(0, Number(snapshot.worldSpineTimelineScrollLeft) || 0);
+  state.worldSpineManuscriptScrollTop = Math.max(0, Number(snapshot.worldSpineManuscriptScrollTop) || 0);
+  if (Number.isFinite(Number(snapshot.timelineZoom))) {
+    worldSpineController.setTimelineZoom(Number(snapshot.timelineZoom));
+  }
+  state.worldSpineImplicationComposer = null;
+  state.worldbuildingStudioCategoryId = "";
+  state.worldbuildingCatalogueCategoryId = "";
+  state.worldbuildingCataloguePosition = null;
+  state.worldbuildingCatalogueBounds = null;
+  state.worldbuildingCatalogueSelectedItemId = "";
+  state.worldbuildingCatalogueSelectedItemKind = "";
+  clearWorldbuildingCatalogueEditState();
+
+  writeStoredJsonRaw(EDITOR_DRAFTS_KEY, state.sceneDrafts);
+  writeStoredJson(EDITOR_STRUCTURE_KEY, state.structureDrafts);
+  writeStoredJsonRaw(EDITOR_WORLD_SPINE_PANEL_LAYOUT_PROFILES_KEY, state.worldSpinePanelLayoutProfiles);
+  writeStoredJsonRaw(EDITOR_WORLD_SPINE_EVENT_RAIL_WIDTH_KEY, state.worldSpineEventRailWidth);
+  writeStoredJsonRaw(EDITOR_WORLD_SPINE_MANUSCRIPT_PANE_WIDTH_KEY, state.worldSpineManuscriptPaneWidth);
+  refreshScenes();
+  persistCurrentProjectRecord({
+    domain: "world-spine-history",
+    dirtyReason: `world-spine-history-${direction}`,
+    source: entry?.source || "applyWorldSpineHistorySnapshot",
+  });
+  render();
+  return true;
+}
+
+function undoWorldSpineInteraction() {
+  const previousHistory = state.worldSpineHistory;
+  const result = undoWorldSpineHistory(state.worldSpineHistory);
+  if (!result.snapshot) {
+    return undoBinderSceneMove();
+  }
+
+  state.worldSpineHistory = result.history;
+  if (!applyWorldSpineHistorySnapshot(result.snapshot, result)) {
+    state.worldSpineHistory = previousHistory;
+    return false;
+  }
+  return true;
+}
+
+function redoWorldSpineInteraction() {
+  const previousHistory = state.worldSpineHistory;
+  const result = redoWorldSpineHistory(state.worldSpineHistory);
+  if (!result.snapshot) {
+    return redoBinderSceneMove();
+  }
+
+  state.worldSpineHistory = result.history;
+  if (!applyWorldSpineHistorySnapshot(result.snapshot, result)) {
+    state.worldSpineHistory = previousHistory;
+    return false;
+  }
+  return true;
+}
+
+function restoreWorldSpineScrollPositions({ timelineScrollLeft = 0, manuscriptScrollTop = 0 } = {}) {
+  const timelineScroll = document.querySelector("[data-world-spine-timeline-scroll]");
+  const manuscriptScroll = document.querySelector("[data-world-spine-manuscript-scroll]");
+  const scrollTargetNodeId = state.worldSpineScrollTargetNodeId;
+  const scrollTargetLocationKey = state.worldSpineScrollTargetLocationKey;
+  const passageTargetBlockId = state.worldSpinePassageScrollTargetBlockId;
+
+  if (timelineScroll instanceof HTMLElement) {
+    timelineScroll.scrollLeft = Math.max(0, Number(timelineScrollLeft) || 0);
+  }
+  if (manuscriptScroll instanceof HTMLElement) {
+    manuscriptScroll.scrollTop = Math.max(0, Number(manuscriptScrollTop) || 0);
+  }
+
+  if (scrollTargetNodeId) {
+    worldSpineController.scrollNodeIntoView(scrollTargetNodeId, { behavior: "smooth" });
+    state.worldSpineScrollTargetNodeId = "";
+  } else if (scrollTargetLocationKey) {
+    worldSpineController.scrollLocationIntoView(scrollTargetLocationKey, { behavior: "smooth" });
+    state.worldSpineScrollTargetLocationKey = "";
+  }
+  if (passageTargetBlockId) {
+    worldSpineController.scrollPassageIntoView(passageTargetBlockId, { behavior: "smooth" });
+    state.worldSpinePassageScrollTargetBlockId = "";
+  }
 }
 
 function renderEntityPanel() {
-  const workspace = state.workspace;
-  const selectedNode = getNode(state.selectedNodeId);
-  const selectedEntity = getEntity(state.selectedEntityId);
-  const nodeEdges = selectedNode
-    ? workspace.world.edges.filter(
-        (edge) => edge.fromNodeId === selectedNode.id || edge.toNodeId === selectedNode.id,
-      )
-    : [];
-  const templateRecords = [...workspace.world.templates, ...state.templateDrafts];
-  const worldSuggestions = workspace.analysis.suggestionQueue.filter(
-    (suggestion) => suggestion.suggestionType !== "dream-scaping",
-  );
-
-  document.querySelector("#entity-slot").innerHTML = `
-    <div class="panel-heading">
-      <p class="panel-kicker">World Inspector</p>
-      <h2>Entities and Links</h2>
-    </div>
-    ${selectedNode ? renderNodeFocus(selectedNode, nodeEdges) : ""}
-    ${selectedEntity ? renderEntityFocus(selectedEntity) : ""}
-    <div class="panel-heading split-heading">
-      <p class="panel-kicker">World Templates</p>
-      <h2>Template Library</h2>
-    </div>
-    <div class="panel-actions">
-      <button class="tag-button panel-action-button" data-action="add-template">New template</button>
-    </div>
-    <div class="template-list">
-      ${templateRecords.map((template) => renderTemplateCard(template)).join("")}
-    </div>
-    <div class="panel-heading split-heading">
-      <p class="panel-kicker">Review Queue</p>
-      <h2>World Suggestions</h2>
-    </div>
-    <div class="suggestion-list">
-      ${worldSuggestions.map((suggestion) => renderSuggestion(suggestion)).join("")}
-    </div>
-    <div class="panel-heading split-heading">
-      <p class="panel-kicker">World Entities</p>
-      <h2>Tracked Records</h2>
-    </div>
-    <div class="entity-list">
-      ${workspace.world.entities.map((entity) => renderEntity(entity)).join("")}
-    </div>
-  `;
+  // Intent: keep the permanent World inspector hidden while node details live in temporary detail cards.
+  const slot = document.querySelector("#entity-slot");
+  if (slot) {
+    slot.innerHTML = "";
+  }
 }
 
 function renderNodeFocus(node, edges) {
@@ -5061,11 +10844,30 @@ function renderDreamScapingPanel() {
         dream.suggestionIds.includes(suggestion.id),
       )
     : [];
+  const studioModel = buildWorldbuildingStudioModel({
+    world: workspace.world,
+    projectCharacters: workspace.project?.characters ?? [],
+    activeCategoryId: state.worldbuildingStudioCategoryId,
+    editingItemId: state.worldbuildingEditingCatalogueItemId,
+    editingItemKind: state.worldbuildingEditingCatalogueItemKind,
+    catalogueCategoryId: state.worldbuildingCatalogueCategoryId,
+    cataloguePosition: state.worldbuildingCataloguePosition,
+    catalogueBounds: state.worldbuildingCatalogueBounds,
+    catalogueSelectedItemId: state.worldbuildingCatalogueSelectedItemId,
+    catalogueSelectedItemKind: state.worldbuildingCatalogueSelectedItemKind,
+    catalogueScope: buildWorldbuildingCatalogueScopeForState(),
+    status: state.worldbuildingStudioStatus,
+  });
 
   document.querySelector("#dream-slot").innerHTML = `
-    <div class="panel-heading">
-      <p class="panel-kicker">Dream Scaping</p>
-      <h2>Story-Fit Ideation</h2>
+    <div class="panel-heading dream-panel-heading">
+      <div class="dream-panel-title">
+        <p class="panel-kicker">Dream Scaping</p>
+        <h2>Story-Fit Ideation</h2>
+      </div>
+      <div class="dream-worldbuilding-lane" aria-label="World Spine quick add">
+        ${renderWorldbuildingStudioHTML(studioModel)}
+      </div>
     </div>
     ${dream ? `
       <div class="focus-card">
@@ -5078,6 +10880,80 @@ function renderDreamScapingPanel() {
       ${suggestions.map((suggestion) => renderDreamSuggestion(suggestion)).join("")}
     </div>
   `;
+  syncWorldbuildingEntryPopoverPortal();
+  syncWorldbuildingCataloguePortal();
+  syncWorldbuildingCataloguePositionToViewport();
+  syncWorldbuildingEntryPopoverPosition();
+}
+
+// Intent: offer character-name pickers from project characters and structured World Spine character records.
+function getWorldSpineCharacterPickerOptions() {
+  return buildWorldSpineCharacterOptions({
+    projectCharacters: state.workspace?.project?.characters ?? [],
+    world: state.workspace?.world ?? {},
+  });
+}
+
+// Intent: feed form quick-reference lists from structured project and World Spine catalogue indexes.
+function getWorldSpinePickerOptionSetsForState() {
+  return buildWorldSpinePickerOptionSets({
+    projectCharacters: state.workspace?.project?.characters ?? [],
+    world: state.workspace?.world ?? {},
+  });
+}
+
+// Intent: pass the selected World Spine event/scene context into the catalogue renderer without persisting derived counts.
+function buildWorldbuildingCatalogueScopeForState(worldSpineModel = null) {
+  const selectedNodeId = String(state.selectedNodeId ?? "").trim();
+  if (!selectedNodeId) {
+    return null;
+  }
+
+  const node = worldSpineModel
+    ? findWorldSpineNode(worldSpineModel, selectedNodeId)
+    : getWorldSpineTimelineNode(selectedNodeId);
+  if (!node) {
+    return null;
+  }
+
+  const scene = node.sceneId ? getScene(node.sceneId) : null;
+  const sceneText = scene
+    ? [
+        scene.sceneSynopsis,
+        scene.editorText,
+        ...(Array.isArray(scene.blocks) ? scene.blocks.map((block) => block?.text) : []),
+      ].filter(Boolean).join(" ")
+    : "";
+
+  return {
+    nodeId: node.id,
+    sourceId: node.sourceId,
+    level: node.level,
+    kind: node.kind,
+    typeLabel: node.typeLabel,
+    title: node.title,
+    summary: node.summary,
+    sceneId: node.sceneId,
+    chapterId: node.chapterId,
+    sceneTitle: node.sceneTitle,
+    chapterTitle: node.chapterTitle,
+    primaryBlockId: node.primaryBlockId,
+    location: node.location,
+    mainLocation: node.locationRowLabel || node.location,
+    locationRowLabel: node.locationRowLabel,
+    sublocation: node.sublocationLabel || node.sublocation,
+    linkedLocations: node.linkedLocations,
+    date: node.date,
+    time: node.time,
+    people: node.people,
+    sceneBeats: node.sceneBeats,
+    criticalEvents: node.criticalEvents,
+    linkedEntityNames: node.linkedEntityNames,
+    customMetadata: node.customMetadata,
+    lineNumbers: node.lineNumbers,
+    searchText: sceneText,
+    label: node.typeLabel ? `${node.typeLabel}: ${node.title}` : node.title,
+  };
 }
 
 function renderDreamSuggestion(suggestion) {
@@ -5141,12 +11017,13 @@ function renderSuggestion(suggestion) {
 
 function getNarrationTakeSelectionForScene(sceneId) {
   const scene = getScene(sceneId);
-  return selectNarrationTakeSelectionForScene(scene, {
+  const selection = selectNarrationTakeSelectionForScene(scene, {
     currentSelection: state.narrationTakeSelection,
     selectedBlockId: state.selectedBlockId,
     projectId: state.activeProjectId ?? state.workspace?.project?.id ?? "",
     getSceneBlockRanges,
   });
+  return enrichNarrationSelectionDisplayLine(scene, selection);
 }
 
 function updateNarrationTakeSelectionFromTextarea(textarea, inlinePosition = null) {
@@ -5154,21 +11031,25 @@ function updateNarrationTakeSelectionFromTextarea(textarea, inlinePosition = nul
     return state.narrationTakeSelection;
   }
 
-  const selection = resolveNarrationTakeSelectionFromTextarea(textarea, inlinePosition);
+  const rawSelection = resolveNarrationTakeSelectionFromTextarea(textarea, inlinePosition);
+  const selection = rawSelection
+    ? enrichNarrationSelectionDisplayLine(getScene(rawSelection.sceneId), rawSelection)
+    : null;
   if (!selection) {
     return null;
   }
 
   const currentSelectionKey = state.narrationTakeSelection
-    ? `${state.narrationTakeSelection.sceneId}:${state.narrationTakeSelection.blockId}:${state.narrationTakeSelection.startOffset}:${state.narrationTakeSelection.endOffset}:${state.narrationTakeSelection.selectedText}`
+    ? `${state.narrationTakeSelection.sceneId}:${state.narrationTakeSelection.blockId}:${state.narrationTakeSelection.startOffset}:${state.narrationTakeSelection.endOffset}:${state.narrationTakeSelection.displayLineNumber ?? ""}:${state.narrationTakeSelection.selectedText}`
     : "";
-  const nextSelectionKey = `${selection.sceneId}:${selection.blockId}:${selection.startOffset}:${selection.endOffset}:${selection.selectedText}`;
+  const nextSelectionKey = `${selection.sceneId}:${selection.blockId}:${selection.startOffset}:${selection.endOffset}:${selection.displayLineNumber ?? ""}:${selection.selectedText}`;
 
   state.narrationTakeSelection = selection;
   syncSelectionFromBlock(selection.blockId);
 
   if (currentSelectionKey !== nextSelectionKey) {
     renderManuscriptPanel();
+    renderConsolePanel();
     syncSceneDocumentLayout();
     syncNarrationTakeSelectionPreview();
   }
@@ -5177,47 +11058,612 @@ function updateNarrationTakeSelectionFromTextarea(textarea, inlinePosition = nul
 }
 
 function clearNarrationTakeSelection() {
+  cancelNarrationFollowPreviewFrame();
   state.narrationTakeSelection = null;
   renderManuscriptPanel();
+  renderConsolePanel();
   syncSceneDocumentLayout();
+  resetNarrationFollowTrackingRuntime();
 }
 
 function setNarrationTakeSession(session) {
+  const previousSession = state.narrationTakeSession;
   state.narrationTakeSession = session;
+  if (previousSession?.status === "recording" && session?.status === "recording") {
+    syncNarrationSessionPanelValues(session);
+    requestNarrationTakeSelectionPreviewSync();
+    return;
+  }
+
+  cancelNarrationFollowPreviewFrame();
   renderManuscriptPanel();
+  renderConsolePanel();
   syncSceneDocumentLayout();
   syncNarrationTakeSelectionPreview();
 }
 
-// Intent: keep the armed narration verse visible as a runtime-only projection after scene rerenders.
-function syncNarrationTakeSelectionPreview() {
-  if (state.activePane !== "narration") {
+function syncNarrationSessionPanelValues(session) {
+  const panel = document.querySelector(".narration-metadata-panel");
+  if (!(panel instanceof HTMLElement)) {
+    renderConsolePanel();
     return;
   }
 
-  const selection = state.narrationTakeSelection;
-  const textarea = getEditorTextareaForScene(selection?.sceneId ?? state.selectedSceneId);
+  setNarrationPanelText(panel, "[data-narration-status-value]", `Recording ${session?.elapsedLabel ?? "0:00"}`);
+  setNarrationPanelText(panel, "[data-narration-tracker-value]", session?.trackerStatus || "Speech tracker idle");
+  setNarrationPanelText(panel, "[data-narration-engine-value]", session?.speechProviderLabel || session?.speechProviderId || "");
+  setNarrationPanelText(panel, "[data-narration-live-transcript]", resolveNarrationPanelLiveTranscript(session));
+  setNarrationPanelText(panel, "[data-narration-whisper-transcript]", resolveNarrationPanelWhisperTranscript(session));
+}
+
+function setNarrationPanelText(panel, selector, value) {
+  const element = panel.querySelector(selector);
+  if (element instanceof HTMLElement) {
+    element.textContent = String(value ?? "");
+  }
+}
+
+function resolveNarrationPanelLiveTranscript(session) {
+  const transcript = String(
+    session?.liveTranscript ??
+    session?.speechSnapshot?.changedTranscript ??
+    (session?.status === "recording" ? session?.transcript : "") ??
+    "",
+  ).trim();
+  return transcript || "Waiting for local speech...";
+}
+
+function resolveNarrationPanelWhisperTranscript(session) {
+  const transcript = String(
+    session?.cleanupTranscript ??
+    (session?.status === "recording" ? "" : session?.transcript) ??
+    "",
+  ).trim();
+  return transcript || "Runs after stop.";
+}
+
+function toggleNarrationFollowScrollPreference() {
+  const result = toggleNarrationFollowScroll(state.narrationFollowSettings);
+  state.narrationFollowSettings = result.settings;
+  writeStoredJsonRaw(EDITOR_NARRATION_FOLLOW_SETTINGS_KEY, result.settings);
+  narrationFollowTrackerLog.info("user-action", "narration-follow.scroll-toggle", "Toggled narration follow scroll.", {
+    followScrollEnabled: result.settings.followScrollEnabled,
+    liveHighlightEnabled: result.settings.liveHighlightEnabled,
+    changed: result.changed,
+  });
+  renderConsolePanel();
+  syncNarrationTakeSelectionPreview();
+}
+
+// Intent: hide or restore narration-mode manuscript overlays while keeping saved take data unchanged.
+function toggleNarrationManuscriptDecorationPreference() {
+  const result = toggleNarrationManuscriptDecorations(state.narrationFollowSettings);
+  state.narrationFollowSettings = result.settings;
+  writeStoredJsonRaw(EDITOR_NARRATION_FOLLOW_SETTINGS_KEY, result.settings);
+  narrationFollowTrackerLog.info("user-action", "narration-follow.decorations-toggle", "Toggled narration manuscript decorations.", {
+    followScrollEnabled: result.settings.followScrollEnabled,
+    liveHighlightEnabled: result.settings.liveHighlightEnabled,
+    manuscriptDecorationsVisible: result.settings.manuscriptDecorationsVisible,
+    narrationDecorationsVisible: result.settings.narrationDecorationsVisible,
+    changed: result.changed,
+  });
+  renderManuscriptPanel();
+  renderConsolePanel();
+  syncSceneDocumentLayout();
+  syncNarrationTakeSelectionPreview();
+}
+
+// Intent: hide or restore saved-take and live-follow narration paint while preserving manuscript diagnostics.
+function toggleNarrationDecorationPreference() {
+  const result = toggleNarrationDecorations(state.narrationFollowSettings);
+  state.narrationFollowSettings = result.settings;
+  writeStoredJsonRaw(EDITOR_NARRATION_FOLLOW_SETTINGS_KEY, result.settings);
+  narrationFollowTrackerLog.info("user-action", "narration-follow.narration-decorations-toggle", "Toggled narration passage decorations.", {
+    followScrollEnabled: result.settings.followScrollEnabled,
+    liveHighlightEnabled: result.settings.liveHighlightEnabled,
+    manuscriptDecorationsVisible: result.settings.manuscriptDecorationsVisible,
+    narrationDecorationsVisible: result.settings.narrationDecorationsVisible,
+    changed: result.changed,
+  });
+  renderManuscriptPanel();
+  renderConsolePanel();
+  syncSceneDocumentLayout();
+  syncNarrationTakeSelectionPreview();
+}
+
+// Intent: reset live follow pacing as one unit so scroll speed does not leak between scenes or sessions.
+function resetNarrationFollowTrackingRuntime() {
+  cancelNarrationFollowPreviewFrame();
+  cancelNarrationFollowViewportPulse();
+  narrationViewportTracker?.reset();
+  narrationReadingRateTracker?.reset();
+  narrationFollowViewportMetricsCache.clear();
+}
+
+// Intent: keep follow scrolling moving between uneven ASR updates without inventing durable cursor state.
+function scheduleNarrationFollowViewportPulse() {
+  if (narrationFollowViewportPulseTimerId != null) {
+    return;
+  }
+
+  narrationFollowViewportPulseTimerId = window.setTimeout(() => {
+    narrationFollowViewportPulseTimerId = null;
+    const liveFollowSelection = state.narrationTakeSession?.status === "recording"
+      ? state.narrationTakeSession?.followSelection
+      : null;
+    if (
+      state.activePane !== "narration" ||
+      state.narrationFollowSettings?.followScrollEnabled === false ||
+      !liveFollowSelection
+    ) {
+      return;
+    }
+
+    const textarea = getEditorTextareaForScene(liveFollowSelection.sceneId);
+    const editorHost = resolveTextareaEditorHost(textarea);
+    if (!(textarea instanceof HTMLTextAreaElement) || !editorHost) {
+      return;
+    }
+
+    const displayFollowSelection = createDisplayNarrationFollowSelection(liveFollowSelection, textarea.value);
+    if (paceNarrationFollowViewport(editorHost, displayFollowSelection ?? liveFollowSelection)) {
+      scheduleNarrationFollowViewportPulse();
+    }
+  }, 120);
+}
+
+function cancelNarrationFollowViewportPulse() {
+  if (narrationFollowViewportPulseTimerId == null) {
+    return;
+  }
+
+  window.clearTimeout(narrationFollowViewportPulseTimerId);
+  narrationFollowViewportPulseTimerId = null;
+}
+
+function cancelNarrationFollowPreviewFrame() {
+  if (narrationFollowPreviewFrameId == null) {
+    return;
+  }
+
+  if (typeof window !== "undefined" && typeof window.cancelAnimationFrame === "function") {
+    window.cancelAnimationFrame(narrationFollowPreviewFrameId);
+  }
+  narrationFollowPreviewFrameId = null;
+}
+
+// Intent: coalesce bursty interim ASR results into the latest live follow position before repainting the overlay.
+function requestNarrationTakeSelectionPreviewSync() {
+  if (narrationFollowPreviewFrameId != null) {
+    return;
+  }
+
+  if (typeof window === "undefined" || typeof window.requestAnimationFrame !== "function") {
+    syncNarrationTakeSelectionPreview();
+    return;
+  }
+
+  narrationFollowPreviewFrameId = window.requestAnimationFrame(() => {
+    narrationFollowPreviewFrameId = null;
+    syncNarrationTakeSelectionPreview();
+  });
+}
+
+// Intent: compensate for browser speech-recognition result lag while keeping persisted follow anchors unmodified.
+function createDisplayNarrationFollowSelection(selection, text = "") {
+  return createNarrationFollowLeadSelection(selection, text);
+}
+
+// Intent: keep the armed narration verse or live follow match visible after scene rerenders.
+function syncNarrationTakeSelectionPreview() {
+  cancelNarrationFollowPreviewFrame();
+  if (state.activePane !== "narration") {
+    resetNarrationFollowTrackingRuntime();
+    return;
+  }
+
+  const liveFollowSelection = state.narrationTakeSession?.status === "recording"
+    ? state.narrationTakeSession?.followSelection
+    : null;
+  const baseSelection = liveFollowSelection ?? state.narrationTakeSelection;
+  const textarea = getEditorTextareaForScene(baseSelection?.sceneId ?? state.selectedSceneId);
   const editorHost = resolveTextareaEditorHost(textarea);
   if (!(textarea instanceof HTMLTextAreaElement) || !editorHost) {
     return;
   }
+  const displayFollowSelection = liveFollowSelection
+    ? createDisplayNarrationFollowSelection(liveFollowSelection, textarea.value)
+    : null;
+  const selection = displayFollowSelection ?? baseSelection;
 
   if (!selection || selection.sceneId !== editorHost.sceneId) {
     clearTextareaRuntimeSelectionPreview(editorHost);
+    clearTextareaProjectionLayer(editorHost, MANUSCRIPT_PROJECTION_CHANNELS.NARRATION_FOLLOW);
+    resetNarrationFollowTrackingRuntime();
     return;
   }
 
-  const projection = selectManuscriptProjections({
+  const previewSelections = displayFollowSelection
+    ? createNarrationFollowPreviewSelections(displayFollowSelection, textarea.value)
+    : selection;
+  const projections = selectManuscriptProjections({
     sceneId: editorHost.sceneId,
     text: textarea.value,
-    narrationSelection: selection,
+    narrationSelection: previewSelections,
     includeAuthorMarks: false,
     includeDraftProofing: false,
     includeDiagnostics: false,
     includeAnchoredRecords: false,
     includeSpellcheck: false,
-  }).find((candidate) => candidate.channel === MANUSCRIPT_PROJECTION_CHANNELS.NARRATION_FOLLOW) ?? null;
-  showTextareaRuntimeSelectionPreview(editorHost, projection, { focus: false });
+  }).filter((candidate) => candidate.channel === MANUSCRIPT_PROJECTION_CHANNELS.NARRATION_FOLLOW);
+  const primaryProjection = projections.find((projection) => projection.styleToken === "narration-follow-current")
+    ?? projections[0]
+    ?? null;
+  if (displayFollowSelection) {
+    clearTextareaRuntimeSelectionPreview(editorHost);
+    if (
+      state.narrationFollowSettings?.liveHighlightEnabled !== false &&
+      !areNarrationDecorationsSuppressed()
+    ) {
+      renderTextareaNarrationFollowLayer(editorHost, {
+        sceneId: editorHost.sceneId,
+        text: textarea.value,
+        projections,
+      });
+    } else {
+      clearTextareaProjectionLayer(editorHost, MANUSCRIPT_PROJECTION_CHANNELS.NARRATION_FOLLOW);
+    }
+    if (state.narrationFollowSettings?.followScrollEnabled !== false) {
+      if (paceNarrationFollowViewport(editorHost, displayFollowSelection)) {
+        scheduleNarrationFollowViewportPulse();
+      }
+    } else {
+      cancelNarrationFollowViewportPulse();
+      narrationViewportTrackerLog.debug("viewport", "narration-follow.viewport-disabled", "Skipped narration follow viewport movement because follow scroll is disabled.", {
+        sceneId: editorHost.sceneId,
+        blockId: displayFollowSelection.blockId ?? "",
+        trackingStartOffset: displayFollowSelection.trackingStartOffset ?? null,
+        trackingEndOffset: displayFollowSelection.trackingEndOffset ?? null,
+      });
+    }
+  } else {
+    clearTextareaProjectionLayer(editorHost, MANUSCRIPT_PROJECTION_CHANNELS.NARRATION_FOLLOW);
+    showTextareaRuntimeSelectionPreview(editorHost, primaryProjection, {
+      focus: false,
+      scroll: false,
+      behavior: "auto",
+    });
+    resetNarrationFollowTrackingRuntime();
+  }
+}
+
+// Intent: split live follow paint into cumulative read coverage and the newest spoken words.
+function createNarrationFollowPreviewSelections(selection, text = "") {
+  if (!selection || typeof selection !== "object") {
+    return [];
+  }
+
+  const textLength = String(text ?? "").length;
+  const coverageStartOffset = Number.isInteger(selection.startOffset)
+    ? selection.startOffset
+    : selection.blockStartOffset;
+  const coverageEndOffset = Number.isInteger(selection.coverageEndOffset)
+    ? selection.coverageEndOffset
+    : Number.isInteger(selection.trackingEndOffset)
+      ? selection.trackingEndOffset
+      : selection.endOffset;
+  const trackingStartOffset = Number.isInteger(selection.trackingStartOffset)
+    ? selection.trackingStartOffset
+    : selection.startOffset;
+  const trackingEndOffset = Number.isInteger(selection.trackingEndOffset)
+    ? selection.trackingEndOffset
+    : selection.endOffset;
+  const previews = [];
+  if (
+    Number.isInteger(coverageStartOffset) &&
+    Number.isInteger(coverageEndOffset) &&
+    coverageStartOffset >= 0 &&
+    coverageEndOffset > coverageStartOffset &&
+    coverageEndOffset <= textLength
+  ) {
+    previews.push({
+      ...selection,
+      id: `${selection.id ?? "narration-follow"}:read:${coverageStartOffset}:${coverageEndOffset}`,
+      startOffset: coverageStartOffset,
+      endOffset: coverageEndOffset,
+      styleToken: "narration-follow-read",
+    });
+  }
+
+  if (
+    Number.isInteger(trackingStartOffset) &&
+    Number.isInteger(trackingEndOffset) &&
+    trackingStartOffset >= 0 &&
+    trackingEndOffset > trackingStartOffset &&
+    trackingEndOffset <= textLength
+  ) {
+    previews.push({
+      ...selection,
+      id: `${selection.id ?? "narration-follow"}:current:${trackingStartOffset}:${trackingEndOffset}`,
+      startOffset: trackingStartOffset,
+      endOffset: trackingEndOffset,
+      styleToken: "narration-follow-current",
+    });
+  }
+
+  return previews.length ? previews : [selection];
+}
+
+// Intent: use the live tracking span as the viewport target so long cumulative take ranges do not pull the reader backward.
+function getNarrationFollowViewportOffset(selection) {
+  return resolveNarrationFollowViewportOffsets(selection).startOffset;
+}
+
+function paceNarrationFollowViewport(editorHost, selection) {
+  if (!(editorHost?.textarea instanceof HTMLTextAreaElement) || !selection || !narrationViewportTracker) {
+    return false;
+  }
+
+  const codeframe = editorHost.textarea.closest(".scene-editor-codeframe");
+  if (!(codeframe instanceof HTMLElement)) {
+    return false;
+  }
+
+  const { charactersPerLine, lineHeight } = getTextareaEditorHostWrapMetrics(editorHost);
+  const viewportMetrics = narrationFollowViewportMetricsCache.resolveMetrics({
+    text: editorHost.textarea.value,
+    charactersPerLine,
+  });
+  const body = editorHost.textarea.closest(".editor-document-body");
+  const bodyStyle = body instanceof HTMLElement ? window.getComputedStyle(body) : null;
+  const paddingTop = bodyStyle ? parseFloat(bodyStyle.paddingTop || "0") : 0;
+  const startOffset = getNarrationFollowViewportOffset(selection);
+  const visualLineIndex = resolveTextareaVisualLineIndexForOffset(editorHost, startOffset);
+  const viewportOffsets = resolveNarrationFollowViewportOffsets(selection);
+  const trackingEndOffset = viewportOffsets.endOffset;
+  const nowMs = Date.now();
+  const narrationWordIndex = viewportMetrics.countWordsBeforeOffset(trackingEndOffset);
+  const readingRate = narrationReadingRateTracker?.update({
+    sceneId: editorHost.sceneId,
+    wordIndex: narrationWordIndex,
+    averageWordsPerLine: viewportMetrics.averageWordsPerLine,
+    nowMs,
+  }) ?? null;
+  const targetTop = Math.max(
+    0,
+    Math.min(
+      Math.max(0, codeframe.scrollHeight - codeframe.clientHeight),
+      paddingTop + visualLineIndex * lineHeight - codeframe.clientHeight * 0.42,
+    ),
+  );
+  const viewportCenterLineIndex = Math.max(
+    0,
+    Math.floor((codeframe.scrollTop + codeframe.clientHeight / 2 - paddingTop) / lineHeight),
+  );
+  const plan = narrationViewportTracker.planScroll({
+    sceneId: editorHost.sceneId,
+    matchedLineIndex: visualLineIndex,
+    currentScrollTop: codeframe.scrollTop,
+    targetScrollTop: targetTop,
+    viewportCenterLineIndex,
+    lineHeight,
+    readingRateLinesPerMinute: readingRate?.linesPerMinute ?? null,
+    readingRateContext: readingRate,
+    nowMs,
+  });
+
+  if (!plan.shouldScroll) {
+    narrationViewportTrackerLog.debug("viewport", "narration-follow.viewport-noop", "Narration follow viewport did not need movement.", {
+      sceneId: editorHost.sceneId,
+      blockId: selection.blockId ?? "",
+      trackingStartOffset: selection.trackingStartOffset ?? null,
+      trackingEndOffset: selection.trackingEndOffset ?? null,
+      startOffset: selection.startOffset ?? null,
+      endOffset: selection.endOffset ?? null,
+      visualLineIndex,
+      currentScrollTop: codeframe.scrollTop,
+      targetScrollTop: targetTop,
+      viewportCenterLineIndex,
+      readingRate,
+      plan,
+    });
+    return false;
+  }
+
+  narrationViewportTrackerLog.debug("viewport", "narration-follow.viewport-scroll", "Applied narration follow viewport movement.", {
+    sceneId: editorHost.sceneId,
+    blockId: selection.blockId ?? "",
+    trackingStartOffset: selection.trackingStartOffset ?? null,
+    trackingEndOffset: selection.trackingEndOffset ?? null,
+    startOffset: selection.startOffset ?? null,
+    endOffset: selection.endOffset ?? null,
+    visualLineIndex,
+    scrollHeight: codeframe.scrollHeight,
+    clientHeight: codeframe.clientHeight,
+    currentScrollTop: codeframe.scrollTop,
+    targetScrollTop: targetTop,
+    viewportCenterLineIndex,
+    readingRate,
+    plan,
+  });
+  codeframe.scrollTo({
+    top: plan.scrollTop,
+    behavior: "auto",
+  });
+  return true;
+}
+
+function resolveNarrationVisibleTextRangeForScene(sceneId) {
+  const textarea = getEditorTextareaForScene(sceneId);
+  const editorHost = resolveTextareaEditorHost(textarea);
+  if (!(textarea instanceof HTMLTextAreaElement) || !editorHost) {
+    return null;
+  }
+
+  const codeframe = textarea.closest(".scene-editor-codeframe");
+  if (!(codeframe instanceof HTMLElement)) {
+    return null;
+  }
+
+  const { charactersPerLine, lineHeight } = getTextareaEditorHostWrapMetrics(editorHost);
+  const body = textarea.closest(".editor-document-body");
+  const bodyStyle = body instanceof HTMLElement ? window.getComputedStyle(body) : null;
+  const paddingTop = bodyStyle ? parseFloat(bodyStyle.paddingTop || "0") : 0;
+  const visibleRange = estimateNarrationVisibleTextRange({
+    text: textarea.value,
+    scrollTop: codeframe.scrollTop,
+    clientHeight: codeframe.clientHeight,
+    lineHeight,
+    paddingTop,
+    charactersPerLine,
+  });
+
+  narrationFollowTrackerLog.debug(
+    "alignment",
+    "narration-follow.viewport-range",
+    "Resolved narration follow search viewport from the manuscript scroll position.",
+    {
+      sceneId,
+      scrollTop: codeframe.scrollTop,
+      clientHeight: codeframe.clientHeight,
+      lineHeight,
+      charactersPerLine,
+      paddingTop,
+      visibleRange,
+    },
+  );
+  return visibleRange;
+}
+
+function getNarrationSelectionLineNumber(selection) {
+  const displayLineNumber = Number(selection?.displayLineNumber);
+  if (Number.isInteger(displayLineNumber) && displayLineNumber > 0) {
+    return displayLineNumber;
+  }
+
+  const lineNumber = Number(selection?.lineNumber);
+  return Number.isInteger(lineNumber) && lineNumber > 0 ? lineNumber : null;
+}
+
+function enrichNarrationSelectionDisplayLine(scene, selection) {
+  if (!scene || !selection) {
+    return selection ?? null;
+  }
+
+  const textarea = getEditorTextareaForScene(scene.sceneId);
+  const offset = Number.isInteger(selection.startOffset)
+    ? selection.startOffset
+    : Number.isInteger(selection.caretOffset)
+      ? selection.caretOffset
+      : null;
+  const displayLineNumber = textarea instanceof HTMLTextAreaElement && Number.isInteger(offset)
+    ? getSceneEditorSelectionLineNumber(textarea, scene, offset)
+    : null;
+
+  if (!Number.isInteger(displayLineNumber) || displayLineNumber < 1) {
+    return selection;
+  }
+
+  return {
+    ...selection,
+    displayLineNumber,
+  };
+}
+
+function formatNarrationFollowDisplayStatus(selection, fallbackStatus = "Speech tracker listening") {
+  if (!selection) {
+    return fallbackStatus;
+  }
+
+  const lineNumber = getNarrationSelectionLineNumber(selection);
+  const confidence = Number(selection.confidence);
+  if (!Number.isFinite(confidence)) {
+    return lineNumber ? `Tracking line ${lineNumber}` : fallbackStatus;
+  }
+
+  const confidenceLabel = `${Math.round(Math.max(0, Math.min(1, confidence)) * 100)}%`;
+  const lineLabel = lineNumber ? `line ${lineNumber}` : "current verse";
+  return confidence >= 0.7
+    ? `Tracking ${lineLabel} · ${confidenceLabel}`
+    : `Recovering near ${lineLabel} · ${confidenceLabel}`;
+}
+
+function resolveNarrationFollowMatchForTranscript({ transcript, runtime, speechSnapshot = null }) {
+  const sceneId = runtime?.selection?.sceneId ?? runtime?.followSelection?.sceneId ?? "";
+  const viewportRange = resolveNarrationVisibleTextRangeForScene(sceneId);
+  const follow = narrationFollowAlignmentService.alignTranscript({
+    transcript,
+    changedTranscript: speechSnapshot?.changedTranscript ?? runtime?.liveChangedTranscript ?? "",
+    runtime,
+    viewportRange,
+  });
+  const scene = getScene(follow?.followSelection?.sceneId ?? runtime?.selection?.sceneId ?? "");
+  const matchedSelection = follow?.followSelection
+    ? enrichNarrationSelectionDisplayLine(scene, follow.followSelection)
+    : null;
+  const followSelection = matchedSelection
+    ? enrichNarrationSelectionDisplayLine(scene, mergeNarrationFollowSelectionRange(scene, runtime?.followSelection, matchedSelection))
+    : null;
+  const displayLineNumber = getNarrationSelectionLineNumber(followSelection);
+  const match = follow?.match
+    ? {
+      ...follow.match,
+      displayLineNumber: displayLineNumber ?? follow.match.displayLineNumber,
+    }
+    : null;
+  const trackerStatus = followSelection && follow?.status === "tracking"
+    ? formatNarrationFollowDisplayStatus(followSelection, follow.trackerStatus)
+    : followSelection && follow?.status === "recovering"
+      ? displayLineNumber
+        ? `Speech tracker recovering near line ${displayLineNumber}`
+        : follow.trackerStatus
+      : follow?.trackerStatus;
+
+  return {
+    ...follow,
+    trackerStatus,
+    followSelection,
+    match,
+  };
+}
+
+function mergeNarrationFollowSelectionRange(scene, previousSelection, nextSelection) {
+  if (!scene || !previousSelection || !nextSelection) {
+    return nextSelection;
+  }
+
+  if (
+    previousSelection.sceneId !== nextSelection.sceneId ||
+    previousSelection.blockId !== nextSelection.blockId ||
+    !Number.isInteger(previousSelection.startOffset) ||
+    !Number.isInteger(previousSelection.endOffset) ||
+    !Number.isInteger(nextSelection.startOffset) ||
+    !Number.isInteger(nextSelection.endOffset)
+  ) {
+    return nextSelection;
+  }
+
+  const startOffset = Math.min(previousSelection.startOffset, nextSelection.startOffset);
+  const endOffset = Math.max(previousSelection.endOffset, nextSelection.endOffset);
+  if (startOffset === nextSelection.startOffset && endOffset === nextSelection.endOffset) {
+    return nextSelection;
+  }
+
+  const selectedText = String(scene.editorText ?? "").slice(startOffset, endOffset) || nextSelection.selectedText;
+  return {
+    ...nextSelection,
+    id: `narration-follow:${scene.sceneId}:${nextSelection.blockId}:${startOffset}:${endOffset}`,
+    selectedText,
+    verseText: selectedText,
+    startOffset,
+    endOffset,
+    trackingStartOffset: Number.isInteger(nextSelection.trackingStartOffset)
+      ? nextSelection.trackingStartOffset
+      : nextSelection.startOffset,
+    trackingEndOffset: Number.isInteger(nextSelection.trackingEndOffset)
+      ? nextSelection.trackingEndOffset
+      : nextSelection.endOffset,
+  };
 }
 
 function resolveNarrationTakeSelectionFromTextarea(textarea, inlinePosition = null) {
@@ -5233,10 +11679,12 @@ function resolveNarrationTakeSelectionFromTextarea(textarea, inlinePosition = nu
 
   const contextRange = getEditorContextRange(textarea);
   const caretOffset = Number.isInteger(textarea.selectionStart) ? textarea.selectionStart : 0;
+  const caretRange = resolveNarrationCaretLineRange(textarea, scene, caretOffset);
   return resolveNarrationTakeSelectionFromTextInput({
     scene,
     contextRange,
     caretOffset,
+    caretRange,
     inlinePosition,
     projectId: state.activeProjectId ?? state.workspace?.project?.id ?? "",
     findSceneBlockAtOffset,
@@ -5244,8 +11692,41 @@ function resolveNarrationTakeSelectionFromTextarea(textarea, inlinePosition = nu
   });
 }
 
+function resolveNarrationCaretLineRange(textarea, scene, caretOffset) {
+  const editorHost = resolveTextareaEditorHost(textarea);
+  if (!(textarea instanceof HTMLTextAreaElement) || !scene || !editorHost) {
+    return null;
+  }
+
+  const blockRange = findSceneBlockAtOffset(scene, caretOffset);
+  if (!blockRange?.blockId) {
+    return null;
+  }
+
+  const { charactersPerLine } = getTextareaEditorHostWrapMetrics(editorHost);
+  const visualLineIndex = resolveTextareaVisualLineIndexForOffset(editorHost, caretOffset);
+  const visualLineStart = visualLineIndex <= 0
+    ? 0
+    : findTextareaOffsetForVisualLineEnd(textarea.value, visualLineIndex - 1, charactersPerLine);
+  const visualLineEnd = findTextareaOffsetForVisualLineEnd(textarea.value, visualLineIndex, charactersPerLine);
+  const startOffset = Math.max(blockRange.startOffset, Math.min(visualLineStart, blockRange.endOffset));
+  const endOffset = Math.max(startOffset, Math.min(visualLineEnd, blockRange.endOffset));
+  const selectedText = String(textarea.value ?? "").slice(startOffset, endOffset).trim();
+  if (!selectedText || !/[\p{L}\p{N}]/u.test(selectedText)) {
+    return null;
+  }
+
+  return {
+    blockId: blockRange.blockId,
+    startOffset,
+    endOffset,
+    selectedText,
+    visualLineIndex,
+  };
+}
+
 function buildNarrationTakeSelection(scene, block, blockRange, inlinePosition = null, startOffset = null, endOffset = null, selectedText = null) {
-  return buildNarrationTakeSelectionRecord(scene, block, {
+  const selection = buildNarrationTakeSelectionRecord(scene, block, {
     blockRange,
     inlinePosition,
     startOffset,
@@ -5253,6 +11734,7 @@ function buildNarrationTakeSelection(scene, block, blockRange, inlinePosition = 
     selectedText,
     projectId: state.activeProjectId ?? state.workspace?.project?.id ?? "",
   });
+  return enrichNarrationSelectionDisplayLine(scene, selection);
 }
 
 function getSceneBlockRanges(scene) {
@@ -5283,6 +11765,22 @@ function findSceneBlockAtOffset(scene, offset) {
 
   const ranges = getSceneBlockRanges(scene);
   const normalizedOffset = Math.max(0, Math.min(Number(offset) || 0, String(scene.editorText ?? "").length));
+  const separatorIndex = ranges.findIndex((range, index) => {
+    if (index <= 0) {
+      return false;
+    }
+    const previousRange = ranges[index - 1];
+    return normalizedOffset > previousRange.endOffset && normalizedOffset < range.startOffset;
+  });
+  if (separatorIndex >= 0) {
+    const separatorMatch = ranges[separatorIndex];
+    const previousRange = ranges[separatorIndex - 1] ?? null;
+    const separatorMidpoint = previousRange
+      ? previousRange.endOffset + Math.ceil((separatorMatch.startOffset - previousRange.endOffset) / 2)
+      : separatorMatch.startOffset;
+    return normalizedOffset >= separatorMidpoint ? separatorMatch : previousRange ?? separatorMatch;
+  }
+
   const directMatch = ranges.find((range) => normalizedOffset >= range.startOffset && normalizedOffset <= range.endOffset);
   if (directMatch) {
     return directMatch;
@@ -5318,15 +11816,25 @@ function updateNarrationTakeSessionFromRuntime(overrides = {}) {
     status: overrides.status ?? "recording",
     trackerStatus: overrides.trackerStatus ?? narrationRecordingRuntime.trackerStatus,
     transcript: overrides.transcript ?? narrationRecordingRuntime.transcript,
+    liveTranscript: overrides.liveTranscript ?? narrationRecordingRuntime.liveTranscript ?? narrationRecordingRuntime.transcript,
+    liveChangedTranscript: overrides.liveChangedTranscript ?? narrationRecordingRuntime.liveChangedTranscript ?? narrationRecordingRuntime.speechSnapshot?.changedTranscript ?? "",
+    liveTranscriptUpdatedAt: overrides.liveTranscriptUpdatedAt ?? narrationRecordingRuntime.liveTranscriptUpdatedAt ?? narrationRecordingRuntime.speechSnapshot?.receivedAt ?? "",
+    cleanupTranscript: overrides.cleanupTranscript ?? narrationRecordingRuntime.cleanupTranscript ?? "",
     elapsedLabel: overrides.elapsedLabel ?? elapsedLabel,
     recordingId: overrides.recordingId ?? narrationRecordingRuntime.recordingId,
     mediaPath: overrides.mediaPath ?? narrationRecordingRuntime.mediaPath,
+    speechProviderId: overrides.speechProviderId ?? narrationRecordingRuntime.speechProviderId,
+    speechProviderLabel: overrides.speechProviderLabel ?? narrationRecordingRuntime.speechProviderLabel,
+    speechProviderKind: overrides.speechProviderKind ?? narrationRecordingRuntime.speechProviderKind,
     startedAtMs: overrides.startedAtMs ?? narrationRecordingRuntime.startedAtMs,
     sceneId: overrides.sceneId ?? narrationRecordingRuntime.selection?.sceneId,
     sceneTitle: overrides.sceneTitle ?? narrationRecordingRuntime.selection?.sceneTitle,
     chapterId: overrides.chapterId ?? narrationRecordingRuntime.selection?.chapterId,
     chapterTitle: overrides.chapterTitle ?? narrationRecordingRuntime.selection?.chapterTitle,
     blockId: overrides.blockId ?? narrationRecordingRuntime.selection?.blockId,
+    followSelection: overrides.followSelection ?? narrationRecordingRuntime.followSelection,
+    followMatch: overrides.followMatch ?? narrationRecordingRuntime.followMatch,
+    speechSnapshot: overrides.speechSnapshot ?? narrationRecordingRuntime.speechSnapshot,
   }));
 }
 
@@ -5346,6 +11854,7 @@ function refreshNarrationRecordingSession() {
 }
 
 async function startNarrationRecording(sceneId = state.selectedSceneId) {
+  resetNarrationFollowTrackingRuntime();
   await narrationRecordingCommandService.startRecording(sceneId);
 }
 
@@ -5353,26 +11862,138 @@ async function stopNarrationRecording() {
   await narrationRecordingCommandService.stopRecording();
 }
 
+function startNarrationCleanupTranscript(runtime) {
+  if (typeof runtime?.speechRecognition?.finalizeTranscript !== "function") {
+    return null;
+  }
+
+  try {
+    return Promise.resolve(runtime.speechRecognition.finalizeTranscript());
+  } catch (error) {
+    return Promise.reject(error);
+  }
+}
+
+// Intent: let stop/save release the recording UI while Whisper cleanup finishes and patches the saved take later.
+function attachNarrationCleanupTranscript(recordingId, selection, cleanupTranscriptPromise) {
+  if (!recordingId || !cleanupTranscriptPromise || typeof cleanupTranscriptPromise.then !== "function") {
+    return;
+  }
+
+  cleanupTranscriptPromise
+    .then((transcript) => {
+      const cleanupTranscript = String(transcript ?? "").replace(/\s+/g, " ").trim();
+      const existingRecord = voiceRecordingService.getById(recordingId);
+      if (!existingRecord) {
+        return;
+      }
+
+      const updatedRecord = cleanupTranscript
+        ? applyNarrationCleanupTranscriptToRecord(existingRecord, cleanupTranscript)
+        : existingRecord;
+      if (cleanupTranscript) {
+        voiceRecordingService.upsert(updatedRecord);
+        if (state.narrationRecordingReview?.recordingId === recordingId) {
+          state.narrationRecordingReview = createNarrationRecordingReviewState(updatedRecord, {
+            currentTimeSeconds: state.narrationRecordingReview.currentTimeSeconds,
+            durationSeconds: state.narrationRecordingReview.durationSeconds,
+            waveformZoom: state.narrationRecordingReview.waveformZoom,
+            selection: state.narrationRecordingReview.selection,
+          });
+          renderManuscriptPanel();
+          syncSceneDocumentLayout();
+          syncNarrationRecordingReviewDom(recordingId);
+        }
+        void processNarrationRecordingTranscriptAlignment(recordingId, {
+          force: true,
+        });
+      }
+
+      if (state.narrationTakeSession?.recordingId === recordingId) {
+        setNarrationTakeSession(createNarrationTakeSession(selection ?? state.narrationTakeSelection, {
+          ...state.narrationTakeSession,
+          status: "paused",
+          trackerStatus: cleanupTranscript
+            ? "Whisper cleanup stored."
+            : "Whisper cleanup finished without a replacement transcript.",
+          transcript: state.narrationTakeSession.transcript || cleanupTranscript || "",
+          cleanupTranscript: cleanupTranscript || state.narrationTakeSession.cleanupTranscript || "",
+          recordingId,
+          mediaPath: updatedRecord.mediaPath ?? state.narrationTakeSession.mediaPath,
+          startedAtMs: Date.parse(state.narrationTakeSession.startedAt) || Date.now(),
+        }));
+      }
+
+      if (cleanupTranscript) {
+        persistCurrentProjectRecord({
+          domain: "voice-recordings",
+          dirtyReason: "narration-whisper-cleanup-complete",
+          source: "attachNarrationCleanupTranscript",
+          skipProjectFileAutosave: true,
+          markWorkingState: true,
+        });
+        void saveCurrentProject();
+      }
+
+      reportBrowserLog("info", "voice-recording", "Narration Whisper cleanup finished.", {
+        recordingId,
+        transcriptLength: cleanupTranscript.length,
+      });
+    })
+    .catch((error) => {
+      if (state.narrationTakeSession?.recordingId === recordingId) {
+        setNarrationTakeSession(createNarrationTakeSession(selection ?? state.narrationTakeSelection, {
+          ...state.narrationTakeSession,
+          status: "paused",
+          trackerStatus: "Whisper cleanup failed; saved take audio is still available.",
+          recordingId,
+          startedAtMs: Date.parse(state.narrationTakeSession.startedAt) || Date.now(),
+        }));
+      }
+      reportBrowserLog("error", "voice-recording", "Narration Whisper cleanup failed.", {
+        error,
+        recordingId,
+      });
+    });
+}
+
 async function finalizeNarrationRecording(recordingId, stopError = null) {
-  const runtime = narrationRecordingRuntime;
+  let runtime = narrationRecordingRuntime;
   if (!runtime || runtime.recordingId !== recordingId) {
     return;
   }
 
+  const cleanupTranscriptPromise = startNarrationCleanupTranscript(runtime);
+  runtime = {
+    ...runtime,
+    trackerStatus: "Narration take saved. Whisper cleanup running in background...",
+    transcript: runtime.transcript || runtime.liveTranscript || "",
+  };
+
   narrationRecordingRuntime = null;
+  resetNarrationFollowTrackingRuntime();
   const { finalRecord, selection, sessionOptions } = await narrationRecordingFinalizationService.finalizeRuntime(runtime, {
     stopError,
   });
 
   voiceRecordingService.upsert(finalRecord);
-  setNarrationTakeSession(createNarrationTakeSession(selection, sessionOptions));
+  const cleanupPending = Boolean(cleanupTranscriptPromise);
+  setNarrationTakeSession(createNarrationTakeSession(selection, {
+    ...sessionOptions,
+    trackerStatus: finalRecord.status === "saved" && cleanupPending
+      ? "Narration take saved. Whisper cleanup running in background..."
+      : sessionOptions.trackerStatus,
+    cleanupTranscript: cleanupPending ? "" : sessionOptions.cleanupTranscript,
+  }));
   persistCurrentProjectRecord({ skipProjectFileAutosave: true });
   void saveCurrentProject();
+  attachNarrationCleanupTranscript(finalRecord.id, selection, cleanupTranscriptPromise);
 }
 
 async function abortNarrationRecordingStart(selection, error, stream = null) {
   const runtime = narrationRecordingRuntime;
   narrationRecordingRuntime = null;
+  resetNarrationFollowTrackingRuntime();
   narrationRecordingRuntimeService.cleanupRuntime(runtime, {
     additionalStream: stream,
   });
@@ -5389,20 +12010,1401 @@ async function abortNarrationRecordingStart(selection, error, stream = null) {
   });
 }
 
-async function previewVoiceRecording(recordingId) {
-  await voiceRecordingActionService.previewRecording(recordingId);
+// Intent: capture actual browser media state for saved-take playback diagnostics.
+function createVoiceRecordingPlaybackLogSnapshot(playbackState = voiceRecordingPreviewController.getPlaybackState()) {
+  const audio = voiceRecordingPreviewController.getPreviewAudio();
+  const previewUrl = voiceRecordingPreviewController.getPreviewUrl();
+  const audioCurrentTimeSeconds = Number(audio?.currentTime);
+  const audioDurationSeconds = Number(audio?.duration);
+  const audioReadyState = Number(audio?.readyState);
+  const audioNetworkState = Number(audio?.networkState);
+  return {
+    recordingId: typeof playbackState?.recordingId === "string" ? playbackState.recordingId : "",
+    status: typeof playbackState?.status === "string" ? playbackState.status : "",
+    active: playbackState?.active === true,
+    stateCurrentTimeSeconds: Number.isFinite(Number(playbackState?.currentTimeSeconds))
+      ? Number(playbackState.currentTimeSeconds)
+      : null,
+    stateDurationSeconds: Number.isFinite(Number(playbackState?.durationSeconds))
+      ? Number(playbackState.durationSeconds)
+      : null,
+    audioCurrentTimeSeconds: Number.isFinite(audioCurrentTimeSeconds) ? audioCurrentTimeSeconds : null,
+    audioDurationSeconds: Number.isFinite(audioDurationSeconds) ? audioDurationSeconds : null,
+    audioPaused: typeof audio?.paused === "boolean" ? audio.paused : null,
+    audioEnded: typeof audio?.ended === "boolean" ? audio.ended : null,
+    audioReadyState: Number.isFinite(audioReadyState) ? audioReadyState : null,
+    audioNetworkState: Number.isFinite(audioNetworkState) ? audioNetworkState : null,
+    objectUrlActive: Boolean(previewUrl),
+  };
 }
 
-function goToVoiceRecordingVerse(recordingId) {
-  const plan = voiceRecordingActionService.planRecordingVerseNavigation(recordingId);
-  if (!plan.ok) {
+// Intent: add a once-per-second playhead trace while saved-take playback is active.
+function syncVoiceRecordingPlaybackTelemetry(playbackState, eventType = "") {
+  const normalizedStatus = typeof playbackState?.status === "string" ? playbackState.status : "";
+  if (playbackState?.active === true && ["loading", "playing"].includes(normalizedStatus)) {
+    startVoiceRecordingPlaybackTelemetry(playbackState, eventType);
     return;
   }
 
-  state.selectedIssueId = null;
-  state.selectedSceneId = plan.sceneId;
-  state.selectedBlockId = plan.selectedBlockId;
+  if (voiceRecordingPlaybackTelemetryTimerId) {
+    stopVoiceRecordingPlaybackTelemetry(playbackState, eventType || normalizedStatus || "inactive");
+  }
+}
+
+function startVoiceRecordingPlaybackTelemetry(playbackState, eventType = "") {
+  if (
+    voiceRecordingPlaybackTelemetryTimerId ||
+    typeof window === "undefined" ||
+    typeof window.setInterval !== "function"
+  ) {
+    return;
+  }
+
+  voiceRecordingPlaybackTelemetryStartedAtMs = Date.now();
+  reportBrowserLog("info", "voice-recording", "Saved take playback telemetry started.", {
+    eventType,
+    ...createVoiceRecordingPlaybackLogSnapshot(playbackState),
+  });
+  voiceRecordingPlaybackTelemetryTimerId = window.setInterval(() => {
+    const currentPlaybackState = voiceRecordingPreviewController.getPlaybackState();
+    const elapsedMs = Date.now() - voiceRecordingPlaybackTelemetryStartedAtMs;
+    reportBrowserLog("info", "voice-recording", "Saved take playback position.", {
+      timerElapsedSeconds: Math.round(elapsedMs / 100) / 10,
+      ...createVoiceRecordingPlaybackLogSnapshot(currentPlaybackState),
+    });
+  }, VOICE_RECORDING_PLAYBACK_LOG_INTERVAL_MS);
+}
+
+function stopVoiceRecordingPlaybackTelemetry(playbackState, eventType = "") {
+  if (!voiceRecordingPlaybackTelemetryTimerId) {
+    return;
+  }
+
+  window.clearInterval(voiceRecordingPlaybackTelemetryTimerId);
+  voiceRecordingPlaybackTelemetryTimerId = null;
+  const elapsedMs = voiceRecordingPlaybackTelemetryStartedAtMs
+    ? Date.now() - voiceRecordingPlaybackTelemetryStartedAtMs
+    : 0;
+  voiceRecordingPlaybackTelemetryStartedAtMs = 0;
+  reportBrowserLog("info", "voice-recording", "Saved take playback telemetry stopped.", {
+    eventType,
+    timerElapsedSeconds: Math.round(elapsedMs / 100) / 10,
+    ...createVoiceRecordingPlaybackLogSnapshot(playbackState),
+  });
+}
+
+function logVoiceRecordingPlaybackStateChange(playbackState, eventType = "") {
+  if (eventType === "timeupdate") {
+    return;
+  }
+
+  reportBrowserLog("info", "voice-recording", "Saved take playback state changed.", {
+    eventType,
+    ...createVoiceRecordingPlaybackLogSnapshot(playbackState),
+  });
+}
+
+function logNarrationRecordingReviewWordClick(target, event) {
+  const rect = typeof target?.getBoundingClientRect === "function"
+    ? target.getBoundingClientRect()
+    : null;
+  reportBrowserLog("info", "voice-recording", "Saved take review word clicked.", {
+    recordingId: target?.dataset?.recordingId ?? "",
+    wordIndex: Number.isFinite(Number(target?.dataset?.reviewWordIndex))
+      ? Number(target.dataset.reviewWordIndex)
+      : null,
+    requestedTimeSeconds: Number.isFinite(Number(target?.dataset?.reviewWordTime))
+      ? Number(target.dataset.reviewWordTime)
+      : null,
+    wordText: String(target?.textContent ?? "").trim(),
+    clientX: Number.isFinite(Number(event?.clientX)) ? Number(event.clientX) : null,
+    clientY: Number.isFinite(Number(event?.clientY)) ? Number(event.clientY) : null,
+    viewportWidth: typeof window !== "undefined" ? window.innerWidth : null,
+    viewportHeight: typeof window !== "undefined" ? window.innerHeight : null,
+    targetRect: rect
+      ? {
+        left: Math.round(rect.left),
+        top: Math.round(rect.top),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+      }
+      : null,
+    playbackBefore: createVoiceRecordingPlaybackLogSnapshot(),
+  });
+}
+
+function logNarrationRecordingReviewSliderSeek(target) {
+  reportBrowserLog("info", "voice-recording", "Saved take review slider seek requested.", {
+    recordingId: target?.dataset?.recordingId ?? "",
+    requestedTimeSeconds: Number.isFinite(Number(target?.value)) ? Number(target.value) : null,
+    minSeconds: Number.isFinite(Number(target?.min)) ? Number(target.min) : null,
+    maxSeconds: Number.isFinite(Number(target?.max)) ? Number(target.max) : null,
+    playbackBefore: createVoiceRecordingPlaybackLogSnapshot(),
+  });
+}
+
+// Intent: cache decoded oscillogram peaks only for live review rendering; project records keep media references only.
+function setNarrationRecordingWaveformState(recordingId, waveformState) {
+  const normalizedRecordingId = typeof recordingId === "string" && recordingId.trim() ? recordingId.trim() : "";
+  if (!normalizedRecordingId) {
+    return;
+  }
+
+  state.narrationRecordingWaveforms = {
+    ...(state.narrationRecordingWaveforms && typeof state.narrationRecordingWaveforms === "object"
+      ? state.narrationRecordingWaveforms
+      : {}),
+    [normalizedRecordingId]: waveformState,
+  };
+  syncNarrationRecordingReviewDom(normalizedRecordingId);
+}
+
+async function loadNarrationRecordingWaveform(recordingId) {
+  const normalizedRecordingId = typeof recordingId === "string" && recordingId.trim() ? recordingId.trim() : "";
+  if (!normalizedRecordingId) {
+    return null;
+  }
+
+  const existingWaveform = state.narrationRecordingWaveforms?.[normalizedRecordingId];
+  if (
+    existingWaveform?.status === VOICE_RECORDING_WAVEFORM_STATUS.LOADING ||
+    existingWaveform?.status === VOICE_RECORDING_WAVEFORM_STATUS.READY ||
+    existingWaveform?.status === VOICE_RECORDING_WAVEFORM_STATUS.UNAVAILABLE
+  ) {
+    return existingWaveform;
+  }
+
+  const recording = voiceRecordingService.getById(normalizedRecordingId);
+  if (!recording || recording.status !== "saved" || !recording.mediaPath) {
+    const unavailableState = createVoiceRecordingWaveformState({
+      recordingId: normalizedRecordingId,
+      status: VOICE_RECORDING_WAVEFORM_STATUS.UNAVAILABLE,
+      durationSeconds: Number(recording?.durationMs ?? 0) / 1000,
+      reason: "recording-unavailable",
+    });
+    setNarrationRecordingWaveformState(normalizedRecordingId, unavailableState);
+    return unavailableState;
+  }
+
+  setNarrationRecordingWaveformState(normalizedRecordingId, createVoiceRecordingWaveformState({
+    recordingId: normalizedRecordingId,
+    status: VOICE_RECORDING_WAVEFORM_STATUS.LOADING,
+    durationSeconds: Number(recording.durationMs ?? 0) / 1000,
+  }));
+
+  try {
+    const { blob } = await narrationMediaService.loadMediaBlob({
+      filePath: recording.mediaPath,
+      mediaMimeType: recording.mediaMimeType,
+    });
+    const waveformState = await voiceRecordingWaveformService.loadWaveform(blob, {
+      recordingId: normalizedRecordingId,
+    });
+    const currentRecording = voiceRecordingService.getById(normalizedRecordingId);
+    if (!currentRecording) {
+      return waveformState;
+    }
+
+    const durationSeconds = waveformState.durationSeconds || Number(currentRecording.durationMs ?? 0) / 1000;
+    const nextWaveformState = createVoiceRecordingWaveformState({
+      ...waveformState,
+      durationSeconds,
+    });
+    setNarrationRecordingWaveformState(normalizedRecordingId, nextWaveformState);
+    reportBrowserLog("info", "voice-recording", "Saved take oscillogram prepared.", {
+      recordingId: normalizedRecordingId,
+      peakCount: nextWaveformState.peaks.length,
+      status: nextWaveformState.status,
+      reason: nextWaveformState.reason,
+    });
+    return nextWaveformState;
+  } catch (error) {
+    const errorState = createVoiceRecordingWaveformState({
+      recordingId: normalizedRecordingId,
+      status: VOICE_RECORDING_WAVEFORM_STATUS.ERROR,
+      durationSeconds: Number(recording.durationMs ?? 0) / 1000,
+      reason: "media-load-failed",
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
+    setNarrationRecordingWaveformState(normalizedRecordingId, errorState);
+    reportBrowserLog("warn", "voice-recording", "Saved take oscillogram could not load media.", {
+      error,
+      recordingId: normalizedRecordingId,
+      mediaPath: recording.mediaPath,
+    });
+    return errorState;
+  }
+}
+
+// Intent: process a saved take's real audio into durable transcript word timings when the review is opened.
+async function processNarrationRecordingTranscriptAlignment(recordingId, {
+  force = false,
+} = {}) {
+  const normalizedRecordingId = typeof recordingId === "string" && recordingId.trim() ? recordingId.trim() : "";
+  if (!normalizedRecordingId) {
+    return null;
+  }
+
+  return narrationRecordingTranscriptAlignmentJobService.start(normalizedRecordingId, { force });
+}
+
+async function runNarrationRecordingTranscriptAlignmentJob(recordingId, {
+  force = false,
+} = {}) {
+  const normalizedRecordingId = typeof recordingId === "string" && recordingId.trim() ? recordingId.trim() : "";
+  const recording = voiceRecordingService.getById(normalizedRecordingId);
+  if (!shouldRefreshNarrationRecordingTranscriptAlignment(recording, { force })) {
+    return recording?.transcriptAlignment ?? null;
+  }
+
+  try {
+    const { blob } = await narrationMediaService.loadMediaBlob({
+      filePath: recording.mediaPath,
+      mediaMimeType: recording.mediaMimeType,
+    });
+    const currentRecord = voiceRecordingService.getById(normalizedRecordingId);
+    if (!shouldRefreshNarrationRecordingTranscriptAlignment(currentRecord, { force })) {
+      return currentRecord?.transcriptAlignment ?? null;
+    }
+
+    const transcriptAlignment = await narrationRecordingTranscriptAlignmentService.alignRecording(currentRecord, blob);
+    const latestRecord = voiceRecordingService.getById(normalizedRecordingId);
+    if (!latestRecord || latestRecord.transcript !== currentRecord.transcript) {
+      return null;
+    }
+
+    const updatedRecord = {
+      ...latestRecord,
+      transcriptAlignment,
+      updatedAt: transcriptAlignment.processedAt || new Date().toISOString(),
+    };
+    voiceRecordingService.upsert(updatedRecord);
+    if (state.narrationRecordingReview?.recordingId === normalizedRecordingId) {
+      state.narrationRecordingReview = createNarrationRecordingReviewState(updatedRecord, {
+        currentTimeSeconds: state.narrationRecordingReview.currentTimeSeconds,
+        durationSeconds: state.narrationRecordingReview.durationSeconds,
+        waveformZoom: state.narrationRecordingReview.waveformZoom,
+        selection: state.narrationRecordingReview.selection,
+      });
+      renderManuscriptPanel();
+      syncSceneDocumentLayout();
+      syncNarrationRecordingReviewDom(normalizedRecordingId);
+    }
+
+    persistCurrentProjectRecord({
+      domain: "voice-recordings",
+      dirtyReason: "narration-recording-transcript-alignment-complete",
+      source: "processNarrationRecordingTranscriptAlignment",
+      skipProjectFileAutosave: true,
+      markWorkingState: true,
+    });
+    void saveCurrentProject({
+      waitForNarrationRecordingTranscriptAlignment: false,
+    });
+    reportBrowserLog("info", "voice-recording", "Saved take transcript word timing alignment stored.", {
+      recordingId: normalizedRecordingId,
+      wordCount: transcriptAlignment.wordTimings?.length ?? 0,
+      segmentCount: transcriptAlignment.speechSegments?.length ?? 0,
+      providerId: transcriptAlignment.providerId,
+    });
+    return transcriptAlignment;
+  } catch (error) {
+    reportBrowserLog("warn", "voice-recording", "Saved take transcript word timing alignment could not be prepared.", {
+      error,
+      recordingId: normalizedRecordingId,
+      mediaPath: recording.mediaPath,
+    });
+    return null;
+  }
+}
+
+function setNarrationRecordingWaveformZoom(recordingId, value) {
+  const normalizedRecordingId = typeof recordingId === "string" && recordingId.trim() ? recordingId.trim() : "";
+  if (!normalizedRecordingId || state.narrationRecordingReview?.recordingId !== normalizedRecordingId) {
+    return;
+  }
+
+  const recording = voiceRecordingService.getById(normalizedRecordingId);
+  if (!recording) {
+    return;
+  }
+
+  state.narrationRecordingReview = createNarrationRecordingReviewState(recording, {
+    currentTimeSeconds: state.narrationRecordingReview.currentTimeSeconds,
+    durationSeconds: state.narrationRecordingReview.durationSeconds || Number(recording.durationMs ?? 0) / 1000,
+    waveformZoom: value,
+    selection: state.narrationRecordingReview.selection,
+  });
+  reportBrowserLog("info", "voice-recording", "Saved take oscillogram zoom changed.", {
+    recordingId: normalizedRecordingId,
+    waveformZoom: state.narrationRecordingReview.waveformZoom,
+  });
+  syncNarrationRecordingReviewDom(normalizedRecordingId);
+}
+
+function resolveNarrationRecordingWaveformTimeFromPointer(target, event) {
+  const startTimeSeconds = Math.max(0, Number(target?.dataset?.waveformStart) || 0);
+  const endTimeSeconds = Math.max(startTimeSeconds, Number(target?.dataset?.waveformEnd) || startTimeSeconds);
+  const rect = typeof target?.getBoundingClientRect === "function"
+    ? target.getBoundingClientRect()
+    : null;
+  if (!rect || !Number.isFinite(Number(event?.clientX)) || rect.width <= 0 || endTimeSeconds <= startTimeSeconds) {
+    return startTimeSeconds;
+  }
+
+  const ratio = Math.max(0, Math.min(1, (Number(event.clientX) - rect.left) / rect.width));
+  return startTimeSeconds + ((endTimeSeconds - startTimeSeconds) * ratio);
+}
+
+function beginNarrationRecordingWaveformSelectionGesture(clickTarget, event) {
+  const waveformTarget = clickTarget instanceof Element
+    ? clickTarget.closest("[data-narration-review-waveform]")
+    : null;
+  if (!(waveformTarget instanceof HTMLElement) || event?.button !== 0) {
+    narrationRecordingWaveformSelectionGesture = null;
+    return false;
+  }
+
+  const recordingId = typeof waveformTarget.dataset.recordingId === "string" && waveformTarget.dataset.recordingId.trim()
+    ? waveformTarget.dataset.recordingId.trim()
+    : "";
+  if (!recordingId) {
+    narrationRecordingWaveformSelectionGesture = null;
+    return false;
+  }
+
+  narrationRecordingWaveformSelectionGesture = {
+    pointerId: Number.isInteger(event.pointerId) ? event.pointerId : null,
+    recordingId,
+    target: waveformTarget,
+    startClientX: Number.isFinite(Number(event.clientX)) ? Number(event.clientX) : null,
+    startTimeSeconds: resolveNarrationRecordingWaveformTimeFromPointer(waveformTarget, event),
+  };
+  return true;
+}
+
+function handleNarrationRecordingWaveformSelectionPointerEnd(event) {
+  const gesture = narrationRecordingWaveformSelectionGesture;
+  if (!gesture) {
+    return;
+  }
+
+  const pointerId = Number.isInteger(event?.pointerId) ? event.pointerId : null;
+  if (gesture.pointerId !== null && pointerId !== null && pointerId !== gesture.pointerId) {
+    return;
+  }
+
+  narrationRecordingWaveformSelectionGesture = null;
+  const clientX = Number.isFinite(Number(event?.clientX)) ? Number(event.clientX) : null;
+  const movedPixels = clientX !== null && gesture.startClientX !== null
+    ? Math.abs(clientX - gesture.startClientX)
+    : 0;
+  if (movedPixels < 6) {
+    return;
+  }
+
+  narrationRecordingWaveformSuppressClick = true;
+  window.setTimeout(() => {
+    narrationRecordingWaveformSuppressClick = false;
+  }, 0);
+  event.preventDefault();
+
+  const target = gesture.target instanceof HTMLElement
+    ? gesture.target
+    : event.target instanceof Element
+      ? event.target.closest("[data-narration-review-waveform]")
+      : null;
+  const endTimeSeconds = target instanceof HTMLElement
+    ? resolveNarrationRecordingWaveformTimeFromPointer(target, event)
+    : gesture.startTimeSeconds;
+  selectNarrationRecordingReviewWaveformRange(
+    gesture.recordingId,
+    gesture.startTimeSeconds,
+    endTimeSeconds,
+  );
+}
+
+function cancelNarrationRecordingWaveformSelectionGesture(event = null) {
+  if (!narrationRecordingWaveformSelectionGesture) {
+    return;
+  }
+
+  const pointerId = Number.isInteger(event?.pointerId) ? event.pointerId : null;
+  if (
+    narrationRecordingWaveformSelectionGesture.pointerId !== null &&
+    pointerId !== null &&
+    narrationRecordingWaveformSelectionGesture.pointerId !== pointerId
+  ) {
+    return;
+  }
+
+  narrationRecordingWaveformSelectionGesture = null;
+}
+
+function selectNarrationRecordingReviewWaveformRange(recordingId, startTimeSeconds, endTimeSeconds) {
+  const normalizedRecordingId = typeof recordingId === "string" && recordingId.trim() ? recordingId.trim() : "";
+  const recording = voiceRecordingService.getById(normalizedRecordingId);
+  const scene = getScene(recording?.sceneId);
+  if (!recording || !scene) {
+    return;
+  }
+
+  const durationSeconds = Math.max(
+    0,
+    Number(state.narrationRecordingReview?.durationSeconds) || Number(recording.durationMs ?? 0) / 1000,
+  );
+  const selection = createNarrationRecordingReviewSelection({
+    recording,
+    scene,
+    startTimeSeconds,
+    endTimeSeconds,
+    durationSeconds,
+    source: "waveform",
+  });
+  if (!selection) {
+    reportBrowserLog("warn", "voice-recording", "Saved take oscillogram selection could not resolve to manuscript words.", {
+      recordingId: normalizedRecordingId,
+      startTimeSeconds,
+      endTimeSeconds,
+    });
+    return;
+  }
+
+  applyNarrationRecordingReviewSelection(recording, selection, {
+    source: "waveform",
+  });
+}
+
+function selectNarrationRecordingReviewWordRange(target) {
+  const recordingId = typeof target?.dataset?.recordingId === "string" && target.dataset.recordingId.trim()
+    ? target.dataset.recordingId.trim()
+    : "";
+  const recording = voiceRecordingService.getById(recordingId);
+  const scene = getScene(recording?.sceneId);
+  if (!recording || !scene) {
+    return;
+  }
+
+  const wordIndex = Number(target?.dataset?.reviewWordIndex);
+  const wordStartTime = Number(target?.dataset?.reviewWordTime);
+  const wordEndTime = Number(target?.dataset?.reviewWordEndTime);
+  if (!Number.isInteger(wordIndex) || !Number.isFinite(wordStartTime) || !Number.isFinite(wordEndTime)) {
+    reportBrowserLog("warn", "voice-recording", "Saved take review word selection lacked transcript timing.", {
+      recordingId,
+      wordText: String(target?.textContent ?? "").trim(),
+    });
+    return;
+  }
+
+  const activeModel = createActiveNarrationRecordingReviewModel(recordingId);
+  const transcriptWords = Array.isArray(activeModel?.transcriptWords) ? activeModel.transcriptWords : [];
+  const clickedWord = transcriptWords.find((word) => word?.index === wordIndex) ?? {
+    index: wordIndex,
+    text: String(target?.textContent ?? "").trim(),
+    timeSeconds: wordStartTime,
+    endTimeSeconds: wordEndTime,
+  };
+  const previousSelection = state.narrationRecordingReview?.recordingId === recordingId
+    ? state.narrationRecordingReview.selection
+    : null;
+  const previousStartWordIndex = Number.isInteger(previousSelection?.startWordIndex)
+    ? previousSelection.startWordIndex
+    : wordIndex;
+  const previousEndWordIndex = Number.isInteger(previousSelection?.endWordIndex)
+    ? previousSelection.endWordIndex
+    : wordIndex;
+  const selectionStartWordIndex = Math.min(previousStartWordIndex, previousEndWordIndex, wordIndex);
+  const selectionEndWordIndex = Math.max(previousStartWordIndex, previousEndWordIndex, wordIndex);
+  const selectedWords = transcriptWords
+    .filter((word) => Number.isInteger(word?.index) && word.index >= selectionStartWordIndex && word.index <= selectionEndWordIndex)
+    .sort((left, right) => left.index - right.index);
+  const firstSelectedWord = selectedWords[0] ?? clickedWord;
+  const lastSelectedWord = selectedWords[selectedWords.length - 1] ?? clickedWord;
+  const selectionStartTime = Number.isFinite(Number(firstSelectedWord?.timeSeconds))
+    ? Number(firstSelectedWord.timeSeconds)
+    : wordStartTime;
+  const selectionEndTime = Number.isFinite(Number(lastSelectedWord?.endTimeSeconds))
+    ? Number(lastSelectedWord.endTimeSeconds)
+    : Number(lastSelectedWord?.timeSeconds);
+  const selectedText = selectedWords.length
+    ? selectedWords.map((word) => String(word?.text ?? "").trim()).filter(Boolean).join(" ")
+    : String(clickedWord?.text ?? target?.textContent ?? "").trim();
+  const durationSeconds = Math.max(
+    0,
+    Number(state.narrationRecordingReview?.durationSeconds) || Number(recording.durationMs ?? 0) / 1000,
+  );
+  const selection = createNarrationRecordingReviewSelection({
+    recording,
+    scene,
+    startTimeSeconds: selectionStartTime,
+    endTimeSeconds: selectionEndTime > selectionStartTime ? selectionEndTime : wordEndTime,
+    durationSeconds,
+    source: "word",
+    selectedText,
+    startWordIndex: selectionStartWordIndex,
+    endWordIndex: selectionEndWordIndex,
+  });
+  if (!selection) {
+    return;
+  }
+
+  applyNarrationRecordingReviewSelection(recording, selection, {
+    source: "word",
+  });
+}
+
+function applyNarrationRecordingReviewSelection(recording, selection, {
+  source = "word",
+} = {}) {
+  const recordingId = typeof recording?.id === "string" && recording.id.trim() ? recording.id.trim() : "";
+  if (!recordingId || !selection) {
+    return;
+  }
+
+  const durationSeconds = Math.max(
+    0,
+    Number(state.narrationRecordingReview?.durationSeconds) || Number(recording.durationMs ?? 0) / 1000,
+  );
+  state.narrationRecordingReview = createNarrationRecordingReviewState(recording, {
+    currentTimeSeconds: Math.min(selection.startTimeSeconds ?? state.narrationRecordingReview?.currentTimeSeconds ?? 0, durationSeconds),
+    durationSeconds,
+    waveformZoom: state.narrationRecordingReview?.waveformZoom,
+    selection,
+  });
+
+  const selectionRecord = createNarrationTakeSelectionFromReviewSelection(recording, selection);
+  if (selectionRecord) {
+    state.narrationTakeSelection = selectionRecord;
+    state.selectedSceneId = selectionRecord.sceneId;
+    state.activeEditorSceneId = selectionRecord.sceneId;
+    state.selectedBlockId = selectionRecord.blockId;
+  }
+
+  reportBrowserLog("info", "voice-recording", "Saved take review re-record range selected.", {
+    recordingId,
+    source,
+    startOffset: selection.startOffset,
+    endOffset: selection.endOffset,
+    startTimeSeconds: selection.startTimeSeconds,
+    endTimeSeconds: selection.endTimeSeconds,
+    selectedTextLength: selection.selectedText.length,
+  });
+  renderManuscriptPanel();
+  renderConsolePanel();
+  syncSceneDocumentLayout();
+  syncNarrationTakeSelectionPreview();
+}
+
+function logNarrationRecordingReviewWaveformClick(target, event, requestedTimeSeconds, resolvedTimeSeconds = requestedTimeSeconds) {
+  const rect = typeof target?.getBoundingClientRect === "function"
+    ? target.getBoundingClientRect()
+    : null;
+  reportBrowserLog("info", "voice-recording", "Saved take oscillogram seek requested.", {
+    recordingId: target?.dataset?.recordingId ?? "",
+    requestedTimeSeconds,
+    resolvedTimeSeconds,
+    speechAlignedSnapApplied: Math.abs((Number(resolvedTimeSeconds) || 0) - (Number(requestedTimeSeconds) || 0)) > 0.001,
+    waveformStartSeconds: Number.isFinite(Number(target?.dataset?.waveformStart))
+      ? Number(target.dataset.waveformStart)
+      : null,
+    waveformEndSeconds: Number.isFinite(Number(target?.dataset?.waveformEnd))
+      ? Number(target.dataset.waveformEnd)
+      : null,
+    clientX: Number.isFinite(Number(event?.clientX)) ? Number(event.clientX) : null,
+    targetRect: rect
+      ? {
+        left: Math.round(rect.left),
+        width: Math.round(rect.width),
+      }
+      : null,
+    playbackBefore: createVoiceRecordingPlaybackLogSnapshot(),
+  });
+}
+
+async function seekNarrationRecordingReviewWaveform(target, event) {
+  const recordingId = typeof target?.dataset?.recordingId === "string" && target.dataset.recordingId.trim()
+    ? target.dataset.recordingId.trim()
+    : "";
+  if (!recordingId) {
+    return;
+  }
+
+  const requestedTimeSeconds = resolveNarrationRecordingWaveformTimeFromPointer(target, event);
+  const recording = voiceRecordingService.getById(recordingId);
+  const durationSeconds = Math.max(
+    0,
+    Number(state.narrationRecordingReview?.durationSeconds) || Number(recording?.durationMs ?? 0) / 1000,
+  );
+  const resolvedTimeSeconds = resolveNarrationRecordingAlignedSeekTime({
+    transcriptAlignment: recording?.transcriptAlignment,
+    requestedTimeSeconds,
+    durationSeconds,
+  });
+  logNarrationRecordingReviewWaveformClick(target, event, requestedTimeSeconds, resolvedTimeSeconds);
+  seekNarrationRecordingReview(recordingId, resolvedTimeSeconds);
+
+  const playbackState = voiceRecordingPreviewController.getPlaybackState();
+  if (
+    playbackState.recordingId === recordingId &&
+    (playbackState.status === "playing" || playbackState.status === "loading")
+  ) {
+    return;
+  }
+
+  await playVoiceRecordingPreview(recordingId, {
+    source: "waveform-seek",
+  });
+}
+
+async function previewVoiceRecording(recordingId) {
+  const plan = openVoiceRecordingReviewForRecordingId(recordingId);
+  await playVoiceRecordingPreview(recordingId, {
+    openedReview: Boolean(plan),
+  });
+}
+
+async function playVoiceRecordingPreview(recordingId, logContext = {}) {
+  const startTimeSeconds = resolveNarrationRecordingPreviewStartTime(recordingId);
+  reportBrowserLog("info", "voice-recording", "Saved take preview requested.", {
+    recordingId,
+    startTimeSeconds,
+    ...logContext,
+    playbackBefore: createVoiceRecordingPlaybackLogSnapshot(),
+  });
+  const result = await voiceRecordingActionService.previewRecording(recordingId, {
+    startTimeSeconds,
+  });
+  if (!result?.ok) {
+    reportBrowserLog("warn", "voice-recording", "Voice recording preview was unavailable.", {
+      recordingId,
+      reason: result?.reason ?? "unknown",
+      ...logContext,
+      playbackAfter: createVoiceRecordingPlaybackLogSnapshot(),
+    });
+    return;
+  }
+
+  reportBrowserLog("info", "voice-recording", "Saved take preview request finished.", {
+    recordingId: result.recording?.id ?? recordingId,
+    startTimeSeconds,
+    stalePlayback: result.playback?.stale === true,
+    ...logContext,
+    playbackAfter: createVoiceRecordingPlaybackLogSnapshot(result.playback?.playbackState),
+  });
+}
+
+function stopVoiceRecordingPreview(recordingId = "") {
+  const playbackState = voiceRecordingPreviewController.getPlaybackState();
+  const playbackBeforeSnapshot = createVoiceRecordingPlaybackLogSnapshot(playbackState);
+  const normalizedRecordingId = typeof recordingId === "string" && recordingId.trim() ? recordingId.trim() : "";
+  const mismatch = Boolean(normalizedRecordingId && playbackState.recordingId && normalizedRecordingId !== playbackState.recordingId);
+  if (normalizedRecordingId && playbackState.recordingId && normalizedRecordingId !== playbackState.recordingId) {
+    reportBrowserLog("warn", "voice-recording", "Saved take stop requested for a different active recording; stopping active preview.", {
+      requestedRecordingId: normalizedRecordingId,
+      activeRecordingId: playbackState.recordingId,
+      playbackBefore: playbackBeforeSnapshot,
+    });
+  }
+
+  const stoppedState = voiceRecordingPreviewController.stopPreview();
+  reportBrowserLog("info", "voice-recording", "Saved take preview stop finished.", {
+    requestedRecordingId: normalizedRecordingId,
+    activeRecordingIdBefore: playbackState.recordingId,
+    mismatch,
+    playbackBefore: playbackBeforeSnapshot,
+    playbackAfter: createVoiceRecordingPlaybackLogSnapshot(stoppedState),
+  });
+}
+
+function pauseVoiceRecordingPreview(recordingId = "", {
+  source = "transport",
+} = {}) {
+  const playbackBeforeSnapshot = createVoiceRecordingPlaybackLogSnapshot();
+  const pausedState = voiceRecordingPreviewController.pausePreview({
+    recordingId,
+  });
+  reportBrowserLog("info", "voice-recording", "Saved take preview pause requested.", {
+    source,
+    requestedRecordingId: recordingId,
+    playbackBefore: playbackBeforeSnapshot,
+    playbackAfter: createVoiceRecordingPlaybackLogSnapshot(pausedState),
+  });
+  return pausedState;
+}
+
+async function resumeVoiceRecordingPreview(recordingId = "", {
+  source = "transport",
+} = {}) {
+  const playbackBeforeSnapshot = createVoiceRecordingPlaybackLogSnapshot();
+  try {
+    const resumedState = await voiceRecordingPreviewController.resumePreview({
+      recordingId,
+    });
+    reportBrowserLog("info", "voice-recording", "Saved take preview resume requested.", {
+      source,
+      requestedRecordingId: recordingId,
+      playbackBefore: playbackBeforeSnapshot,
+      playbackAfter: createVoiceRecordingPlaybackLogSnapshot(resumedState),
+    });
+    return resumedState;
+  } catch (error) {
+    reportBrowserLog("warn", "voice-recording", "Saved take preview resume failed.", {
+      error,
+      source,
+      requestedRecordingId: recordingId,
+      playbackBefore: playbackBeforeSnapshot,
+      playbackAfter: createVoiceRecordingPlaybackLogSnapshot(),
+    });
+    return voiceRecordingPreviewController.getPlaybackState();
+  }
+}
+
+function toggleVoiceRecordingPreviewWithSpacebar(event) {
+  if (isTextEditingTarget(event?.target)) {
+    return false;
+  }
+
+  const target = event?.target instanceof Element ? event.target : null;
+  if (target?.closest("[contenteditable='true']")) {
+    return false;
+  }
+
+  const playbackState = voiceRecordingPreviewController.getPlaybackState();
+  if (!playbackState.recordingId || !["loading", "playing", "paused"].includes(playbackState.status)) {
+    return false;
+  }
+
+  event.preventDefault();
+  hideFileMenu();
+  if (playbackState.status === "paused") {
+    void resumeVoiceRecordingPreview(playbackState.recordingId, {
+      source: "spacebar",
+    });
+    return true;
+  }
+
+  pauseVoiceRecordingPreview(playbackState.recordingId, {
+    source: "spacebar",
+  });
+  return true;
+}
+
+// Intent: delete saved narration takes through media and recording services, then persist the project snapshot.
+async function deleteVoiceRecording(recordingId) {
+  const result = await voiceRecordingActionService.deleteRecording(recordingId);
+  if (!result?.ok) {
+    reportBrowserLog("warn", "voice-recording", "Voice recording delete could not complete.", {
+      recordingId,
+      reason: result?.reason ?? "unknown",
+    });
+    return;
+  }
+
+  if (state.narrationTakeSession?.recordingId === result.recording?.id) {
+    setNarrationTakeSession(createNarrationTakeSession(state.narrationTakeSelection, {
+      status: "paused",
+      trackerStatus: "Narration take deleted.",
+    }));
+  }
+
+  if (state.narrationRecordingReview?.recordingId === result.recording?.id) {
+    state.narrationRecordingReview = null;
+  }
+  if (state.narrationRecordingPreviewId === result.recording?.id) {
+    state.narrationRecordingPreviewId = null;
+  }
+  if (voiceRecordingPreviewController.getPlaybackState().recordingId === result.recording?.id) {
+    voiceRecordingPreviewController.stopPreview();
+  }
+
+  persistCurrentProjectRecord({
+    domain: "voice-recordings",
+    dirtyReason: "voice-recording-deleted",
+    source: "deleteVoiceRecording",
+    skipProjectFileAutosave: true,
+    markWorkingState: true,
+  });
   render();
+  void saveCurrentProject();
+
+  reportBrowserLog("info", "voice-recording", "Deleted a narration recording.", {
+    recordingId: result.recording?.id ?? recordingId,
+    mediaPath: result.recording?.mediaPath ?? null,
+    mediaRemoved: result.mediaResult?.removed === true,
+  });
+}
+
+// Intent: start a replacement take only from the author-selected review subrange while keeping the old take available.
+async function rerecordVoiceRecordingSelection(recordingId) {
+  const normalizedRecordingId = typeof recordingId === "string" && recordingId.trim() ? recordingId.trim() : "";
+  if (!normalizedRecordingId) {
+    return;
+  }
+
+  if (narrationRecordingRuntime || state.narrationTakeSession?.status === "recording" || state.narrationTakeSession?.status === "finalizing") {
+    reportBrowserLog("warn", "voice-recording", "Re-record request ignored because another narration take is active.", {
+      recordingId: normalizedRecordingId,
+      activeRecordingId: narrationRecordingRuntime?.recordingId ?? state.narrationTakeSession?.recordingId ?? "",
+      activeStatus: state.narrationTakeSession?.status ?? "",
+    });
+    return;
+  }
+
+  const plan = voiceRecordingActionService.planRecordingVerseNavigation(normalizedRecordingId);
+  if (!plan.ok) {
+    reportBrowserLog("warn", "voice-recording", "Re-record request could not resolve the saved take anchor.", {
+      recordingId: normalizedRecordingId,
+      reason: plan.reason ?? "unknown",
+    });
+    return;
+  }
+
+  if (state.narrationRecordingReview?.recordingId !== normalizedRecordingId) {
+    openVoiceRecordingReviewForRecordingId(normalizedRecordingId);
+    reportBrowserLog("info", "voice-recording", "Re-record selection request opened the saved take review first.", {
+      recordingId: normalizedRecordingId,
+    });
+    return;
+  }
+
+  const selection = createNarrationTakeSelectionFromReviewSelection(
+    plan.recording,
+    state.narrationRecordingReview.selection,
+  );
+  if (!selection) {
+    openVoiceRecordingReview(plan.recording);
+    reportBrowserLog("warn", "voice-recording", "Re-record request needs a selected word or oscillogram range.", {
+      recordingId: normalizedRecordingId,
+      sceneId: plan.sceneId,
+      selectedBlockId: plan.selectedBlockId,
+    });
+    return;
+  }
+
+  const playbackState = voiceRecordingPreviewController.getPlaybackState();
+  if (playbackState.recordingId) {
+    stopVoiceRecordingPreview(playbackState.recordingId);
+  }
+
+  openNarrationRecordingReview(plan.recording);
+  state.selectedIssueId = null;
+  state.activePane = "narration";
+  state.selectedSceneId = plan.sceneId;
+  state.activeEditorSceneId = plan.sceneId;
+  state.selectedBlockId = selection.blockId ?? plan.selectedBlockId;
+  state.narrationTakeSelection = selection;
+  render();
+
+  const scheduleScroll = typeof window !== "undefined" && typeof window.requestAnimationFrame === "function"
+    ? window.requestAnimationFrame.bind(window)
+    : (callback) => callback();
+  scheduleScroll(() => {
+    takeToSceneRange(plan.sceneId, selection.startOffset, selection.endOffset, { behavior: "smooth" });
+    syncNarrationTakeSelectionPreview();
+  });
+
+  reportBrowserLog("info", "voice-recording", "Starting selected re-record take from saved take review range.", {
+    sourceRecordingId: normalizedRecordingId,
+    sceneId: selection.sceneId,
+    blockId: selection.blockId,
+    startOffset: selection.startOffset,
+    endOffset: selection.endOffset,
+  });
+  await startNarrationRecording(plan.sceneId);
+}
+
+function goToVoiceRecordingVerse(recordingId) {
+  openVoiceRecordingReviewForRecordingId(recordingId);
+}
+
+// Intent: preview a saved take's manuscript coverage from the Audio tab without selecting or scrolling the editor.
+function previewNarrationRecordingAnchor(recordingId) {
+  const normalizedRecordingId = typeof recordingId === "string" && recordingId.trim()
+    ? recordingId.trim()
+    : "";
+  if (!normalizedRecordingId || state.activePane !== "narration") {
+    return false;
+  }
+
+  const plan = voiceRecordingActionService.planRecordingVerseNavigation(normalizedRecordingId);
+  if (!plan.ok) {
+    return false;
+  }
+
+  state.narrationRecordingPreviewId = normalizedRecordingId;
+  syncNarrationRecordingPreviewCards(normalizedRecordingId);
+  syncNarrationRecordingPreviewLayer(plan.sceneId);
+  return true;
+}
+
+function clearNarrationRecordingAnchorPreview(recordingId = "") {
+  const normalizedRecordingId = typeof recordingId === "string" && recordingId.trim()
+    ? recordingId.trim()
+    : "";
+  if (
+    normalizedRecordingId &&
+    state.narrationRecordingPreviewId &&
+    state.narrationRecordingPreviewId !== normalizedRecordingId
+  ) {
+    return false;
+  }
+
+  const previousRecordingId = state.narrationRecordingPreviewId;
+  if (!previousRecordingId) {
+    syncNarrationRecordingPreviewCards("");
+    return false;
+  }
+
+  const plan = voiceRecordingActionService.planRecordingVerseNavigation(previousRecordingId);
+  state.narrationRecordingPreviewId = null;
+  syncNarrationRecordingPreviewCards("");
+  syncNarrationRecordingPreviewLayer(plan.ok ? plan.sceneId : state.selectedSceneId);
+  return true;
+}
+
+function syncNarrationRecordingPreviewCards(recordingId = "") {
+  const normalizedRecordingId = typeof recordingId === "string" && recordingId.trim()
+    ? recordingId.trim()
+    : "";
+  document.querySelectorAll("[data-narration-recording-preview-id]").forEach((element) => {
+    if (element instanceof HTMLElement) {
+      element.classList.toggle(
+        "is-previewing",
+        normalizedRecordingId && element.dataset.narrationRecordingPreviewId === normalizedRecordingId,
+      );
+    }
+  });
+}
+
+function syncNarrationRecordingPreviewLayer(sceneId) {
+  const normalizedSceneId = typeof sceneId === "string" && sceneId.trim()
+    ? sceneId.trim()
+    : "";
+  if (!normalizedSceneId) {
+    return false;
+  }
+
+  const textarea = getEditorTextareaForScene(normalizedSceneId);
+  const editorHost = resolveTextareaEditorHost(textarea);
+  if (!(textarea instanceof HTMLTextAreaElement) || !editorHost) {
+    return false;
+  }
+
+  syncNarrationRecordingLayer(editorHost, normalizedSceneId);
+  return true;
+}
+
+function openVoiceRecordingReviewForRecordingId(recordingId) {
+  const plan = voiceRecordingActionService.planRecordingVerseNavigation(recordingId);
+  if (!plan.ok) {
+    return null;
+  }
+
+  const selection = createNarrationTakeSelectionFromRecordingPlan(plan);
+  openNarrationRecordingReview(plan.recording);
+
+  state.selectedIssueId = null;
+  state.activePane = "narration";
+  state.selectedSceneId = plan.sceneId;
+  state.activeEditorSceneId = plan.sceneId;
+  state.selectedBlockId = selection?.blockId ?? plan.selectedBlockId;
+  state.narrationTakeSelection = selection;
+  render();
+
+  const scheduleScroll = typeof window !== "undefined" && typeof window.requestAnimationFrame === "function"
+    ? window.requestAnimationFrame.bind(window)
+    : (callback) => callback();
+  scheduleScroll(() => {
+    const startOffset = Number.isInteger(selection?.startOffset) ? selection.startOffset : plan.startOffset;
+    const endOffset = Number.isInteger(selection?.endOffset) ? selection.endOffset : plan.endOffset;
+    takeToSceneRange(plan.sceneId, startOffset, endOffset, { behavior: "smooth" });
+    syncNarrationTakeSelectionPreview();
+  });
+  return plan;
+}
+
+function openNarrationRecordingReview(recording) {
+  const recordingId = typeof recording?.id === "string" && recording.id.trim() ? recording.id.trim() : "";
+  if (!recordingId) {
+    state.narrationRecordingReview = null;
+    return null;
+  }
+
+  const playbackState = voiceRecordingPreviewController.getPlaybackState();
+  const playbackApplies = playbackState.recordingId === recordingId;
+  const reviewApplies = state.narrationRecordingReview?.recordingId === recordingId;
+  const currentTimeSeconds = playbackApplies
+    ? playbackState.currentTimeSeconds
+    : reviewApplies
+      ? state.narrationRecordingReview.currentTimeSeconds
+      : 0;
+  const durationSeconds = playbackApplies && playbackState.durationSeconds > 0
+    ? playbackState.durationSeconds
+    : reviewApplies && state.narrationRecordingReview.durationSeconds > 0
+      ? state.narrationRecordingReview.durationSeconds
+    : Math.max(0, Number(recording.durationMs ?? 0) / 1000);
+  state.narrationRecordingReview = createNarrationRecordingReviewState(recording, {
+    currentTimeSeconds,
+    durationSeconds,
+    waveformZoom: reviewApplies ? state.narrationRecordingReview.waveformZoom : 1,
+    selection: reviewApplies ? state.narrationRecordingReview.selection : null,
+  });
+  void loadNarrationRecordingWaveform(recordingId);
+  void processNarrationRecordingTranscriptAlignment(recordingId);
+  return state.narrationRecordingReview;
+}
+
+function closeNarrationRecordingReview(recordingId = "") {
+  const normalizedRecordingId = typeof recordingId === "string" && recordingId.trim() ? recordingId.trim() : "";
+  if (normalizedRecordingId && state.narrationRecordingReview?.recordingId !== normalizedRecordingId) {
+    return;
+  }
+
+  state.narrationRecordingReview = null;
+  renderManuscriptPanel();
+  syncSceneDocumentLayout();
+}
+
+function resolveNarrationRecordingPreviewStartTime(recordingId) {
+  const normalizedRecordingId = typeof recordingId === "string" && recordingId.trim() ? recordingId.trim() : "";
+  if (!normalizedRecordingId || state.narrationRecordingReview?.recordingId !== normalizedRecordingId) {
+    return 0;
+  }
+
+  const recording = voiceRecordingService.getById(normalizedRecordingId);
+  const durationSeconds = Math.max(
+    0,
+    Number(state.narrationRecordingReview.durationSeconds) || Number(recording?.durationMs ?? 0) / 1000,
+  );
+  const currentTimeSeconds = Math.max(0, Number(state.narrationRecordingReview.currentTimeSeconds) || 0);
+  return durationSeconds > 0 && currentTimeSeconds >= durationSeconds - 0.25
+    ? 0
+    : currentTimeSeconds;
+}
+
+function seekNarrationRecordingReview(recordingId, value) {
+  const recording = voiceRecordingService.getById(recordingId);
+  if (!recording) {
+    return;
+  }
+
+  const durationSeconds = Math.max(
+    0,
+    Number(state.narrationRecordingReview?.durationSeconds) || Number(recording.durationMs ?? 0) / 1000,
+  );
+  const requestedTimeSeconds = Math.max(0, Number(value) || 0);
+  const currentTimeSeconds = durationSeconds > 0
+    ? Math.min(requestedTimeSeconds, durationSeconds)
+    : requestedTimeSeconds;
+  state.narrationRecordingReview = createNarrationRecordingReviewState(recording, {
+    currentTimeSeconds,
+    durationSeconds,
+    waveformZoom: state.narrationRecordingReview?.waveformZoom,
+    selection: state.narrationRecordingReview?.selection,
+  });
+
+  const playbackState = voiceRecordingPreviewController.getPlaybackState();
+  const playbackBeforeSnapshot = createVoiceRecordingPlaybackLogSnapshot(playbackState);
+  let seekPlaybackState = playbackState;
+  if (playbackState.recordingId === recording.id) {
+    seekPlaybackState = voiceRecordingPreviewController.seekPreview(currentTimeSeconds, {
+      recordingId: recording.id,
+    });
+  }
+
+  reportBrowserLog("info", "voice-recording", "Saved take review seek applied.", {
+    recordingId: recording.id,
+    requestedTimeSeconds,
+    currentTimeSeconds,
+    durationSeconds,
+    activeAudioMatched: playbackState.recordingId === recording.id,
+    playbackBefore: playbackBeforeSnapshot,
+    playbackAfter: createVoiceRecordingPlaybackLogSnapshot(seekPlaybackState),
+  });
+
+  syncNarrationRecordingReviewDom(recording.id);
+}
+
+async function seekNarrationRecordingReviewWord(recordingId, value) {
+  const normalizedRecordingId = typeof recordingId === "string" && recordingId.trim() ? recordingId.trim() : "";
+  if (!normalizedRecordingId) {
+    return;
+  }
+
+  seekNarrationRecordingReview(normalizedRecordingId, value);
+  const playbackState = voiceRecordingPreviewController.getPlaybackState();
+  if (
+    playbackState.recordingId === normalizedRecordingId &&
+    (playbackState.status === "playing" || playbackState.status === "loading")
+  ) {
+    reportBrowserLog("info", "voice-recording", "Saved take word seek reused active playback.", {
+      recordingId: normalizedRecordingId,
+      requestedTimeSeconds: Number.isFinite(Number(value)) ? Number(value) : null,
+      playbackAfterSeek: createVoiceRecordingPlaybackLogSnapshot(playbackState),
+    });
+    return;
+  }
+
+  reportBrowserLog("info", "voice-recording", "Saved take word seek starting playback from cursor.", {
+    recordingId: normalizedRecordingId,
+    requestedTimeSeconds: Number.isFinite(Number(value)) ? Number(value) : null,
+    playbackBeforeStart: createVoiceRecordingPlaybackLogSnapshot(playbackState),
+  });
+  await playVoiceRecordingPreview(normalizedRecordingId, {
+    source: "word-seek",
+  });
+}
+
+function handleVoiceRecordingPlaybackStateChange(playbackState, eventType = "") {
+  syncVoiceRecordingPlaybackTelemetry(playbackState, eventType);
+  logVoiceRecordingPlaybackStateChange(playbackState, eventType);
+  const recordingId = typeof playbackState?.recordingId === "string" && playbackState.recordingId.trim()
+    ? playbackState.recordingId.trim()
+    : "";
+  if (!recordingId) {
+    if (["loading", "playing", "paused", "resume-loading", "resumed", "stopped", "ended", "error"].includes(eventType)) {
+      renderConsolePanel();
+    }
+    return;
+  }
+
+  if (state.narrationRecordingReview?.recordingId === recordingId) {
+    const recording = voiceRecordingService.getById(recordingId);
+    if (recording) {
+      state.narrationRecordingReview = createNarrationRecordingReviewState(recording, {
+        currentTimeSeconds: playbackState.currentTimeSeconds,
+        durationSeconds: playbackState.durationSeconds || state.narrationRecordingReview.durationSeconds,
+        waveformZoom: state.narrationRecordingReview.waveformZoom,
+        selection: state.narrationRecordingReview.selection,
+      });
+    }
+  }
+
+  if (["loading", "playing", "paused", "resume-loading", "resumed", "stopped", "ended", "error"].includes(eventType)) {
+    renderConsolePanel();
+    if (state.narrationRecordingReview?.recordingId === recordingId) {
+      renderManuscriptPanel();
+      syncSceneDocumentLayout();
+    }
+  }
+
+  syncNarrationRecordingReviewDom(recordingId);
+}
+
+function syncNarrationRecordingReviewDom(recordingId) {
+  const model = createActiveNarrationRecordingReviewModel(recordingId);
+  if (!model) {
+    return;
+  }
+  logNarrationRecordingReviewCursorFallback(model);
+
+  const reviewElement = getNarrationRecordingReviewElement(model.recordingId);
+  if (!(reviewElement instanceof HTMLElement)) {
+    return;
+  }
+
+  const currentTimeElement = reviewElement.querySelector("[data-narration-review-current-time]");
+  if (currentTimeElement instanceof HTMLElement) {
+    currentTimeElement.textContent = model.currentTimeLabel;
+  }
+
+  const durationElement = reviewElement.querySelector("[data-narration-review-duration]");
+  if (durationElement instanceof HTMLElement) {
+    durationElement.textContent = model.durationLabel;
+  }
+
+  const progressElement = reviewElement.querySelector("[data-narration-review-progress]");
+  if (progressElement instanceof HTMLElement) {
+    progressElement.textContent = `${model.progressPercent}%`;
+  }
+
+  const seekInput = reviewElement.querySelector("[data-narration-review-seek]");
+  if (seekInput instanceof HTMLInputElement) {
+    seekInput.max = String(Math.max(0, model.durationSeconds));
+    seekInput.value = String(model.currentTimeSeconds);
+  }
+
+  const waveformPanel = reviewElement.querySelector("[data-narration-review-waveform-panel]");
+  if (waveformPanel instanceof HTMLElement) {
+    waveformPanel.outerHTML = renderNarrationRecordingReviewWaveformHTML(model);
+  }
+
+  const transcriptElement = reviewElement.querySelector("[data-narration-review-transcript]");
+  if (transcriptElement instanceof HTMLElement) {
+    const previousScrollTop = transcriptElement.scrollTop;
+    transcriptElement.innerHTML = renderNarrationRecordingReviewTranscriptHTML(model);
+    transcriptElement.scrollTop = previousScrollTop;
+  }
+}
+
+// Intent: surface when the saved-take review cursor is driven by duration ratio instead of the stored word map.
+function logNarrationRecordingReviewCursorFallback(model) {
+  const resolution = model?.cursor?.timingResolution;
+  const recordingId = typeof model?.recordingId === "string" ? model.recordingId : "";
+  if (!resolution?.usedDurationFallback) {
+    if (narrationRecordingReviewCursorFallbackLogKey.startsWith(`${recordingId}:`)) {
+      narrationRecordingReviewCursorFallbackLogKey = "";
+    }
+    return;
+  }
+
+  const firstTimedWord = createNarrationRecordingCursorTimedWordLogSnapshot(resolution.firstTimedWord);
+  const lastTimedWord = createNarrationRecordingCursorTimedWordLogSnapshot(resolution.lastTimedWord);
+  const logKey = [
+    recordingId,
+    resolution.reason,
+    resolution.resolvedWordIndex,
+    firstTimedWord?.startTimeSeconds ?? "",
+    lastTimedWord?.endTimeSeconds ?? "",
+  ].join(":");
+  if (logKey === narrationRecordingReviewCursorFallbackLogKey) {
+    return;
+  }
+  narrationRecordingReviewCursorFallbackLogKey = logKey;
+
+  const recording = voiceRecordingService.getById(recordingId);
+  const alignment = recording?.transcriptAlignment && typeof recording.transcriptAlignment === "object"
+    ? recording.transcriptAlignment
+    : null;
+  const provider = alignment?.wordTimingProvider && typeof alignment.wordTimingProvider === "object"
+    ? alignment.wordTimingProvider
+    : null;
+  reportBrowserLog("warn", "voice-recording", "Saved take review cursor used duration fallback instead of aligned word timing.", {
+    recordingId,
+    reason: resolution.reason,
+    strategy: resolution.strategy,
+    currentTimeSeconds: Number.isFinite(Number(resolution.currentTimeSeconds)) ? Number(resolution.currentTimeSeconds) : null,
+    durationSeconds: Number.isFinite(Number(model.durationSeconds)) ? Number(model.durationSeconds) : null,
+    fallbackRatio: Number.isFinite(Number(resolution.fallbackRatio)) ? Number(resolution.fallbackRatio) : null,
+    resolvedWordIndex: Number.isInteger(resolution.resolvedWordIndex) ? resolution.resolvedWordIndex : null,
+    resolvedWordText: resolution.resolvedWordText ?? "",
+    resolvedWordTimingSource: resolution.resolvedWordTimingSource ?? "",
+    timedWordCount: Number.isFinite(Number(resolution.timedWordCount)) ? Number(resolution.timedWordCount) : null,
+    providerTimedWordCount: Number.isFinite(Number(resolution.providerTimedWordCount)) ? Number(resolution.providerTimedWordCount) : null,
+    timingSourceCounts: resolution.timingSourceCounts ?? {},
+    firstTimedWord,
+    lastTimedWord,
+    alignmentProviderId: alignment?.providerId ?? "",
+    alignmentSource: alignment?.source ?? "",
+    alignmentStatus: alignment?.status ?? "",
+    alignmentWordCount: Number.isFinite(Number(alignment?.wordCount)) ? Number(alignment.wordCount) : null,
+    wordTimingProviderStatus: provider?.status ?? "",
+    wordTimingProviderRecognizedWordCount: Number.isFinite(Number(provider?.recognizedWordCount)) ? Number(provider.recognizedWordCount) : null,
+    wordTimingProviderMatchedWordCount: Number.isFinite(Number(provider?.matchedWordCount)) ? Number(provider.matchedWordCount) : null,
+    wordTimingProviderMatchRatio: Number.isFinite(Number(provider?.matchRatio)) ? Number(provider.matchRatio) : null,
+    recordingDurationMs: Number.isFinite(Number(recording?.durationMs)) ? Number(recording.durationMs) : null,
+  });
+}
+
+// Intent: keep cursor fallback logs concise while preserving the timing boundary that caused the fallback.
+function createNarrationRecordingCursorTimedWordLogSnapshot(word) {
+  if (!word || typeof word !== "object") {
+    return null;
+  }
+  return {
+    index: Number.isInteger(word.index) ? word.index : null,
+    text: typeof word.text === "string" ? word.text : "",
+    startTimeSeconds: Number.isFinite(Number(word.timeSeconds)) ? Number(word.timeSeconds) : null,
+    endTimeSeconds: Number.isFinite(Number(word.endTimeSeconds)) ? Number(word.endTimeSeconds) : null,
+    timingSource: typeof word.timingSource === "string" ? word.timingSource : "",
+  };
+}
+
+function createActiveNarrationRecordingReviewModel(recordingId) {
+  const normalizedRecordingId = typeof recordingId === "string" && recordingId.trim() ? recordingId.trim() : "";
+  if (!normalizedRecordingId || state.narrationRecordingReview?.recordingId !== normalizedRecordingId) {
+    return null;
+  }
+
+  const recording = voiceRecordingService.getById(normalizedRecordingId);
+  if (!recording) {
+    return null;
+  }
+  const scene = getScene(recording.sceneId);
+  const displayRecording = enrichNarrationRecordingDisplayLineRange(scene, recording);
+
+  return createNarrationRecordingReviewModel({
+    recording: displayRecording,
+    scene,
+    reviewState: state.narrationRecordingReview,
+    playbackState: voiceRecordingPreviewController.getPlaybackState(),
+    waveformState: state.narrationRecordingWaveforms?.[normalizedRecordingId] ?? null,
+  });
+}
+
+function getNarrationRecordingReviewElement(recordingId) {
+  const normalizedRecordingId = typeof recordingId === "string" && recordingId.trim() ? recordingId.trim() : "";
+  if (!normalizedRecordingId || typeof CSS === "undefined" || typeof CSS.escape !== "function") {
+    return null;
+  }
+
+  return document.querySelector(
+    `[data-narration-recording-review][data-recording-id="${CSS.escape(normalizedRecordingId)}"]`,
+  );
+}
+
+function createNarrationTakeSelectionFromRecordingPlan(plan) {
+  const scene = getScene(plan?.sceneId);
+  if (!scene) {
+    return null;
+  }
+
+  const blockRanges = getSceneBlockRanges(scene);
+  const sceneText = String(scene.editorText ?? "");
+  const maxOffset = Math.max(sceneText.length, ...blockRanges.map((range) => range.endOffset), 0);
+  const startOffset = Number.isInteger(plan.startOffset)
+    ? Math.max(0, Math.min(plan.startOffset, maxOffset))
+    : 0;
+  const endOffset = Number.isInteger(plan.endOffset) && plan.endOffset > startOffset
+    ? Math.max(startOffset, Math.min(plan.endOffset, maxOffset))
+    : startOffset;
+  const block = findSceneBlockAtOffset(scene, startOffset)
+    ?? scene.blocks?.find((candidate) => candidate.blockId === plan.selectedBlockId)
+    ?? scene.blocks?.[0]
+    ?? null;
+  if (!block) {
+    return null;
+  }
+
+  const blockRange = blockRanges.find((candidate) => candidate.blockId === block.blockId) ?? null;
+  const selectedText = sceneText.slice(startOffset, endOffset).trim() || String(block.text ?? "").trim();
+  return buildNarrationTakeSelection(scene, block, blockRange, null, startOffset, endOffset, selectedText);
+}
+
+function createNarrationTakeSelectionFromReviewSelection(recording, reviewSelection) {
+  const scene = getScene(recording?.sceneId);
+  if (!scene || !reviewSelection) {
+    return null;
+  }
+
+  const blockRanges = getSceneBlockRanges(scene);
+  const sceneText = String(scene.editorText ?? "");
+  const maxOffset = Math.max(sceneText.length, ...blockRanges.map((range) => range.endOffset), 0);
+  const startOffset = Number.isInteger(reviewSelection.startOffset)
+    ? Math.max(0, Math.min(reviewSelection.startOffset, maxOffset))
+    : null;
+  const endOffset = Number.isInteger(reviewSelection.endOffset) && startOffset !== null && reviewSelection.endOffset > startOffset
+    ? Math.max(startOffset, Math.min(reviewSelection.endOffset, maxOffset))
+    : null;
+  if (startOffset === null || endOffset === null || endOffset <= startOffset) {
+    return null;
+  }
+
+  const block = findSceneBlockAtOffset(scene, startOffset)
+    ?? scene.blocks?.find((candidate) => candidate.blockId === recording?.blockId)
+    ?? scene.blocks?.[0]
+    ?? null;
+  if (!block) {
+    return null;
+  }
+
+  const blockRange = blockRanges.find((candidate) => candidate.blockId === block.blockId) ?? null;
+  const selectedText = String(reviewSelection.selectedText ?? "").trim() || sceneText.slice(startOffset, endOffset).trim();
+  if (!selectedText) {
+    return null;
+  }
+
+  return buildNarrationTakeSelection(scene, block, blockRange, null, startOffset, endOffset, selectedText);
 }
 
 // Intent: keep the highlight colour picker as a floating editor menu while the selected colour remains a user preference.
@@ -5507,7 +13509,36 @@ function setHighlightColorPreference(colorId) {
   });
 }
 
-function setHighlightCustomRgbPreference(channel, value) {
+// Intent: restore a committed custom swatch through the normal highlight preference path without duplicating it.
+function setHighlightRecentCustomColorPreference(index) {
+  const recentCustomColors = normalizeHighlightRecentCustomColors(state.editorPrefs.highlightRecentCustomColors);
+  const recentIndex = Number(index);
+  if (!Number.isInteger(recentIndex) || recentIndex < 0 || recentIndex >= recentCustomColors.length) {
+    return;
+  }
+
+  const previousHighlightColorId = state.editorPrefs.highlightColorId;
+  const previousRecentColors = JSON.stringify(recentCustomColors);
+  const selectedRgb = recentCustomColors[recentIndex];
+  state.editorPrefs = normalizeEditorPrefs({
+    ...state.editorPrefs,
+    highlightColorId: CUSTOM_HIGHLIGHT_COLOR_ID,
+    highlightCustomRgb: selectedRgb,
+    highlightRecentCustomColors: addRecentHighlightCustomColor(recentCustomColors, selectedRgb),
+  });
+  closeHighlightColorPalette();
+  persistHighlightColorPreference("highlight-custom-recent-selected", "setHighlightRecentCustomColorPreference");
+  renderManuscriptPanel();
+  syncSceneDocumentLayout();
+  editorInteractionLog.info("user-action", "manuscript.highlight-colour.custom-recent-selected", "Selected a recent custom highlight colour.", {
+    recentIndex,
+    highlightColorId: state.editorPrefs.highlightColorId,
+    changed: previousHighlightColorId !== state.editorPrefs.highlightColorId ||
+      previousRecentColors !== JSON.stringify(state.editorPrefs.highlightRecentCustomColors),
+  });
+}
+
+function setHighlightCustomRgbPreference(channel, value, options = {}) {
   const normalizedChannel = ["red", "green", "blue"].includes(channel)
     ? channel
     : "";
@@ -5523,7 +13554,22 @@ function setHighlightCustomRgbPreference(channel, value) {
       [normalizedChannel]: value,
     },
   });
+  if (options.rememberRecent === true) {
+    state.editorPrefs = normalizeEditorPrefs({
+      ...state.editorPrefs,
+      highlightRecentCustomColors: addRecentHighlightCustomColor(
+        state.editorPrefs.highlightRecentCustomColors,
+        state.editorPrefs.highlightCustomRgb,
+      ),
+    });
+  }
   persistHighlightColorPreference("highlight-custom-rgb-updated", "setHighlightCustomRgbPreference");
+  if (options.rememberRecent === true) {
+    renderManuscriptPanel();
+    syncSceneDocumentLayout();
+    return;
+  }
+
   syncHighlightColorPreferenceDom();
 }
 
@@ -5560,14 +13606,21 @@ function syncHighlightColorPreferenceDom() {
   }
 
   const customColor = resolveHighlightColorOption(CUSTOM_HIGHLIGHT_COLOR_ID, state.editorPrefs.highlightCustomRgb);
+  const recentCustomColors = normalizeHighlightRecentCustomColors(state.editorPrefs.highlightRecentCustomColors);
   for (const swatch of palette.querySelectorAll("[data-highlight-color-id]")) {
     if (!(swatch instanceof HTMLElement)) {
       continue;
     }
-    const isActive = swatch.dataset.highlightColorId === state.editorPrefs.highlightColorId;
+    const recentIndex = Number(swatch.dataset.highlightCustomRgbIndex);
+    const isRecentCustomSwatch = swatch.dataset.highlightCustomRgbIndex !== undefined &&
+      Number.isInteger(recentIndex);
+    const isActive = isRecentCustomSwatch
+      ? state.editorPrefs.highlightColorId === CUSTOM_HIGHLIGHT_COLOR_ID &&
+        areHighlightCustomColorsEqual(customColor.rgb, recentCustomColors[recentIndex])
+      : swatch.dataset.highlightColorId === state.editorPrefs.highlightColorId;
     swatch.classList.toggle("is-active", isActive);
     swatch.setAttribute("aria-checked", isActive ? "true" : "false");
-    if (swatch.dataset.highlightColorId === CUSTOM_HIGHLIGHT_COLOR_ID) {
+    if (!isRecentCustomSwatch && swatch.dataset.highlightColorId === CUSTOM_HIGHLIGHT_COLOR_ID) {
       swatch.style.setProperty("--highlight-swatch-color", customColor.color);
       swatch.style.setProperty("--highlight-swatch-outline", customColor.outline);
     }
@@ -5640,14 +13693,19 @@ function syncSceneDocumentLayout(options = {}) {
   textarea.style.height = `${scrollHeight}px`;
 
   const style = window.getComputedStyle(textarea);
-  const lineHeight = parseFloat(style.lineHeight || "0") || 1;
+  const lineHeight = parseFloat(style.lineHeight || "0");
   const paddingTop = parseFloat(style.paddingTop || "0");
   const paddingBottom = parseFloat(style.paddingBottom || "0");
   const fontSize = parseFloat(style.fontSize || "0") || 16;
   const approximateCharacterWidth = Math.max(6, fontSize * 0.56);
+  const contentWidth = resolveTextareaEditorHostContentWidth({
+    clientWidth: textarea.clientWidth,
+    paddingLeft: style.paddingLeft,
+    paddingRight: style.paddingRight,
+  });
   const charactersPerLine = Math.max(
     8,
-    Math.floor(textarea.clientWidth / approximateCharacterWidth),
+    Math.floor(contentWidth / approximateCharacterWidth),
   );
   const sceneLineMetrics = buildSceneLineMetrics(
     state.scenes,
@@ -5655,19 +13713,28 @@ function syncSceneDocumentLayout(options = {}) {
     selectedSceneId ? { [selectedSceneId]: textarea.value } : {},
   );
   const selectedSceneMetrics = sceneLineMetrics.find((candidate) => candidate.sceneId === selectedSceneId);
-  const visualLineCount = Math.max(
-    1,
-    selectedSceneMetrics?.lineCount ?? Math.round((scrollHeight - paddingTop - paddingBottom) / lineHeight),
-  );
+  const visualLineCount = resolveMeasuredEditorGutterLineCount({
+    scrollHeight,
+    lineHeight,
+    paddingTop,
+    paddingBottom,
+    fallbackLineCount: selectedSceneMetrics?.lineCount,
+  });
   const lineStartNumber = selectedSceneMetrics?.startLineNumber ?? 1;
 
   gutter.innerHTML = Array.from({ length: visualLineCount }, (_, index) => `
     <span class="editor-gutter-line">${lineStartNumber + index}</span>
   `).join("");
+  syncManuScriptInfographicLane(editorHost, selectedSceneId, {
+    charactersPerLine,
+    visualLineCount,
+  });
   syncDraftProofLayer(editorHost, selectedSceneId);
+  syncNarrationRecordingLayer(editorHost, selectedSceneId);
+  syncNarrationFollowLayer(editorHost, selectedSceneId);
   syncInlineFormatLayer(editorHost);
   syncDiagnosticLayer(editorHost, selectedSceneId);
-  if (state.editorPrefs.grammarCheckEnabled === false) {
+  if (state.editorPrefs.grammarCheckEnabled === false || areNarrationManuscriptDecorationsSuppressed()) {
     clearTextareaProjectionLayer(editorHost, MANUSCRIPT_PROJECTION_CHANNELS.SPELLCHECK);
   } else if (options.skipSpellcheck === true) {
     syncTextareaSpellcheckTypingState(editorHost, options.activeTypingWordRange);
@@ -5677,27 +13744,321 @@ function syncSceneDocumentLayout(options = {}) {
   syncInlinePassageDraftLayout();
 }
 
-// Intent: rebuild draft proof-read coverage visuals from durable run coverage without persisting overlays.
-function syncDraftProofLayer(editorHost, sceneId) {
+// Intent: rebuild ManuScriptInfographicLane icons from durable task, research, world, and custom metadata anchors without storing visual state.
+function syncManuScriptInfographicLane(editorHost, sceneId, {
+  charactersPerLine,
+  visualLineCount,
+} = {}) {
   const scene = getScene(sceneId);
-  if (!scene || !(editorHost?.textarea instanceof HTMLTextAreaElement)) {
-    clearTextareaProjectionLayer(editorHost, MANUSCRIPT_PROJECTION_CHANNELS.DRAFT_PROOF);
+  const visible = state.editorPrefs?.manuScriptInfographicLaneVisible !== false;
+  if (!scene || !visible || !(editorHost?.textarea instanceof HTMLTextAreaElement)) {
+    clearTextareaProjectionLayer(editorHost, MANUSCRIPT_PROJECTION_CHANNELS.MANU_SCRIPT_INFOGRAPHIC_LANE);
     return;
   }
 
-  renderTextareaDraftProofLayer(editorHost, {
+  renderTextareaManuScriptInfographicLane(editorHost, {
     sceneId,
     text: editorHost.textarea.value,
     projections: selectManuscriptProjections({
       sceneId,
       text: editorHost.textarea.value,
-      draftProofing: state.draftProofing,
+      manuScriptInfographicLanePreviews: createManuScriptInfographicLanePreviewsForScene({ state, scene }),
       includeAuthorMarks: false,
+      includeDraftProofing: false,
       includeDiagnostics: false,
       includeAnchoredRecords: false,
       includeRuntimeSelections: false,
       includeSpellcheck: false,
     }),
+  }, {
+    charactersPerLine,
+    visualLineCount,
+  });
+}
+
+// Intent: centralize the narration-only overlay preference so post-render layer syncs match initial HTML rendering.
+function areNarrationManuscriptDecorationsSuppressed() {
+  return state.activePane === "narration" &&
+    state.narrationFollowSettings?.manuscriptDecorationsVisible === false;
+}
+
+// Intent: keep saved-take and live-follow paint controllable without suppressing manuscript diagnostics.
+function areNarrationDecorationsSuppressed() {
+  return state.activePane === "narration" &&
+    state.narrationFollowSettings?.narrationDecorationsVisible === false;
+}
+
+// Intent: rebuild draft proof-read coverage visuals from durable run coverage without persisting overlays.
+function syncDraftProofLayer(editorHost, sceneId) {
+  const scene = getScene(sceneId);
+  const hasTextarea = editorHost?.textarea instanceof HTMLTextAreaElement;
+  const marksVisible = state.draftProofMarksVisible === true;
+  if (state.activePane !== "manuscript" || !scene || !marksVisible || !hasTextarea) {
+    clearTextareaProjectionLayer(editorHost, MANUSCRIPT_PROJECTION_CHANNELS.DRAFT_PROOF);
+    logDraftProofLayerSync({
+      phase: "clear",
+      sceneId,
+      reason: state.activePane !== "manuscript"
+        ? "inactive-pane"
+        : !scene
+          ? "missing-scene"
+          : !marksVisible
+            ? "markers-hidden"
+            : "missing-textarea",
+      editorHost,
+      projections: [],
+      rendered: false,
+    });
+    return;
+  }
+
+  const projections = selectManuscriptProjections({
+    sceneId,
+    text: editorHost.textarea.value,
+    draftProofing: state.draftProofing,
+    includeAuthorMarks: false,
+    includeDraftProofing: true,
+    includeDiagnostics: false,
+    includeAnchoredRecords: false,
+    includeRuntimeSelections: false,
+    includeSpellcheck: false,
+  });
+  const rendered = renderTextareaDraftProofLayer(editorHost, {
+    sceneId,
+    text: editorHost.textarea.value,
+    draftProofBackdropColor: state.draftProofing?.settings?.backdropColor ?? "",
+    projections,
+  });
+  logDraftProofLayerSync({
+    phase: "render",
+    sceneId,
+    editorHost,
+    projections,
+    rendered,
+  });
+}
+
+// Intent: keep proof-read overlay diagnostics count-based and stable enough for repeated visual test runs.
+function logDraftProofLayerSync({
+  phase = "render",
+  sceneId = "",
+  reason = "",
+  editorHost = null,
+  projections = [],
+  rendered = false,
+} = {}) {
+  if (!draftProofingLog.isEnabled()) {
+    return;
+  }
+
+  const textarea = editorHost?.textarea instanceof HTMLTextAreaElement ? editorHost.textarea : null;
+  const projectionRanges = createDraftProofProjectionRangeLog(projections);
+  const context = createDraftProofTextareaLogContext(textarea, {
+    sceneId: sceneId || editorHost?.sceneId || "",
+    runId: getCurrentDraftProofRunRecord()?.id ?? "",
+    phase,
+    reason,
+    rendered,
+    activePane: state.activePane,
+    marksVisible: state.draftProofMarksVisible === true,
+    projectionCount: projectionRanges.length,
+    projectionRanges,
+  });
+  const signature = [
+    phase,
+    context.sceneId,
+    reason,
+    rendered ? "rendered" : "not-rendered",
+    context.activePane,
+    context.marksVisible ? "visible" : "hidden",
+    context.textLength,
+    context.textareaClientWidth,
+    context.textareaScrollHeight,
+    context.contentWidth,
+    projectionRanges.map((range) => `${range.startOffset}-${range.endOffset}`).join("|"),
+  ].join(":");
+  if (signature === draftProofLayerLogSignature) {
+    return;
+  }
+
+  draftProofLayerLogSignature = signature;
+  draftProofingLog.debug(
+    "render",
+    phase === "clear" ? "draft-proof.layer.clear" : "draft-proof.layer.render",
+    phase === "clear" ? "Cleared the proof-read overlay layer." : "Rendered the proof-read overlay layer.",
+    context,
+  );
+}
+
+// Intent: record manuscript viewport metrics without storing manuscript text in developer logs.
+function createDraftProofTextareaLogContext(textarea, extra = {}) {
+  const sceneId = String(extra.sceneId ?? textarea?.dataset?.sceneId ?? "").trim();
+  const scene = sceneId ? getScene(sceneId) : null;
+  const textLength = textarea instanceof HTMLTextAreaElement ? String(textarea.value ?? "").length : 0;
+  const selectionStart = textarea instanceof HTMLTextAreaElement && Number.isInteger(textarea.selectionStart)
+    ? textarea.selectionStart
+    : null;
+  const selectionEnd = textarea instanceof HTMLTextAreaElement && Number.isInteger(textarea.selectionEnd)
+    ? textarea.selectionEnd
+    : selectionStart;
+  const startOffset = Number.isInteger(extra.startOffset)
+    ? extra.startOffset
+    : selectionStart;
+  const endOffset = Number.isInteger(extra.endOffset)
+    ? extra.endOffset
+    : selectionEnd;
+  const codeframe = textarea instanceof HTMLTextAreaElement
+    ? textarea.closest(".scene-editor-codeframe")
+    : null;
+  const rect = textarea instanceof HTMLTextAreaElement
+    ? textarea.getBoundingClientRect()
+    : null;
+  const style = textarea instanceof HTMLTextAreaElement
+    ? window.getComputedStyle(textarea)
+    : null;
+  const contentWidth = textarea instanceof HTMLTextAreaElement
+    ? resolveTextareaEditorHostContentWidth({
+        clientWidth: textarea.clientWidth,
+        paddingLeft: style?.paddingLeft,
+        paddingRight: style?.paddingRight,
+      })
+    : 0;
+  const startLineNumber = textarea instanceof HTMLTextAreaElement && Number.isInteger(startOffset)
+    ? getSceneEditorSelectionLineNumber(textarea, scene, startOffset)
+    : null;
+  const endLineNumber = textarea instanceof HTMLTextAreaElement && Number.isInteger(endOffset)
+    ? getSceneEditorSelectionLineNumber(textarea, scene, endOffset)
+    : null;
+
+  return {
+    projectId: state.activeProjectId ?? state.workspace?.project?.id ?? "",
+    sceneId,
+    chapterId: scene?.chapterId ?? "",
+    sceneTitle: scene?.sceneTitle ?? "",
+    textLength,
+    selectionStart,
+    selectionEnd,
+    startOffset,
+    endOffset,
+    selectedCharacterCount: Number.isInteger(startOffset) && Number.isInteger(endOffset)
+      ? Math.max(0, endOffset - startOffset)
+      : 0,
+    startLineNumber,
+    endLineNumber,
+    selectionDirection: textarea instanceof HTMLTextAreaElement ? textarea.selectionDirection ?? "" : "",
+    textareaClientWidth: textarea instanceof HTMLTextAreaElement ? Math.round(textarea.clientWidth) : 0,
+    textareaClientHeight: textarea instanceof HTMLTextAreaElement ? Math.round(textarea.clientHeight) : 0,
+    textareaScrollHeight: textarea instanceof HTMLTextAreaElement ? Math.round(textarea.scrollHeight) : 0,
+    textareaOffsetHeight: textarea instanceof HTMLTextAreaElement ? Math.round(textarea.offsetHeight) : 0,
+    textareaTop: rect ? Math.round(rect.top) : null,
+    textareaLeft: rect ? Math.round(rect.left) : null,
+    textareaWidth: rect ? Math.round(rect.width) : null,
+    textareaHeight: rect ? Math.round(rect.height) : null,
+    codeframeScrollTop: codeframe instanceof HTMLElement ? Math.round(codeframe.scrollTop) : null,
+    codeframeClientHeight: codeframe instanceof HTMLElement ? Math.round(codeframe.clientHeight) : null,
+    codeframeScrollHeight: codeframe instanceof HTMLElement ? Math.round(codeframe.scrollHeight) : null,
+    contentWidth: Math.round(contentWidth),
+    paddingLeft: style?.paddingLeft ?? "",
+    paddingRight: style?.paddingRight ?? "",
+    paddingTop: style?.paddingTop ?? "",
+    paddingBottom: style?.paddingBottom ?? "",
+    fontSize: style?.fontSize ?? "",
+    lineHeight: style?.lineHeight ?? "",
+    ...(extra && typeof extra === "object" ? extra : {}),
+  };
+}
+
+// Intent: summarize projection spans for debugging without exposing manuscript text.
+function createDraftProofProjectionRangeLog(projections = []) {
+  return (Array.isArray(projections) ? projections : [])
+    .slice(0, 12)
+    .map((projection) => ({
+      id: projection?.id ?? "",
+      startOffset: Number.isInteger(projection?.startOffset) ? projection.startOffset : null,
+      endOffset: Number.isInteger(projection?.endOffset) ? projection.endOffset : null,
+      runId: projection?.sourceRef?.recordId ?? "",
+      styleToken: projection?.styleToken ?? "",
+    }));
+}
+
+function countDraftProofCoverageSpans(spans = []) {
+  return Array.isArray(spans) ? spans.length : 0;
+}
+
+function countDraftProofCoveredCharacters(spans = []) {
+  return (Array.isArray(spans) ? spans : []).reduce((total, span) => {
+    const startOffset = Number(span?.startOffset);
+    const endOffset = Number(span?.endOffset);
+    if (!Number.isFinite(startOffset) || !Number.isFinite(endOffset) || endOffset <= startOffset) {
+      return total;
+    }
+
+    return total + Math.max(0, Math.floor(endOffset) - Math.floor(startOffset));
+  }, 0);
+}
+
+// Intent: rebuild saved narration take coverage as render-only manuscript highlights in narration mode.
+function syncNarrationRecordingLayer(editorHost, sceneId) {
+  const scene = getScene(sceneId);
+  if (
+    state.activePane !== "narration" ||
+    areNarrationDecorationsSuppressed() ||
+    !scene ||
+    !(editorHost?.textarea instanceof HTMLTextAreaElement)
+  ) {
+    clearTextareaProjectionLayer(editorHost, MANUSCRIPT_PROJECTION_CHANNELS.NARRATION_RECORDING);
+    return;
+  }
+
+  renderTextareaNarrationRecordingLayer(editorHost, {
+    sceneId,
+    text: editorHost.textarea.value,
+    projections: selectManuscriptProjections({
+      sceneId,
+      text: editorHost.textarea.value,
+      narrationRecordingPreviews: createNarrationRecordingPreviewsForScene(state, scene),
+      includeAuthorMarks: false,
+      includeDraftProofing: false,
+      includeDiagnostics: false,
+      includeAnchoredRecords: false,
+      includeRuntimeSelections: true,
+      includeSpellcheck: false,
+    }),
+  });
+}
+
+// Intent: repaint live read coverage plus the current spoken span while scroll stays separate.
+function syncNarrationFollowLayer(editorHost, sceneId) {
+  const liveFollowSelection = state.narrationTakeSession?.status === "recording"
+    ? state.narrationTakeSession?.followSelection
+    : null;
+  if (
+    state.activePane !== "narration" ||
+    areNarrationDecorationsSuppressed() ||
+    state.narrationFollowSettings?.liveHighlightEnabled === false ||
+    !liveFollowSelection ||
+    liveFollowSelection.sceneId !== sceneId ||
+    !(editorHost?.textarea instanceof HTMLTextAreaElement)
+  ) {
+    clearTextareaProjectionLayer(editorHost, MANUSCRIPT_PROJECTION_CHANNELS.NARRATION_FOLLOW);
+    return;
+  }
+
+  const previewSelections = createNarrationFollowPreviewSelections(liveFollowSelection, editorHost.textarea.value);
+  const projections = selectManuscriptProjections({
+    sceneId,
+    text: editorHost.textarea.value,
+    narrationSelection: previewSelections,
+    includeAuthorMarks: false,
+    includeDraftProofing: false,
+    includeDiagnostics: false,
+    includeAnchoredRecords: false,
+    includeSpellcheck: false,
+  }).filter((candidate) => candidate.channel === MANUSCRIPT_PROJECTION_CHANNELS.NARRATION_FOLLOW);
+  renderTextareaNarrationFollowLayer(editorHost, {
+    sceneId,
+    text: editorHost.textarea.value,
+    projections,
   });
 }
 
@@ -5705,7 +14066,11 @@ function syncDraftProofLayer(editorHost, sceneId) {
 function syncInlineFormatLayer(editorHost) {
   const sceneId = String(editorHost?.sceneId ?? "");
   const scene = getScene(sceneId);
-  if (!scene || !(editorHost?.textarea instanceof HTMLTextAreaElement)) {
+  if (
+    areNarrationManuscriptDecorationsSuppressed() ||
+    !scene ||
+    !(editorHost?.textarea instanceof HTMLTextAreaElement)
+  ) {
     clearTextareaProjectionLayer(editorHost, MANUSCRIPT_PROJECTION_CHANNELS.AUTHOR_MARK);
     return;
   }
@@ -5732,7 +14097,7 @@ function syncInlineFormatLayer(editorHost) {
 // Intent: rebuild diagnostic visuals from durable issue anchors and current text without persisting overlays.
 function syncDiagnosticLayer(editorHost, sceneId) {
   const scene = getScene(sceneId);
-  if (!scene) {
+  if (areNarrationManuscriptDecorationsSuppressed() || !scene) {
     clearTextareaProjectionLayer(editorHost, MANUSCRIPT_PROJECTION_CHANNELS.DIAGNOSTIC);
     return;
   }
@@ -5866,27 +14231,82 @@ function syncInlinePassageDraftLayout() {
 function refreshScenes() {
   state.scenes = buildSceneRecords(
     state.workspace,
-    state.sceneDrafts,
+    buildSceneDraftsWithLoadedSceneStoreBodies(),
     state.structureDrafts,
   );
 }
 
+// Intent: render and row-mutate metadata-only drafts without losing retained split-storage scene bodies.
+function buildSceneDraftsWithLoadedSceneStoreBodies(sceneDrafts = state.sceneDrafts) {
+  const projectSceneStore = getActiveLoadedProjectSceneStore();
+  if (!projectSceneStore) {
+    return sceneDrafts;
+  }
+
+  const mergedDrafts = {};
+  for (const [sceneId, sceneRecord] of Object.entries(projectSceneStore)) {
+    if (sceneRecord && typeof sceneRecord === "object" && !Array.isArray(sceneRecord)) {
+      mergedDrafts[sceneId] = cloneValue(sceneRecord);
+    }
+  }
+
+  const runtimeDrafts = sceneDrafts && typeof sceneDrafts === "object" && !Array.isArray(sceneDrafts)
+    ? sceneDrafts
+    : {};
+  for (const [sceneId, draft] of Object.entries(runtimeDrafts)) {
+    mergedDrafts[sceneId] = mergeSceneDraftWithLoadedSceneStoreBody(sceneId, draft);
+  }
+
+  return mergedDrafts;
+}
+
+function mergeSceneDraftWithLoadedSceneStoreBody(sceneId = "", draft = null) {
+  const normalizedSceneId = String(sceneId ?? "").trim();
+  const runtimeDraft = draft && typeof draft === "object" && !Array.isArray(draft)
+    ? cloneValue(draft)
+    : null;
+  if (!normalizedSceneId || !runtimeDraft || sceneDraftHasSubstantiveBody(runtimeDraft)) {
+    return runtimeDraft;
+  }
+
+  const storedDraft = getActiveLoadedProjectSceneStore()?.[normalizedSceneId];
+  if (!sceneDraftHasSubstantiveBody(storedDraft)) {
+    return runtimeDraft;
+  }
+
+  return {
+    ...cloneValue(storedDraft),
+    ...runtimeDraft,
+    editorText: typeof storedDraft.editorText === "string" ? storedDraft.editorText : "",
+    blocks: Array.isArray(storedDraft.blocks) ? cloneValue(storedDraft.blocks) : [],
+  };
+}
+
+function getActiveLoadedProjectSceneStore() {
+  const projectId = String(state.workspace?.project?.id ?? state.activeProjectId ?? "").trim();
+  if (!projectId) {
+    return null;
+  }
+
+  const projectSceneStore = state.loadedProjectSceneStore?.[projectId];
+  return projectSceneStore && typeof projectSceneStore === "object" && !Array.isArray(projectSceneStore)
+    ? projectSceneStore
+    : null;
+}
+
 // Intent: prefer the desktop project file on boot; browser cache is only a temporary compatibility fallback.
 async function loadInitialProjectLibrary(desktopSettings = null) {
-  const shouldDeferToDesktopProjectFile =
+  const explicitDesktopProjectFilePath = resolveProjectFilePath(desktopSettings?.lastProjectFilePath);
+  const hasExplicitDesktopProjectFilePath =
     desktopSettings?.lastProjectFilePathExplicit === true &&
-    hasProjectFilePath(resolveProjectFilePath(desktopSettings.lastProjectFilePath));
-  const storedLibrary = shouldDeferToDesktopProjectFile
-    ? { activeProjectId: null, projects: [], sceneStore: {} }
-    : normalizeProjectLibrarySnapshot(projectService.loadProjectLibrarySnapshot());
-  const storedActiveProjectId = shouldDeferToDesktopProjectFile
-    ? null
-    : projectRepository.loadActiveProjectId();
+    hasProjectFilePath(explicitDesktopProjectFilePath);
+  const storedLibrary = normalizeProjectLibrarySnapshot(projectService.loadProjectLibrarySnapshot());
+  const storedActiveProjectId = projectRepository.loadActiveProjectId();
   const legacyProjectId =
     storedLibrary.activeProjectId ??
     storedActiveProjectId ??
     null;
-  const legacyState = shouldDeferToDesktopProjectFile ? null : loadLegacyProjectState(legacyProjectId);
+  const legacyState = hasExplicitDesktopProjectFilePath ? null : loadLegacyProjectState(legacyProjectId);
   const remoteSeedLibrary = await Promise.race([
     loadDesktopProjectLibrarySeed(),
     new Promise((resolve) => {
@@ -5896,6 +14316,31 @@ async function loadInitialProjectLibrary(desktopSettings = null) {
   const bundledSeedLibrary = remoteSeedLibrary ? null : loadBundledProjectLibrarySeed();
   const workspaceSeedLibrary = remoteSeedLibrary || bundledSeedLibrary || await loadWorkspaceFallbackProjectLibrarySeed();
   const seedLibrary = workspaceSeedLibrary;
+  const shouldPreferBrowserCache = shouldPreferBrowserCacheProjectLibraryOnBoot({
+    storedLibrary,
+    seedLibrary,
+    storedActiveProjectId,
+    explicitProjectFilePath: hasExplicitDesktopProjectFilePath ? explicitDesktopProjectFilePath : "",
+  });
+  if (shouldPreferBrowserCache) {
+    const activeProjectId = resolveActiveProjectId(
+      storedActiveProjectId,
+      storedLibrary,
+    );
+    const persistedLibrary = projectService.saveProjectLibrarySnapshot({
+      activeProjectId,
+      projects: storedLibrary.projects,
+      sceneStore: storedLibrary.sceneStore ?? {},
+    });
+    return {
+      ...persistedLibrary,
+      sceneStore: storedLibrary.sceneStore ?? {},
+      usedBrowserCacheFallback: true,
+      ignoredDesktopProjectFilePath: hasExplicitDesktopProjectFilePath ? explicitDesktopProjectFilePath : "",
+    };
+  }
+
+  const shouldDeferToDesktopProjectFile = hasExplicitDesktopProjectFilePath;
   const mergedLibrary = mergeProjectLibrarySnapshots(storedLibrary, seedLibrary, legacyState);
   const activeProjectId = resolveActiveProjectId(
     storedActiveProjectId,
@@ -5904,9 +14349,18 @@ async function loadInitialProjectLibrary(desktopSettings = null) {
   const library = {
     activeProjectId,
     projects: mergedLibrary.projects,
+    sceneStore: mergedLibrary.sceneStore ?? {},
   };
 
-  return shouldDeferToDesktopProjectFile ? library : projectService.saveProjectLibrarySnapshot(library);
+  if (shouldDeferToDesktopProjectFile) {
+    return library;
+  }
+
+  const persistedLibrary = projectService.saveProjectLibrarySnapshot(library);
+  return {
+    ...persistedLibrary,
+    sceneStore: library.sceneStore,
+  };
 }
 
 function loadBundledProjectLibrarySeed() {
@@ -5958,10 +14412,7 @@ async function loadWorkspaceFallbackProjectLibrarySeed() {
 
 async function fetchJsonFromDesktopApi(pathname, requestOptions = {}) {
   const attemptedUrls = [];
-  const baseUrls = ["http://127.0.0.1:4310", "http://localhost:4310"];
-  if (typeof window.location.origin === "string" && /^https?:\/\//.test(window.location.origin)) {
-    baseUrls.push(window.location.origin);
-  }
+  const baseUrls = getDesktopApiBaseUrls();
 
   const method = typeof requestOptions.method === "string" ? requestOptions.method.toUpperCase() : "GET";
   const bodyValue = requestOptions.body;
@@ -6040,6 +14491,19 @@ async function fetchJsonFromDesktopApi(pathname, requestOptions = {}) {
   };
 }
 
+function getDesktopApiBaseUrls() {
+  const baseUrls = [];
+  const origin = typeof window.location.origin === "string" && /^https?:\/\//.test(window.location.origin)
+    ? window.location.origin
+    : "";
+  for (const baseUrl of [origin, "http://127.0.0.1:4310", "http://localhost:4310"]) {
+    if (baseUrl && !baseUrls.includes(baseUrl)) {
+      baseUrls.push(baseUrl);
+    }
+  }
+  return baseUrls;
+}
+
 function parseJsonResponseBody(responseText) {
   try {
     const parsed = JSON.parse(responseText);
@@ -6064,14 +14528,36 @@ function loadLegacyProjectState(projectId = null) {
     templateDrafts: loadTemplateDrafts(),
     manuscriptTasks: loadManuscriptTasks(),
     passageNotes: loadPassageNotes(),
+    metadataSubgroups: [],
     draftProofing: createDefaultDraftProofingState(),
+    activePane: normalizeWorkspacePaneId(state.activePane),
     editorPrefs: loadEditorPrefs(),
     localAiPrefs: loadLocalAiPrefs(),
     projectTitle: loadProjectTitle(state.workspace?.project?.title ?? ""),
     projectSourcePath: loadStoredString(EDITOR_PROJECT_SOURCE_PATH_KEY) ?? "",
     binderPanelWidth: loadStoredNumber(EDITOR_BINDER_WIDTH_KEY, DEFAULT_BINDER_PANEL_WIDTH),
     consoleDockWidth: loadStoredNumber(EDITOR_CONSOLE_WIDTH_KEY, DEFAULT_CONSOLE_PANEL_WIDTH),
+    panelResizerLayoutProfiles: normalizePanelResizerLayoutProfiles(
+      readStoredJson(EDITOR_PANEL_RESIZER_LAYOUT_PROFILES_KEY),
+    ),
+    worldSpineEventRailWidth: loadStoredNumber(
+      EDITOR_WORLD_SPINE_EVENT_RAIL_WIDTH_KEY,
+      DEFAULT_WORLD_SPINE_EVENT_RAIL_WIDTH,
+    ),
+    worldSpineManuscriptPaneWidth: loadStoredNumber(
+      EDITOR_WORLD_SPINE_MANUSCRIPT_PANE_WIDTH_KEY,
+      DEFAULT_WORLD_SPINE_MANUSCRIPT_PANE_WIDTH,
+    ),
+    worldSpinePanelLayoutProfiles: normalizeWorldSpineLayoutProfiles(
+      readStoredJson(EDITOR_WORLD_SPINE_PANEL_LAYOUT_PROFILES_KEY),
+    ),
+    worldSpineRightPaneMode: normalizeWorldSpineRightPaneMode(),
+    worldSpineLocationFilter: createDefaultWorldSpineLocationFilterState(),
     consoleDockCollapsed: readStoredJson(EDITOR_RIGHT_DOCK_COLLAPSED_KEY) === true,
+    sidePanelsHidden: normalizeSidePanelsHiddenState(readStoredJson(EDITOR_SIDE_PANELS_HIDDEN_KEY)),
+    sidePanelVisibility: createSidePanelVisibilityState(readStoredJson(EDITOR_SIDE_PANEL_VISIBILITY_KEY)),
+    topPanelVisibility: createTopPanelVisibilityState(readStoredJson(EDITOR_TOP_PANEL_VISIBILITY_KEY)),
+    customMetadataDefinitions: [],
     collapsedChapterIds: normalizedProjectId ? loadCollapsedChapterIds(normalizedProjectId) : [],
     collapsedConsoleChapterIds: normalizedProjectId ? loadCollapsedConsoleChapterIds(normalizedProjectId) : {
       issueTasks: [],
@@ -6100,6 +14586,14 @@ function mergeProjectRecords(storedRecord, seedRecord, legacyState = null) {
   const storedWorkspace = storedRecord?.workspace && typeof storedRecord.workspace === "object" && !Array.isArray(storedRecord.workspace)
     ? cloneValue(storedRecord.workspace)
     : {};
+  const metadataSubgroupGroupIds = getMetadataSubgroupGroupIds([
+    ...normalizeCustomMetadataDefinitions(seedProjectSettings.customMetadataDefinitions),
+    ...normalizeCustomMetadataDefinitions(storedProjectSettings.customMetadataDefinitions),
+  ]);
+  const seedProjectFilePath = normalizeProjectFilePath(seedProjectSettings.projectFilePath);
+  const storedProjectFilePath = normalizeProjectFilePath(storedProjectSettings.projectFilePath);
+  // Intent: preserve the active cached destination so the bundled seed cannot retarget refresh to the repo-root project file.
+  const mergedProjectFilePath = storedProjectFilePath || seedProjectFilePath;
   const mergedWorkspace = {
     ...seedWorkspace,
     ...storedWorkspace,
@@ -6132,6 +14626,7 @@ function mergeProjectRecords(storedRecord, seedRecord, legacyState = null) {
     templateDrafts: storedRecord.templateDrafts ?? seedRecord.templateDrafts ?? legacyState?.templateDrafts ?? createTemplateDrafts(),
     manuscriptTasks: mergeProjectLibraryItemsById(storedRecord.manuscriptTasks, seedRecord.manuscriptTasks, { clone: cloneValue }),
     passageNotes: mergeProjectLibraryItemsById(storedRecord.passageNotes, seedRecord.passageNotes, { clone: cloneValue }),
+    metadataSubgroups: mergeMetadataSubgroupsById(storedRecord.metadataSubgroups, seedRecord.metadataSubgroups, metadataSubgroupGroupIds),
     draftProofing: normalizeDraftProofingState(storedRecord.draftProofing ?? seedRecord.draftProofing ?? legacyState?.draftProofing),
     sourceArchive: cloneValue(seedRecord.sourceArchive ?? storedRecord.sourceArchive ?? []),
     importReport: cloneValue(seedRecord.importReport ?? storedRecord.importReport ?? {}),
@@ -6152,6 +14647,9 @@ function mergeProjectRecords(storedRecord, seedRecord, legacyState = null) {
       projectSettings: {
         ...cloneValue(seedProjectSettings),
         ...cloneValue(storedProjectSettings),
+        sidePanelsHidden: storedProjectSettings.sidePanelsHidden ?? seedProjectSettings.sidePanelsHidden ?? legacyState?.sidePanelsHidden,
+        topPanelVisibility: storedProjectSettings.topPanelVisibility ?? seedProjectSettings.topPanelVisibility ?? legacyState?.topPanelVisibility,
+        projectFilePath: mergedProjectFilePath,
       },
     }),
     seedRecord.id,
@@ -6225,11 +14723,22 @@ function createDefaultProjectSettingsSnapshot(currentWordCount = 0, now = new Da
     editorPrefs: createDefaultEditorPrefs(),
     localAiPrefs: createDefaultLocalAiPrefs(),
     spellcheck: createDefaultSpellcheckProjectSettings(),
+    activePane: normalizeWorkspacePaneId(),
     binderPanelWidth: DEFAULT_BINDER_PANEL_WIDTH,
     consoleDockWidth: DEFAULT_CONSOLE_PANEL_WIDTH,
     userSettingPanelResizerLeftPercent: null,
     userSettingPanelResizerRightPercent: null,
+    panelResizerLayoutProfiles: {},
+    worldSpineEventRailWidth: DEFAULT_WORLD_SPINE_EVENT_RAIL_WIDTH,
+    worldSpineManuscriptPaneWidth: DEFAULT_WORLD_SPINE_MANUSCRIPT_PANE_WIDTH,
+    worldSpinePanelLayoutProfiles: {},
+    worldSpineRightPaneMode: normalizeWorldSpineRightPaneMode(),
+    worldSpineLocationFilter: createDefaultWorldSpineLocationFilterState(),
     consoleDockCollapsed: false,
+    sidePanelsHidden: false,
+    sidePanelVisibility: createSidePanelVisibilityState(),
+    topPanelVisibility: createTopPanelVisibilityState(),
+    customMetadataDefinitions: [],
     collapsedChapterIds: [],
     collapsedConsoleChapterIds: createCollapsedConsoleChapterState(),
     projectFilePath: "",
@@ -6267,6 +14776,7 @@ function normalizeProjectSettingsSnapshot(candidate, projectId = "", currentWord
   return {
     editorPrefs: normalizeEditorPrefs(normalizedCandidate.editorPrefs ?? defaults.editorPrefs),
     localAiPrefs: normalizeLocalAiPrefs(normalizedCandidate.localAiPrefs ?? defaults.localAiPrefs),
+    activePane: normalizeWorkspacePaneId(normalizedCandidate.activePane ?? defaults.activePane),
     binderPanelWidth: clampNumber(
       normalizedCandidate.binderPanelWidth ?? defaults.binderPanelWidth,
       MIN_BINDER_PANEL_WIDTH,
@@ -6283,9 +14793,45 @@ function normalizeProjectSettingsSnapshot(candidate, projectId = "", currentWord
     userSettingPanelResizerRightPercent: normalizePanelResizerPercent(
       normalizedCandidate.userSettingPanelResizerRightPercent ?? defaults.userSettingPanelResizerRightPercent,
     ),
+    panelResizerLayoutProfiles: normalizePanelResizerLayoutProfiles(
+      normalizedCandidate.panelResizerLayoutProfiles ?? defaults.panelResizerLayoutProfiles,
+    ),
+    worldSpineEventRailWidth: clampNumber(
+      normalizedCandidate.worldSpineEventRailWidth ?? defaults.worldSpineEventRailWidth,
+      MIN_WORLD_SPINE_EVENT_RAIL_WIDTH,
+      Number.POSITIVE_INFINITY,
+    ),
+    worldSpineManuscriptPaneWidth: clampNumber(
+      normalizedCandidate.worldSpineManuscriptPaneWidth ?? defaults.worldSpineManuscriptPaneWidth,
+      MIN_WORLD_SPINE_MANUSCRIPT_PANE_WIDTH,
+      Number.POSITIVE_INFINITY,
+    ),
+    worldSpinePanelLayoutProfiles: normalizeWorldSpineLayoutProfiles(
+      normalizedCandidate.worldSpinePanelLayoutProfiles ?? defaults.worldSpinePanelLayoutProfiles,
+    ),
+    worldSpineRightPaneMode: normalizeWorldSpineRightPaneMode(
+      normalizedCandidate.worldSpineRightPaneMode ?? defaults.worldSpineRightPaneMode,
+    ),
+    worldSpineLocationFilter: normalizeWorldSpineLocationFilterState(
+      normalizedCandidate.worldSpineLocationFilter ?? defaults.worldSpineLocationFilter,
+    ),
     consoleDockCollapsed: typeof normalizedCandidate.consoleDockCollapsed === "boolean"
       ? normalizedCandidate.consoleDockCollapsed
       : defaults.consoleDockCollapsed,
+    sidePanelsHidden: normalizeSidePanelsHiddenState(
+      normalizedCandidate.sidePanelsHidden ?? defaults.sidePanelsHidden,
+    ),
+    sidePanelVisibility: createSidePanelVisibilityState(
+      normalizedCandidate.sidePanelVisibility ?? defaults.sidePanelVisibility,
+      normalizeCustomMetadataDefinitions(normalizedCandidate.customMetadataDefinitions ?? defaults.customMetadataDefinitions)
+        .map((definition) => definition.id),
+    ),
+    topPanelVisibility: createTopPanelVisibilityState(
+      normalizedCandidate.topPanelVisibility ?? defaults.topPanelVisibility,
+    ),
+    customMetadataDefinitions: normalizeCustomMetadataDefinitions(
+      normalizedCandidate.customMetadataDefinitions ?? defaults.customMetadataDefinitions,
+    ),
     collapsedChapterIds: normalizeCollapsedChapterIds(
       normalizedCandidate.collapsedChapterIds ?? defaults.collapsedChapterIds,
     ),
@@ -6315,11 +14861,22 @@ function buildProjectSettingsCandidate(candidate) {
   return {
     editorPrefs: projectSettings.editorPrefs ?? candidate?.editorPrefs,
     localAiPrefs: projectSettings.localAiPrefs ?? candidate?.localAiPrefs,
+    activePane: projectSettings.activePane ?? candidate?.activePane,
     binderPanelWidth: projectSettings.binderPanelWidth ?? candidate?.binderPanelWidth,
     consoleDockWidth: projectSettings.consoleDockWidth ?? candidate?.consoleDockWidth,
     userSettingPanelResizerLeftPercent: projectSettings.userSettingPanelResizerLeftPercent ?? candidate?.userSettingPanelResizerLeftPercent,
     userSettingPanelResizerRightPercent: projectSettings.userSettingPanelResizerRightPercent ?? candidate?.userSettingPanelResizerRightPercent,
+    panelResizerLayoutProfiles: projectSettings.panelResizerLayoutProfiles ?? candidate?.panelResizerLayoutProfiles,
+    worldSpineEventRailWidth: projectSettings.worldSpineEventRailWidth ?? candidate?.worldSpineEventRailWidth,
+    worldSpineManuscriptPaneWidth: projectSettings.worldSpineManuscriptPaneWidth ?? candidate?.worldSpineManuscriptPaneWidth,
+    worldSpinePanelLayoutProfiles: projectSettings.worldSpinePanelLayoutProfiles ?? candidate?.worldSpinePanelLayoutProfiles,
+    worldSpineRightPaneMode: projectSettings.worldSpineRightPaneMode ?? candidate?.worldSpineRightPaneMode,
+    worldSpineLocationFilter: projectSettings.worldSpineLocationFilter ?? candidate?.worldSpineLocationFilter,
     consoleDockCollapsed: projectSettings.consoleDockCollapsed ?? candidate?.consoleDockCollapsed,
+    sidePanelsHidden: projectSettings.sidePanelsHidden ?? candidate?.sidePanelsHidden,
+    sidePanelVisibility: projectSettings.sidePanelVisibility ?? candidate?.sidePanelVisibility,
+    topPanelVisibility: projectSettings.topPanelVisibility ?? candidate?.topPanelVisibility,
+    customMetadataDefinitions: projectSettings.customMetadataDefinitions ?? candidate?.customMetadataDefinitions,
     collapsedChapterIds: projectSettings.collapsedChapterIds ?? candidate?.collapsedChapterIds,
     collapsedConsoleChapterIds: projectSettings.collapsedConsoleChapterIds ?? candidate?.collapsedConsoleChapterIds,
     projectFilePath: projectSettings.projectFilePath ?? candidate?.projectFilePath,
@@ -6354,11 +14911,22 @@ function createProjectSettingsSnapshotFromState({
     {
       editorPrefs: cloneValue(state.editorPrefs),
       localAiPrefs: cloneValue(state.localAiPrefs),
+      activePane: normalizeWorkspacePaneId(state.activePane),
       binderPanelWidth: state.binderPanelWidth,
       consoleDockWidth: state.consoleDockWidth,
       userSettingPanelResizerLeftPercent: state.userSettingPanelResizerLeftPercent,
       userSettingPanelResizerRightPercent: state.userSettingPanelResizerRightPercent,
+      panelResizerLayoutProfiles: cloneValue(state.panelResizerLayoutProfiles),
+      worldSpineEventRailWidth: state.worldSpineEventRailWidth,
+      worldSpineManuscriptPaneWidth: state.worldSpineManuscriptPaneWidth,
+      worldSpinePanelLayoutProfiles: cloneValue(state.worldSpinePanelLayoutProfiles),
+      worldSpineRightPaneMode: state.worldSpineRightPaneMode,
+      worldSpineLocationFilter: cloneValue(state.worldSpineLocationFilter),
       consoleDockCollapsed: state.consoleDockCollapsed,
+      sidePanelsHidden: state.sidePanelsHidden,
+      sidePanelVisibility: cloneValue(state.sidePanelVisibility),
+      topPanelVisibility: cloneValue(state.topPanelVisibility),
+      customMetadataDefinitions: cloneValue(state.customMetadataDefinitions),
       collapsedChapterIds: cloneValue(state.collapsedChapterIds),
       collapsedConsoleChapterIds: cloneValue(state.collapsedConsoleChapterIds),
       projectFilePath: state.projectFilePath,
@@ -6459,7 +15027,10 @@ function captureInlinePassageDraftDefaultsForSave() {
 
   return {
     sceneId: typeof draft.sceneId === "string" ? draft.sceneId : "",
-    noteType: draft.noteType === "research" ? "research" : "inspiration",
+    noteType: isSupportedPassageNoteType(draft.noteType) ? draft.noteType : "inspiration",
+    metadataDefinitionId: typeof draft.metadataDefinitionId === "string" ? draft.metadataDefinitionId : "",
+    metadataLabel: typeof draft.metadataLabel === "string" ? draft.metadataLabel : "",
+    metadataHighlightColor: typeof draft.metadataHighlightColor === "string" ? draft.metadataHighlightColor : "",
     selectedText: String(draft.selectedText ?? ""),
     startOffset: Number.isInteger(draft.startOffset) ? draft.startOffset : null,
     endOffset: Number.isInteger(draft.endOffset) ? draft.endOffset : null,
@@ -6485,7 +15056,7 @@ function normalizeInlinePassageDraftDefaults(candidate, scene) {
     return null;
   }
 
-  const noteType = candidate.noteType === "research" ? "research" : candidate.noteType === "inspiration" ? "inspiration" : "";
+  const noteType = isSupportedPassageNoteType(candidate.noteType) ? candidate.noteType : "";
   const sceneId = typeof candidate.sceneId === "string" && candidate.sceneId.trim()
     ? candidate.sceneId.trim()
     : scene?.sceneId ?? "";
@@ -6507,6 +15078,9 @@ function normalizeInlinePassageDraftDefaults(candidate, scene) {
   return {
     sceneId,
     noteType,
+    metadataDefinitionId: typeof candidate.metadataDefinitionId === "string" ? candidate.metadataDefinitionId : "",
+    metadataLabel: typeof candidate.metadataLabel === "string" ? candidate.metadataLabel : "",
+    metadataHighlightColor: typeof candidate.metadataHighlightColor === "string" ? candidate.metadataHighlightColor : "",
     selectedText: String(candidate.selectedText ?? ""),
     startOffset,
     endOffset,
@@ -6539,6 +15113,10 @@ function restoreSceneSelectionRange(selection) {
 
   const textarea = getEditorTextareaForScene(sceneId);
   if (!(textarea instanceof HTMLTextAreaElement)) {
+    return;
+  }
+  const editorHost = resolveTextareaEditorHost(textarea);
+  if (!editorHost) {
     return;
   }
 
@@ -6705,14 +15283,14 @@ function getSceneEditorSelectionLineNumber(textarea, scene, offset = null) {
     { [scene.sceneId]: textarea.value },
   ).find((candidate) => candidate.sceneId === scene.sceneId);
   const caretOffset = Number.isInteger(offset) ? offset : Number.isInteger(textarea.selectionStart) ? textarea.selectionStart : 0;
-  const visualLineOffset = estimateTextareaVisualLineBeforeOffset(textarea.value, caretOffset, charactersPerLine);
+  const visualLineOffset = resolveTextareaVisualLineIndexForOffset(editorHost, caretOffset);
   return (selectedSceneMetrics?.startLineNumber ?? 1) + visualLineOffset;
 }
 
 function restoreSelectionFromWorkspaceDefaults() {
   const selectionDefaults = state.workspace?.selectionDefaults ?? {};
   state.selectedIssueId = selectionDefaults.issueId ?? null;
-  state.selectedNodeId = selectionDefaults.nodeId ?? null;
+  setWorldSpineSelectedNodeId(selectionDefaults.nodeId ?? null);
   state.selectedEntityId = selectionDefaults.entityId ?? null;
 
   const preferredDraft = normalizeInlinePassageDraftDefaults(
@@ -6791,6 +15369,13 @@ function syncLegacyProjectStorageFromState() {
     [EDITOR_PASSAGE_NOTES_KEY, state.passageNotes],
     [EDITOR_PREFS_KEY, state.editorPrefs],
     [EDITOR_LOCAL_AI_PREFS_KEY, state.localAiPrefs],
+    [EDITOR_PANEL_RESIZER_LAYOUT_PROFILES_KEY, state.panelResizerLayoutProfiles],
+    [EDITOR_WORLD_SPINE_EVENT_RAIL_WIDTH_KEY, state.worldSpineEventRailWidth],
+    [EDITOR_WORLD_SPINE_MANUSCRIPT_PANE_WIDTH_KEY, state.worldSpineManuscriptPaneWidth],
+    [EDITOR_WORLD_SPINE_PANEL_LAYOUT_PROFILES_KEY, state.worldSpinePanelLayoutProfiles],
+    [EDITOR_SIDE_PANELS_HIDDEN_KEY, normalizeSidePanelsHiddenState(state.sidePanelsHidden)],
+    [EDITOR_SIDE_PANEL_VISIBILITY_KEY, createSidePanelVisibilityState(state.sidePanelVisibility, getMetadataSidePanelIds())],
+    [EDITOR_TOP_PANEL_VISIBILITY_KEY, createTopPanelVisibilityState(state.topPanelVisibility)],
   ];
 
   for (const [storageKey, snapshot] of legacySnapshots) {
@@ -6894,6 +15479,45 @@ function getActiveDraftProofRunRecord() {
     : null;
 }
 
+function getLatestPausedDraftProofRunRecord() {
+  const draftProofing = normalizeDraftProofingState(state.draftProofing);
+  return [...draftProofing.runs].reverse().find((run) => run.status === "paused") ?? null;
+}
+
+function getLatestCompletedDraftProofRunRecord() {
+  const draftProofing = normalizeDraftProofingState(state.draftProofing);
+  return [...draftProofing.runs].reverse().find((run) => run.status === "completed") ?? null;
+}
+
+function getCurrentDraftProofRunRecord() {
+  return getActiveDraftProofRunRecord() ?? getLatestPausedDraftProofRunRecord();
+}
+
+// Intent: keep the Proof Read settings controls pointed at one durable iteration at a time.
+function resolveSelectedDraftProofSettingsRunId() {
+  const selectedRunId = resolveDraftProofSettingsRunId(
+    state.draftProofing,
+    state.draftProofSettingsSelectedRunId,
+  );
+  state.draftProofSettingsSelectedRunId = selectedRunId;
+  return selectedRunId;
+}
+
+function getSelectedDraftProofSettings() {
+  return getDraftProofSettingsForRun(state.draftProofing, resolveSelectedDraftProofSettingsRunId());
+}
+
+function selectDraftProofSettingsRun(runId) {
+  state.draftProofClearConfirmationArmed = false;
+  state.draftProofSettingsSelectedRunId = resolveDraftProofSettingsRunId(state.draftProofing, runId);
+  renderDraftProofSettingsWindow();
+  syncDraftProofLayerForActiveEditor();
+  editorInteractionLog.info("user-action", "draft-proof.settings.iteration", "Selected proof-read settings iteration.", {
+    projectId: state.activeProjectId ?? "",
+    runId: state.draftProofSettingsSelectedRunId,
+  });
+}
+
 function applyDraftProofingResult(result, {
   dirtyReason = "draft-proofing-updated",
   source = "draftProofing",
@@ -6913,22 +15537,75 @@ function applyDraftProofingResult(result, {
     });
   }
   if (renderPanel) {
+    renderHeader();
     renderManuscriptPanel();
     syncSceneDocumentLayout();
   } else if (syncLayer) {
     syncDraftProofLayerForActiveEditor();
   }
+  if (state.draftProofSettingsWindowOpen) {
+    renderDraftProofSettingsWindow();
+  }
   return true;
+}
+
+// Intent: start a new proof-read iteration only from the explicit new-run control.
+function startDraftProofRun() {
+  const now = new Date().toISOString();
+  const result = startNewDraftProofRun(state.draftProofing, { now });
+  if (result.changed && result.reason === "created-run") {
+    state.draftProofMarksVisible = true;
+  }
+  const changed = applyDraftProofingResult(result, {
+    dirtyReason: "draft-proof-run-started",
+    source: "startDraftProofRun",
+    renderPanel: true,
+  });
+  if (result.run?.id) {
+    state.draftProofSettingsSelectedRunId = result.run.id;
+    if (state.draftProofSettingsWindowOpen) {
+      renderDraftProofSettingsWindow();
+    }
+  }
+  editorInteractionLog.info("user-action", "draft-proof.start", "Started a new draft proof-read run.", {
+    changed,
+    reason: result.reason,
+    runId: result.run?.id ?? "",
+  });
 }
 
 function toggleDraftProofRun() {
   const activeRun = getActiveDraftProofRunRecord();
+  const pausedRun = activeRun ? null : getLatestPausedDraftProofRunRecord();
+  const completedRun = activeRun || pausedRun ? null : getLatestCompletedDraftProofRunRecord();
+  if (!activeRun && !pausedRun && !completedRun) {
+    editorInteractionLog.info("user-action", "draft-proof.toggle", "No draft proof-read run to resume or continue.", {
+      changed: false,
+      reason: "missing-continuable-run",
+      runId: "",
+      active: false,
+    });
+    return;
+  }
+
   const now = new Date().toISOString();
+  const resumePoint = activeRun
+    ? captureDraftProofResumePoint(activeRun, now)
+    : null;
+  if (!activeRun) {
+    state.draftProofMarksVisible = true;
+  }
   const result = activeRun
-    ? pauseDraftProofRun(state.draftProofing, { runId: activeRun.id, now })
-    : startOrResumeDraftProofRun(state.draftProofing, { now });
+    ? pauseDraftProofRun(state.draftProofing, { runId: activeRun.id, now, resumePoint })
+    : pausedRun
+      ? startOrResumeDraftProofRun(state.draftProofing, { now })
+      : continueDraftProofRun(state.draftProofing, { runId: completedRun.id, now });
   const changed = applyDraftProofingResult(result, {
-    dirtyReason: activeRun ? "draft-proof-run-paused" : "draft-proof-run-activated",
+    dirtyReason: activeRun
+      ? "draft-proof-run-paused"
+      : pausedRun
+        ? "draft-proof-run-resumed"
+        : "draft-proof-run-continued",
     source: "toggleDraftProofRun",
     renderPanel: true,
   });
@@ -6938,24 +15615,274 @@ function toggleDraftProofRun() {
     runId: result.run?.id ?? "",
     active: !activeRun,
   });
-
-  if (!activeRun) {
-    window.requestAnimationFrame(() => {
-      recordDraftProofCoverageFromActiveViewport({
-        source: "draft-proof-start",
-      });
-      const textarea = getEditorTextareaForScene(state.selectedSceneId);
-      recordDraftProofCoverageFromTextarea(textarea, {
-        source: "draft-proof-start-selection",
-        persist: true,
-      });
+  if (!activeRun && changed) {
+    navigateToDraftProofResumePoint(result.run, {
+      source: pausedRun ? "draft-proof-resumed" : "draft-proof-continued",
     });
   }
 }
 
+// Intent: make proof-read coverage recallable without changing the durable proof-read run record.
+function toggleDraftProofMarkerVisibility() {
+  state.draftProofMarksVisible = state.draftProofMarksVisible !== true;
+  renderHeader();
+  syncDraftProofLayerForActiveEditor();
+  editorInteractionLog.info("user-action", "draft-proof.markers", "Toggled proof-read marker visibility.", {
+    visible: state.draftProofMarksVisible,
+  });
+}
+
+// Intent: hide or restore the ManuScriptInfographicLane without mutating its anchor-backed records.
+function toggleManuScriptInfographicLaneVisibility() {
+  const visible = state.editorPrefs?.manuScriptInfographicLaneVisible !== false;
+  state.editorPrefs = normalizeEditorPrefs({
+    ...state.editorPrefs,
+    manuScriptInfographicLaneVisible: !visible,
+  });
+  writeStoredJson(EDITOR_PREFS_KEY, state.editorPrefs);
+  persistCurrentProjectRecord();
+  renderManuscriptPanel();
+  syncSceneDocumentLayout();
+  editorInteractionLog.info("user-action", "manuscript.ManuScriptInfographicLane.visibility", "Toggled ManuScriptInfographicLane visibility.", {
+    visible: state.editorPrefs.manuScriptInfographicLaneVisible,
+  });
+}
+
+// Intent: colour picking is a visual preview workflow, so expose existing proof-read marks while the author edits swatches.
+function showDraftProofMarksForSettingsPreview() {
+  if (state.draftProofMarksVisible === true) {
+    return false;
+  }
+
+  state.draftProofMarksVisible = true;
+  editorInteractionLog.info("user-action", "draft-proof.markers.preview", "Showed proof-read markers for colour preview.", {
+    visible: true,
+  });
+  return true;
+}
+
+function updateDraftProofBackdropColor(value, options = {}) {
+  state.draftProofClearConfirmationArmed = false;
+  const previewVisibilityChanged = showDraftProofMarksForSettingsPreview();
+  const selection = getSelectedDraftProofSettings();
+  const recentBackdropColors = options.rememberRecent === true
+    ? addRecentDraftProofBackdropColor(selection.settings.recentBackdropColors, value)
+    : selection.settings.recentBackdropColors;
+  const settingsPatch = {
+    backdropColor: value,
+    recentBackdropColors,
+  };
+  const result = selection.runId
+    ? updateDraftProofRunSettings(state.draftProofing, {
+        runId: selection.runId,
+        settingsPatch,
+      })
+    : updateDraftProofSettings(state.draftProofing, settingsPatch);
+  const changed = applyDraftProofingResult(result, {
+    dirtyReason: "draft-proof-settings-updated",
+    source: "updateDraftProofBackdropColor",
+    renderPanel: true,
+  });
+  if (!changed && previewVisibilityChanged) {
+    renderHeader();
+    renderManuscriptPanel();
+    syncSceneDocumentLayout();
+  }
+  renderDraftProofSettingsWindow();
+  editorInteractionLog.info("user-action", "draft-proof.settings.color", "Updated proof-read backdrop colour.", {
+    changed,
+    runId: selection.runId,
+    color: result.settings?.backdropColor ?? "",
+  });
+}
+
+// Intent: persist proof-read highlight strength per theme while leaving coverage spans unchanged.
+function updateDraftProofHighlightIntensity(theme, value) {
+  const normalizedTheme = String(theme ?? "").trim();
+  if (normalizedTheme !== "light" && normalizedTheme !== "dark") {
+    return;
+  }
+
+  state.draftProofClearConfirmationArmed = false;
+  const previewVisibilityChanged = showDraftProofMarksForSettingsPreview();
+  const selection = getSelectedDraftProofSettings();
+  const settingsPatch = {
+    highlightIntensityByTheme: {
+      ...selection.settings.highlightIntensityByTheme,
+      [normalizedTheme]: value,
+    },
+  };
+  const result = selection.runId
+    ? updateDraftProofRunSettings(state.draftProofing, {
+        runId: selection.runId,
+        settingsPatch,
+      })
+    : updateDraftProofSettings(state.draftProofing, settingsPatch);
+  const changed = applyDraftProofingResult(result, {
+    dirtyReason: "draft-proof-highlight-intensity-updated",
+    source: "updateDraftProofHighlightIntensity",
+    renderPanel: true,
+  });
+  if (!changed && previewVisibilityChanged) {
+    renderHeader();
+    renderManuscriptPanel();
+    syncSceneDocumentLayout();
+  }
+  renderDraftProofSettingsWindow();
+  editorInteractionLog.info("user-action", "draft-proof.settings.intensity", "Updated proof-read highlight intensity.", {
+    changed,
+    runId: selection.runId,
+    theme: normalizedTheme,
+    value: result.settings?.highlightIntensityByTheme?.[normalizedTheme] ?? "",
+  });
+}
+
+// Intent: let the project settings palette apply a saved neutral proof-read backdrop without exposing run data.
+function setDraftProofBackdropPreset(index) {
+  const presetIndex = Number.parseInt(String(index ?? ""), 10);
+  const presets = getSelectedDraftProofSettings().settings.backdropColorPresets;
+  if (!Number.isInteger(presetIndex) || presetIndex < 0 || presetIndex >= presets.length) {
+    return;
+  }
+
+  updateDraftProofBackdropColor(presets[presetIndex]);
+}
+
+// Intent: reuse a stored proof-read backdrop colour without creating another recent swatch for the same colour.
+function setDraftProofRecentBackdropColor(index) {
+  const recentIndex = Number.parseInt(String(index ?? ""), 10);
+  const recentBackdropColors = getSelectedDraftProofSettings().settings.recentBackdropColors;
+  if (!Number.isInteger(recentIndex) || recentIndex < 0 || recentIndex >= recentBackdropColors.length) {
+    return;
+  }
+
+  updateDraftProofBackdropColor(recentBackdropColors[recentIndex], {
+    rememberRecent: true,
+  });
+}
+
+// Intent: persist user-edited preset slots as visual proof-read settings and apply the edited colour immediately.
+function updateDraftProofBackdropPreset(index, value, options = {}) {
+  const presetIndex = Number.parseInt(String(index ?? ""), 10);
+  const selection = getSelectedDraftProofSettings();
+  const presets = selection.settings.backdropColorPresets;
+  if (!Number.isInteger(presetIndex) || presetIndex < 0 || presetIndex >= presets.length) {
+    return;
+  }
+
+  const nextPresets = presets.map((color, currentIndex) =>
+    currentIndex === presetIndex ? value : color
+  );
+  state.draftProofClearConfirmationArmed = false;
+  const previewVisibilityChanged = showDraftProofMarksForSettingsPreview();
+  const settingsPatch = {
+    backdropColor: value,
+    backdropColorPresets: nextPresets,
+    recentBackdropColors: options.rememberRecent === true
+      ? addRecentDraftProofBackdropColor(selection.settings.recentBackdropColors, value)
+      : selection.settings.recentBackdropColors,
+  };
+  const result = selection.runId
+    ? updateDraftProofRunSettings(state.draftProofing, {
+        runId: selection.runId,
+        settingsPatch,
+      })
+    : updateDraftProofSettings(state.draftProofing, settingsPatch);
+  const changed = applyDraftProofingResult(result, {
+    dirtyReason: "draft-proof-preset-updated",
+    source: "updateDraftProofBackdropPreset",
+    renderPanel: true,
+  });
+  if (!changed && previewVisibilityChanged) {
+    renderHeader();
+    renderManuscriptPanel();
+    syncSceneDocumentLayout();
+  }
+  renderDraftProofSettingsWindow();
+  editorInteractionLog.info("user-action", "draft-proof.settings.preset", "Updated proof-read backdrop preset.", {
+    changed,
+    runId: selection.runId,
+    presetIndex,
+    color: result.settings?.backdropColor ?? "",
+  });
+}
+
+function requestClearDraftProofData() {
+  state.draftProofClearConfirmationArmed = true;
+  renderDraftProofSettingsWindow();
+}
+
+function cancelClearDraftProofData() {
+  state.draftProofClearConfirmationArmed = false;
+  renderDraftProofSettingsWindow();
+}
+
+// Intent: delete only the proof-read iterations explicitly checked in the settings window.
+function deleteSelectedDraftProofRuns(target) {
+  state.draftProofClearConfirmationArmed = false;
+  const runIds = collectCheckedDraftProofRunIds(target);
+  const result = deleteDraftProofRuns(state.draftProofing, { runIds });
+  const changed = applyDraftProofingResult(result, {
+    dirtyReason: "draft-proof-runs-deleted",
+    source: "deleteSelectedDraftProofRuns",
+    renderPanel: true,
+  });
+  state.draftProofSettingsSelectedRunId = resolveDraftProofSettingsRunId(
+    state.draftProofing,
+    state.draftProofSettingsSelectedRunId,
+  );
+  renderDraftProofSettingsWindow();
+  editorInteractionLog.info("user-action", "draft-proof.settings.delete-selected", "Deleted selected proof-read iterations.", {
+    changed,
+    reason: result.reason,
+    requestedRunCount: runIds.length,
+    deletedRunCount: result.deletedRunCount ?? 0,
+    deletedRunIds: result.deletedRunIds ?? [],
+  });
+}
+
+// Intent: keep checked-run collection scoped to the open proof-read settings surface.
+function collectCheckedDraftProofRunIds(target) {
+  const settingsWindow = target instanceof HTMLElement
+    ? target.closest(".draft-proof-settings-window")
+    : null;
+  if (!(settingsWindow instanceof HTMLElement)) {
+    return [];
+  }
+
+  return [...settingsWindow.querySelectorAll("[data-draft-proof-delete-run-id]:checked")]
+    .map((input) => input instanceof HTMLInputElement ? String(input.dataset.draftProofDeleteRunId ?? "").trim() : "")
+    .filter(Boolean);
+}
+
+function clearAllDraftProofData() {
+  state.draftProofClearConfirmationArmed = false;
+  state.draftProofSettingsSelectedRunId = "";
+  const result = clearDraftProofRunData(state.draftProofing);
+  const changed = applyDraftProofingResult(result, {
+    dirtyReason: "draft-proof-data-cleared",
+    source: "clearAllDraftProofData",
+    renderPanel: true,
+  });
+  renderDraftProofSettingsWindow();
+  editorInteractionLog.info("user-action", "draft-proof.settings.clear", "Cleared proof-read version data.", {
+    changed,
+    reason: result.reason,
+    clearedRunCount: result.clearedRunCount ?? 0,
+  });
+}
+
 function finishDraftProofRun() {
+  const currentRun = getCurrentDraftProofRunRecord();
   const now = new Date().toISOString();
-  const result = completeDraftProofRun(state.draftProofing, { now });
+  const resumePoint = currentRun?.status === "active"
+    ? captureDraftProofResumePoint(currentRun, now)
+    : currentRun?.resumePoint ?? resolveLatestDraftProofRunCoveragePoint(currentRun);
+  const result = completeDraftProofRun(state.draftProofing, {
+    runId: currentRun?.id ?? "",
+    now,
+    resumePoint,
+  });
   const changed = applyDraftProofingResult(result, {
     dirtyReason: "draft-proof-run-completed",
     source: "finishDraftProofRun",
@@ -6968,84 +15895,130 @@ function finishDraftProofRun() {
   });
 }
 
-function handleDraftProofCoverageScroll(event) {
-  if (!getActiveDraftProofRunRecord()) {
-    return;
+// Intent: persist enough proof-read location context to resume a manual proofing pass deliberately.
+function captureDraftProofResumePoint(run = null, now = new Date().toISOString()) {
+  const activeElement = document.activeElement;
+  const textarea = activeElement instanceof HTMLTextAreaElement && activeElement.classList.contains("editor-document-input")
+    ? activeElement
+    : getEditorTextareaForScene(state.selectedSceneId);
+  if (textarea instanceof HTMLTextAreaElement) {
+    const sceneId = String(textarea.dataset.sceneId ?? "").trim();
+    const textLength = String(textarea.value ?? "").length;
+    const selectionStart = Number.isInteger(textarea.selectionStart) ? textarea.selectionStart : textLength;
+    const selectionEnd = Number.isInteger(textarea.selectionEnd) ? textarea.selectionEnd : selectionStart;
+    if (sceneId) {
+      return {
+        sceneId,
+        startOffset: Math.max(0, Math.min(selectionStart, selectionEnd, textLength)),
+        endOffset: Math.max(0, Math.min(Math.max(selectionStart, selectionEnd), textLength)),
+        updatedAt: now,
+      };
+    }
   }
 
-  const target = event.target instanceof HTMLElement ? event.target : null;
-  if (!(target instanceof HTMLElement) || !target.classList.contains("scene-editor-codeframe")) {
-    return;
+  return resolveLatestDraftProofRunCoveragePoint(run);
+}
+
+function resolveLatestDraftProofRunCoveragePoint(run = null) {
+  const coverageByScene = run?.coverageByScene && typeof run.coverageByScene === "object" && !Array.isArray(run.coverageByScene)
+    ? run.coverageByScene
+    : {};
+  let latestPoint = null;
+  for (const [sceneId, spans] of Object.entries(coverageByScene)) {
+    for (const span of Array.isArray(spans) ? spans : []) {
+      const endOffset = Number(span?.endOffset);
+      if (!sceneId || !Number.isFinite(endOffset)) {
+        continue;
+      }
+
+      const touchedAt = typeof span?.touchedAt === "string" ? span.touchedAt : "";
+      const touchedAtMs = Date.parse(touchedAt);
+      const latestMs = Date.parse(latestPoint?.updatedAt ?? "");
+      if (
+        !latestPoint ||
+        (Number.isFinite(touchedAtMs) && (!Number.isFinite(latestMs) || touchedAtMs >= latestMs))
+      ) {
+        latestPoint = {
+          sceneId,
+          startOffset: Math.max(0, Math.floor(endOffset)),
+          endOffset: Math.max(0, Math.floor(endOffset)),
+          updatedAt: touchedAt,
+        };
+      }
+    }
   }
-
-  recordDraftProofCoverageFromViewport(target, {
-    source: "scroll",
-  });
+  return latestPoint;
 }
 
-function recordDraftProofCoverageFromActiveViewport(options = {}) {
-  const sceneId = state.selectedSceneId;
-  const codeframe = sceneId
-    ? document.querySelector(`.scene-editor-codeframe[data-scene-editor="${CSS.escape(sceneId)}"]`)
-    : document.querySelector(".scene-editor-codeframe");
-  return recordDraftProofCoverageFromViewport(codeframe, options);
-}
-
-function recordDraftProofCoverageFromViewport(codeframe, {
-  source = "viewport",
+function navigateToDraftProofResumePoint(run = null, {
+  source = "draft-proof-resume",
 } = {}) {
-  if (!getActiveDraftProofRunRecord() || !(codeframe instanceof HTMLElement)) {
+  const resumePoint = run?.resumePoint ?? resolveLatestDraftProofRunCoveragePoint(run);
+  const sceneId = typeof resumePoint?.sceneId === "string" ? resumePoint.sceneId.trim() : "";
+  const endOffset = Number(resumePoint?.endOffset);
+  if (!sceneId || !Number.isFinite(endOffset)) {
     return false;
   }
 
-  const textarea = codeframe.querySelector(".editor-document-input");
-  const editorHost = resolveTextareaEditorHost(textarea);
-  if (!(textarea instanceof HTMLTextAreaElement) || !editorHost) {
-    return false;
-  }
-
-  const text = String(textarea.value ?? "");
-  if (!text.length) {
-    return false;
-  }
-
-  const metrics = getTextareaEditorHostWrapMetrics(editorHost);
-  const firstVisualLineIndex = Math.max(0, Math.floor(codeframe.scrollTop / Math.max(1, metrics.lineHeight)) - 1);
-  const visibleLineCount = Math.max(1, Math.ceil(codeframe.clientHeight / Math.max(1, metrics.lineHeight)) + 2);
-  const startOffset = firstVisualLineIndex <= 0
-    ? 0
-    : findTextareaOffsetForVisualLineEnd(text, firstVisualLineIndex - 1, metrics.charactersPerLine);
-  const endOffset = findTextareaOffsetForVisualLineEnd(
-    text,
-    firstVisualLineIndex + visibleLineCount,
-    metrics.charactersPerLine,
-  );
-
-  return recordDraftProofCoverageRange({
-    sceneId: editorHost.sceneId,
-    startOffset,
-    endOffset,
-    textLength: text.length,
-    dirtyReason: "draft-proof-coverage-viewport",
-    source: `draftProof.${source}`,
+  window.requestAnimationFrame(() => {
+    takeToSceneRange(sceneId, Math.max(0, Math.floor(endOffset)), Math.max(0, Math.floor(endOffset)), {
+      behavior: "smooth",
+    });
+    editorInteractionLog.info("user-action", "draft-proof.resume-point", "Navigated to proof-read resume point.", {
+      source,
+      runId: run?.id ?? "",
+      sceneId,
+      endOffset: Math.max(0, Math.floor(endOffset)),
+    });
   });
+  return true;
 }
 
 function recordDraftProofCoverageFromTextarea(textarea, {
+  mode = "add",
   source = "textarea",
   persist = true,
 } = {}) {
-  if (!getActiveDraftProofRunRecord() || !(textarea instanceof HTMLTextAreaElement) || !textarea.classList.contains("editor-document-input")) {
+  const activeRun = getActiveDraftProofRunRecord();
+  if (!activeRun || !(textarea instanceof HTMLTextAreaElement) || !textarea.classList.contains("editor-document-input")) {
+    draftProofingLog.debug("user-action", "draft-proof.coverage.selection-skip", "Skipped proof-read coverage recording because the textarea or active run was unavailable.", {
+      projectId: state.activeProjectId ?? state.workspace?.project?.id ?? "",
+      hasActiveRun: Boolean(activeRun),
+      hasTextarea: textarea instanceof HTMLTextAreaElement,
+      isEditorTextarea: textarea instanceof HTMLTextAreaElement && textarea.classList.contains("editor-document-input"),
+      mode,
+      source,
+    });
     return false;
   }
 
   const editorHost = resolveTextareaEditorHost(textarea);
   if (!editorHost) {
+    draftProofingLog.warn(
+      "user-action",
+      "draft-proof.coverage.host-missing",
+      "Could not resolve the editor host for proof-read coverage recording.",
+      createDraftProofTextareaLogContext(textarea, {
+        runId: activeRun.id,
+        mode,
+        source,
+      }),
+    );
     return false;
   }
 
   const text = String(textarea.value ?? "");
   if (!text.length) {
+    draftProofingLog.debug(
+      "user-action",
+      "draft-proof.coverage.empty-text",
+      "Skipped proof-read coverage recording because the scene text is empty.",
+      createDraftProofTextareaLogContext(textarea, {
+        runId: activeRun.id,
+        mode,
+        source,
+      }),
+    );
     return false;
   }
 
@@ -7053,25 +16026,88 @@ function recordDraftProofCoverageFromTextarea(textarea, {
   const selectionEnd = Number.isInteger(textarea.selectionEnd) ? textarea.selectionEnd : selectionStart;
   const startOffset = Math.min(selectionStart, selectionEnd);
   const endOffset = Math.max(selectionStart, selectionEnd);
-  const range = endOffset > startOffset
-    ? { startOffset, endOffset }
-    : resolveDraftProofCaretCoverageRange(editorHost, startOffset);
-  if (!range) {
+  if (endOffset <= startOffset) {
+    draftProofingLog.info(
+      "user-action",
+      "draft-proof.coverage.collapsed-selection",
+      "Skipped proof-read coverage recording because the selection was collapsed.",
+      createDraftProofTextareaLogContext(textarea, {
+        runId: activeRun.id,
+        mode,
+        source,
+        startOffset,
+        endOffset,
+      }),
+    );
     return false;
   }
 
-  return recordDraftProofCoverageRange({
+  const selectionContext = createDraftProofTextareaLogContext(textarea, {
+    runId: activeRun.id,
+    mode: mode === "remove" ? "remove" : "add",
+    source,
+    startOffset,
+    endOffset,
+    selectedCharacterCount: endOffset - startOffset,
+    persist,
+  });
+  draftProofingLog.info(
+    "user-action",
+    "draft-proof.coverage.selection-captured",
+    "Captured selected manuscript text for proof-read coverage.",
+    selectionContext,
+  );
+  const changed = recordDraftProofCoverageRange({
+    operation: mode === "remove" ? "remove" : "add",
     sceneId: editorHost.sceneId,
-    startOffset: range.startOffset,
-    endOffset: range.endOffset,
+    startOffset,
+    endOffset,
     textLength: text.length,
-    dirtyReason: "draft-proof-coverage-activity",
+    dirtyReason: mode === "remove"
+      ? "draft-proof-coverage-selection-removed"
+      : "draft-proof-coverage-selection-added",
     source: `draftProof.${source}`,
     persist,
   });
+  draftProofingLog.info(
+    "state-change",
+    mode === "remove" ? "draft-proof.coverage.selection-removed" : "draft-proof.coverage.selection-added",
+    mode === "remove" ? "Applied proof-read coverage removal." : "Applied proof-read coverage addition.",
+    {
+      ...selectionContext,
+      changed,
+    },
+  );
+  editorInteractionLog.info("user-action", mode === "remove" ? "draft-proof.selection-remove" : "draft-proof.selection-add", mode === "remove" ? "Removed proof-read coverage from selected manuscript text." : "Recorded proof-read coverage from selected manuscript text.", {
+    changed,
+    sceneId: editorHost.sceneId,
+    startOffset,
+    endOffset,
+  });
+  releaseDraftProofSelectionAfterCoverage(textarea, endOffset);
+  return changed;
+}
+
+// Intent: prevent the previous proof-read selection from becoming Chrome's next drag source.
+function releaseDraftProofSelectionAfterCoverage(textarea, endOffset) {
+  if (!(textarea instanceof HTMLTextAreaElement)) {
+    return false;
+  }
+
+  const caretOffset = Math.max(0, Math.min(Math.floor(Number(endOffset) || 0), textarea.value.length));
+  try {
+    textarea.setSelectionRange(caretOffset, caretOffset, "none");
+  } catch {
+    textarea.setSelectionRange(caretOffset, caretOffset);
+  }
+  updateSceneEditorSelectionSnapshotFromTextarea(textarea);
+  syncSceneEditorWordCountReadouts(textarea);
+  updateInlineFormatToolbarState(textarea);
+  return true;
 }
 
 function recordDraftProofCoverageRange({
+  operation = "add",
   sceneId = "",
   startOffset = 0,
   endOffset = 0,
@@ -7080,53 +16116,44 @@ function recordDraftProofCoverageRange({
   source = "recordDraftProofCoverageRange",
   persist = true,
 } = {}) {
-  const result = addDraftProofCoverageRange(state.draftProofing, {
-    sceneId,
+  const normalizedSceneId = String(sceneId ?? "").trim();
+  const activeRunBefore = getActiveDraftProofRunRecord();
+  const beforeSpans = activeRunBefore?.coverageByScene?.[normalizedSceneId] ?? [];
+  const coverageMutation = operation === "remove"
+    ? removeDraftProofCoverageRange
+    : addDraftProofCoverageRange;
+  const result = coverageMutation(state.draftProofing, {
+    sceneId: normalizedSceneId,
     startOffset,
     endOffset,
     textLength,
     now: new Date().toISOString(),
   });
-  return applyDraftProofingResult(result, {
+  const changed = applyDraftProofingResult(result, {
     dirtyReason,
     source,
     persist,
     syncLayer: true,
   });
-}
-
-function resolveDraftProofCaretCoverageRange(editorHost, caretOffset) {
-  if (!(editorHost?.textarea instanceof HTMLTextAreaElement)) {
-    return null;
-  }
-
-  const text = String(editorHost.textarea.value ?? "");
-  if (!text.length) {
-    return null;
-  }
-
-  const metrics = getTextareaEditorHostWrapMetrics(editorHost);
-  const visualLineIndex = estimateTextareaVisualLineBeforeOffset(
-    text,
-    caretOffset,
-    metrics.charactersPerLine,
-  );
-  const startOffset = visualLineIndex <= 0
-    ? 0
-    : findTextareaOffsetForVisualLineEnd(text, visualLineIndex - 1, metrics.charactersPerLine);
-  const endOffset = findTextareaOffsetForVisualLineEnd(text, visualLineIndex, metrics.charactersPerLine);
-  if (endOffset > startOffset) {
-    return {
-      startOffset,
-      endOffset,
-    };
-  }
-
-  const safeOffset = Math.max(0, Math.min(caretOffset, text.length - 1));
-  return {
-    startOffset: safeOffset,
-    endOffset: Math.min(text.length, safeOffset + 1),
-  };
+  const afterSpans = result.run?.coverageByScene?.[normalizedSceneId] ?? beforeSpans;
+  draftProofingLog.debug("state-change", "draft-proof.coverage.mutation-result", "Proof-read coverage mutation returned a state result.", {
+    projectId: state.activeProjectId ?? state.workspace?.project?.id ?? "",
+    runId: result.run?.id ?? activeRunBefore?.id ?? "",
+    sceneId: normalizedSceneId,
+    operation: operation === "remove" ? "remove" : "add",
+    startOffset,
+    endOffset,
+    textLength,
+    selectedCharacterCount: Math.max(0, endOffset - startOffset),
+    changed,
+    reason: result.reason ?? "",
+    beforeSpanCount: countDraftProofCoverageSpans(beforeSpans),
+    afterSpanCount: countDraftProofCoverageSpans(afterSpans),
+    beforeCoveredCharacterCount: countDraftProofCoveredCharacters(beforeSpans),
+    afterCoveredCharacterCount: countDraftProofCoveredCharacters(afterSpans),
+    persist,
+  });
+  return changed;
 }
 
 function syncDraftProofLayerForActiveEditor() {
@@ -7670,7 +16697,13 @@ function validateNarrationAnchorsForProject({
   return { changedCount };
 }
 
-function loadSelectedProject() {
+function loadSelectedProject(requestedProjectId = null) {
+  // Intent: keep a clicked recent-project target stable while the current project is saved before switching.
+  const requestedProjectIdValue = typeof requestedProjectId === "string" && requestedProjectId.trim()
+    ? requestedProjectId.trim()
+    : "";
+  const selectedProjectId = requestedProjectIdValue || state.projectLibrarySelectionId || state.activeProjectId || "";
+
   persistCurrentProjectRecord({
     domain: "project",
     dirtyReason: "before-project-switch",
@@ -7678,11 +16711,16 @@ function loadSelectedProject() {
     markWorkingState: false,
   });
 
-  const projectId = state.projectLibrarySelectionId ?? state.activeProjectId;
-  const record = state.projectLibrary.find((project) => project.id === projectId) ?? state.projectLibrary[0];
+  if (selectedProjectId) {
+    state.projectLibrarySelectionId = selectedProjectId;
+  }
+
+  const record = selectedProjectId
+    ? state.projectLibrary.find((project) => project.id === selectedProjectId) ?? null
+    : state.projectLibrary[0] ?? null;
   if (!record) {
     projectLoadGateLog.warn("validation", "project.load.skipped", "No project record available to load from selection.", {
-      requestedProjectId: projectId ?? "",
+      requestedProjectId: selectedProjectId,
     });
     return;
   }
@@ -7733,8 +16771,9 @@ function getSuggestedProjectFilePath() {
   });
 }
 
-function getSuggestedProjectFileName() {
-  return getSuggestedProjectFileNameFromTitle(state.projectTitle || state.workspace?.project?.title || "Untitled Project");
+function getSuggestedProjectFileName(projectTitle = "") {
+  const title = projectTitle || state.projectTitle || state.workspace?.project?.title || "Untitled Project";
+  return getSuggestedProjectFileNameFromTitle(title);
 }
 
 function hasProjectFileDestination() {
@@ -7862,10 +16901,28 @@ function downloadProjectLibrarySnapshot(snapshot, fileName = getSuggestedProject
 }
 
 async function loadProjectLibraryFromFile() {
-  await projectPersistenceService.loadProjectSnapshotFromFile();
+  await projectPersistenceService.chooseProjectSnapshotFileForLoad();
 }
 
-async function saveCurrentProject() {
+async function portScrivenerProject() {
+  await projectPersistenceService.chooseScrivenerProjectForImport();
+}
+
+// Intent: keep saved-take word timings from being stranded when a project save overlaps a long Whisper request.
+async function waitForNarrationRecordingTranscriptAlignmentJobs({
+  reason = "save-project",
+} = {}) {
+  return narrationRecordingTranscriptAlignmentJobService.waitForPending({ reason });
+}
+
+async function saveCurrentProject({
+  waitForNarrationRecordingTranscriptAlignment = true,
+} = {}) {
+  if (waitForNarrationRecordingTranscriptAlignment) {
+    await waitForNarrationRecordingTranscriptAlignmentJobs({
+      reason: "save-project",
+    });
+  }
   await projectPersistenceService.saveProjectSnapshot({ reason: "save-project" });
 }
 
@@ -7902,6 +16959,7 @@ function createProject() {
     templateDrafts: createTemplateDrafts(),
     manuscriptTasks: [],
     passageNotes: [],
+    metadataSubgroups: [],
     draftProofing: createDefaultDraftProofingState(),
     editorPrefs: createDefaultEditorPrefs(),
     localAiPrefs: createDefaultLocalAiPrefs(),
@@ -7953,6 +17011,7 @@ async function loadProjectSource() {
       projectPath,
       activeProjectId: state.activeProjectId,
       projects: state.projectLibrary,
+      sceneStore: state.loadedProjectSceneStore,
     });
     if (!result.ok) {
       throw result.error ?? new Error("Project source load failed.");
@@ -7961,6 +17020,9 @@ async function loadProjectSource() {
     state.projectLibrary = result.persistedLibrary.projects;
     state.activeProjectId = result.persistedLibrary.activeProjectId;
     state.projectLibrarySelectionId = result.persistedLibrary.activeProjectId;
+    state.loadedProjectSceneStore = result.mergedLibrary?.sceneStore && typeof result.mergedLibrary.sceneStore === "object" && !Array.isArray(result.mergedLibrary.sceneStore)
+      ? cloneValue(result.mergedLibrary.sceneStore)
+      : {};
 
     const record = getActiveProjectRecord();
     if (!record) {
@@ -8230,7 +17292,13 @@ function getEditorContextFromEvent(event) {
     return null;
   }
 
-  if (!(target instanceof HTMLTextAreaElement)) {
+  const preservedContextRange = getEditorContextRange(textarea);
+  const shouldPreserveExplicitContextSelection =
+    event?.type === "contextmenu" &&
+    preservedContextRange?.hasExplicitSelection === true;
+
+  // Intent: keep a selected manuscript word intact when the context-menu target is an overlay element.
+  if (!(target instanceof HTMLTextAreaElement) && !shouldPreserveExplicitContextSelection) {
     const cursorOffset = textarea.value.length;
     selectTextareaEditorHostRange(resolveTextareaEditorHost(textarea), cursorOffset, cursorOffset, {
       focus: true,
@@ -8238,7 +17306,9 @@ function getEditorContextFromEvent(event) {
     });
   }
 
-  const contextRange = getEditorContextRange(textarea) ?? {
+  const contextRange = shouldPreserveExplicitContextSelection
+    ? preservedContextRange
+    : getEditorContextRange(textarea) ?? {
     selectedText: "",
     startOffset: textarea.selectionStart,
     endOffset: textarea.selectionStart,
@@ -8252,6 +17322,35 @@ function getEditorContextFromEvent(event) {
   };
 }
 
+// Intent: derive pointer hover context without changing textarea focus or selection.
+function getEditorHoverContextFromEvent(event) {
+  const target = event.target instanceof Element ? event.target : null;
+  if (!target || target.closest("[data-inline-passage-draft]") || target.closest("[data-spellcheck-menu]")) {
+    return null;
+  }
+
+  const codeframe = target.closest("[data-scene-editor]");
+  const textarea =
+    target instanceof HTMLTextAreaElement && target.classList.contains("editor-document-input")
+      ? target
+      : codeframe?.querySelector(".editor-document-input");
+
+  if (!(codeframe instanceof HTMLElement) || !(textarea instanceof HTMLTextAreaElement)) {
+    return null;
+  }
+
+  return {
+    textarea,
+    contextRange: {
+      selectedText: "",
+      startOffset: textarea.selectionStart,
+      endOffset: textarea.selectionStart,
+      hasExplicitSelection: false,
+    },
+    inlinePosition: null,
+  };
+}
+
 function getSpellcheckContextFromEvent(editorContext, event) {
   return buildSpellcheckEditorContextMenu(editorContext, event, {
     baseLexicon: spellcheckBaseLexicon,
@@ -8262,14 +17361,19 @@ function getSpellcheckContextFromEvent(editorContext, event) {
   });
 }
 
-function getSpellcheckContextFromGrammarCheckTarget(target, event) {
-  return buildSpellcheckGrammarCheckContextMenu(target, event, {
-    scene: getSelectedScene() ?? state.scenes[0] ?? null,
-    lexicons: {
-      baseLexicon: spellcheckBaseLexicon,
-      projectLexicon: buildCurrentProjectSpellcheckLexicon(),
-      referenceLexicon: spellcheckReferenceLexicon,
-    },
+function getSpellcheckHoverContextFromEvent(editorContext, event) {
+  return buildSpellcheckEditorHoverContextMenu(editorContext, event, {
+    baseLexicon: spellcheckBaseLexicon,
+    projectLexicon: buildCurrentProjectSpellcheckLexicon(),
+    referenceLexicon: spellcheckReferenceLexicon,
+  }, {
+    getTextareaOffsetFromPoint,
+  });
+}
+
+function getDictionaryContextFromEvent(editorContext, event) {
+  return buildDictionaryEditorContextMenu(editorContext, event, {
+    getTextareaOffsetFromPoint,
   });
 }
 
@@ -8387,6 +17491,7 @@ async function loadDesktopSettingsSnapshot() {
     });
     return {
       projectRoot: "",
+      spotifyClientId: "",
       lastProjectFilePath: "",
     };
   }
@@ -8396,6 +17501,7 @@ async function loadDesktopSettingsSnapshot() {
     : {};
   return {
     projectRoot: normalizeProjectFilePath(candidate.projectRoot ?? ""),
+    spotifyClientId: String(candidate.spotifyClientId ?? "").trim(),
     lastProjectFilePath: normalizeProjectFilePath(candidate.lastProjectFilePath ?? ""),
     lastProjectFilePathExplicit: candidate.lastProjectFilePathExplicit === true,
   };
@@ -8593,11 +17699,13 @@ function getEditorContextRange(textarea) {
 
 // Intent: switch high-level workspaces while preserving editor-focused layout and selection state.
 function selectWorkspacePane(paneId) {
-  const normalizedPaneId = paneId === "voice" ? "narration" : paneId;
+  const requestedPaneId = String(paneId ?? "").trim();
+  const normalizedPaneId = normalizeWorkspacePaneId(requestedPaneId);
 
-  if (!["manuscript", "world", "narration"].includes(normalizedPaneId)) {
+  if (requestedPaneId !== "voice" && normalizedPaneId !== requestedPaneId) {
     return;
   }
+  const previousPaneId = normalizeWorkspacePaneId(state.activePane);
 
   if (normalizedPaneId !== "manuscript" && state.manuscriptFind.open) {
     state.manuscriptFind = manuscriptFindController.close(state.manuscriptFind);
@@ -8610,7 +17718,35 @@ function selectWorkspacePane(paneId) {
     };
   }
 
+  if (normalizedPaneId !== "manuscript") {
+    state.projectSettingsMenuOpen = false;
+    state.draftProofSettingsWindowOpen = false;
+    state.draftProofClearConfirmationArmed = false;
+    state.draftProofSettingsSelectedRunId = "";
+  }
+  if (normalizedPaneId !== "narration") {
+    state.narrationRecordingPreviewId = null;
+  }
+  state.keyboardShortcutSettingsWindowOpen = false;
+  state.keyboardShortcutCaptureBehaviorId = "";
+  state.keyboardShortcutSettingsStatus = "";
+  state.topPanelCustomizationOpen = false;
+  state.topPanelCustomizationPosition = null;
+  state.topPanelCustomizationGroupId = "";
+
   state.activePane = normalizedPaneId;
+  // Intent: persist the last authoring workspace so refresh/load returns to the same page.
+  if (previousPaneId !== normalizedPaneId) {
+    persistCurrentProjectRecord({
+      domain: "app-settings",
+      dirtyReason: "workspace-pane-selected",
+      source: "selectWorkspacePane",
+    });
+    uiEventDispatcherLog.info("user-action", "workspace.pane.changed", "Changed workspace pane.", {
+      previousPaneId,
+      nextPaneId: normalizedPaneId,
+    });
+  }
   render();
 }
 
@@ -8626,21 +17762,22 @@ function renderPaneVisibility() {
 }
 
 function selectSidePanel(panelId) {
-  if (!["issues", "inspiration", "research"].includes(panelId)) {
+  const normalizedPanelId = String(panelId ?? "").trim();
+  if (!getMetadataSidePanelIds().includes(normalizedPanelId)) {
     return;
   }
 
-  state.sidePanelMode = panelId;
-  if (panelId === "issues") {
+  state.sidePanelMode = normalizedPanelId;
+  if (normalizedPanelId === "issues") {
     state.selectedPassageNoteId = null;
     state.selectedIssueId = null;
   } else {
     const selectedNote = state.passageNotes.find((note) =>
-      note.noteType === panelId && note.id === state.selectedPassageNoteId,
+      note.noteType === normalizedPanelId && note.id === state.selectedPassageNoteId,
     );
     state.selectedPassageNoteId =
       selectedNote?.id ??
-      state.passageNotes.find((note) => note.noteType === panelId)?.id ??
+      state.passageNotes.find((note) => note.noteType === normalizedPanelId)?.id ??
       null;
   }
   renderConsolePanel();
@@ -8845,7 +17982,7 @@ function navigateRevisionEntity(entityType, entityId) {
 
   if (normalizedType === "timeline_node") {
     selectWorkspacePane("world");
-    state.selectedNodeId = normalizedId;
+    setWorldSpineSelectedNodeId(normalizedId);
     render();
   }
 }
@@ -9115,7 +18252,7 @@ function captureSceneEditorViewport(sceneId) {
   return captureTextareaEditorHostViewport(resolveTextareaEditorHost(textarea));
 }
 
-// Intent: restore the manuscript editor to the same visual position after note deletion.
+// Intent: restore the manuscript editor to the same visual position after feature-owned state changes.
 function restoreSceneEditorViewport(sceneId, viewport) {
   if (!viewport) {
     return;
@@ -9125,10 +18262,42 @@ function restoreSceneEditorViewport(sceneId, viewport) {
   restoreTextareaEditorHostViewport(resolveTextareaEditorHost(textarea), viewport);
 }
 
+// Intent: keep author mark commands from using anchored-navigation centering while still restoring selection feedback.
+function restoreSceneEditorViewportSelection(sceneId, viewport, selection = null) {
+  const textarea = getEditorTextareaForScene(sceneId);
+  const editorHost = resolveTextareaEditorHost(textarea);
+  if (!editorHost || !selection) {
+    restoreSceneEditorViewport(sceneId, viewport);
+    return false;
+  }
+
+  const startOffset = Number.isInteger(selection.startOffset) ? selection.startOffset : null;
+  const endOffset = Number.isInteger(selection.endOffset) ? selection.endOffset : startOffset;
+  if (!Number.isInteger(startOffset) || !Number.isInteger(endOffset)) {
+    restoreSceneEditorViewport(sceneId, viewport);
+    return false;
+  }
+
+  if (viewport) {
+    return restoreTextareaEditorHostViewport(editorHost, {
+      ...viewport,
+      wasFocused: true,
+      selectionStart: startOffset,
+      selectionEnd: endOffset,
+      selectionDirection: "forward",
+    });
+  }
+
+  return Boolean(selectTextareaEditorHostRange(editorHost, startOffset, endOffset, {
+    focus: true,
+    scroll: false,
+  }));
+}
+
 // Intent: start anchored inspiration/research notes from the active manuscript selection.
 function openPassageNoteComposerFromContextMenu(noteType) {
   const menu = state.taskContextMenu;
-  if (!menu || (noteType !== "inspiration" && noteType !== "research")) {
+  if (!menu || !isPassageNoteSidePanelMode(noteType)) {
     return;
   }
 
@@ -9136,7 +18305,9 @@ function openPassageNoteComposerFromContextMenu(noteType) {
   state.taskContextMenu = null;
   state.spellcheckContextMenu = null;
   state.taskComposer = null;
-  state.inlinePassageDraft = buildInlinePassageNoteDraftFromContextMenu(menu, noteType);
+  state.inlinePassageDraft = buildInlinePassageNoteDraftFromContextMenu(menu, noteType, {
+    customMetadataDefinitions: getCustomMetadataDefinitions(),
+  });
   renderConsolePanel();
   renderManuscriptPanel();
   syncSceneDocumentLayout();
@@ -9279,6 +18450,7 @@ function commitInlinePassageNote() {
       startOffset: anchor.startOffset,
       endOffset: anchor.endOffset,
       body,
+      ...getCustomMetadataDefinitionFields(draft.noteType),
     }, draft.noteType),
     ...createOffsetAnchoredRecordEvidencePatch({
       text: getCurrentSceneEditorText(draft.sceneId, scene.editorText ?? ""),
@@ -9370,7 +18542,7 @@ function updateInlinePassageDraftStatus(editorText) {
     return;
   }
 
-  const label = draft.noteType === "research" ? "Research" : "Inspiration";
+  const label = getPassageNoteDisplayLabel(draft.noteType);
   const anchor = getInlinePassageDraftAnchor(draft, editorText, {
     includePendingVerse: true,
   });
@@ -9452,7 +18624,7 @@ function togglePassageNoteSelection(noteId) {
 }
 
 function selectPassageNoteFromEditorClick(clickTarget) {
-  if (state.sidePanelMode !== "inspiration" && state.sidePanelMode !== "research") {
+  if (!isPassageNoteSidePanelMode(state.sidePanelMode)) {
     return false;
   }
 
@@ -9640,6 +18812,35 @@ function openTaskComposerFromContextMenu(event) {
   renderTaskContextMenu();
 }
 
+// Intent: start a manual World Spine event tag from the same manuscript context range as tasks.
+function openWorldSpineEventComposerFromContextMenu(event) {
+  const menu = state.taskContextMenu;
+  if (!menu) {
+    return;
+  }
+
+  const scene = getScene(menu.sceneId);
+  if (!scene) {
+    hideTaskSurfaces();
+    return;
+  }
+
+  state.taskContextMenu = null;
+  state.spellcheckContextMenu = null;
+  state.inlinePassageDraft = null;
+  state.taskComposer = buildWorldSpineEventComposerFromContextMenu(menu, {
+    x: event.clientX,
+    y: event.clientY,
+  });
+  renderTaskContextMenu();
+  window.requestAnimationFrame(() => {
+    const field = document.querySelector("[data-world-spine-event-label]");
+    if (field instanceof HTMLTextAreaElement) {
+      field.focus();
+    }
+  });
+}
+
 function saveTaskFromComposer() {
   const composer = state.taskComposer;
   if (!composer) {
@@ -9682,6 +18883,89 @@ function saveTaskFromComposer() {
   renderBinderPanel();
   renderConsolePanel();
   renderTaskContextMenu();
+}
+
+// Intent: persist a right-click World Spine event as an anchor-backed event tag.
+function saveWorldSpineEventFromComposer() {
+  const composer = state.taskComposer;
+  if (!composer || composer.composerType !== "world-spine-event") {
+    return;
+  }
+
+  const scene = getScene(composer.sceneId);
+  const project = state.workspace?.project;
+  if (!scene || !project) {
+    hideTaskSurfaces();
+    return;
+  }
+
+  const labelInput = document.querySelector("[data-world-spine-event-label]");
+  const label = labelInput instanceof HTMLTextAreaElement ? labelInput.value.trim() : "";
+  if (!label) {
+    if (labelInput instanceof HTMLTextAreaElement) {
+      labelInput.focus();
+    }
+    return;
+  }
+
+  const currentSequence = resolveWorldSpineEventSequence(project);
+  const eventTag = buildWorldSpineEventTagFromComposer({
+    composer,
+    scene,
+    label,
+    projectId: project.id ?? state.activeProjectId ?? "",
+    sequence: currentSequence,
+    getSceneBlockRanges,
+  });
+  if (!eventTag) {
+    hideTaskSurfaces();
+    return;
+  }
+
+  const historyBefore = captureWorldSpineHistorySnapshot();
+  state.workspace.project = {
+    ...project,
+    eventTags: [...(Array.isArray(project.eventTags) ? project.eventTags : []), eventTag],
+    sequences: {
+      ...(project.sequences ?? {}),
+      event: currentSequence + 1,
+    },
+    stats: {
+      ...(project.stats ?? {}),
+      eventCount: (Array.isArray(project.eventTags) ? project.eventTags.length : 0) + 1,
+    },
+  };
+  state.selectedIssueId = null;
+  setWorldSpineSelectedNodeId(`event:${eventTag.id}`);
+  state.selectedBlockId = eventTag.blockId || state.selectedBlockId;
+  state.taskComposer = null;
+  persistCurrentProjectRecord({
+    changedSceneIds: [scene.sceneId],
+    domain: "world-spine-event-tags",
+    dirtyReason: "world-spine-event-tag-created",
+    source: "saveWorldSpineEventFromComposer",
+  });
+  pushWorldSpineHistoryChange(historyBefore, {
+    label: "Created World Spine event pin",
+    dirtyReason: "world-spine-event-tag-created",
+    source: "saveWorldSpineEventFromComposer",
+  });
+  render();
+  syncSceneDocumentLayout();
+}
+
+function resolveWorldSpineEventSequence(project = {}) {
+  const sequenceValue = Number(project?.sequences?.event);
+  const sequenceFromState = Number.isFinite(sequenceValue) && sequenceValue >= 0
+    ? Math.floor(sequenceValue)
+    : 0;
+  const sequenceFromIds = (Array.isArray(project?.eventTags) ? project.eventTags : []).reduce((highest, eventTag) => {
+    const match = String(eventTag?.id ?? "").match(/^event-0*(\d+)$/);
+    const value = match ? Number(match[1]) : 0;
+    return Number.isFinite(value) ? Math.max(highest, value) : highest;
+  }, 0);
+
+  return Math.max(sequenceFromState, sequenceFromIds);
 }
 
 // Intent: ask local AI for advisory titles without letting model output mutate structure silently.
@@ -9838,26 +19122,55 @@ function completeTask(taskId) {
 }
 
 function hideTaskContextMenu() {
-  if (!state.taskContextMenu && !state.binderContextMenu && !state.spellcheckContextMenu) {
+  if (!state.taskContextMenu && !state.binderContextMenu && !state.spellcheckContextMenu && !state.worldSpineContextMenu) {
     return;
   }
 
+  clearSpellcheckHoverMenuHideTimer();
   state.taskContextMenu = null;
   state.binderContextMenu = null;
   state.spellcheckContextMenu = null;
+  state.worldSpineContextMenu = null;
   renderTaskContextMenu();
 }
 
+// Intent: let controls inside transient context surfaces receive focus or submit before generic document-click dismissal runs.
+function isTaskContextMenuOwnedTarget(target) {
+  return Boolean(
+    target instanceof Element &&
+    target.closest("[data-binder-menu], [data-world-spine-context-menu], [data-scene-world-spine-metadata-form], [data-world-spine-sublocation-form]"),
+  );
+}
+
 function hideTaskSurfaces() {
-  if (!state.taskContextMenu && !state.binderContextMenu && !state.spellcheckContextMenu && !state.taskComposer) {
+  if (
+    !state.taskContextMenu &&
+    !state.binderContextMenu &&
+    !state.spellcheckContextMenu &&
+    !state.worldSpineContextMenu &&
+    !state.taskComposer
+  ) {
     return;
   }
 
+  clearSpellcheckHoverMenuHideTimer();
   state.taskContextMenu = null;
   state.binderContextMenu = null;
   state.spellcheckContextMenu = null;
+  state.worldSpineContextMenu = null;
   state.taskComposer = null;
   renderTaskContextMenu();
+}
+
+function hideWorldSpineContextMenu({ renderAfter = true } = {}) {
+  if (!state.worldSpineContextMenu) {
+    return;
+  }
+
+  state.worldSpineContextMenu = null;
+  if (renderAfter) {
+    renderTaskContextMenu();
+  }
 }
 
 function hideBinderContextMenu() {
@@ -9865,8 +19178,26 @@ function hideBinderContextMenu() {
     return;
   }
 
+  clearSpellcheckHoverMenuHideTimer();
   state.binderContextMenu = null;
   state.spellcheckContextMenu = null;
+  renderTaskContextMenu();
+}
+
+// Intent: keep hover and explicit context-menu spellcheck popups from fighting over shell state.
+function openSpellcheckContextMenu(menu, source = "contextmenu") {
+  if (!menu) {
+    return;
+  }
+
+  clearSpellcheckHoverMenuHideTimer();
+  state.taskComposer = null;
+  state.binderContextMenu = null;
+  state.taskContextMenu = null;
+  state.spellcheckContextMenu = {
+    ...menu,
+    source: source === "hover" ? "hover" : "contextmenu",
+  };
   renderTaskContextMenu();
 }
 
@@ -9886,8 +19217,2694 @@ function openBinderContextMenu(kind, identifiers, event) {
     sceneTitle: String(identifiers?.sceneTitle ?? ""),
     x: event.clientX,
     y: event.clientY,
+    worldSpineMetadataOpen: false,
   };
   renderTaskContextMenu();
+}
+
+// Intent: let timeline detail cards open the same scene metadata editor used by the binder scene menu.
+function openWorldSpineSceneMetadataEditor(sceneId = "", event = null) {
+  const normalizedSceneId = String(sceneId ?? "").trim();
+  const scene = getScene(normalizedSceneId);
+  if (!scene) {
+    return;
+  }
+
+  const eventTarget = event?.target instanceof Element ? event.target : null;
+  const card = eventTarget?.closest("[data-world-spine-detail-card]");
+  const cardRect = card instanceof HTMLElement ? card.getBoundingClientRect() : null;
+  const fallbackX = event instanceof MouseEvent ? event.clientX : Math.round(window.innerWidth / 2);
+  const fallbackY = event instanceof MouseEvent ? event.clientY : Math.round(window.innerHeight / 2);
+
+  state.taskContextMenu = null;
+  state.taskComposer = null;
+  state.spellcheckContextMenu = null;
+  state.binderContextMenu = {
+    kind: "scene",
+    chapterId: String(scene.chapterId ?? ""),
+    chapterTitle: String(scene.chapterTitle ?? ""),
+    sceneId: scene.sceneId,
+    sceneTitle: scene.sceneTitle,
+    x: Math.round(cardRect?.left ?? fallbackX),
+    y: Math.round(cardRect?.top ?? fallbackY),
+    worldSpineMetadataOpen: true,
+  };
+  worldSpineController.close();
+  renderTaskContextMenu();
+}
+
+// Intent: expand the scene context menu into World Spine metadata fields without opening a permanent inspector.
+function openSceneWorldSpineMetadataMenu(sceneId = "") {
+  const normalizedSceneId = String(sceneId ?? state.binderContextMenu?.sceneId ?? "").trim();
+  if (!normalizedSceneId || state.binderContextMenu?.kind !== "scene") {
+    return;
+  }
+
+  state.binderContextMenu = {
+    ...state.binderContextMenu,
+    sceneId: normalizedSceneId,
+    worldSpineMetadataOpen: true,
+  };
+  renderTaskContextMenu();
+}
+
+// Intent: collapse the World Spine metadata fields back to the compact scene menu.
+function closeSceneWorldSpineMetadataMenu() {
+  if (state.binderContextMenu?.kind !== "scene") {
+    return;
+  }
+
+  state.binderContextMenu = {
+    ...state.binderContextMenu,
+    worldSpineMetadataOpen: false,
+  };
+  renderTaskContextMenu();
+}
+
+// Intent: persist scene-level World Spine metadata through scene drafts so timeline nodes can derive from it.
+function saveSceneWorldSpineMetadataFromMenu(sceneId = "") {
+  const normalizedSceneId = String(sceneId ?? state.binderContextMenu?.sceneId ?? "").trim();
+  const scene = getScene(normalizedSceneId);
+  if (!scene) {
+    hideBinderContextMenu();
+    return;
+  }
+
+  const form = document.querySelector(
+    `[data-scene-world-spine-metadata-form][data-scene-id="${CSS.escape(normalizedSceneId)}"]`,
+  );
+  if (!(form instanceof HTMLElement)) {
+    return;
+  }
+
+  const historyBefore = captureWorldSpineHistorySnapshot();
+  const existingDraft = state.sceneDrafts?.[normalizedSceneId] ?? createSceneDraft(scene);
+  const previousMetadata = buildSceneWorldSpineMetadataMenuModel({
+    scene,
+    draft: existingDraft,
+    expanded: true,
+    customMetadataDefinitions: getCustomMetadataDefinitions(),
+    pickerOptionSets: getWorldSpinePickerOptionSetsForState(),
+  }).metadata ?? {};
+  const formMetadata = buildSceneWorldSpineMetadataFromFormValues(readSceneWorldSpineMetadataFormValues(form));
+  const metadata = {
+    ...formMetadata,
+    locationRowLabel: previousMetadata.locationRowLabel,
+    locationRowKey: previousMetadata.locationRowKey,
+    locationScope: previousMetadata.locationScope,
+  };
+  state.sceneDrafts = {
+    ...state.sceneDrafts,
+    [normalizedSceneId]: applySceneWorldSpineMetadataToDraft(scene, existingDraft, metadata),
+  };
+  writeStoredJsonRaw(EDITOR_DRAFTS_KEY, state.sceneDrafts);
+  refreshScenes();
+  state.binderContextMenu = null;
+  persistCurrentProjectRecord({
+    changedSceneIds: [normalizedSceneId],
+    domain: "manuscript",
+    dirtyReason: "world-spine-scene-metadata-updated",
+    source: "saveSceneWorldSpineMetadataFromMenu",
+  });
+  pushWorldSpineHistoryChange(historyBefore, {
+    label: "Updated scene World Spine metadata",
+    dirtyReason: "world-spine-scene-metadata-updated",
+    source: "saveSceneWorldSpineMetadataFromMenu",
+  });
+  render();
+}
+
+function readSceneWorldSpineMetadataFormValues(form) {
+  const values = {};
+  form.querySelectorAll("[data-scene-world-spine-field]").forEach((field) => {
+    if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
+      values[field.dataset.sceneWorldSpineField] = field.value;
+    }
+  });
+  return values;
+}
+
+// Intent: open timeline whitespace actions without mutating world records until a menu item is chosen.
+function openWorldSpineWhitespaceContextMenu(context = null) {
+  const menu = normalizeWorldSpineMenuContext(context);
+  if (!menu) {
+    return;
+  }
+
+  clearSpellcheckHoverMenuHideTimer();
+  state.taskContextMenu = null;
+  state.binderContextMenu = null;
+  state.spellcheckContextMenu = null;
+  state.taskComposer = null;
+  state.worldSpineContextMenu = menu;
+  renderTaskContextMenu();
+}
+
+// Intent: expose reviewed implication edge actions from the line itself instead of persistent canvas chips.
+function openWorldSpineImplicationContextMenu(context = null) {
+  const menu = normalizeWorldSpineMenuContext({
+    ...context,
+    menuType: "implication",
+  });
+  if (!menu?.edgeId) {
+    return;
+  }
+
+  clearSpellcheckHoverMenuHideTimer();
+  state.taskContextMenu = null;
+  state.binderContextMenu = null;
+  state.spellcheckContextMenu = null;
+  state.taskComposer = null;
+  state.worldSpineContextMenu = menu;
+  renderTaskContextMenu();
+}
+
+// Intent: make catalogue-assignment menu controls respond before timeline click suppression can consume them.
+function handleWorldSpineCatalogueAssignmentPointerDown(event, clickTarget = null) {
+  if (event.button !== 0) {
+    return false;
+  }
+
+  const target = clickTarget?.closest(
+    '[data-action="world-spine-select-catalogue-assignment-category"], [data-action="world-spine-assign-catalogue-item"]',
+  );
+  if (!(target instanceof HTMLElement) || !target.closest("[data-world-spine-context-menu]")) {
+    return false;
+  }
+  if (target.hasAttribute("disabled") || target.getAttribute("aria-disabled") === "true") {
+    event.preventDefault();
+    event.stopPropagation();
+    worldSpineAssignmentSuppressNextClick = true;
+    return true;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+  worldSpineAssignmentSuppressNextClick = true;
+
+  if (target.dataset.action === "world-spine-select-catalogue-assignment-category") {
+    selectWorldSpineCatalogueAssignmentCategoryFromContextMenu(target);
+    return true;
+  }
+
+  if (target.dataset.action === "world-spine-assign-catalogue-item") {
+    assignWorldSpineCatalogueItemFromContextMenu(target);
+    return true;
+  }
+
+  return false;
+}
+
+// Intent: keep the selected assignment category searchable without changing the transient menu model.
+function handleWorldSpineAssignmentFilterInput(event) {
+  const input = event.target instanceof HTMLInputElement
+    ? event.target
+    : null;
+  if (!input?.matches("[data-world-spine-assignment-filter]")) {
+    return;
+  }
+
+  filterWorldSpineAssignmentItems(input);
+}
+
+// Intent: let authors type then move straight into the filtered assignment list from the active search field.
+function handleWorldSpineAssignmentFilterKeyDown(event) {
+  const target = event.target instanceof HTMLElement ? event.target : null;
+  if (!target?.closest("[data-world-spine-context-menu]")) {
+    return;
+  }
+
+  if (target.matches("[data-world-spine-assignment-filter]") && event.key === "ArrowDown") {
+    const firstItem = findNextVisibleWorldSpineAssignmentItem(target, 1);
+    if (firstItem) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      firstItem.focus();
+    }
+    return;
+  }
+
+  if (!target.matches("[data-world-spine-assignment-item]")) {
+    return;
+  }
+
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    const direction = event.key === "ArrowDown" ? 1 : -1;
+    const nextItem = findNextVisibleWorldSpineAssignmentItem(target, direction);
+    if (nextItem) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      nextItem.focus();
+    }
+    return;
+  }
+
+  if (event.key === "ArrowLeft") {
+    const input = target
+      .closest("[data-world-spine-assignment-items-pane]")
+      ?.querySelector("[data-world-spine-assignment-filter]");
+    if (input instanceof HTMLInputElement) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      input.focus();
+    }
+  }
+}
+
+// Intent: focus the selected category filter immediately after the right-side assignment pane renders.
+function focusWorldSpineAssignmentFilterInput() {
+  const input = document.querySelector("[data-world-spine-context-menu] [data-world-spine-assignment-filter]");
+  if (!(input instanceof HTMLInputElement)) {
+    return;
+  }
+
+  input.focus();
+  input.select();
+  filterWorldSpineAssignmentItems(input);
+}
+
+// Intent: filter only the current right-side assignment pane so category selection remains transient.
+function filterWorldSpineAssignmentItems(input) {
+  const pane = input.closest("[data-world-spine-assignment-items-pane]");
+  if (!(pane instanceof HTMLElement)) {
+    return;
+  }
+
+  const query = normalizeWorldSpineAssignmentFilterText(input.value).toLowerCase();
+  let visibleCount = 0;
+  pane.querySelectorAll("[data-world-spine-assignment-item]").forEach((item) => {
+    if (!(item instanceof HTMLElement)) {
+      return;
+    }
+    const searchText = normalizeWorldSpineAssignmentFilterText(
+      item.dataset.worldSpineAssignmentSearchText || item.textContent || "",
+    ).toLowerCase();
+    const isVisible = !query || searchText.includes(query);
+    item.hidden = !isVisible;
+    item.setAttribute("aria-hidden", isVisible ? "false" : "true");
+    if (isVisible) {
+      visibleCount += 1;
+    }
+  });
+
+  const empty = pane.querySelector("[data-world-spine-assignment-filter-empty]");
+  if (empty instanceof HTMLElement) {
+    empty.hidden = visibleCount > 0;
+  }
+}
+
+// Intent: move keyboard focus through only the visible filtered assignment records.
+function findNextVisibleWorldSpineAssignmentItem(target, direction = 1) {
+  const pane = target.closest("[data-world-spine-assignment-items-pane]");
+  if (!(pane instanceof HTMLElement)) {
+    return null;
+  }
+
+  const items = Array.from(pane.querySelectorAll("[data-world-spine-assignment-item]"))
+    .filter((item) => item instanceof HTMLElement && !item.hidden && !item.hasAttribute("disabled"));
+  if (!items.length) {
+    return null;
+  }
+
+  if (target.matches("[data-world-spine-assignment-filter]")) {
+    return direction >= 0 ? items[0] : items[items.length - 1];
+  }
+
+  const currentIndex = items.indexOf(target);
+  if (currentIndex < 0) {
+    return direction >= 0 ? items[0] : items[items.length - 1];
+  }
+
+  const nextIndex = Math.max(0, Math.min(items.length - 1, currentIndex + direction));
+  return items[nextIndex] ?? null;
+}
+
+function normalizeWorldSpineAssignmentFilterText(value) {
+  return String(value ?? "").trim().replace(/\s+/g, " ");
+}
+
+// Intent: expose manual catalogue assignment from event-like World Spine nodes without mutating records on right-click.
+function openWorldSpineEventContextMenu(context = null) {
+  const baseMenu = normalizeWorldSpineMenuContext({
+    ...context,
+    menuType: "event",
+  });
+  if (!baseMenu?.nodeId) {
+    return;
+  }
+
+  const node = getWorldSpineTimelineNode(baseMenu.nodeId);
+  if (!node || !isWorldSpineAssignableEventNodeForContext(node)) {
+    return;
+  }
+
+  clearSpellcheckHoverMenuHideTimer();
+  const assignmentModel = buildWorldSpineCatalogueAssignmentMenuModel({
+    world: state.workspace?.world ?? {},
+    node,
+  });
+  setWorldSpineSelectedNodeId(node.id);
+  state.taskContextMenu = null;
+  state.binderContextMenu = null;
+  state.spellcheckContextMenu = null;
+  state.taskComposer = null;
+  state.worldSpineContextMenu = {
+    ...baseMenu,
+    nodeId: node.id,
+    nodeTitle: node.title,
+    nodeTypeLabel: node.typeLabel,
+    nodeKind: node.kind,
+    assignmentCategoryId: "",
+    assignmentModel,
+  };
+  renderTaskContextMenu();
+  renderDreamScapingPanel();
+}
+
+// Intent: switch the transient event assignment picker between catalogue categories without mutating world data.
+function selectWorldSpineCatalogueAssignmentCategoryFromContextMenu(target = null) {
+  const categoryId = String(target?.dataset?.worldSpineAssignmentCategoryId ?? "").trim();
+  const menu = normalizeWorldSpineMenuContext(state.worldSpineContextMenu);
+  const groups = Array.isArray(menu?.assignmentModel?.groups) ? menu.assignmentModel.groups : [];
+  const categoryExists = groups.some((group) => String(group?.id ?? "").trim() === categoryId);
+  if (!categoryId || menu?.menuType !== "event" || !categoryExists) {
+    return;
+  }
+
+  state.worldSpineContextMenu = {
+    ...state.worldSpineContextMenu,
+    assignmentCategoryId: categoryId,
+  };
+  renderTaskContextMenu();
+  window.requestAnimationFrame(focusWorldSpineAssignmentFilterInput);
+}
+
+// Intent: commit the selected catalogue item as a reviewed event presence link through the project persistence path.
+function assignWorldSpineCatalogueItemFromContextMenu(target = null) {
+  const menu = normalizeWorldSpineMenuContext(state.worldSpineContextMenu);
+  const nodeId = String(target?.dataset?.worldSpineNodeId ?? menu?.nodeId ?? "").trim();
+  const entityId = String(target?.dataset?.worldSpineCatalogueItemId ?? "").trim();
+  const node = getWorldSpineTimelineNode(nodeId);
+  if (!nodeId || !entityId || !node) {
+    hideWorldSpineContextMenu();
+    return;
+  }
+
+  const historyBefore = captureWorldSpineHistorySnapshot();
+  const result = applyWorldSpineCatalogueItemAssignmentToWorld(state.workspace?.world ?? {}, {
+    nodeId,
+    entityId,
+    now: new Date(),
+  });
+  if (!result.changed) {
+    state.worldbuildingStudioStatus = result.reason === "already-assigned"
+      ? `"${result.entity?.name ?? "That catalogue item"}" is already assigned to "${node.title}".`
+      : "That catalogue item could not be assigned to this event.";
+    hideWorldSpineContextMenu({ renderAfter: false });
+    renderTaskContextMenu();
+    renderDreamScapingPanel();
+    return;
+  }
+
+  state.workspace.world = result.world;
+  setWorldSpineSelectedNodeId(nodeId);
+  state.selectedEntityId = entityId;
+  state.worldSpineScrollTargetNodeId = nodeId;
+  state.worldbuildingStudioStatus = `"${result.entity.name}" assigned to "${node.title}".`;
+  hideWorldSpineContextMenu({ renderAfter: false });
+  persistCurrentProjectRecord({
+    domain: "world",
+    dirtyReason: "world-spine-catalogue-item-assigned",
+    source: "assignWorldSpineCatalogueItemFromContextMenu",
+  });
+  pushWorldSpineHistoryChange(historyBefore, {
+    label: "Assigned World Spine catalogue item",
+    dirtyReason: "world-spine-catalogue-item-assigned",
+    source: "assignWorldSpineCatalogueItemFromContextMenu",
+  });
+  uiEventDispatcherLog.info("user-action", "world-spine.catalogue-item.assigned", "Assigned catalogue item to World Spine event.", {
+    nodeId,
+    entityId,
+  });
+  renderTaskContextMenu();
+  renderDreamScapingPanel();
+  renderWorldPanel();
+}
+
+// Intent: pin the existing event-entry form to a concrete World Spine slot before the author saves it.
+function openWorldSpineEventInsertionFromContextMenu(target = null) {
+  const context = normalizeWorldSpineMenuContext({
+    ...(state.worldSpineContextMenu ?? {}),
+    dropIndex: target?.dataset?.worldSpineDropIndex ?? state.worldSpineContextMenu?.dropIndex,
+    spineId: target?.dataset?.worldSpineId ?? state.worldSpineContextMenu?.spineId,
+    tierIndex: target?.dataset?.worldSpineTierIndex ?? state.worldSpineContextMenu?.tierIndex,
+    locationKey: target?.dataset?.worldSpineLocationKey ?? state.worldSpineContextMenu?.locationKey,
+    locationLabel: target?.dataset?.worldSpineLocationLabel ?? state.worldSpineContextMenu?.locationLabel,
+  });
+  if (!context) {
+    hideWorldSpineContextMenu();
+    return;
+  }
+
+  state.worldSpineInsertionContext = context;
+  state.worldSpineContextMenu = null;
+  state.worldbuildingCatalogueCategoryId = "";
+  state.worldbuildingCataloguePosition = null;
+  state.worldbuildingCatalogueBounds = null;
+  state.worldbuildingCatalogueSelectedItemId = "";
+  state.worldbuildingCatalogueSelectedItemKind = "";
+  clearWorldbuildingCatalogueEditState();
+  state.worldbuildingStudioCategoryId = DEFAULT_WORLDBUILDING_CATEGORY_ID;
+  const locationSuffix = context.locationLabel ? ` / ${context.locationLabel}` : "";
+  state.worldbuildingStudioStatus = `Saving this event will place it on ${context.spineLabel}${locationSuffix}.`;
+  renderTaskContextMenu();
+  renderDreamScapingPanel();
+  window.requestAnimationFrame(() => {
+    syncWorldbuildingEntryPopoverPosition();
+    const firstField = document.querySelector("[data-worldbuilding-studio-form] [data-worldbuilding-field]");
+    if (firstField instanceof HTMLInputElement || firstField instanceof HTMLTextAreaElement) {
+      firstField.focus();
+    }
+  });
+}
+
+// Intent: collect minimum locality and construction details before a new parallel timeline becomes durable world data.
+function openParallelTimelineFormFromWorldSpineContextMenu() {
+  const context = normalizeWorldSpineMenuContext(state.worldSpineContextMenu);
+  if (!context) {
+    hideWorldSpineContextMenu();
+    return;
+  }
+
+  const contextLocation = String(context.locationLabel ?? "").trim();
+  const initialLocation = contextLocation && contextLocation.toLowerCase() !== "unplaced location"
+    ? contextLocation
+    : "";
+  state.worldSpineContextMenu = {
+    ...context,
+    menuType: "timeline-form",
+    location: initialLocation,
+    label: initialLocation ? `${initialLocation} Timeline` : "",
+    thread: "",
+    participants: "",
+    startMarker: "",
+    notes: "",
+    error: "",
+    pickerOptionSets: getWorldSpinePickerOptionSetsForState(),
+  };
+  renderTaskContextMenu();
+  window.requestAnimationFrame(focusWorldSpineParallelTimelineLocationField);
+}
+
+// Intent: turn a location-row chip click into a focused naming form instead of letting canvas pan consume it.
+function openWorldSpineLocationRowFormFromLabel(target = null, event = null) {
+  const label = target instanceof HTMLElement
+    ? target.closest("[data-world-spine-location-row-label]")
+    : null;
+  if (!(label instanceof HTMLElement)) {
+    return;
+  }
+
+  const rect = label.getBoundingClientRect();
+  const existingLocation = String(label.dataset.worldSpineLocationLabel ?? "").trim();
+  const isPrompt = label.dataset.worldSpineLocationRowPrompt === "true";
+  const pointerX = Number(event?.clientX);
+  state.worldSpineContextMenu = normalizeWorldSpineMenuContext({
+    menuType: "location-form",
+    x: Number.isFinite(pointerX) && pointerX > 0 ? pointerX : rect.left,
+    y: Math.round(rect.bottom + 8),
+    spineId: label.dataset.worldSpineId,
+    spineLabel: label.dataset.worldSpineSpineLabel,
+    tierIndex: label.dataset.worldSpineTierIndex,
+    locationRowIndex: label.dataset.worldSpineLocationRowIndex,
+    locationKey: label.dataset.worldSpineLocationKey,
+    locationLabel: existingLocation,
+    location: isPrompt ? "" : existingLocation,
+    rowNodeIds: label.dataset.worldSpineRowNodeIds,
+    rowSceneIds: label.dataset.worldSpineRowSceneIds,
+    rowWorldNodeIds: label.dataset.worldSpineRowWorldNodeIds,
+    isLocationRowPrompt: isPrompt,
+    error: "",
+    pickerOptionSets: getWorldSpinePickerOptionSetsForState(),
+  });
+  renderTaskContextMenu();
+  window.requestAnimationFrame(focusWorldSpineParallelTimelineLocationField);
+}
+
+function handleWorldSpineParallelTimelineFormSubmit(event) {
+  const target = event.target instanceof HTMLElement ? event.target : null;
+  if (target?.matches("[data-world-spine-sublocation-form]")) {
+    event.preventDefault();
+    saveWorldSpineSublocationFromComposer();
+    return;
+  }
+
+  if (target?.matches("[data-worldbuilding-category-properties-form]")) {
+    event.preventDefault();
+    saveWorldbuildingCategoryProperties(target);
+    return;
+  }
+
+  if (!target?.matches("[data-world-spine-parallel-timeline-form]")) {
+    return;
+  }
+
+  event.preventDefault();
+  if (target.dataset.worldSpineContextKind === "location-form") {
+    saveWorldSpineLocationRowFromForm();
+    return;
+  }
+  saveParallelTimelineFromWorldSpineForm();
+}
+
+// Intent: append a structured World Spine lane that the timeline renderer displays as another tier.
+function saveParallelTimelineFromWorldSpineForm() {
+  const form = document.querySelector("[data-world-spine-parallel-timeline-form]");
+  if (!(form instanceof HTMLElement)) {
+    return;
+  }
+
+  const values = readWorldSpineParallelTimelineFormValues(form);
+  const location = String(values.location ?? "").trim();
+  if (!location) {
+    state.worldSpineContextMenu = {
+      ...(state.worldSpineContextMenu ?? {}),
+      menuType: "timeline-form",
+      ...values,
+      error: "Location is required before creating a parallel timeline.",
+    };
+    renderTaskContextMenu();
+    window.requestAnimationFrame(focusWorldSpineParallelTimelineLocationField);
+    return;
+  }
+
+  const context = normalizeWorldSpineMenuContext(state.worldSpineContextMenu) ?? {};
+  hideWorldSpineContextMenu({ renderAfter: false });
+  const historyBefore = captureWorldSpineHistorySnapshot();
+  const result = addParallelWorldSpine(state.workspace?.world ?? {}, {
+    label: values.label || `${location} Timeline`,
+    location,
+    thread: values.thread,
+    participants: values.participants,
+    startMarker: values.startMarker,
+    notes: values.notes,
+    sourceContext: context,
+    now: new Date(),
+  });
+  state.workspace.world = result.world;
+  state.worldbuildingStudioStatus = `"${result.spine.label}" added as a new World Spine tier for ${location}.`;
+  if (result.created) {
+    persistCurrentProjectRecord({
+      domain: "world",
+      dirtyReason: "world-spine-parallel-timeline-added",
+      source: "saveParallelTimelineFromWorldSpineForm",
+    });
+    pushWorldSpineHistoryChange(historyBefore, {
+      label: "Added World Spine parallel timeline",
+      dirtyReason: "world-spine-parallel-timeline-added",
+      source: "saveParallelTimelineFromWorldSpineForm",
+    });
+  }
+  renderTaskContextMenu();
+  renderDreamScapingPanel();
+  renderWorldPanel();
+}
+
+// Intent: persist a row-name edit to scene drafts or world spine records according to the row's source data.
+function saveWorldSpineLocationRowFromForm() {
+  const form = document.querySelector("[data-world-spine-parallel-timeline-form]");
+  if (!(form instanceof HTMLElement)) {
+    return;
+  }
+
+  const values = readWorldSpineParallelTimelineFormValues(form);
+  const location = String(values.location ?? "").trim();
+  if (!location) {
+    state.worldSpineContextMenu = {
+      ...(state.worldSpineContextMenu ?? {}),
+      menuType: "location-form",
+      ...values,
+      error: "Location is required before naming this timeline row.",
+    };
+    renderTaskContextMenu();
+    window.requestAnimationFrame(focusWorldSpineParallelTimelineLocationField);
+    return;
+  }
+
+  const context = normalizeWorldSpineMenuContext(state.worldSpineContextMenu) ?? {};
+  const historyBefore = captureWorldSpineHistorySnapshot();
+  const rowAssignment = createWorldSpineLocationRowAssignment(location, context);
+  const changedSceneIds = applyWorldSpineLocationToSceneRows(context.sceneIds, location, context, rowAssignment);
+  const shouldUpdateWorld = !context.sceneIds.length || context.worldNodeIds.length > 0;
+  const worldResult = shouldUpdateWorld
+    ? applyWorldSpineLocationRowNameToWorld(state.workspace?.world ?? {}, {
+        spineId: context.spineId,
+        worldNodeIds: context.worldNodeIds,
+        location,
+        now: new Date(),
+      })
+    : { world: state.workspace?.world ?? {}, changed: false };
+  const rowNodeIds = context.primaryNodeIds.length
+    ? context.primaryNodeIds
+    : context.sceneIds.map((sceneId) => `scene:${sceneId}`);
+  const placeLinkResult = applyWorldSpineLocationAssignmentToWorldPlaceLinks(worldResult.world, {
+    nodeIds: rowNodeIds,
+    sceneIds: context.sceneIds,
+    assignment: rowAssignment,
+  });
+  const shouldUseWorldChange = shouldUpdateWorld && worldResult.changed;
+  const shouldUsePlaceLinkChange = Boolean(placeLinkResult.changed);
+  const changed = Boolean(changedSceneIds.length || shouldUseWorldChange || shouldUsePlaceLinkChange);
+  if (!changed) {
+    state.worldSpineContextMenu = null;
+    state.worldbuildingStudioStatus = `"${location}" is already the location for this row.`;
+    renderTaskContextMenu();
+    renderWorldPanel();
+    return;
+  }
+
+  if (shouldUseWorldChange) {
+    state.workspace.world = worldResult.world;
+  }
+  if (shouldUsePlaceLinkChange) {
+    state.workspace.world = placeLinkResult.world;
+  }
+  if (changedSceneIds.length) {
+    writeStoredJsonRaw(EDITOR_DRAFTS_KEY, state.sceneDrafts);
+    writeStoredJsonRaw(EDITOR_STRUCTURE_KEY, state.structureDrafts);
+    refreshScenes();
+  }
+
+  state.worldSpineContextMenu = null;
+  state.worldbuildingStudioStatus = `Location row named "${location}".`;
+  uiEventDispatcherLog.info("user-action", "world-spine.location-row.saved", "Saved World Spine location row assignment.", {
+    location,
+    contextSceneIds: context.sceneIds,
+    contextWorldNodeIds: context.worldNodeIds,
+    changedSceneIds,
+    changedWorld: shouldUseWorldChange,
+    changedPlaceLinks: shouldUsePlaceLinkChange,
+    removedPlaceEntityLinkIds: placeLinkResult.removedEntityLinkIds,
+    removedPlaceEntityIds: placeLinkResult.removedEntityIds,
+    rowLocationKey: context.locationKey,
+    rowLocationLabel: context.locationLabel,
+    rowIndex: context.locationRowIndex,
+  });
+  persistCurrentProjectRecord({
+    changedSceneIds,
+    domain: changedSceneIds.length && (shouldUseWorldChange || shouldUsePlaceLinkChange) ? "world-spine" : changedSceneIds.length ? "manuscript" : "world",
+    dirtyReason: "world-spine-location-row-named",
+    source: "saveWorldSpineLocationRowFromForm",
+    flushProjectFileAutosave: true,
+  });
+  pushWorldSpineHistoryChange(historyBefore, {
+    label: "Named World Spine location row",
+    dirtyReason: "world-spine-location-row-named",
+    source: "saveWorldSpineLocationRowFromForm",
+  });
+  renderTaskContextMenu();
+  if (changedSceneIds.length) {
+    render();
+    return;
+  }
+  renderDreamScapingPanel();
+  renderWorldPanel();
+}
+
+function applyWorldSpineLocationToSceneRows(sceneIds = [], location = "", context = {}, assignment = null) {
+  const changedSceneIds = [];
+  const changedEventTagIds = [];
+  const rowAssignment = assignment ?? createWorldSpineLocationRowAssignment(location, context);
+  normalizeWorldSpineContextIdList(sceneIds).forEach((sceneId) => {
+    const scene = getScene(sceneId);
+    if (!scene) {
+      return;
+    }
+
+    const existingDraft = mergeSceneDraftWithLoadedSceneStoreBody(
+      sceneId,
+      state.sceneDrafts?.[sceneId] ?? createSceneDraft(scene),
+    );
+    const metadataModel = buildSceneWorldSpineMetadataMenuModel({
+      scene,
+      draft: existingDraft,
+      expanded: true,
+      customMetadataDefinitions: getCustomMetadataDefinitions(),
+      pickerOptionSets: getWorldSpinePickerOptionSetsForState(),
+    });
+    const eventTagResult = state.workspace?.project
+      ? applyWorldSpineLocationAssignmentToSceneEventTags(
+          state.workspace.project.eventTags,
+          scene,
+          rowAssignment,
+        )
+      : { eventTags: [], changedEventTagIds: [] };
+    const structureResult = applyWorldSpineLocationAssignmentToStructureDrafts(state.structureDrafts, sceneId, rowAssignment);
+    const sceneStoreRecord = getWorldSpineLocationSceneStoreRecord(sceneId);
+    const alreadyAssigned = (
+      hasWorldSpineLocationAssignment(existingDraft, rowAssignment) &&
+      hasWorldSpineLocationAssignment(scene, rowAssignment) &&
+      Boolean(sceneStoreRecord && hasWorldSpineLocationAssignment(sceneStoreRecord, rowAssignment)) &&
+      !structureResult.changed &&
+      !eventTagResult.changedEventTagIds.length
+    );
+    if (alreadyAssigned) {
+      return;
+    }
+
+    const patchedDraft = applySceneWorldSpineMetadataToDraft(scene, existingDraft, {
+      ...metadataModel.metadata,
+      location: rowAssignment.location,
+      ...rowAssignment,
+    });
+    state.sceneDrafts = {
+      ...state.sceneDrafts,
+      [sceneId]: patchedDraft,
+    };
+    state.scenes = (Array.isArray(state.scenes) ? state.scenes : []).map((candidate) =>
+      candidate?.sceneId === sceneId
+        ? applyWorldSpineLocationAssignmentToSceneRecord(candidate, rowAssignment)
+        : candidate
+    );
+    if (structureResult.changed) {
+      state.structureDrafts = structureResult.structureDrafts;
+    }
+    if (state.workspace?.project) {
+      if (eventTagResult.changedEventTagIds.length) {
+        state.workspace.project = {
+          ...state.workspace.project,
+          eventTags: eventTagResult.eventTags,
+        };
+        changedEventTagIds.push(...eventTagResult.changedEventTagIds);
+      }
+    }
+    state.loadedProjectSceneStore = upsertWorldSpineLocationAssignmentInSceneStore(state.loadedProjectSceneStore, {
+      projectId: state.workspace?.project?.id ?? state.activeProjectId,
+      sceneId,
+      sceneRecord: patchedDraft,
+      assignment: rowAssignment,
+    });
+    changedSceneIds.push(sceneId);
+  });
+  if (changedSceneIds.length) {
+    uiEventDispatcherLog.info("state-change", "world-spine.location-row.scene-events-updated", "Updated scene-backed World Spine event locations.", {
+      location: rowAssignment.location,
+      locationRowKey: rowAssignment.locationRowKey,
+      changedSceneIds,
+      changedEventTagIds,
+      contextSceneIds: normalizeWorldSpineContextIdList(sceneIds),
+      contextLocationLabel: context?.locationLabel ?? "",
+      contextLocationKey: context?.locationKey ?? "",
+    });
+  }
+  return changedSceneIds;
+}
+
+function getWorldSpineLocationSceneStoreRecord(sceneId = "") {
+  const normalizedSceneId = String(sceneId ?? "").trim();
+  const projectId = String(state.workspace?.project?.id ?? state.activeProjectId ?? "").trim();
+  if (!normalizedSceneId || !projectId) {
+    return null;
+  }
+
+  const projectSceneStore = state.loadedProjectSceneStore?.[projectId];
+  if (!projectSceneStore || typeof projectSceneStore !== "object" || Array.isArray(projectSceneStore)) {
+    return null;
+  }
+
+  const sceneRecord = projectSceneStore[normalizedSceneId];
+  return sceneRecord && typeof sceneRecord === "object" && !Array.isArray(sceneRecord)
+    ? sceneRecord
+    : null;
+}
+
+function readWorldSpineParallelTimelineFormValues(form) {
+  const values = {};
+  form.querySelectorAll("[data-world-spine-parallel-timeline-field]").forEach((field) => {
+    if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
+      values[field.dataset.worldSpineParallelTimelineField] = field.value;
+    }
+  });
+  return values;
+}
+
+function focusWorldSpineParallelTimelineLocationField() {
+  const input = document.querySelector(
+    '[data-world-spine-parallel-timeline-field="location"]',
+  );
+  if (!(input instanceof HTMLInputElement)) {
+    return;
+  }
+
+  input.focus();
+  input.select();
+}
+
+function normalizeWorldSpineMenuContext(context = null) {
+  if (!context || typeof context !== "object") {
+    return null;
+  }
+
+  const rawMenuType = String(context.menuType ?? context.type ?? "whitespace").trim();
+  const menuType = rawMenuType === "implication" || rawMenuType === "event" || rawMenuType === "timeline-form" || rawMenuType === "location-form"
+    ? rawMenuType
+    : "whitespace";
+  const spineId = String(context.spineId ?? context.worldSpineId ?? "").trim() || "spine-0001";
+  const spineLabel = String(context.spineLabel ?? "").trim() || "World Spine";
+  const dropIndex = Math.max(0, Number.isFinite(Number(context.dropIndex)) ? Number(context.dropIndex) : 0);
+  const tierIndex = Math.max(0, Number.isFinite(Number(context.tierIndex)) ? Number(context.tierIndex) : 0);
+  const locationLabel = String(context.locationLabel ?? context.localityLabel ?? "").trim();
+  const locationKey = String(context.locationKey ?? context.localityKey ?? "").trim();
+  return {
+    menuType,
+    x: Math.max(0, Math.round(Number(context.x) || 0)),
+    y: Math.max(0, Math.round(Number(context.y) || 0)),
+    composerX: Math.max(0, Math.round(Number(context.composerX) || 0)),
+    composerY: Math.max(0, Math.round(Number(context.composerY) || 0)),
+    canvasX: Math.max(0, Math.round(Number(context.canvasX) || 0)),
+    canvasY: Math.max(0, Math.round(Number(context.canvasY) || 0)),
+    dropIndex,
+    spineId,
+    spineLabel,
+    tierIndex,
+    locationLabel,
+    locationKey,
+    locationRowIndex: Math.max(0, Number.isFinite(Number(context.locationRowIndex ?? context.localityRowIndex))
+      ? Number(context.locationRowIndex ?? context.localityRowIndex)
+      : 0),
+    locationScope: String(context.locationScope ?? context.timelineLocationScope ?? "").trim(),
+    primaryNodeIds: normalizeWorldSpineContextIdList(context.primaryNodeIds ?? context.rowNodeIds),
+    sceneIds: normalizeWorldSpineContextIdList(context.sceneIds ?? context.rowSceneIds),
+    worldNodeIds: normalizeWorldSpineContextIdList(context.worldNodeIds ?? context.rowWorldNodeIds),
+    isLocationRowPrompt: context.isLocationRowPrompt === true || context.isLocationRowPrompt === "true",
+    edgeId: String(context.edgeId ?? context.worldSpineEdgeId ?? "").trim(),
+    label: normalizeWorldSpineImplicationText(context.label ?? context.effect),
+    fromNodeId: String(context.fromNodeId ?? "").trim(),
+    toNodeId: String(context.toNodeId ?? "").trim(),
+    nodeId: String(context.nodeId ?? context.worldSpineNodeId ?? "").trim(),
+    nodeTitle: String(context.nodeTitle ?? context.title ?? "").trim(),
+    nodeTypeLabel: String(context.nodeTypeLabel ?? context.typeLabel ?? "").trim(),
+    nodeKind: String(context.nodeKind ?? context.kind ?? "").trim(),
+    location: String(context.location ?? "").trim(),
+    thread: String(context.thread ?? context.purpose ?? "").trim(),
+    participants: String(context.participants ?? context.keyActors ?? "").trim(),
+    startMarker: String(context.startMarker ?? "").trim(),
+    notes: String(context.notes ?? "").trim(),
+    error: String(context.error ?? "").trim(),
+    pickerOptionSets: context.pickerOptionSets && typeof context.pickerOptionSets === "object"
+      ? context.pickerOptionSets
+      : {},
+    assignmentCategoryId: String(context.assignmentCategoryId ?? context.catalogueCategoryId ?? "").trim(),
+    assignmentModel: context.assignmentModel && typeof context.assignmentModel === "object"
+      ? context.assignmentModel
+      : null,
+  };
+}
+
+// Intent: open the Dream Scaping category catalogue without mutating structured world records.
+function openWorldbuildingCatalogue(categoryId = "", position = null) {
+  const normalizedCategoryId = String(categoryId ?? "").trim();
+  if (!normalizedCategoryId) {
+    return;
+  }
+
+  state.worldSpineInsertionContext = null;
+  state.worldbuildingStudioCategoryId = "";
+  clearWorldbuildingCatalogueEditState();
+  state.worldbuildingStudioStatus = "";
+  state.worldbuildingCatalogueCategoryId = normalizedCategoryId;
+  const savedBounds = normalizeWorldbuildingCatalogueBounds(state.editorPrefs?.worldbuildingCatalogueBounds, {
+    viewport: getWorldbuildingCatalogueViewport(),
+  });
+  state.worldbuildingCatalogueBounds = savedBounds;
+  state.worldbuildingCataloguePosition = savedBounds
+    ? { x: savedBounds.left, y: savedBounds.top }
+    : clampWorldbuildingCataloguePosition(position);
+  state.worldbuildingCatalogueSelectedItemId = "";
+  state.worldbuildingCatalogueSelectedItemKind = "";
+  uiEventDispatcherLog.info("user-action", "worldbuilding.catalogue.opened", "Opened Dream Scaping category catalogue.", {
+    categoryId: normalizedCategoryId,
+  });
+  renderDreamScapingPanel();
+}
+
+// Intent: close the temporary catalogue while leaving saved entities, categories, and event drafts intact.
+function closeWorldbuildingCatalogue({ renderAfter = true } = {}) {
+  if (!state.worldbuildingCatalogueCategoryId && !state.worldbuildingCatalogueSelectedItemId) {
+    return;
+  }
+
+  const closedCategoryId = state.worldbuildingCatalogueCategoryId;
+  worldbuildingCatalogueDragState = null;
+  worldbuildingCatalogueResizeState = null;
+  worldbuildingCatalogueSuppressNextClick = false;
+  state.worldbuildingCatalogueCategoryId = "";
+  state.worldbuildingCataloguePosition = null;
+  state.worldbuildingCatalogueBounds = null;
+  state.worldbuildingCatalogueSelectedItemId = "";
+  state.worldbuildingCatalogueSelectedItemKind = "";
+  uiEventDispatcherLog.info("user-action", "worldbuilding.catalogue.closed", "Closed Dream Scaping category catalogue.", {
+    categoryId: closedCategoryId,
+  });
+  if (renderAfter) {
+    renderDreamScapingPanel();
+  }
+}
+
+// Intent: show a detail pane for the selected catalogue row without changing world data.
+function selectWorldbuildingCatalogueItem(itemId = "", itemKind = "") {
+  const normalizedItemId = String(itemId ?? "").trim();
+  if (!state.worldbuildingCatalogueCategoryId || !normalizedItemId) {
+    return;
+  }
+
+  state.worldbuildingCatalogueSelectedItemId = normalizedItemId;
+  state.worldbuildingCatalogueSelectedItemKind = String(itemKind ?? "").trim();
+  uiEventDispatcherLog.info("user-action", "worldbuilding.catalogue.item-selected", "Selected Dream Scaping catalogue item detail.", {
+    categoryId: state.worldbuildingCatalogueCategoryId,
+    itemId: normalizedItemId,
+    itemKind: state.worldbuildingCatalogueSelectedItemKind,
+  });
+  renderDreamScapingPanel();
+}
+
+// Intent: open the selected catalogue record in the reusable Dream Scaping form with stable edit identifiers.
+function editWorldbuildingCatalogueItem(target = null) {
+  const catalogueItem = resolveWorldbuildingCatalogueActionItem(target);
+  const editState = createWorldbuildingCatalogueEditFormState(state.workspace?.world ?? {}, catalogueItem);
+  if (!editState.categoryId) {
+    state.worldbuildingStudioStatus = "That catalogue item cannot be edited from this menu.";
+    renderDreamScapingPanel();
+    return;
+  }
+
+  state.worldSpineInsertionContext = null;
+  state.worldbuildingStudioCategoryId = editState.categoryId;
+  state.worldbuildingEditingCatalogueItemId = editState.itemId;
+  state.worldbuildingEditingCatalogueItemKind = editState.itemKind;
+  state.worldbuildingCatalogueCategoryId = "";
+  state.worldbuildingCataloguePosition = null;
+  state.worldbuildingCatalogueBounds = null;
+  state.worldbuildingCatalogueSelectedItemId = "";
+  state.worldbuildingCatalogueSelectedItemKind = "";
+  state.worldbuildingStudioStatus = "";
+  uiEventDispatcherLog.info("user-action", "worldbuilding.catalogue.item-edit-opened", "Opened Dream Scaping catalogue item edit form.", {
+    categoryId: editState.categoryId,
+    itemId: editState.itemId,
+    itemKind: editState.itemKind,
+  });
+  renderDreamScapingPanel();
+  requestAnimationFrame(() => {
+    const firstField = document.querySelector("[data-worldbuilding-studio-form] [data-worldbuilding-field]");
+    if (firstField instanceof HTMLElement) {
+      firstField.focus();
+    }
+  });
+}
+
+// Intent: delete a selected catalogue record through the feature-owned world mutation path and persist the result.
+function deleteWorldbuildingCatalogueItem(target = null) {
+  const catalogueItem = resolveWorldbuildingCatalogueActionItem(target);
+  const historyBefore = captureWorldSpineHistorySnapshot();
+  const result = deleteWorldbuildingCatalogueItemFromWorld(state.workspace?.world ?? {}, catalogueItem);
+  if (!result.changed) {
+    state.worldbuildingStudioStatus = "That catalogue item could not be deleted.";
+    renderDreamScapingPanel();
+    return;
+  }
+
+  state.workspace.world = result.world;
+  state.worldSpineInsertionContext = null;
+  state.worldbuildingStudioCategoryId = "";
+  clearWorldbuildingCatalogueEditState();
+  state.worldbuildingCatalogueSelectedItemId = "";
+  state.worldbuildingCatalogueSelectedItemKind = "";
+  if (state.selectedEntityId === result.item?.id) {
+    state.selectedEntityId = null;
+  }
+
+  const title = String(result.item?.title ?? "Catalogue item").trim() || "Catalogue item";
+  state.worldbuildingStudioStatus = `"${title}" deleted from the world catalogue.`;
+  persistCurrentProjectRecord({
+    domain: "world",
+    dirtyReason: "worldbuilding-catalogue-item-deleted",
+    source: "deleteWorldbuildingCatalogueItem",
+  });
+  pushWorldSpineHistoryChange(historyBefore, {
+    label: result.item?.itemKind === "eventDraft"
+      ? "Deleted World Spine event draft"
+      : "Deleted World Spine catalogue item",
+    dirtyReason: "worldbuilding-catalogue-item-deleted",
+    source: "deleteWorldbuildingCatalogueItem",
+  });
+  uiEventDispatcherLog.info("user-action", "worldbuilding.catalogue.item-deleted", "Deleted Dream Scaping catalogue item.", {
+    itemId: result.item?.id,
+    itemKind: result.item?.itemKind,
+  });
+  renderDreamScapingPanel();
+  renderWorldPanel();
+}
+
+// Intent: commit category-level Location semantics so catalogue classes can drive World Spine hierarchy.
+function saveWorldbuildingCategoryProperties(target = null) {
+  const form = target instanceof HTMLElement
+    ? target.closest("[data-worldbuilding-category-properties-form]")
+    : null;
+  const categoryId = String(
+    target?.dataset?.worldbuildingCategoryId ??
+      form?.dataset?.worldbuildingCategoryId ??
+      state.worldbuildingCatalogueCategoryId ??
+      "",
+  ).trim();
+  const locationRole = String(
+    form?.querySelector('[data-worldbuilding-category-property="locationRole"]')?.value ?? "",
+  ).trim();
+  const historyBefore = captureWorldSpineHistorySnapshot();
+  const result = applyWorldbuildingCategoryLocationRoleToWorld(state.workspace?.world ?? {}, {
+    categoryId,
+    locationRole,
+    now: new Date(),
+  });
+  if (!result.changed) {
+    state.worldbuildingStudioStatus = categoryId
+      ? `${formatWorldbuildingCategoryLocationRoleLabel(locationRole)} is already saved for this catalogue class.`
+      : "Choose a catalogue class before saving properties.";
+    renderDreamScapingPanel();
+    return;
+  }
+
+  state.workspace.world = result.world;
+  state.worldbuildingStudioStatus = `${formatWorldbuildingCategoryLocationRoleLabel(result.locationRole)} saved for ${result.categoryId}.`;
+  persistCurrentProjectRecord({
+    domain: "world",
+    dirtyReason: "worldbuilding-category-location-role-updated",
+    source: "saveWorldbuildingCategoryProperties",
+    flushProjectFileAutosave: true,
+  });
+  pushWorldSpineHistoryChange(historyBefore, {
+    label: "Updated World Spine category properties",
+    dirtyReason: "worldbuilding-category-location-role-updated",
+    source: "saveWorldbuildingCategoryProperties",
+  });
+  uiEventDispatcherLog.info("user-action", "worldbuilding.category-properties.saved", "Saved Dream Scaping catalogue category properties.", {
+    categoryId: result.categoryId,
+    locationRole: result.locationRole,
+  });
+  renderDreamScapingPanel();
+  renderWorldPanel();
+}
+
+function formatWorldbuildingCategoryLocationRoleLabel(locationRole = "") {
+  const normalizedRole = String(locationRole ?? "").trim();
+  if (normalizedRole === "main-location") {
+    return "Main location";
+  }
+  if (normalizedRole === "child-location") {
+    return "Child location";
+  }
+  return "Catalogue only";
+}
+
+// Intent: persist the selected World Spine RHS mode as project UI state without touching world data.
+function setWorldSpineRightPaneMode(mode = "") {
+  const nextMode = normalizeWorldSpineRightPaneMode(mode);
+  if (state.worldSpineRightPaneMode === nextMode) {
+    return;
+  }
+
+  state.worldSpineRightPaneMode = nextMode;
+  persistCurrentProjectRecord({
+    domain: "app-settings",
+    dirtyReason: "world-spine-right-pane-mode-updated",
+    source: "setWorldSpineRightPaneMode",
+  });
+  uiEventDispatcherLog.info("user-action", "world-spine.right-pane-mode.changed", "Changed World Spine right pane mode.", {
+    mode: nextMode,
+  });
+  renderWorldPanel();
+}
+
+// Intent: keep the location checklist as render-only World Spine view state, separate from world timeline records.
+function toggleWorldSpineLocationFilterPane() {
+  state.worldSpineLocationFilterOpen = !state.worldSpineLocationFilterOpen;
+  renderWorldPanel();
+}
+
+function updateWorldSpineLocationFilter(locationKey = "", checked = true) {
+  const model = buildWorldSpineModelForState();
+  state.worldSpineLocationFilter = updateWorldSpineLocationFilterSelection({
+    timeline: model.timeline,
+    filterState: state.worldSpineLocationFilter,
+    locationKey,
+    checked,
+  });
+  queueWorldSpineLocationFilterFocus(model);
+  persistCurrentProjectRecord({
+    domain: "app-settings",
+    dirtyReason: "world-spine-location-filter-updated",
+    source: "updateWorldSpineLocationFilter",
+  });
+  uiEventDispatcherLog.info("user-action", "world-spine.location-filter.changed", "Changed World Spine location filter.", {
+    selectedLocationKeys: state.worldSpineLocationFilter.selectedLocationKeys,
+  });
+  renderWorldPanel();
+}
+
+function clearWorldSpineLocationFilter() {
+  state.worldSpineLocationFilter = clearWorldSpineLocationFilterSelection();
+  state.worldSpineScrollTargetLocationKey = "";
+  persistCurrentProjectRecord({
+    domain: "app-settings",
+    dirtyReason: "world-spine-location-filter-cleared",
+    source: "clearWorldSpineLocationFilter",
+  });
+  uiEventDispatcherLog.info("user-action", "world-spine.location-filter.cleared", "Cleared World Spine location filter.", {});
+  renderWorldPanel();
+}
+
+function queueWorldSpineLocationFilterFocus(model = buildWorldSpineModelForState()) {
+  const filterModel = buildWorldSpineLocationFilterModel(model.timeline, state.worldSpineLocationFilter);
+  state.worldSpineScrollTargetLocationKey = filterModel.active && filterModel.singleLocationKey
+    ? filterModel.singleLocationKey
+    : "";
+}
+
+// Intent: keep RHS related cards compact until the author explicitly opens one item for detail.
+function toggleWorldSpineRelatedCard(target = null) {
+  const nextKey = resolveWorldSpineRelatedCardKeyFromTarget(target);
+  if (!nextKey) {
+    return;
+  }
+
+  state.worldSpineRelatedCardExpandedKey = state.worldSpineRelatedCardExpandedKey === nextKey
+    ? ""
+    : nextKey;
+  renderWorldPanel();
+}
+
+function resolveWorldSpineRelatedCardKeyFromTarget(target = null) {
+  const explicitKey = String(target?.dataset?.worldSpineRelatedCardKey ?? "").trim();
+  if (explicitKey) {
+    return explicitKey;
+  }
+
+  const itemId = String(target?.dataset?.worldbuildingCatalogueItemId ?? "").trim();
+  const itemKind = String(target?.dataset?.worldbuildingCatalogueItemKind ?? "").trim();
+  return itemId && itemKind ? `${itemKind}:${itemId}` : "";
+}
+
+// Intent: open a focused RHS form for adding a precise place under the selected event's current location row.
+function openWorldSpineSublocationComposer(target = null) {
+  const nodeId = String(target?.dataset?.worldSpineNodeId ?? state.selectedNodeId ?? "").trim();
+  const node = getWorldSpineTimelineNode(nodeId);
+  if (!node) {
+    return;
+  }
+
+  setWorldSpineSelectedNodeId(node.id);
+  state.worldSpineRightPaneMode = normalizeWorldSpineRightPaneMode("related-cards");
+  state.worldSpineSublocationComposer = {
+    nodeId: node.id,
+    sceneId: String(target?.dataset?.sceneId ?? node.sceneId ?? "").trim(),
+    location: String(target?.dataset?.worldSpineLocationLabel ?? node.locationRowLabel ?? node.location ?? "").trim(),
+    sublocation: "",
+    error: "",
+  };
+  renderWorldPanel();
+  window.requestAnimationFrame(focusWorldSpineSublocationComposerInput);
+}
+
+function closeWorldSpineSublocationComposer({ renderAfter = true } = {}) {
+  if (!state.worldSpineSublocationComposer) {
+    return;
+  }
+
+  state.worldSpineSublocationComposer = null;
+  if (renderAfter) {
+    renderWorldPanel();
+  }
+}
+
+// Intent: commit the RHS child location as both event metadata and reviewed catalogue presence.
+function saveWorldSpineSublocationFromComposer() {
+  const composer = state.worldSpineSublocationComposer && typeof state.worldSpineSublocationComposer === "object"
+    ? state.worldSpineSublocationComposer
+    : {};
+  const form = document.querySelector("[data-world-spine-sublocation-form]");
+  const nodeId = String(form?.dataset?.worldSpineNodeId ?? composer.nodeId ?? state.selectedNodeId ?? "").trim();
+  const node = getWorldSpineTimelineNode(nodeId);
+  if (!node) {
+    closeWorldSpineSublocationComposer();
+    return;
+  }
+
+  const sublocation = normalizeWorldSpineSublocationInput(
+    form?.querySelector('[data-world-spine-sublocation-field="sublocation"]')?.value ?? composer.sublocation,
+  );
+  const location = normalizeWorldSpineSublocationInput(
+    form?.dataset?.worldSpineLocationLabel ??
+      composer.location ??
+      node.locationRowLabel ??
+      node.coreLocationLabel ??
+      node.location,
+  );
+  if (!sublocation) {
+    state.worldSpineSublocationComposer = {
+      ...composer,
+      nodeId,
+      location,
+      error: "Enter a child location name.",
+    };
+    renderWorldPanel();
+    window.requestAnimationFrame(focusWorldSpineSublocationComposerInput);
+    return;
+  }
+
+  const historyBefore = captureWorldSpineHistorySnapshot();
+  const worldResult = applyWorldSpineEventSublocationToWorld(state.workspace?.world ?? {}, {
+    nodeId,
+    location,
+    childLocation: sublocation,
+    sublocation,
+    orbitalBand: node.orbitalBand,
+    now: new Date(),
+  });
+  const sceneResult = applyWorldSpineSublocationToSceneDraft(node, {
+    location,
+    sublocation,
+  });
+  if (!worldResult.changed && !sceneResult.changed) {
+    state.worldSpineSublocationComposer = {
+      ...composer,
+      nodeId,
+      location,
+      sublocation,
+      error: `"${sublocation}" is already attached to this event.`,
+    };
+    renderWorldPanel();
+    window.requestAnimationFrame(focusWorldSpineSublocationComposerInput);
+    return;
+  }
+
+  state.workspace.world = worldResult.world;
+  if (sceneResult.changed) {
+    state.sceneDrafts = sceneResult.sceneDrafts;
+    writeStoredJsonRaw(EDITOR_DRAFTS_KEY, state.sceneDrafts);
+    refreshScenes();
+  }
+  setWorldSpineSelectedNodeId(nodeId);
+  state.selectedEntityId = worldResult.entity?.id ?? state.selectedEntityId;
+  state.worldSpineScrollTargetNodeId = nodeId;
+  state.worldSpineSublocationComposer = null;
+  state.worldbuildingStudioStatus = `"${sublocation}" added as a child location for "${node.title}".`;
+  persistCurrentProjectRecord({
+    changedSceneIds: sceneResult.changedSceneIds,
+    domain: worldResult.changed ? "world" : "manuscript",
+    dirtyReason: "world-spine-event-sublocation-added",
+    source: "saveWorldSpineSublocationFromComposer",
+    flushProjectFileAutosave: true,
+  });
+  pushWorldSpineHistoryChange(historyBefore, {
+    label: "Added World Spine event child location",
+    dirtyReason: "world-spine-event-sublocation-added",
+    source: "saveWorldSpineSublocationFromComposer",
+  });
+  uiEventDispatcherLog.info("user-action", "world-spine.event-sublocation.added", "Added child location to World Spine event.", {
+    nodeId,
+    location,
+    sublocation,
+    entityId: worldResult.entity?.id,
+    sceneIds: sceneResult.changedSceneIds,
+  });
+  renderDreamScapingPanel();
+  renderWorldPanel();
+}
+
+function applyWorldSpineSublocationToSceneDraft(node = {}, {
+  location = "",
+  sublocation = "",
+} = {}) {
+  const sceneId = String(node?.sceneId ?? "").trim();
+  const scene = sceneId ? getScene(sceneId) : null;
+  if (!scene) {
+    return {
+      sceneDrafts: state.sceneDrafts,
+      changed: false,
+      changedSceneIds: [],
+    };
+  }
+
+  const existingDraft = state.sceneDrafts?.[sceneId] ?? createSceneDraft(scene);
+  const previousMetadata = buildSceneWorldSpineMetadataMenuModel({
+    scene,
+    draft: existingDraft,
+    expanded: true,
+    customMetadataDefinitions: getCustomMetadataDefinitions(),
+    pickerOptionSets: getWorldSpinePickerOptionSetsForState(),
+  }).metadata ?? {};
+  const metadata = {
+    ...previousMetadata,
+    location: location || previousMetadata.location,
+    childLocation: sublocation,
+    childLocationLabel: sublocation,
+    sublocation,
+    orbitalBand: previousMetadata.orbitalBand || node.orbitalBand,
+    locationRowLabel: previousMetadata.locationRowLabel || node.locationRowLabel || location,
+    locationRowKey: previousMetadata.locationRowKey || node.locationRowKey,
+    locationScope: previousMetadata.locationScope || node.locationScope,
+  };
+  const nextDraft = applySceneWorldSpineMetadataToDraft(scene, existingDraft, metadata);
+  if (JSON.stringify(nextDraft) === JSON.stringify(existingDraft)) {
+    return {
+      sceneDrafts: state.sceneDrafts,
+      changed: false,
+      changedSceneIds: [],
+    };
+  }
+
+  return {
+    sceneDrafts: {
+      ...state.sceneDrafts,
+      [sceneId]: nextDraft,
+    },
+    changed: true,
+    changedSceneIds: [sceneId],
+  };
+}
+
+function focusWorldSpineSublocationComposerInput() {
+  const input = document.querySelector('[data-world-spine-sublocation-field="sublocation"]');
+  if (!(input instanceof HTMLInputElement)) {
+    return;
+  }
+
+  input.focus();
+  input.select();
+}
+
+function normalizeWorldSpineSublocationInput(value = "") {
+  return String(value ?? "").trim().replace(/\s+/g, " ");
+}
+
+// Intent: attach author-provided reference imagery to catalogue records through the world persistence boundary.
+async function attachWorldbuildingCatalogueImage(target = null) {
+  const catalogueItem = resolveWorldbuildingCatalogueActionItem(target);
+  if (!catalogueItem.itemId || !catalogueItem.itemKind) {
+    return;
+  }
+
+  const file = await promptForWorldbuildingCatalogueImageFile();
+  if (!file) {
+    return;
+  }
+
+  const validationError = validateWorldbuildingCatalogueImageFile(file);
+  if (validationError) {
+    state.worldbuildingStudioStatus = formatWorldbuildingCatalogueImageUploadError(validationError);
+    renderDreamScapingPanel();
+    renderWorldPanel();
+    return;
+  }
+
+  try {
+    const image = await createWorldbuildingCatalogueImageRecordFromFile(file, {
+      itemId: catalogueItem.itemId,
+      itemKind: catalogueItem.itemKind,
+      title: catalogueItem.itemId,
+    });
+    if (!image) {
+      state.worldbuildingStudioStatus = "Choose a PNG, JPG, WebP, or GIF image under the catalogue image limit.";
+      renderDreamScapingPanel();
+      renderWorldPanel();
+      return;
+    }
+
+    const historyBefore = captureWorldSpineHistorySnapshot();
+    const result = applyWorldbuildingCatalogueItemImageToWorld(state.workspace?.world ?? {}, {
+      ...catalogueItem,
+      image,
+      now: new Date(),
+    });
+    if (!result.changed) {
+      state.worldbuildingStudioStatus = "That catalogue image could not be attached.";
+      renderDreamScapingPanel();
+      renderWorldPanel();
+      return;
+    }
+
+    state.workspace.world = result.world;
+    state.worldbuildingCatalogueSelectedItemId = result.item?.id ?? state.worldbuildingCatalogueSelectedItemId;
+    state.worldbuildingCatalogueSelectedItemKind = result.item?.itemKind ?? state.worldbuildingCatalogueSelectedItemKind;
+    state.worldbuildingStudioStatus = `"${result.item?.title ?? "Catalogue item"}" image attached.`;
+    persistCurrentProjectRecord({
+      domain: "world",
+      dirtyReason: "worldbuilding-catalogue-item-image-attached",
+      source: "attachWorldbuildingCatalogueImage",
+    });
+    pushWorldSpineHistoryChange(historyBefore, {
+      label: "Attached World Spine catalogue image",
+      dirtyReason: "worldbuilding-catalogue-item-image-attached",
+      source: "attachWorldbuildingCatalogueImage",
+    });
+    uiEventDispatcherLog.info("user-action", "worldbuilding.catalogue.image-attached", "Attached image to Dream Scaping catalogue item.", {
+      itemId: result.item?.id,
+      itemKind: result.item?.itemKind,
+      imageSize: result.image?.size ?? 0,
+    });
+    renderDreamScapingPanel();
+    renderWorldPanel();
+  } catch (error) {
+    state.worldbuildingStudioStatus = "That catalogue image could not be read.";
+    uiEventDispatcherLog.warn("user-action", "worldbuilding.catalogue.image-read-failed", "Failed to read catalogue image upload.", {
+      itemId: catalogueItem.itemId,
+      itemKind: catalogueItem.itemKind,
+      error,
+    });
+    renderDreamScapingPanel();
+    renderWorldPanel();
+  }
+}
+
+// Intent: assign row-level location artwork through catalogue-backed Location entities and project persistence.
+async function attachWorldSpineLocationRowImage(target = null) {
+  const form = document.querySelector("[data-world-spine-parallel-timeline-form]");
+  const formValues = form instanceof HTMLElement ? readWorldSpineParallelTimelineFormValues(form) : {};
+  const menu = normalizeWorldSpineMenuContext(state.worldSpineContextMenu) ?? {};
+  const location = String(
+    formValues.location ??
+    target?.dataset?.worldSpineLocationLabel ??
+    menu.location ??
+    menu.locationLabel ??
+    "",
+  ).trim();
+
+  if (!location) {
+    state.worldSpineContextMenu = {
+      ...(state.worldSpineContextMenu ?? {}),
+      menuType: "location-form",
+      ...formValues,
+      error: "Name the location before attaching an image.",
+    };
+    renderTaskContextMenu();
+    window.requestAnimationFrame(focusWorldSpineParallelTimelineLocationField);
+    return;
+  }
+
+  const file = await promptForWorldbuildingCatalogueImageFile();
+  if (!file) {
+    return;
+  }
+
+  const validationError = validateWorldbuildingCatalogueImageFile(file);
+  if (validationError) {
+    state.worldSpineContextMenu = {
+      ...(state.worldSpineContextMenu ?? {}),
+      menuType: "location-form",
+      ...formValues,
+      location,
+      error: formatWorldbuildingCatalogueImageUploadError(validationError),
+    };
+    renderTaskContextMenu();
+    renderDreamScapingPanel();
+    renderWorldPanel();
+    return;
+  }
+
+  try {
+    const image = await createWorldbuildingCatalogueImageRecordFromFile(file, {
+      itemId: location,
+      itemKind: "location",
+      title: location,
+    });
+    if (!image) {
+      state.worldSpineContextMenu = {
+        ...(state.worldSpineContextMenu ?? {}),
+        menuType: "location-form",
+        ...formValues,
+        location,
+        error: "Choose a PNG, JPG, WebP, or GIF image under the catalogue image limit.",
+      };
+      renderTaskContextMenu();
+      renderDreamScapingPanel();
+      renderWorldPanel();
+      return;
+    }
+
+    const historyBefore = captureWorldSpineHistorySnapshot();
+    const result = applyWorldSpineLocationImageToWorld(state.workspace?.world ?? {}, {
+      location,
+      image,
+      now: new Date(),
+    });
+    if (!result.changed) {
+      state.worldSpineContextMenu = {
+        ...(state.worldSpineContextMenu ?? {}),
+        menuType: "location-form",
+        ...formValues,
+        location,
+        error: "That location image could not be attached.",
+      };
+      renderTaskContextMenu();
+      renderDreamScapingPanel();
+      renderWorldPanel();
+      return;
+    }
+
+    state.workspace.world = result.world;
+    state.worldbuildingStudioStatus = `"${result.item?.title ?? location}" image attached.`;
+    state.worldSpineContextMenu = {
+      ...(state.worldSpineContextMenu ?? {}),
+      menuType: "location-form",
+      ...formValues,
+      location,
+      error: "",
+    };
+    persistCurrentProjectRecord({
+      domain: "world",
+      dirtyReason: "world-spine-location-image-attached",
+      source: "attachWorldSpineLocationRowImage",
+    });
+    pushWorldSpineHistoryChange(historyBefore, {
+      label: "Attached World Spine location image",
+      dirtyReason: "world-spine-location-image-attached",
+      source: "attachWorldSpineLocationRowImage",
+    });
+    uiEventDispatcherLog.info("user-action", "world-spine.location-image.attached", "Attached image to World Spine location row.", {
+      location,
+      itemId: result.item?.id,
+      imageSize: result.image?.size ?? 0,
+    });
+    renderTaskContextMenu();
+    renderDreamScapingPanel();
+    renderWorldPanel();
+  } catch (error) {
+    state.worldSpineContextMenu = {
+      ...(state.worldSpineContextMenu ?? {}),
+      menuType: "location-form",
+      ...formValues,
+      location,
+      error: "That location image could not be read.",
+    };
+    uiEventDispatcherLog.warn("user-action", "world-spine.location-image.read-failed", "Failed to read World Spine location image upload.", {
+      location,
+      error,
+    });
+    renderTaskContextMenu();
+    renderDreamScapingPanel();
+    renderWorldPanel();
+  }
+}
+
+// Intent: persist worldbuilding image uploads as local project media references instead of inline project JSON data.
+async function createWorldbuildingCatalogueImageRecordFromFile(file, {
+  itemId = "",
+  itemKind = "",
+  title = "",
+} = {}) {
+  if (!file) {
+    return null;
+  }
+
+  const projectId = state.activeProjectId ?? state.workspace?.project?.id ?? "project";
+  const mediaPlan = buildWorldbuildingCatalogueImageMediaPath({
+    projectFilePath: state.projectFilePath,
+    projectRoot: state.workspace?.settings?.projectRoot ?? "",
+    projectId,
+    itemKind,
+    itemId,
+    title,
+    fileName: file.name,
+    mediaType: file.type,
+    nowMs: Date.now(),
+  });
+  const contentBase64 = await readFileAsBase64(file);
+  const saveResponse = await fetchJsonFromDesktopApi("/api/project-media/save", {
+    method: "POST",
+    body: {
+      filePath: mediaPlan.mediaPath,
+      contentBase64,
+    },
+  });
+  if (!saveResponse.ok) {
+    throw saveResponse.error ?? new Error("Unable to save the catalogue image file.");
+  }
+
+  const savedMediaPath = typeof saveResponse.value?.filePath === "string" && saveResponse.value.filePath.trim()
+    ? saveResponse.value.filePath.trim()
+    : mediaPlan.mediaPath;
+  return normalizeWorldbuildingCatalogueImage({
+    mediaPath: savedMediaPath,
+    projectRelativePath: mediaPlan.projectRelativePath,
+    mediaType: file.type,
+    name: file.name,
+    size: file.size,
+  });
+}
+
+function promptForWorldbuildingCatalogueImageFile() {
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    let settled = false;
+    const settle = (file = null) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      window.removeEventListener("focus", handleWindowFocus);
+      input.remove();
+      resolve(file);
+    };
+    const handleWindowFocus = () => {
+      window.setTimeout(() => {
+        if (!settled && !input.files?.length) {
+          settle(null);
+        }
+      }, 250);
+    };
+    input.type = "file";
+    input.accept = WORLDBUILDING_CATALOGUE_IMAGE_ACCEPT;
+    input.style.position = "fixed";
+    input.style.left = "-9999px";
+    input.style.top = "0";
+    input.addEventListener("change", () => {
+      const file = input.files?.[0] ?? null;
+      settle(file);
+    }, { once: true });
+    input.addEventListener("cancel", () => settle(null), { once: true });
+    document.body.append(input);
+    window.addEventListener("focus", handleWindowFocus);
+    input.click();
+  });
+}
+
+// Intent: keep catalogue image validation messages compact for icon-sized actions and RHS cards.
+function formatWorldbuildingCatalogueImageUploadError(errorCode) {
+  if (errorCode === "image-too-large") {
+    return `Choose an image under ${Math.round(WORLDBUILDING_CATALOGUE_IMAGE_MAX_BYTES / (1024 * 1024))} MB.`;
+  }
+
+  if (errorCode === "image-empty") {
+    return "Choose a non-empty image file for the catalogue item.";
+  }
+
+  return "Choose a PNG, JPG, WebP, or GIF image for the catalogue item.";
+}
+
+function resolveWorldbuildingCatalogueActionItem(target = null) {
+  const element = target instanceof HTMLElement
+    ? target
+    : null;
+  const detail = element?.closest("[data-worldbuilding-catalogue-detail]") ?? null;
+  return {
+    itemId: String(
+      element?.dataset?.worldbuildingCatalogueItemId ??
+      detail?.dataset?.worldbuildingCatalogueDetailItemId ??
+      "",
+    ).trim(),
+    itemKind: String(
+      element?.dataset?.worldbuildingCatalogueItemKind ??
+      detail?.dataset?.worldbuildingCatalogueDetailItemKind ??
+      "",
+    ).trim(),
+  };
+}
+
+function clearWorldbuildingCatalogueEditState() {
+  state.worldbuildingEditingCatalogueItemId = "";
+  state.worldbuildingEditingCatalogueItemKind = "";
+}
+
+// Intent: let authors reposition the catalogue inspector and remember the preferred floating bounds.
+function beginWorldbuildingCatalogueDrag(handle, event) {
+  if (!(handle instanceof HTMLElement) || event?.button !== 0 || !state.worldbuildingCatalogueCategoryId) {
+    return;
+  }
+
+  const catalogue = handle.closest("[data-worldbuilding-catalogue]");
+  if (!(catalogue instanceof HTMLElement)) {
+    return;
+  }
+
+  const rect = catalogue.getBoundingClientRect();
+  const pointerX = Number(event.clientX);
+  const pointerY = Number(event.clientY);
+  if (!Number.isFinite(pointerX) || !Number.isFinite(pointerY)) {
+    return;
+  }
+
+  worldbuildingCatalogueDragState = {
+    pointerId: Number(event.pointerId),
+    handle,
+    width: Math.max(1, rect.width),
+    height: Math.max(1, rect.height),
+    offsetX: pointerX - rect.left,
+    offsetY: pointerY - rect.top,
+    startX: pointerX,
+    startY: pointerY,
+    hasMoved: false,
+  };
+  catalogue.classList.add("is-dragging");
+  if (Number.isFinite(Number(event.pointerId)) && typeof handle.setPointerCapture === "function") {
+    try {
+      handle.setPointerCapture(event.pointerId);
+    } catch {
+      // Pointer capture is best-effort; document-level listeners still carry the drag.
+    }
+  }
+  event.preventDefault();
+}
+
+// Intent: let authors resize the catalogue inspector while preserving catalogue data as read-only.
+function beginWorldbuildingCatalogueResize(handle, event) {
+  if (!(handle instanceof HTMLElement) || event?.button !== 0 || !state.worldbuildingCatalogueCategoryId) {
+    return;
+  }
+
+  const catalogue = handle.closest("[data-worldbuilding-catalogue]");
+  if (!(catalogue instanceof HTMLElement)) {
+    return;
+  }
+
+  const rect = catalogue.getBoundingClientRect();
+  const pointerX = Number(event.clientX);
+  const pointerY = Number(event.clientY);
+  if (!Number.isFinite(pointerX) || !Number.isFinite(pointerY)) {
+    return;
+  }
+
+  worldbuildingCatalogueResizeState = {
+    pointerId: Number(event.pointerId),
+    handle,
+    left: Math.round(rect.left),
+    top: Math.round(rect.top),
+    width: Math.max(1, rect.width),
+    height: Math.max(1, rect.height),
+    startX: pointerX,
+    startY: pointerY,
+    hasMoved: false,
+  };
+  catalogue.classList.add("is-resizing");
+  if (Number.isFinite(Number(event.pointerId)) && typeof handle.setPointerCapture === "function") {
+    try {
+      handle.setPointerCapture(event.pointerId);
+    } catch {
+      // Pointer capture is best-effort; document-level listeners still carry the resize.
+    }
+  }
+  event.preventDefault();
+}
+
+function handleWorldbuildingCatalogueDragPointerMove(event) {
+  if (handleWorldbuildingCatalogueResizePointerMove(event)) {
+    return;
+  }
+
+  if (!worldbuildingCatalogueDragState || !state.worldbuildingCatalogueCategoryId) {
+    return;
+  }
+
+  const expectedPointerId = Number(worldbuildingCatalogueDragState.pointerId);
+  const pointerId = Number(event.pointerId);
+  if (Number.isFinite(expectedPointerId) && Number.isFinite(pointerId) && expectedPointerId !== pointerId) {
+    return;
+  }
+
+  const pointerX = Number(event.clientX);
+  const pointerY = Number(event.clientY);
+  if (!Number.isFinite(pointerX) || !Number.isFinite(pointerY)) {
+    return;
+  }
+
+  if (
+    Math.abs(pointerX - worldbuildingCatalogueDragState.startX) > 2 ||
+    Math.abs(pointerY - worldbuildingCatalogueDragState.startY) > 2
+  ) {
+    worldbuildingCatalogueDragState.hasMoved = true;
+  }
+
+  const nextBounds = clampWorldbuildingCatalogueBounds({
+    left: pointerX - worldbuildingCatalogueDragState.offsetX,
+    top: pointerY - worldbuildingCatalogueDragState.offsetY,
+    width: worldbuildingCatalogueDragState.width,
+    height: worldbuildingCatalogueDragState.height,
+  }, getWorldbuildingCatalogueViewport());
+  state.worldbuildingCatalogueBounds = nextBounds;
+  state.worldbuildingCataloguePosition = { x: nextBounds.left, y: nextBounds.top };
+  applyWorldbuildingCataloguePosition(state.worldbuildingCataloguePosition, nextBounds);
+  event.preventDefault();
+}
+
+function handleWorldbuildingCatalogueResizePointerMove(event) {
+  if (!worldbuildingCatalogueResizeState || !state.worldbuildingCatalogueCategoryId) {
+    return false;
+  }
+
+  const expectedPointerId = Number(worldbuildingCatalogueResizeState.pointerId);
+  const pointerId = Number(event.pointerId);
+  if (Number.isFinite(expectedPointerId) && Number.isFinite(pointerId) && expectedPointerId !== pointerId) {
+    return true;
+  }
+
+  const pointerX = Number(event.clientX);
+  const pointerY = Number(event.clientY);
+  if (!Number.isFinite(pointerX) || !Number.isFinite(pointerY)) {
+    return true;
+  }
+
+  const deltaX = pointerX - worldbuildingCatalogueResizeState.startX;
+  const deltaY = pointerY - worldbuildingCatalogueResizeState.startY;
+  if (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2) {
+    worldbuildingCatalogueResizeState.hasMoved = true;
+  }
+
+  const nextBounds = clampWorldbuildingCatalogueBounds({
+    left: worldbuildingCatalogueResizeState.left,
+    top: worldbuildingCatalogueResizeState.top,
+    width: worldbuildingCatalogueResizeState.width + deltaX,
+    height: worldbuildingCatalogueResizeState.height + deltaY,
+  }, getWorldbuildingCatalogueViewport());
+  state.worldbuildingCatalogueBounds = nextBounds;
+  state.worldbuildingCataloguePosition = { x: nextBounds.left, y: nextBounds.top };
+  applyWorldbuildingCataloguePosition(state.worldbuildingCataloguePosition, nextBounds);
+  event.preventDefault();
+  return true;
+}
+
+function endWorldbuildingCatalogueDrag(event) {
+  if (endWorldbuildingCatalogueResize(event)) {
+    return;
+  }
+
+  if (!worldbuildingCatalogueDragState) {
+    return;
+  }
+
+  const dragState = worldbuildingCatalogueDragState;
+  worldbuildingCatalogueDragState = null;
+  if (dragState.hasMoved) {
+    worldbuildingCatalogueSuppressNextClick = true;
+  }
+  const catalogue = document.querySelector("[data-worldbuilding-catalogue]");
+  if (catalogue instanceof HTMLElement) {
+    catalogue.classList.remove("is-dragging");
+  }
+  if (
+    dragState.handle instanceof HTMLElement &&
+    Number.isFinite(Number(event?.pointerId)) &&
+    typeof dragState.handle.releasePointerCapture === "function"
+  ) {
+    try {
+      dragState.handle.releasePointerCapture(event.pointerId);
+    } catch {
+      // Pointer capture may already be released by the browser.
+    }
+  }
+
+  if (state.worldbuildingCatalogueCategoryId && state.worldbuildingCataloguePosition) {
+    if (dragState.hasMoved) {
+      persistWorldbuildingCatalogueBoundsPreference({
+        dirtyReason: "worldbuilding-catalogue-moved",
+        source: "endWorldbuildingCatalogueDrag",
+      });
+    }
+    uiEventDispatcherLog.info("user-action", "worldbuilding.catalogue.dragged", "Repositioned Dream Scaping category catalogue.", {
+      categoryId: state.worldbuildingCatalogueCategoryId,
+      x: state.worldbuildingCataloguePosition.x,
+      y: state.worldbuildingCataloguePosition.y,
+    });
+  }
+}
+
+function endWorldbuildingCatalogueResize(event) {
+  if (!worldbuildingCatalogueResizeState) {
+    return false;
+  }
+
+  const resizeState = worldbuildingCatalogueResizeState;
+  worldbuildingCatalogueResizeState = null;
+  if (resizeState.hasMoved) {
+    worldbuildingCatalogueSuppressNextClick = true;
+  }
+  const catalogue = document.querySelector("[data-worldbuilding-catalogue]");
+  if (catalogue instanceof HTMLElement) {
+    catalogue.classList.remove("is-resizing");
+  }
+  if (
+    resizeState.handle instanceof HTMLElement &&
+    Number.isFinite(Number(event?.pointerId)) &&
+    typeof resizeState.handle.releasePointerCapture === "function"
+  ) {
+    try {
+      resizeState.handle.releasePointerCapture(event.pointerId);
+    } catch {
+      // Pointer capture may already be released by the browser.
+    }
+  }
+
+  const bounds = getCurrentWorldbuildingCatalogueBounds();
+  if (state.worldbuildingCatalogueCategoryId && bounds) {
+    state.worldbuildingCatalogueBounds = bounds;
+    state.worldbuildingCataloguePosition = { x: bounds.left, y: bounds.top };
+    if (resizeState.hasMoved) {
+      persistWorldbuildingCatalogueBoundsPreference({
+        dirtyReason: "worldbuilding-catalogue-resized",
+        source: "endWorldbuildingCatalogueResize",
+      });
+    }
+    uiEventDispatcherLog.info("user-action", "worldbuilding.catalogue.resized", "Resized Dream Scaping category catalogue.", {
+      categoryId: state.worldbuildingCatalogueCategoryId,
+      width: bounds.width,
+      height: bounds.height,
+    });
+  }
+  return true;
+}
+
+function applyWorldbuildingCataloguePosition(position, bounds = null) {
+  const catalogue = document.querySelector("[data-worldbuilding-catalogue]");
+  if (!(catalogue instanceof HTMLElement)) {
+    return;
+  }
+
+  const safeBounds = normalizeWorldbuildingCatalogueBounds(bounds, {
+    viewport: getWorldbuildingCatalogueViewport(),
+  });
+  if (safeBounds) {
+    applyWorldbuildingCatalogueBoundsToElement(catalogue, safeBounds);
+    return;
+  }
+
+  const positionBounds = resolveWorldbuildingCataloguePositionBounds({
+    width: catalogue.getBoundingClientRect().width,
+    height: catalogue.getBoundingClientRect().height,
+  });
+  const safePosition = clampWorldbuildingCataloguePosition(position, positionBounds);
+  catalogue.style.setProperty("--worldbuilding-catalogue-max-height", `${Math.max(220, positionBounds.maxHeight)}px`);
+  catalogue.style.removeProperty("width");
+  catalogue.style.removeProperty("height");
+  catalogue.style.left = `${safePosition.x}px`;
+  catalogue.style.top = `${safePosition.y}px`;
+}
+
+function syncWorldbuildingCataloguePositionToViewport() {
+  if (!state.worldbuildingCatalogueCategoryId) {
+    return;
+  }
+
+  const catalogue = document.querySelector("[data-worldbuilding-catalogue]");
+  if (!(catalogue instanceof HTMLElement)) {
+    return;
+  }
+
+  const rect = catalogue.getBoundingClientRect();
+  const safeBounds = normalizeWorldbuildingCatalogueBounds(state.worldbuildingCatalogueBounds, {
+    viewport: getWorldbuildingCatalogueViewport(),
+  });
+  if (safeBounds) {
+    state.worldbuildingCatalogueBounds = safeBounds;
+    state.worldbuildingCataloguePosition = { x: safeBounds.left, y: safeBounds.top };
+    applyWorldbuildingCatalogueBoundsToElement(catalogue, safeBounds);
+    return;
+  }
+
+  const positionBounds = resolveWorldbuildingCataloguePositionBounds({
+    width: rect.width,
+    height: rect.height,
+  });
+  const nextPosition = clampWorldbuildingCataloguePosition(
+    state.worldbuildingCataloguePosition ?? { x: rect.left, y: rect.top },
+    positionBounds,
+  );
+  state.worldbuildingCataloguePosition = nextPosition;
+  catalogue.style.setProperty("--worldbuilding-catalogue-max-height", `${Math.max(220, positionBounds.maxHeight)}px`);
+  catalogue.style.removeProperty("width");
+  catalogue.style.removeProperty("height");
+  catalogue.style.left = `${nextPosition.x}px`;
+  catalogue.style.top = `${nextPosition.y}px`;
+}
+
+function applyWorldbuildingCatalogueBoundsToElement(catalogue, bounds) {
+  if (!(catalogue instanceof HTMLElement)) {
+    return;
+  }
+
+  catalogue.style.setProperty("--worldbuilding-catalogue-max-height", `${Math.max(220, bounds.height)}px`);
+  catalogue.style.left = `${bounds.left}px`;
+  catalogue.style.top = `${bounds.top}px`;
+  catalogue.style.width = `${bounds.width}px`;
+  catalogue.style.height = `${bounds.height}px`;
+}
+
+function getCurrentWorldbuildingCatalogueBounds() {
+  const catalogue = document.querySelector("[data-worldbuilding-catalogue]");
+  if (catalogue instanceof HTMLElement) {
+    const rect = catalogue.getBoundingClientRect();
+    return normalizeWorldbuildingCatalogueBounds({
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
+    }, {
+      viewport: getWorldbuildingCatalogueViewport(),
+    });
+  }
+
+  return normalizeWorldbuildingCatalogueBounds(state.worldbuildingCatalogueBounds, {
+    viewport: getWorldbuildingCatalogueViewport(),
+  });
+}
+
+function persistWorldbuildingCatalogueBoundsPreference(options = {}) {
+  const bounds = getCurrentWorldbuildingCatalogueBounds();
+  if (!bounds) {
+    return;
+  }
+
+  const previousBounds = JSON.stringify(normalizeWorldbuildingCatalogueBounds(state.editorPrefs?.worldbuildingCatalogueBounds));
+  state.worldbuildingCatalogueBounds = bounds;
+  state.worldbuildingCataloguePosition = { x: bounds.left, y: bounds.top };
+  state.editorPrefs = normalizeEditorPrefs({
+    ...state.editorPrefs,
+    worldbuildingCatalogueBounds: bounds,
+  });
+  const nextBounds = JSON.stringify(state.editorPrefs.worldbuildingCatalogueBounds);
+  if (previousBounds === nextBounds) {
+    return;
+  }
+
+  writeStoredJson(EDITOR_PREFS_KEY, state.editorPrefs);
+  persistCurrentProjectRecord({
+    domain: "app-settings",
+    dirtyReason: options.dirtyReason ?? "worldbuilding-catalogue-layout-updated",
+    source: options.source ?? "persistWorldbuildingCatalogueBoundsPreference",
+  });
+}
+
+// Intent: anchor click-opened catalogues to the pointer while keeping keyboard activation near the source icon.
+function resolveWorldbuildingCatalogueOpenPosition(target = null, event = null) {
+  const pointerX = Number(event?.clientX);
+  const pointerY = Number(event?.clientY);
+  if (Number.isFinite(pointerX) && Number.isFinite(pointerY) && (pointerX > 0 || pointerY > 0)) {
+    return { x: pointerX, y: pointerY };
+  }
+
+  const categoryTarget = target instanceof HTMLElement
+    ? target.closest("[data-worldbuilding-category-id]")
+    : null;
+  if (categoryTarget instanceof HTMLElement) {
+    const rect = categoryTarget.getBoundingClientRect();
+    return { x: rect.left, y: rect.top };
+  }
+
+  return null;
+}
+
+// Intent: detect gestures on the compact Dream Scaping category icon strip only.
+function getWorldbuildingCategoryContextFromTarget(target) {
+  const categoryTarget = target instanceof Element
+    ? target.closest("[data-worldbuilding-category-id]")
+    : null;
+  if (!(categoryTarget instanceof HTMLElement) || !categoryTarget.closest("[data-worldbuilding-studio]")) {
+    return null;
+  }
+
+  const categoryId = String(categoryTarget.dataset.worldbuildingCategoryId ?? "").trim();
+  return categoryId ? { categoryId } : null;
+}
+
+function getWorldbuildingCatalogueViewport() {
+  return {
+    width: window.innerWidth,
+    height: window.innerHeight,
+    bottomBoundary: resolveWorldbuildingCatalogueToolbarBoundary(),
+  };
+}
+
+function normalizeWorldSpineContextIdList(value = []) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item ?? "").trim()).filter(Boolean);
+  }
+
+  const text = String(value ?? "").trim();
+  if (!text) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) {
+      return parsed.map((item) => String(item ?? "").trim()).filter(Boolean);
+    }
+  } catch {
+    // Intent: tolerate legacy delimiter-encoded datasets while new row labels use JSON arrays.
+  }
+
+  return text.split(/[|,]/).map((item) => item.trim()).filter(Boolean);
+}
+
+function clampWorldbuildingCataloguePosition(position = null, bounds = {}) {
+  const resolvedBounds = resolveWorldbuildingCataloguePositionBounds(bounds);
+  const width = resolvedBounds.width;
+  const height = Math.min(resolvedBounds.height, resolvedBounds.maxHeight);
+  const rawX = Number(position?.x);
+  const rawY = Number(position?.y);
+  const maxX = Math.max(8, window.innerWidth - width - 8);
+  const maxY = Math.max(8, resolvedBounds.bottomBoundary - height);
+  return {
+    x: Math.max(8, Math.min(Number.isFinite(rawX) ? Math.round(rawX) : maxX, maxX)),
+    y: Math.max(8, Math.min(Number.isFinite(rawY) ? Math.round(rawY) : 120, maxY)),
+  };
+}
+
+// Intent: keep the catalogue inspector above the Dream Scaping catalogue icon row instead of covering its source controls.
+function resolveWorldbuildingCataloguePositionBounds(bounds = {}) {
+  const width = Math.max(1, Number(bounds?.width) || 340);
+  const requestedHeight = Math.max(1, Number(bounds?.height) || 420);
+  const toolbarBoundary = resolveWorldbuildingCatalogueToolbarBoundary();
+  const viewportBoundary = window.innerHeight - 8;
+  const bottomBoundary = Math.max(228, Math.min(viewportBoundary, toolbarBoundary));
+  const maxHeight = Math.max(120, bottomBoundary - 8);
+  return {
+    width,
+    height: Math.min(requestedHeight, maxHeight),
+    bottomBoundary,
+    maxHeight,
+  };
+}
+
+function resolveWorldbuildingCatalogueToolbarBoundary() {
+  const toolbar = document.querySelector("[data-worldbuilding-studio] .worldbuilding-studio__toolbar");
+  if (!(toolbar instanceof HTMLElement)) {
+    return window.innerHeight - 8;
+  }
+
+  const rect = toolbar.getBoundingClientRect();
+  const boundary = Number(rect.top);
+  return Number.isFinite(boundary) && boundary > 0
+    ? Math.max(228, boundary - 10)
+    : window.innerHeight - 8;
+}
+
+// Intent: switch Dream Scaping worldbuilding forms without coupling category logic to the shell.
+function selectWorldbuildingStudioCategory(categoryId = "") {
+  state.worldSpineInsertionContext = null;
+  closeWorldbuildingCatalogue({ renderAfter: false });
+  clearWorldbuildingCatalogueEditState();
+  state.worldbuildingStudioCategoryId = String(categoryId ?? "").trim() || DEFAULT_WORLDBUILDING_CATEGORY_ID;
+  state.worldbuildingStudioStatus = "";
+  renderDreamScapingPanel();
+  window.requestAnimationFrame(() => {
+    syncWorldbuildingEntryPopoverPosition();
+    const firstField = document.querySelector("[data-worldbuilding-studio-form] [data-worldbuilding-field]");
+    if (firstField instanceof HTMLInputElement || firstField instanceof HTMLTextAreaElement) {
+      firstField.focus();
+    }
+  });
+}
+
+// Intent: escape the blurred Dream Scaping panel so fixed form positioning uses the viewport/app shell.
+function syncWorldbuildingEntryPopoverPortal() {
+  const dreamSlot = document.querySelector("#dream-slot");
+  const sourcePopover = dreamSlot instanceof HTMLElement
+    ? dreamSlot.querySelector("[data-worldbuilding-entry-popover]")
+    : null;
+  const existingPortal = document.querySelector("[data-worldbuilding-entry-popover-portal]");
+
+  if (!(sourcePopover instanceof HTMLElement)) {
+    if (existingPortal instanceof HTMLElement) {
+      existingPortal.replaceChildren();
+    }
+    return;
+  }
+
+  const portal = existingPortal instanceof HTMLElement
+    ? existingPortal
+    : createWorldbuildingEntryPopoverPortal();
+  portal.replaceChildren(sourcePopover);
+}
+
+// Intent: move the context catalogue out of the Dream Scaping header lane so pointer coordinates remain viewport-based.
+function syncWorldbuildingCataloguePortal() {
+  const dreamSlot = document.querySelector("#dream-slot");
+  const sourceCatalogue = dreamSlot instanceof HTMLElement
+    ? dreamSlot.querySelector("[data-worldbuilding-catalogue]")
+    : null;
+  const existingPortal = document.querySelector("[data-worldbuilding-catalogue-portal]");
+
+  if (!(sourceCatalogue instanceof HTMLElement)) {
+    if (existingPortal instanceof HTMLElement) {
+      existingPortal.replaceChildren();
+    }
+    return;
+  }
+
+  const portal = existingPortal instanceof HTMLElement
+    ? existingPortal
+    : createWorldbuildingCataloguePortal();
+  portal.replaceChildren(sourceCatalogue);
+}
+
+// Intent: keep the transient World Spine studio dialog out of feature panels that create fixed-position containing blocks.
+function createWorldbuildingEntryPopoverPortal() {
+  const portal = document.createElement("div");
+  portal.setAttribute("data-worldbuilding-entry-popover-portal", "");
+  document.body.appendChild(portal);
+  return portal;
+}
+
+// Intent: keep the transient catalogue anchored to the pointer position after render.
+function createWorldbuildingCataloguePortal() {
+  const portal = document.createElement("div");
+  portal.setAttribute("data-worldbuilding-catalogue-portal", "");
+  document.body.appendChild(portal);
+  return portal;
+}
+
+// Intent: keep the World Spine studio form centered over the visible app shell instead of the Dream Scaping lane.
+function syncWorldbuildingEntryPopoverPosition() {
+  const popover = document.querySelector("[data-worldbuilding-entry-popover]");
+  if (!(popover instanceof HTMLElement)) {
+    return;
+  }
+
+  const appRoot = document.querySelector("#app");
+  const appRect = appRoot instanceof HTMLElement ? appRoot.getBoundingClientRect() : null;
+  const hasAppRect = Boolean(
+    appRect &&
+    Number.isFinite(appRect.left) &&
+    Number.isFinite(appRect.top) &&
+    Number.isFinite(appRect.right) &&
+    Number.isFinite(appRect.bottom) &&
+    Number.isFinite(appRect.width) &&
+    Number.isFinite(appRect.height) &&
+    appRect.width > 0 &&
+    appRect.height > 0,
+  );
+  const visibleLeft = hasAppRect ? Math.max(0, appRect.left) : 0;
+  const visibleTop = hasAppRect ? Math.max(0, appRect.top) : 0;
+  const visibleRight = hasAppRect ? Math.min(window.innerWidth, appRect.right) : window.innerWidth;
+  const visibleBottom = hasAppRect ? Math.min(window.innerHeight, appRect.bottom) : window.innerHeight;
+  const measuredWidth = Math.max(0, visibleRight - visibleLeft);
+  const measuredHeight = Math.max(0, visibleBottom - visibleTop);
+  const width = measuredWidth > 0 ? measuredWidth : window.innerWidth;
+  const height = measuredHeight > 0 ? measuredHeight : window.innerHeight;
+  const left = measuredWidth > 0 ? visibleLeft : 0;
+  const top = measuredHeight > 0 ? visibleTop : 0;
+  const centerX = Math.round(left + (width / 2));
+  const centerY = Math.round(top + (height / 2));
+
+  popover.style.setProperty("--worldbuilding-entry-center-x", `${centerX}px`);
+  popover.style.setProperty("--worldbuilding-entry-center-y", `${centerY}px`);
+  popover.style.setProperty("--worldbuilding-entry-viewport-width", `${Math.max(0, Math.round(width))}px`);
+  popover.style.setProperty("--worldbuilding-entry-viewport-height", `${Math.max(0, Math.round(height))}px`);
+}
+
+// Intent: dismiss the World Spine entity form without mutating world data.
+function closeWorldbuildingStudioForm() {
+  if (!state.worldbuildingStudioCategoryId) {
+    return;
+  }
+
+  state.worldSpineInsertionContext = null;
+  state.worldbuildingStudioCategoryId = "";
+  clearWorldbuildingCatalogueEditState();
+  renderDreamScapingPanel();
+}
+
+// Intent: let the custom worldbuilding form grow structured field definitions before persistence.
+function addWorldbuildingCustomField(target) {
+  const fieldGroup = target instanceof HTMLElement
+    ? target.closest("[data-worldbuilding-field-list-group]")
+    : null;
+  const rowContainer = fieldGroup instanceof HTMLElement
+    ? fieldGroup.querySelector("[data-worldbuilding-field-list-rows]")
+    : null;
+  if (!(fieldGroup instanceof HTMLElement) || !(rowContainer instanceof HTMLElement)) {
+    return;
+  }
+
+  const fieldKey = String(fieldGroup.dataset.worldbuildingFieldListGroup ?? "customFieldLabels").trim() || "customFieldLabels";
+  const nextIndex = rowContainer.querySelectorAll("[data-worldbuilding-field-list]").length + 1;
+  const row = document.createElement("label");
+  row.className = "worldbuilding-field worldbuilding-field-list__row";
+
+  const label = document.createElement("span");
+  label.textContent = `Field ${nextIndex}`;
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.dataset.worldbuildingFieldList = fieldKey;
+  input.placeholder = "Enter field name";
+
+  row.append(label, input);
+  rowContainer.append(row);
+  syncWorldbuildingEntryPopoverPosition();
+  input.focus();
+}
+
+// Intent: save Dream Scaping worldbuilding records as structured world data before any timeline placement.
+function saveWorldbuildingStudioItem() {
+  const form = document.querySelector("[data-worldbuilding-studio-form]");
+  if (!(form instanceof HTMLFormElement)) {
+    return;
+  }
+
+  const categoryId = String(form.dataset.worldbuildingCategoryId ?? state.worldbuildingStudioCategoryId ?? "").trim();
+  const existingItemId = String(form.dataset.worldbuildingEditItemId ?? state.worldbuildingEditingCatalogueItemId ?? "").trim();
+  const existingItemKind = String(form.dataset.worldbuildingEditItemKind ?? state.worldbuildingEditingCatalogueItemKind ?? "").trim();
+  const item = buildWorldbuildingItemFromFormValues({
+    categoryId,
+    values: collectWorldbuildingFormValues(form),
+    world: state.workspace?.world ?? {},
+    existingItemId,
+    existingItemKind,
+  });
+  if (item?.itemType === "missing") {
+    state.worldbuildingStudioStatus = "That catalogue item could not be found for editing.";
+    renderDreamScapingPanel();
+    return;
+  }
+
+  const isEditingCatalogueItem = item?.operation === "updated";
+  const historyBefore = captureWorldSpineHistorySnapshot();
+  const insertionContext = item?.eventDraft
+    ? normalizeWorldSpineMenuContext(state.worldSpineInsertionContext)
+    : null;
+  if (item?.eventDraft && insertionContext && !isEditingCatalogueItem) {
+    const itemForPlacement = applyWorldSpineInsertionLocationToEventDraftItem(item, insertionContext.locationLabel);
+    const worldWithDraft = applyWorldbuildingItemToWorld(state.workspace?.world ?? {}, itemForPlacement);
+    const placement = dropWorldbuildingEventDraftOnWorldSpine(worldWithDraft, itemForPlacement.eventDraft.id, {
+      dropIndex: insertionContext.dropIndex,
+      spineId: insertionContext.spineId,
+      locationLabel: insertionContext.locationLabel,
+    });
+    state.worldSpineInsertionContext = null;
+    state.worldbuildingStudioCategoryId = "";
+    clearWorldbuildingCatalogueEditState();
+
+    if (!placement.node) {
+      state.workspace.world = worldWithDraft;
+      state.worldbuildingStudioStatus = "That event could not be placed on the selected World Spine tier.";
+      renderDreamScapingPanel();
+      renderWorldPanel();
+      return;
+    }
+
+    const scenePlacement = createWorldSpineEventScenePlacement({
+      world: placement.world,
+      eventNode: placement.node,
+      scenes: state.scenes,
+      structureDrafts: state.structureDrafts,
+      insertionContext,
+      now: new Date(),
+    });
+    state.workspace.world = scenePlacement.world;
+    const selectedPlacementNode = scenePlacement.node ?? placement.node;
+    if (scenePlacement.changed && scenePlacement.sceneDraft) {
+      state.structureDrafts = scenePlacement.structureDrafts;
+      writeStoredJson(EDITOR_STRUCTURE_KEY, state.structureDrafts);
+      refreshScenes();
+      state.selectedIssueId = null;
+      state.selectedSceneId = scenePlacement.sceneDraft.sceneId;
+      state.activeEditorSceneId = scenePlacement.sceneDraft.sceneId;
+      state.selectedBlockId = scenePlacement.sceneDraft.blockId;
+    }
+    setWorldSpineSelectedNodeId(selectedPlacementNode.id);
+    state.worldSpineScrollTargetNodeId = selectedPlacementNode.id;
+    const locationSuffix = insertionContext.locationLabel ? ` / ${insertionContext.locationLabel}` : "";
+    const sceneSuffix = scenePlacement.changed ? " and added a manuscript scene" : "";
+    state.worldbuildingStudioStatus = `"${selectedPlacementNode.label}" inserted on ${insertionContext.spineLabel}${locationSuffix}${sceneSuffix}.`;
+    persistCurrentProjectRecord({
+      domain: "world",
+      dirtyReason: "worldbuilding-event-inserted-on-spine",
+      source: "saveWorldbuildingStudioItem.insertEventHere",
+      flushProjectFileAutosave: true,
+    });
+    pushWorldSpineHistoryChange(historyBefore, {
+      label: "Inserted World Spine event",
+      dirtyReason: "worldbuilding-event-inserted-on-spine",
+      source: "saveWorldbuildingStudioItem.insertEventHere",
+    });
+    playMilestoneSoundEffect(MILESTONE_SOUND_EFFECT_TYPES.CATALOGUE_ITEM, {
+      source: "saveWorldbuildingStudioItem.insertEventHere",
+    });
+    renderDreamScapingPanel();
+    renderWorldPanel();
+    return;
+  }
+
+  state.workspace.world = applyWorldbuildingItemToWorld(state.workspace?.world ?? {}, item);
+  state.worldSpineInsertionContext = null;
+  state.worldbuildingStudioCategoryId = "";
+  clearWorldbuildingCatalogueEditState();
+  state.worldbuildingStudioStatus = getWorldbuildingStudioSaveStatus(item);
+  const dirtyReason = getWorldbuildingStudioDirtyReason(item);
+  const historyLabel = getWorldbuildingStudioHistoryLabel(item);
+  persistCurrentProjectRecord({
+    domain: "world",
+    dirtyReason,
+    source: "saveWorldbuildingStudioItem",
+  });
+  pushWorldSpineHistoryChange(historyBefore, {
+    label: historyLabel,
+    dirtyReason,
+    source: "saveWorldbuildingStudioItem",
+  });
+  if ((item?.entity || item?.eventDraft || item?.customCategory) && !isEditingCatalogueItem) {
+    playMilestoneSoundEffect(MILESTONE_SOUND_EFFECT_TYPES.CATALOGUE_ITEM, {
+      source: "saveWorldbuildingStudioItem",
+    });
+  }
+  renderDreamScapingPanel();
+  renderWorldPanel();
+}
+
+// Intent: default inserted event drafts to the clicked World Spine location row when the Location field is blank.
+function applyWorldSpineInsertionLocationToEventDraftItem(item = {}, locationLabel = "") {
+  const eventDraft = item?.eventDraft && typeof item.eventDraft === "object" ? item.eventDraft : null;
+  const normalizedLocation = String(locationLabel ?? "").trim();
+  const existingLocation = String(eventDraft?.location ?? eventDraft?.metadata?.location ?? "").trim();
+  if (!eventDraft || !normalizedLocation || existingLocation) {
+    return item;
+  }
+
+  return {
+    ...item,
+    eventDraft: {
+      ...eventDraft,
+      location: normalizedLocation,
+      metadata: {
+        ...(eventDraft.metadata && typeof eventDraft.metadata === "object" ? eventDraft.metadata : {}),
+        location: normalizedLocation,
+      },
+    },
+  };
+}
+
+// Intent: show a node-shaped preview only while a crafted Dream Scaping event is being placed on the timeline.
+function createWorldbuildingEventDraftDragImage(draftId, sourceElement, dragEvent) {
+  if (!dragEvent.dataTransfer) {
+    return null;
+  }
+
+  const html = renderWorldbuildingEventDraftPlacementPreviewHTML(state.workspace?.world ?? {}, draftId).trim();
+  if (!html) {
+    return null;
+  }
+
+  const template = document.createElement("template");
+  template.innerHTML = html;
+  const dragImage = template.content.firstElementChild;
+  if (!(dragImage instanceof HTMLElement)) {
+    return null;
+  }
+
+  const sourceRect = sourceElement.getBoundingClientRect();
+  const width = 172;
+  const height = 58;
+  dragImage.style.width = `${width}px`;
+  dragImage.style.height = `${height}px`;
+  dragImage.style.position = "fixed";
+  dragImage.style.top = "-1000px";
+  dragImage.style.left = "-1000px";
+  dragImage.style.pointerEvents = "none";
+  dragImage.style.margin = "0";
+  document.body.appendChild(dragImage);
+  dragEvent.dataTransfer.setDragImage(
+    dragImage,
+    Math.max(0, Math.round(width / 2) || Math.round(dragEvent.clientX - sourceRect.left)),
+    Math.max(0, Math.round(height / 2) || Math.round(dragEvent.clientY - sourceRect.top)),
+  );
+  return dragImage;
+}
+
+// Intent: clear event-placement drag chrome without mutating the drafted event catalogue.
+function clearWorldbuildingEventDraftDragState() {
+  worldbuildingEventDraftDragState?.dragImage?.remove();
+  worldbuildingEventDraftDragState?.sourceElement?.classList.remove("is-dragging");
+  worldbuildingEventDraftDragState = null;
+  state.worldbuildingDraggedEventDraftId = "";
+}
+
+// Intent: let crafted Dream Scaping events travel as explicit drag payloads into the timeline canvas.
+function handleWorldbuildingStudioDragStart(event) {
+  const target = event.target instanceof Element
+    ? event.target.closest("[data-worldbuilding-event-draft-id]")
+    : null;
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+
+  const draftId = String(target.dataset.worldbuildingEventDraftId ?? "").trim();
+  if (!draftId) {
+    return;
+  }
+
+  clearWorldbuildingEventDraftDragState();
+  state.worldbuildingDraggedEventDraftId = draftId;
+  const dragImage = createWorldbuildingEventDraftDragImage(draftId, target, event);
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", draftId);
+    event.dataTransfer.setData("application/x-abe-worldbuilding-event-draft", draftId);
+  }
+  worldbuildingEventDraftDragState = {
+    draftId,
+    sourceElement: target,
+    dragImage,
+  };
+  target.classList.add("is-dragging");
+}
+
+// Intent: keep timeline drag acceptance limited to explicit World Spine drop slots.
+function handleWorldSpineTimelineDragOver(event) {
+  const zone = event.target instanceof Element
+    ? event.target.closest("[data-world-spine-drop-index]")
+    : null;
+  if (!(zone instanceof HTMLElement) || !state.worldbuildingDraggedEventDraftId) {
+    return;
+  }
+
+  event.preventDefault();
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = "move";
+  }
+}
+
+// Intent: place a crafted event before, between, or after timeline nodes and persist it as a world node.
+function handleWorldSpineTimelineDrop(event) {
+  const zone = event.target instanceof Element
+    ? event.target.closest("[data-world-spine-drop-index]")
+    : null;
+  if (!(zone instanceof HTMLElement)) {
+    return;
+  }
+
+  const draftId = String(
+    event.dataTransfer?.getData("application/x-abe-worldbuilding-event-draft") ||
+    event.dataTransfer?.getData("text/plain") ||
+    state.worldbuildingDraggedEventDraftId ||
+    "",
+  ).trim();
+  if (!draftId) {
+    return;
+  }
+
+  event.preventDefault();
+  const historyBefore = captureWorldSpineHistorySnapshot();
+  const placement = dropWorldbuildingEventDraftOnWorldSpine(state.workspace?.world ?? {}, draftId, {
+    dropIndex: Number(zone.dataset.worldSpineDropIndex),
+    spineId: zone.dataset.worldSpineDropSpineId,
+    locationLabel: zone.dataset.worldSpineDropLocationLabel,
+  });
+  clearWorldbuildingEventDraftDragState();
+
+  if (!placement.node) {
+    state.worldbuildingStudioStatus = "That event draft is no longer available.";
+    renderDreamScapingPanel();
+    return;
+  }
+
+  state.workspace.world = placement.world;
+  setWorldSpineSelectedNodeId(placement.node.id);
+  state.worldSpineScrollTargetNodeId = placement.node.id;
+  state.worldbuildingStudioStatus = `"${placement.node.label}" placed on the World Spine.`;
+  persistCurrentProjectRecord({
+    domain: "world",
+    dirtyReason: "worldbuilding-event-draft-placed-on-spine",
+    source: "handleWorldSpineTimelineDrop",
+    flushProjectFileAutosave: true,
+  });
+  pushWorldSpineHistoryChange(historyBefore, {
+    label: "Placed event draft on World Spine",
+    dirtyReason: "worldbuilding-event-draft-placed-on-spine",
+    source: "handleWorldSpineTimelineDrop",
+  });
+  renderDreamScapingPanel();
+  renderWorldPanel();
+}
+
+// Intent: clear transient drag styling without touching the persisted crafted event list.
+function handleWorldbuildingStudioDragEnd(event) {
+  const target = event.target instanceof Element
+    ? event.target.closest("[data-worldbuilding-event-draft-id]")
+    : null;
+  if (target instanceof HTMLElement && target !== worldbuildingEventDraftDragState?.sourceElement) {
+    target.classList.remove("is-dragging");
+  }
+  clearWorldbuildingEventDraftDragState();
+}
+
+function getWorldbuildingStudioSaveStatus(item) {
+  if (item?.operation === "updated" && item?.eventDraft) {
+    return `"${item.eventDraft.title}" updated in the event draft catalogue.`;
+  }
+  if (item?.operation === "updated" && item?.entity) {
+    return `"${item.entity.name}" updated in the world catalogue.`;
+  }
+  if (item?.eventDraft) {
+    return `"${item.eventDraft.title}" is ready to drag onto the World Spine.`;
+  }
+  if (item?.customCategory && item?.entity) {
+    return `${item.customCategory.label} category created with "${item.entity.name}".`;
+  }
+  if (item?.entity) {
+    return `"${item.entity.name}" added to the world catalogue.`;
+  }
+  return "Worldbuilding item saved.";
+}
+
+function getWorldbuildingStudioDirtyReason(item) {
+  if (item?.operation === "updated") {
+    return item?.eventDraft
+      ? "worldbuilding-event-draft-updated"
+      : "worldbuilding-catalogue-item-updated";
+  }
+
+  if (item?.eventDraft) {
+    return "worldbuilding-event-draft-created";
+  }
+  if (item?.customCategory) {
+    return "worldbuilding-custom-category-created";
+  }
+  return "worldbuilding-catalogue-item-created";
+}
+
+function getWorldbuildingStudioHistoryLabel(item) {
+  if (item?.operation === "updated") {
+    return item?.eventDraft
+      ? "Updated World Spine event draft"
+      : "Updated World Spine catalogue item";
+  }
+
+  if (item?.eventDraft) {
+    return "Created World Spine event draft";
+  }
+  if (item?.customCategory) {
+    return "Created World Spine custom category";
+  }
+  return "Created World Spine catalogue item";
 }
 
 function hideSpellcheckContextMenu() {
@@ -9895,8 +21912,98 @@ function hideSpellcheckContextMenu() {
     return;
   }
 
+  clearSpellcheckHoverMenuHideTimer();
   state.spellcheckContextMenu = null;
   renderTaskContextMenu();
+}
+
+function handleSpellcheckHoverPointerMove(event) {
+  if (
+    (typeof PointerEvent !== "undefined" && !(event instanceof PointerEvent)) ||
+    event.pointerType === "touch" ||
+    event.buttons !== 0
+  ) {
+    return;
+  }
+
+  const target = event.target instanceof Element ? event.target : null;
+  const grammarCheckSuggestionTarget = target?.closest("[data-grammar-check-suggestion]");
+  if (grammarCheckSuggestionTarget instanceof HTMLElement) {
+    positionGrammarCheckSuggestionMenu(grammarCheckSuggestionTarget);
+    return;
+  }
+  if (target?.closest("[data-grammar-check-floating-suggestion-menu]")) {
+    return;
+  }
+  if (document.querySelector("[data-grammar-check-floating-suggestion-menu]")) {
+    hideGrammarCheckSuggestionMenu();
+  }
+
+  if (target?.closest("[data-spellcheck-menu]")) {
+    clearSpellcheckHoverMenuHideTimer();
+    return;
+  }
+
+  if (state.spellcheckContextMenu?.source === "contextmenu") {
+    return;
+  }
+
+  const editorContext = getEditorHoverContextFromEvent(event);
+  if (!editorContext) {
+    scheduleSpellcheckHoverMenuHide();
+    return;
+  }
+
+  const spellcheckContext = getSpellcheckHoverContextFromEvent(editorContext, event);
+  if (!spellcheckContext) {
+    scheduleSpellcheckHoverMenuHide();
+    return;
+  }
+
+  clearSpellcheckHoverMenuHideTimer();
+  if (isSameSpellcheckContextMenu(state.spellcheckContextMenu, spellcheckContext)) {
+    return;
+  }
+
+  openSpellcheckContextMenu(spellcheckContext, "hover");
+}
+
+function scheduleSpellcheckHoverMenuHide() {
+  if (state.spellcheckContextMenu?.source !== "hover" || spellcheckHoverMenuHideTimer !== null) {
+    return;
+  }
+
+  spellcheckHoverMenuHideTimer = window.setTimeout(() => {
+    spellcheckHoverMenuHideTimer = null;
+    if (state.spellcheckContextMenu?.source !== "hover") {
+      return;
+    }
+
+    state.spellcheckContextMenu = null;
+    renderTaskContextMenu();
+  }, 160);
+}
+
+function clearSpellcheckHoverMenuHideTimer() {
+  if (spellcheckHoverMenuHideTimer === null) {
+    return;
+  }
+
+  window.clearTimeout(spellcheckHoverMenuHideTimer);
+  spellcheckHoverMenuHideTimer = null;
+}
+
+function isSameSpellcheckContextMenu(currentMenu, nextMenu) {
+  if (!currentMenu || !nextMenu) {
+    return false;
+  }
+
+  return (
+    String(currentMenu.sceneId ?? "") === String(nextMenu.sceneId ?? "") &&
+    String(currentMenu.normalizedWord ?? currentMenu.word ?? "") === String(nextMenu.normalizedWord ?? nextMenu.word ?? "") &&
+    Number(currentMenu.startOffset) === Number(nextMenu.startOffset) &&
+    Number(currentMenu.endOffset) === Number(nextMenu.endOffset)
+  );
 }
 
 function applyGrammarCheckWordsToProjectList(targetListKey, sourceWords) {
@@ -9932,6 +22039,7 @@ function addGrammarCheckWordsToProjectList(targetListKey, sourceWords = null) {
   syncSceneDocumentLayout();
 }
 
+// Intent: accept spellcheck corrections from both the context menu and grammar-check panel rows.
 function applySpellcheckSuggestionFromMenu(target) {
   if (!(target instanceof HTMLElement)) {
     return;
@@ -9975,6 +22083,46 @@ function applySpellcheckSuggestionFromMenu(target) {
   focusTextareaEditorHost(resolveTextareaEditorHost(textarea), { preventScroll: true });
   textarea.setRangeText(replacement, liveRange.startOffset, liveRange.endOffset, "end");
   textarea.dispatchEvent(new Event("input", { bubbles: true }));
+  syncGrammarCheckPanelHeaderState();
+  syncSceneDocumentLayout();
+  renderGrammarCheckPanel();
+}
+
+// Intent: keep milestone audio feedback behind the shared editor preference and feature service.
+function playMilestoneSoundEffect(type, context = {}) {
+  return milestoneSoundEffectsService.playMilestoneSoundEffect(type, {
+    enabled: isMilestoneSoundEffectsEnabled(state.editorPrefs),
+    source: context.source ?? "",
+  });
+}
+
+function playMilestoneSoundEffects(effects = [], context = {}) {
+  return milestoneSoundEffectsService.playMilestoneSoundEffects(effects, {
+    enabled: isMilestoneSoundEffectsEnabled(state.editorPrefs),
+    source: context.source ?? "",
+  });
+}
+
+// Intent: detect writing-goal crossings from the edit transaction instead of from rendered progress cards.
+function playWritingGoalMilestoneSounds({
+  previousRecord = null,
+  currentRecord = null,
+  previousWordCount = 0,
+  currentWordCount = 0,
+  source = "writing-goals",
+} = {}) {
+  const effects = selectWritingGoalMilestoneSoundEffects({
+    previousRecord,
+    currentRecord,
+    previousWordCount,
+    currentWordCount,
+    todayKey: getLocalDateKey(new Date()),
+  });
+  if (!effects.length) {
+    return [];
+  }
+
+  return playMilestoneSoundEffects(effects, { source });
 }
 
 // Intent: apply scene text edits through draft state so canonical project structure stays recoverable.
@@ -10036,8 +22184,9 @@ function updateSceneDraft(sceneId, mutate, options = {}) {
     }
   }
 
+  let currentWritingTargetRecord = null;
   if (markSessionActivity) {
-    const currentWritingTargetRecord = getWritingTargetWorkingRecord();
+    currentWritingTargetRecord = getWritingTargetWorkingRecord();
     const touchedSessionRecord = touchWritingTargetSessionActivity(
       currentWritingTargetRecord,
       currentWordCount,
@@ -10065,6 +22214,16 @@ function updateSceneDraft(sceneId, mutate, options = {}) {
         };
       }
     }
+  }
+
+  if (wordDelta > 0) {
+    playWritingGoalMilestoneSounds({
+      previousRecord: previousWritingTargetRecord,
+      currentRecord: state.writingTargetState ?? currentWritingTargetRecord,
+      previousWordCount,
+      currentWordCount,
+      source: "updateSceneDraft",
+    });
   }
 
   persistCurrentProjectRecord({
@@ -10288,7 +22447,7 @@ function toggleRevisionOverlay(sceneId) {
   writeStoredJson(EDITOR_PREFS_KEY, state.editorPrefs);
   persistCurrentProjectRecord();
   renderManuscriptPanel();
-  syncLayoutWidths();
+  syncLayoutWidths({ reason: "revision-overlay" });
   syncSceneDocumentLayout();
   if (typeof sceneId === "string" && sceneId.trim()) {
     syncRevisionPanel(sceneId);
@@ -10658,6 +22817,33 @@ function selectSceneById(sceneId) {
   render();
 }
 
+// Intent: let scene-editor controls step through the same ordered scene records used by the binder.
+function selectNextSceneFromSceneEditor(sceneId, hintedNextSceneId = "") {
+  const nextScene = resolveNextSceneForSceneEditorNavigation(sceneId, hintedNextSceneId);
+  if (!nextScene) {
+    editorInteractionLog.info("user-action", "scene.select.next.unavailable", "Next-scene navigation reached the end of the binder order.", {
+      sceneId: sceneId ?? "",
+      hintedNextSceneId: hintedNextSceneId ?? "",
+    });
+    return;
+  }
+
+  selectSceneById(nextScene.sceneId);
+}
+
+// Intent: prefer current scene order at click time while accepting rendered next-scene hints as a fallback.
+function resolveNextSceneForSceneEditorNavigation(sceneId, hintedNextSceneId = "") {
+  const scenes = Array.isArray(state.scenes) ? state.scenes : [];
+  const currentSceneId = String(sceneId || state.selectedSceneId || "").trim();
+  const currentIndex = scenes.findIndex((candidate) => candidate?.sceneId === currentSceneId);
+  if (currentIndex >= 0) {
+    return scenes.slice(currentIndex + 1).find((candidate) => typeof candidate?.sceneId === "string" && candidate.sceneId.trim()) ?? null;
+  }
+
+  const hintedScene = getScene(hintedNextSceneId);
+  return hintedScene ?? null;
+}
+
 function selectChapterById(chapterId) {
   if (typeof chapterId !== "string" || !chapterId.trim()) {
     return;
@@ -10671,6 +22857,267 @@ function selectChapterById(chapterId) {
 
 function toggleUserHighlightDecoration() {
   toggleAuthorMarkDecoration("highlight");
+}
+
+function toggleDecorationEraser({
+  textarea: requestedTextarea = null,
+  selectionOverride = null,
+} = {}) {
+  const context = resolveDecorationCommandContext(requestedTextarea, "decoration-eraser");
+  if (!context) {
+    return {
+      changed: false,
+      reason: "missing-editor-context",
+    };
+  }
+
+  const { textarea, editorHost, sceneId } = context;
+  const liveSceneContext = reconcileLiveSceneForAuthorMarkCommand(sceneId, textarea);
+  if (!liveSceneContext) {
+    editorInteractionLog.warn("user-action", "manuscript.decoration-eraser.skipped", "Skipped decoration eraser command.", {
+      sceneId,
+      reason: "unresolved-live-scene",
+    });
+    return {
+      changed: false,
+      reason: "unresolved-live-scene",
+    };
+  }
+
+  const liveText = liveSceneContext.text;
+  const inlineFormatRanges = getSceneInlineFormatRanges(sceneId, liveText.length);
+  const liveSelection = selectionOverride ?? editorHost.readSelection(inlineFormatRanges);
+  const selectedForClear = resolveUserMarkCommandSelection({
+    liveSelection,
+    cachedSelection: state.sceneEditorSelectionSnapshot,
+    sceneId,
+    text: liveText,
+    formatRanges: inlineFormatRanges,
+  });
+  if (selectedForClear) {
+    setDecorationEraserPending(true, textarea, sceneId);
+    return clearSelectedManuscriptDecorations({
+      textarea,
+      selectionOverride: selectedForClear,
+    });
+  }
+
+  const pendingIntent = resolveUserMarkCommandIntent({
+    liveSelection,
+    cachedSelection: state.sceneEditorSelectionSnapshot,
+    sceneId,
+    text: liveText,
+    formatRanges: inlineFormatRanges,
+    preferPendingToggle: true,
+  });
+  if (pendingIntent?.mode !== USER_MARK_COMMAND_MODE.PENDING) {
+    editorInteractionLog.warn("user-action", "manuscript.decoration-eraser.skipped", "Skipped decoration eraser command.", {
+      sceneId,
+      reason: "empty-selection",
+    });
+    return {
+      changed: false,
+      reason: "empty-selection",
+    };
+  }
+
+  const nextPending = !isPendingManuscriptDecorationEraser();
+  setDecorationEraserPending(nextPending, textarea, sceneId);
+  return {
+    changed: false,
+    pending: nextPending,
+  };
+}
+
+// Intent: turn the eraser into the only active decoration paint tool without touching manuscript text.
+function setDecorationEraserPending(active, textarea = null, sceneId = "") {
+  state.manuscriptInlineFormatting = createNextDecorationEraserState(
+    state.manuscriptInlineFormatting,
+    active === true,
+  );
+  updateInlineFormatToolbarState(textarea);
+  editorInteractionLog.info("user-action", "manuscript.decoration-eraser.pending-toggled", "Toggled pending decoration eraser.", {
+    sceneId,
+    pending: active === true,
+  });
+}
+
+// Intent: clear author-owned decorations from a selected manuscript range without changing the manuscript text.
+function clearSelectedManuscriptDecorations({
+  textarea: requestedTextarea = null,
+  selectionOverride = null,
+  suppressHistory = false,
+} = {}) {
+  const context = resolveDecorationCommandContext(requestedTextarea, "decoration-eraser");
+  if (!context) {
+    return {
+      changed: false,
+      reason: "missing-editor-context",
+    };
+  }
+
+  const { textarea, editorHost, sceneId, project } = context;
+  const liveSceneContext = reconcileLiveSceneForAuthorMarkCommand(sceneId, textarea);
+  if (!liveSceneContext) {
+    editorInteractionLog.warn("user-action", "manuscript.decoration-eraser.skipped", "Skipped decoration eraser command.", {
+      sceneId,
+      reason: "unresolved-live-scene",
+    });
+    return {
+      changed: false,
+      reason: "unresolved-live-scene",
+    };
+  }
+
+  const scene = liveSceneContext.scene;
+  const liveText = liveSceneContext.text;
+  const liveSceneBlocks = liveSceneContext.blocks;
+  const inlineFormatRanges = getSceneInlineFormatRanges(sceneId, liveText.length);
+  const liveSelection = selectionOverride ?? editorHost.readSelection(inlineFormatRanges);
+  const selection = resolveUserMarkCommandSelection({
+    liveSelection,
+    cachedSelection: state.sceneEditorSelectionSnapshot,
+    sceneId,
+    text: liveText,
+    formatRanges: inlineFormatRanges,
+  });
+  if (!selection) {
+    editorInteractionLog.warn("user-action", "manuscript.decoration-eraser.skipped", "Skipped decoration eraser command.", {
+      sceneId,
+      reason: "empty-selection",
+    });
+    return {
+      changed: false,
+      reason: "empty-selection",
+    };
+  }
+
+  const now = new Date().toISOString();
+  const beforeMarkHistorySnapshot = suppressHistory
+    ? null
+    : captureManuscriptMarkHistorySnapshotForScene(sceneId, liveText.length);
+  const marksForClear = removeSceneCompatibilityMarks(project.marks, sceneId);
+  const markResult = clearManuscriptMarksForSceneSelection({
+    marks: marksForClear,
+    sequences: project.sequences,
+    projectId: project.id ?? state.activeProjectId ?? "",
+    chapterId: scene.chapterId ?? "",
+    sceneId,
+    text: liveText,
+    sceneBlocks: liveSceneBlocks,
+    selection,
+    source: "author",
+    now,
+  });
+  const nextInlineFormatRanges = clearInlineFormatRangesForSelection(
+    inlineFormatRanges,
+    selection,
+    liveText.length,
+  );
+  const marksChanged = markResult.changed === true;
+  const inlineRangesChanged = JSON.stringify(inlineFormatRanges) !== JSON.stringify(nextInlineFormatRanges);
+  if (!marksChanged && !inlineRangesChanged) {
+    updateInlineFormatToolbarState(textarea);
+    editorInteractionLog.warn("user-action", "manuscript.decoration-eraser.skipped", "Skipped decoration eraser command.", {
+      sceneId,
+      reason: "no-decorations-in-selection",
+    });
+    return {
+      ...markResult,
+      changed: false,
+      inlineRangesChanged: false,
+    };
+  }
+
+  project.marks = markResult.marks;
+  project.sequences = markResult.sequences;
+  updateSceneDraft(sceneId, (draft) => {
+    draft.editorText = liveText;
+    draft.blocks = liveSceneBlocks;
+    draft.inlineFormatRanges = nextInlineFormatRanges;
+  }, {
+    reason: "manuscript-decoration-eraser",
+    markSessionActivity: false,
+  });
+  if (!suppressHistory) {
+    const afterMarkHistorySnapshot = captureManuscriptMarkHistorySnapshotForScene(sceneId, liveText.length);
+    state.manuscriptMarkHistory = pushManuscriptMarkHistoryEntry(
+      state.manuscriptMarkHistory,
+      createManuscriptMarkHistoryEntry({
+        sceneId,
+        formatId: INLINE_DECORATION_ERASER.id,
+        beforeSnapshot: beforeMarkHistorySnapshot,
+        afterSnapshot: afterMarkHistorySnapshot,
+        selection,
+        createdAt: now,
+      }),
+    );
+  }
+
+  const viewport = captureSceneEditorViewport(sceneId);
+  syncSceneDocumentLayout({ skipSpellcheck: true });
+  restoreSceneEditorViewportSelection(sceneId, viewport, selection);
+  updateInlineFormatToolbarState(textarea);
+  editorInteractionLog.info("user-action", "manuscript.decoration-eraser.applied", "Cleared manuscript decorations from selected text.", {
+    sceneId,
+    startOffset: selection.startOffset,
+    endOffset: selection.endOffset,
+    selectedTextLength: Math.max(0, selection.endOffset - selection.startOffset),
+    selectedTextPreview: liveText.slice(selection.startOffset, selection.endOffset).slice(0, 80),
+    removedMarkCount: markResult.removedMarkIds.length,
+    preservedMarkFragmentCount: markResult.addedMarks.length,
+    inlineRangesChanged,
+    selectionSource: selection.selectionSource,
+    pending: isPendingManuscriptDecorationEraser(),
+  });
+
+  return {
+    ...markResult,
+    changed: true,
+    inlineRangesChanged,
+  };
+}
+
+function resolveDecorationCommandContext(requestedTextarea = null, commandName = "decoration-command") {
+  const activeElement = document.activeElement;
+  const cachedSceneId =
+    state.sceneEditorSelectionSnapshot && typeof state.sceneEditorSelectionSnapshot.sceneId === "string"
+      ? state.sceneEditorSelectionSnapshot.sceneId.trim()
+      : "";
+  const textarea = requestedTextarea instanceof HTMLTextAreaElement && requestedTextarea.classList.contains("editor-document-input")
+    ? requestedTextarea
+    : activeElement instanceof HTMLTextAreaElement && activeElement.classList.contains("editor-document-input")
+      ? activeElement
+      : cachedSceneId
+        ? document.querySelector(`.editor-document-input[data-scene-id="${CSS.escape(cachedSceneId)}"]`)
+        : document.querySelector(".editor-document-input");
+  const editorHost = resolveTextareaEditorHost(textarea);
+  const sceneId = String(textarea?.dataset?.sceneId ?? "");
+  const scene = getScene(sceneId);
+  const project = state.workspace?.project;
+  if (!(textarea instanceof HTMLTextAreaElement) || !editorHost || !scene || !project) {
+    editorInteractionLog.warn("user-action", `manuscript.${commandName}.skipped`, "Skipped manuscript decoration command.", {
+      sceneId,
+      reason: "missing-editor-context",
+    });
+    return null;
+  }
+
+  return {
+    textarea,
+    editorHost,
+    sceneId,
+    scene,
+    project,
+  };
+}
+
+function removeSceneCompatibilityMarks(marks = [], sceneId = "") {
+  const normalizedSceneId = String(sceneId ?? "");
+  return (Array.isArray(marks) ? marks : []).filter((mark) => !(
+    isCompatibilityManuscriptMark(mark) &&
+    String(mark?.anchor?.sceneId ?? "") === normalizedSceneId
+  ));
 }
 
 // Intent: make author mark commands reliable when a fresh draft scene's visible textarea is ahead of scene state.
@@ -10745,11 +23192,22 @@ function shouldSyncLiveSceneDraftForAuthorMark(scene, liveText, liveBlocks) {
   });
 }
 
+// Intent: capture the render-affecting manuscript mark state for bounded Ctrl+Z/Ctrl+Y history.
+function captureManuscriptMarkHistorySnapshotForScene(sceneId, textLength = Number.POSITIVE_INFINITY) {
+  const project = state.workspace?.project;
+  return createManuscriptMarkHistorySnapshot({
+    marks: project?.marks,
+    sequences: project?.sequences,
+    inlineFormatRanges: getSceneInlineFormatRanges(sceneId, textLength),
+  });
+}
+
 // Intent: apply author mark buttons to selected manuscript spans or toggle pending styling for incoming text.
 function toggleAuthorMarkDecoration(formatId, {
   textarea: requestedTextarea = null,
   selectionOverride = null,
   applyOnly = false,
+  suppressHistory = false,
 } = {}) {
   const normalizedFormatId = normalizeAuthorMarkDecorationFormat(formatId);
   const formatLabel = INLINE_FORMATS[normalizedFormatId]?.label ?? normalizedFormatId;
@@ -10877,13 +23335,17 @@ function toggleAuthorMarkDecoration(formatId, {
       ...state.manuscriptInlineFormatting?.pendingFormats,
       [normalizedFormatId]: applyOnly ? formatPending === true : true,
     },
-  });
-
-  syncCompatibilityManuscriptMarksForScene(sceneId, {
-    now: new Date().toISOString(),
+    pendingClearDecorations: false,
   });
 
   const now = new Date().toISOString();
+  const beforeMarkHistorySnapshot = suppressHistory
+    ? null
+    : captureManuscriptMarkHistorySnapshotForScene(sceneId, liveText.length);
+  syncCompatibilityManuscriptMarksForScene(sceneId, {
+    now,
+  });
+
   const mutateMarksForSceneSelection = applyManuscriptMarksForSceneSelection;
   const result = mutateMarksForSceneSelection({
     marks: project.marks,
@@ -10930,8 +23392,23 @@ function toggleAuthorMarkDecoration(formatId, {
     reason: "manuscript-author-mark",
     markSessionActivity: false,
   });
+  if (!suppressHistory) {
+    const afterMarkHistorySnapshot = captureManuscriptMarkHistorySnapshotForScene(sceneId, liveText.length);
+    state.manuscriptMarkHistory = pushManuscriptMarkHistoryEntry(
+      state.manuscriptMarkHistory,
+      createManuscriptMarkHistoryEntry({
+        sceneId,
+        formatId: normalizedFormatId,
+        beforeSnapshot: beforeMarkHistorySnapshot,
+        afterSnapshot: afterMarkHistorySnapshot,
+        selection,
+        createdAt: now,
+      }),
+    );
+  }
+  const viewport = captureSceneEditorViewport(sceneId);
   syncSceneDocumentLayout({ skipSpellcheck: true });
-  takeToSceneRange(sceneId, selection.startOffset, selection.endOffset, { behavior: "smooth" });
+  restoreSceneEditorViewportSelection(sceneId, viewport, selection);
   updateInlineFormatToolbarState(textarea);
   editorInteractionLog.info("user-action", `manuscript.${normalizedFormatId}.toggled`, `Toggled ${formatLabel.toLowerCase()} author mark.`, {
     sceneId,
@@ -11087,6 +23564,398 @@ function getNode(nodeId) {
     }
   }
   return null;
+}
+
+// Intent: resolve both automatic scene-derived nodes and saved world-schema nodes through the World Spine model.
+function getWorldSpineTimelineNode(nodeId) {
+  return findWorldSpineNode(buildWorldSpineModelForState(), nodeId);
+}
+
+function isWorldSpineAssignableEventNodeForContext(node) {
+  return isWorldSpineAssignableEventNode(node);
+}
+
+// Intent: collapse RHS card detail when World Spine focus moves to a different timeline event.
+function setWorldSpineSelectedNodeId(nodeId = null) {
+  const normalizedNodeId = String(nodeId ?? "").trim();
+  const nextNodeId = normalizedNodeId || null;
+  if (state.selectedNodeId !== nextNodeId) {
+    state.worldSpineRelatedCardExpandedKey = "";
+    state.worldSpineSublocationComposer = null;
+  }
+  state.selectedNodeId = nextNodeId;
+  return nextNodeId;
+}
+
+// Intent: let blank-canvas clicks remove event scope so catalogue strip counts return to full-project totals.
+function clearWorldSpineSelection({ renderAfter = true } = {}) {
+  const hadSelection = Boolean(
+    state.selectedNodeId ||
+    state.selectedBlockId ||
+    state.selectedEntityId ||
+    state.worldSpineScrollTargetNodeId ||
+    state.worldSpinePassageScrollTargetBlockId ||
+    state.worldSpineRelatedCardExpandedKey ||
+    state.worldSpineSublocationComposer
+  );
+  if (!hadSelection) {
+    return false;
+  }
+
+  state.selectedNodeId = null;
+  state.selectedBlockId = null;
+  state.selectedEntityId = null;
+  state.worldSpineScrollTargetNodeId = "";
+  state.worldSpinePassageScrollTargetBlockId = "";
+  state.worldSpineRelatedCardExpandedKey = "";
+  state.worldSpineSublocationComposer = null;
+  worldSpineController.close();
+  if (renderAfter) {
+    render();
+  }
+  return true;
+}
+
+function selectWorldSpineNode(nodeId) {
+  const timelineNode = getWorldSpineTimelineNode(nodeId);
+  const savedNode = timelineNode ? null : getNode(nodeId);
+  const selectedNodeId = timelineNode?.id ?? savedNode?.id ?? "";
+  if (!selectedNodeId) {
+    return;
+  }
+
+  setWorldSpineSelectedNodeId(selectedNodeId);
+  state.worldSpineScrollTargetNodeId = selectedNodeId;
+
+  const primaryBlockId = timelineNode?.primaryBlockId ?? savedNode?.primaryBlockId ?? "";
+  if (primaryBlockId) {
+    state.selectedIssueId = null;
+    syncSelectionFromBlock(primaryBlockId);
+  }
+  if (!timelineNode && savedNode?.linkedEntityIds?.[0]) {
+    state.selectedEntityId = savedNode.linkedEntityIds[0];
+  }
+
+  render();
+}
+
+// Intent: show the clicked World Spine event's manuscript section without mutating world records.
+function openWorldSpinePassage(nodeId, hintedBlockId = "") {
+  const timelineNode = getWorldSpineTimelineNode(nodeId);
+  const savedNode = timelineNode ? null : getNode(nodeId);
+  const selectedNodeId = timelineNode?.id ?? savedNode?.id ?? "";
+  const blockId = hintedBlockId || timelineNode?.primaryBlockId || savedNode?.primaryBlockId || "";
+  if (!selectedNodeId || !blockId) {
+    return;
+  }
+
+  setWorldSpineSelectedNodeId(selectedNodeId);
+  state.selectedIssueId = null;
+  state.worldSpineRightPaneMode = normalizeWorldSpineRightPaneMode(WORLD_SPINE_RIGHT_PANE_MODE_EVENT_SECTION);
+  state.worldSpineScrollTargetNodeId = selectedNodeId;
+  state.worldSpinePassageScrollTargetBlockId = blockId;
+  syncSelectionFromBlock(blockId);
+  render();
+}
+
+// Intent: let a cross-location implication line pivot the visible lane to its target event.
+function navigateWorldSpineImplicationTarget(context = {}) {
+  const targetNodeId = String(context?.toNodeId ?? "").trim() || String(context?.fromNodeId ?? "").trim();
+  const targetNode = getWorldSpineTimelineNode(targetNodeId);
+  if (!targetNode) {
+    return;
+  }
+
+  setWorldSpineSelectedNodeId(targetNode.id);
+  state.worldSpineScrollTargetNodeId = targetNode.id;
+  const locationKey = String(targetNode.locationKey ?? "").trim();
+  if (locationKey) {
+    state.worldSpineLocationFilter = normalizeWorldSpineLocationFilterState({
+      selectedLocationKeys: [locationKey],
+    });
+    state.worldSpineScrollTargetLocationKey = locationKey;
+  }
+  if (targetNode.primaryBlockId) {
+    state.selectedIssueId = null;
+    syncSelectionFromBlock(targetNode.primaryBlockId);
+  }
+
+  persistCurrentProjectRecord({
+    domain: "app-settings",
+    dirtyReason: "world-spine-implication-target-opened",
+    source: "navigateWorldSpineImplicationTarget",
+  });
+  uiEventDispatcherLog.info("user-action", "world-spine.implication-target.opened", "Opened a World Spine implication target.", {
+    edgeId: String(context?.edgeId ?? "").trim(),
+    targetNodeId: targetNode.id,
+    locationKey,
+  });
+  render();
+}
+
+// Intent: open the reviewed implication text form after a node-to-node World Spine drag completes.
+function openWorldSpineImplicationComposer(draft = {}) {
+  const fromNodeId = String(draft?.fromNodeId ?? "").trim();
+  const toNodeId = String(draft?.toNodeId ?? "").trim();
+  if (!fromNodeId || !toNodeId || fromNodeId === toNodeId) {
+    return;
+  }
+
+  const model = buildWorldSpineModelForState();
+  if (!findWorldSpineNode(model, fromNodeId) || !findWorldSpineNode(model, toNodeId)) {
+    return;
+  }
+
+  state.worldSpineImplicationComposer = {
+    edgeId: String(draft.edgeId ?? "").trim(),
+    fromNodeId,
+    toNodeId,
+    x: Math.max(0, Math.round(Number(draft.x) || 0)),
+    y: Math.max(0, Math.round(Number(draft.y) || 0)),
+    width: Math.max(220, Math.round(Number(draft.width) || 276)),
+    effect: normalizeWorldSpineImplicationText(draft.effect),
+    error: "",
+  };
+  renderWorldPanel();
+  window.requestAnimationFrame(focusWorldSpineImplicationComposer);
+}
+
+// Intent: reopen a saved implication edge in the same reviewed composer used for new links.
+function openWorldSpineImplicationEditorFromContextMenu(target = null) {
+  const edgeId = String(
+    target?.dataset?.worldSpineEdgeId ??
+    state.worldSpineContextMenu?.edgeId ??
+    "",
+  ).trim();
+  if (!edgeId) {
+    hideWorldSpineContextMenu();
+    return;
+  }
+
+  const edge = normalizeWorldSpineEdges(state.workspace?.world?.edges)
+    .find((candidate) => candidate.id === edgeId);
+  if (!edge) {
+    hideWorldSpineContextMenu();
+    return;
+  }
+
+  const context = normalizeWorldSpineMenuContext(state.worldSpineContextMenu) ?? {};
+  hideWorldSpineContextMenu({ renderAfter: false });
+  openWorldSpineImplicationComposer({
+    edgeId: edge.id,
+    fromNodeId: edge.fromNodeId,
+    toNodeId: edge.toNodeId,
+    x: context.composerX || 16,
+    y: context.composerY || 16,
+    width: 300,
+    effect: edge.effect || edge.label,
+  });
+}
+
+// Intent: commit a reviewed implication edge through the canonical project persistence boundary.
+function saveWorldSpineImplicationComposer() {
+  const composer = document.querySelector("[data-world-spine-implication-composer]");
+  if (!(composer instanceof HTMLElement)) {
+    return;
+  }
+
+  const input = composer.querySelector("[data-world-spine-implication-input]");
+  const effect = normalizeWorldSpineImplicationText(
+    input instanceof HTMLTextAreaElement || input instanceof HTMLInputElement
+      ? input.value
+      : state.worldSpineImplicationComposer?.effect,
+  );
+  const fromNodeId = String(composer.dataset.fromNodeId ?? state.worldSpineImplicationComposer?.fromNodeId ?? "").trim();
+  const toNodeId = String(composer.dataset.toNodeId ?? state.worldSpineImplicationComposer?.toNodeId ?? "").trim();
+  const edgeId = String(composer.dataset.worldSpineEdgeId ?? state.worldSpineImplicationComposer?.edgeId ?? "").trim();
+
+  if (!effect) {
+    state.worldSpineImplicationComposer = {
+      ...state.worldSpineImplicationComposer,
+      edgeId,
+      fromNodeId,
+      toNodeId,
+      effect,
+      error: "Add an implication before saving.",
+    };
+    renderWorldPanel();
+    return;
+  }
+
+  const historyBefore = captureWorldSpineHistorySnapshot();
+  if (edgeId) {
+    const result = updateWorldSpineImplicationEdgeInWorld(state.workspace?.world ?? {}, {
+      edgeId,
+      effect,
+    });
+    if (!result.edge) {
+      state.worldSpineImplicationComposer = {
+        ...state.worldSpineImplicationComposer,
+        edgeId,
+        fromNodeId,
+        toNodeId,
+        effect,
+        error: result.reason === "missing-effect"
+          ? "Add an implication before saving."
+          : "The implication link could not be edited.",
+      };
+      renderWorldPanel();
+      return;
+    }
+
+    state.workspace.world = result.world;
+    setWorldSpineSelectedNodeId(result.edge.toNodeId);
+    state.worldSpineScrollTargetNodeId = result.edge.toNodeId;
+    state.worldSpineImplicationComposer = null;
+    persistCurrentProjectRecord({
+      domain: "world",
+      dirtyReason: "world-spine-implication-edge-edited",
+      source: "saveWorldSpineImplicationComposer",
+    });
+    pushWorldSpineHistoryChange(historyBefore, {
+      label: "Edited implication link",
+      dirtyReason: "world-spine-implication-edge-edited",
+      source: "saveWorldSpineImplicationComposer",
+    });
+    renderWorldPanel();
+    return;
+  }
+
+  const result = applyWorldSpineImplicationEdgeToWorld(state.workspace?.world ?? {}, {
+    fromNodeId,
+    toNodeId,
+    effect,
+  });
+  if (!result.edge) {
+    state.worldSpineImplicationComposer = {
+      ...state.worldSpineImplicationComposer,
+      fromNodeId,
+      toNodeId,
+      effect,
+      error: "Choose two different timeline nodes.",
+    };
+    renderWorldPanel();
+    return;
+  }
+
+  state.workspace.world = result.world;
+  setWorldSpineSelectedNodeId(result.edge.toNodeId);
+  state.worldSpineScrollTargetNodeId = result.edge.toNodeId;
+  state.worldSpineImplicationComposer = null;
+  persistCurrentProjectRecord({
+    domain: "world",
+    dirtyReason: "world-spine-implication-edge-created",
+    source: "saveWorldSpineImplicationComposer",
+  });
+  pushWorldSpineHistoryChange(historyBefore, {
+    label: "Created implication link",
+    dirtyReason: "world-spine-implication-edge-created",
+    source: "saveWorldSpineImplicationComposer",
+  });
+  renderWorldPanel();
+}
+
+function cancelWorldSpineImplicationComposer() {
+  state.worldSpineImplicationComposer = null;
+  renderWorldPanel();
+}
+
+// Intent: let authors remove reviewed implication links without mutating timeline nodes themselves.
+function deleteWorldSpineImplication(edgeId = "") {
+  const normalizedEdgeId = String(edgeId ?? "").trim();
+  if (!normalizedEdgeId) {
+    return false;
+  }
+
+  const historyBefore = captureWorldSpineHistorySnapshot();
+  const result = deleteWorldSpineImplicationEdgeFromWorld(state.workspace?.world ?? {}, normalizedEdgeId);
+  if (!result.edge) {
+    renderWorldPanel();
+    return false;
+  }
+
+  state.workspace.world = result.world;
+  setWorldSpineSelectedNodeId(result.edge.toNodeId || result.edge.fromNodeId || state.selectedNodeId);
+  state.worldSpineScrollTargetNodeId = state.selectedNodeId || "";
+  state.worldSpineImplicationComposer = null;
+  persistCurrentProjectRecord({
+    domain: "world",
+    dirtyReason: "world-spine-implication-edge-deleted",
+    source: "deleteWorldSpineImplication",
+  });
+  pushWorldSpineHistoryChange(historyBefore, {
+    label: "Deleted implication link",
+    dirtyReason: "world-spine-implication-edge-deleted",
+    source: "deleteWorldSpineImplication",
+  });
+  renderWorldPanel();
+  return true;
+}
+
+function focusWorldSpineImplicationComposer() {
+  const input = document.querySelector("[data-world-spine-implication-input]");
+  if (input instanceof HTMLTextAreaElement || input instanceof HTMLInputElement) {
+    input.focus();
+    input.select();
+  }
+}
+
+// Intent: route ManuScriptInfographicLane marker clicks back to the owning metadata or World Spine record.
+function openManuScriptInfographicLaneMarker(target) {
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+
+  const recordType = String(target.dataset.recordType ?? "").trim();
+  const recordId = String(target.dataset.recordId ?? "").trim();
+  const nodeId = String(target.dataset.nodeId ?? "").trim();
+  if (!recordType || !recordId) {
+    return;
+  }
+
+  hideFileMenu();
+  hideTaskSurfaces();
+  if (recordType === "task") {
+    const task = state.manuscriptTasks.find((candidate) => candidate.id === recordId);
+    if (!task) {
+      return;
+    }
+
+    if (state.activePane !== "manuscript") {
+      selectWorkspacePane("manuscript");
+      window.requestAnimationFrame(() => navigateTaskAnchor(recordId));
+      return;
+    }
+
+    navigateTaskAnchor(recordId);
+    return;
+  }
+
+  if (recordType === "passageNote") {
+    const note = state.passageNotes.find((candidate) => candidate.id === recordId);
+    if (!note) {
+      return;
+    }
+
+    if (state.activePane !== "manuscript") {
+      selectWorkspacePane("manuscript");
+      window.requestAnimationFrame(() => selectPassageNote(recordId));
+      return;
+    }
+
+    selectPassageNote(recordId);
+    return;
+  }
+
+  const targetNodeId = nodeId || (recordType === "eventTag" ? `event:${recordId}` : recordId);
+  if (!targetNodeId) {
+    return;
+  }
+
+  if (state.activePane !== "world") {
+    selectWorkspacePane("world");
+  }
+  selectWorldSpineNode(targetNodeId);
 }
 
 function getEntity(entityId) {
@@ -11336,7 +24205,7 @@ function syncSpellcheckLayer(editorHost, sceneId, options = {}) {
     return;
   }
 
-  if (!spellcheckBaseLexicon?.wordList?.length) {
+  if (areNarrationManuscriptDecorationsSuppressed() || !spellcheckBaseLexicon?.wordList?.length) {
     clearTextareaProjectionLayer(editorHost, MANUSCRIPT_PROJECTION_CHANNELS.SPELLCHECK);
     return;
   }
@@ -11811,7 +24680,7 @@ function syncSuggestionQueueMetadata(queue, lineByBlockId) {
   }));
 }
 
-function moveBinderScene(sceneId, dropTarget) {
+function moveBinderScene(sceneId, dropTarget, options = {}) {
   if (typeof sceneId !== "string" || !sceneId.trim() || !dropTarget || !state.workspace?.project) {
     return false;
   }
@@ -11822,7 +24691,7 @@ function moveBinderScene(sceneId, dropTarget) {
   }
 
   if (!isPersistentScene(sourceScene)) {
-    return moveDraftBinderScene(sceneId, dropTarget);
+    return moveDraftBinderScene(sceneId, dropTarget, options);
   }
 
   const orderedScenes = reorderSceneRecordsForDropTarget(
@@ -11855,8 +24724,12 @@ function moveBinderScene(sceneId, dropTarget) {
     return false;
   }
 
-  pushBinderSceneMoveHistory(beforeSceneGroups, nextSceneGroups, sceneId);
-  persistCurrentProjectRecord();
+  if (options.recordHistory !== false) {
+    pushBinderSceneMoveHistory(beforeSceneGroups, nextSceneGroups, sceneId);
+  }
+  persistCurrentProjectRecord({
+    flushProjectFileAutosave: options.flushProjectFileAutosave === true,
+  });
 
   if (state.selectedSceneId === sceneId) {
     const movedScene = getScene(sceneId);
@@ -11916,7 +24789,7 @@ function syncStructureDraftsFromOrderedScenes(orderedScenes) {
   return true;
 }
 
-function moveDraftBinderScene(sceneId, dropTarget) {
+function moveDraftBinderScene(sceneId, dropTarget, options = {}) {
   const orderedScenes = reorderSceneRecordsForDropTarget(
     (Array.isArray(state.scenes) ? state.scenes : []).filter((scene) => isMovableScene(scene)),
     sceneId,
@@ -11933,7 +24806,9 @@ function moveDraftBinderScene(sceneId, dropTarget) {
   resetBinderSceneDragState();
   syncStructureDraftsFromOrderedScenes(orderedScenes);
   refreshScenes();
-  persistCurrentProjectRecord();
+  persistCurrentProjectRecord({
+    flushProjectFileAutosave: options.flushProjectFileAutosave === true,
+  });
 
   if (state.selectedSceneId === sceneId) {
     const movedScene = getScene(sceneId);
@@ -12421,6 +25296,11 @@ function undoBinderSceneMove() {
   return true;
 }
 
+function canUndoBinderSceneMoveHistory() {
+  const currentHistory = state.binderSceneMoveHistory ?? createBinderSceneMoveHistoryState();
+  return Array.isArray(currentHistory.undoStack) && currentHistory.undoStack.length > 0;
+}
+
 function redoBinderSceneMove() {
   const currentHistory = state.binderSceneMoveHistory ?? createBinderSceneMoveHistoryState();
   const redoStack = Array.isArray(currentHistory.redoStack) ? [...currentHistory.redoStack] : [];
@@ -12442,6 +25322,11 @@ function redoBinderSceneMove() {
   }
 
   return true;
+}
+
+function canRedoBinderSceneMoveHistory() {
+  const currentHistory = state.binderSceneMoveHistory ?? createBinderSceneMoveHistoryState();
+  return Array.isArray(currentHistory.redoStack) && currentHistory.redoStack.length > 0;
 }
 
 function clearBinderSceneDropIndicators() {
@@ -12715,13 +25600,35 @@ function updateFocusedLineCard() {
   renderConsolePanel();
 }
 
-// Intent: keep panel widths clamped and optionally persisted through the preference boundary.
-function syncLayoutWidths(persist = false) {
+// Intent: match side-panel clamp math to the five-column workspace grid, including visible column gaps.
+function resolveWorkspaceGridAvailableWidth(workspaceWidth, { sidePanelsHidden = false } = {}) {
+  const measuredWorkspaceWidth = Number(workspaceWidth);
+  const safeWorkspaceWidth = Number.isFinite(measuredWorkspaceWidth) ? measuredWorkspaceWidth : 0;
+  const sideRailGapTotal = sidePanelsHidden ? 0 : WORKSPACE_GRID_COLUMN_GAP * 4;
+  return Math.max(0, safeWorkspaceWidth - (PANEL_RESIZER_WIDTH * 2) - sideRailGapTotal);
+}
+
+// Intent: keep panel widths clamped and only persist viewport profiles after explicit resizer drags.
+function syncLayoutWidths(options = {}) {
+  const syncOptions = normalizeLayoutSyncOptions(options);
+  const persistProfileRequested = syncOptions.persistProfile === true;
+  const sidePanelsHidden = state.sidePanelsHidden === true;
+  const persistProfile = persistProfileRequested && syncOptions.reason === "panel-resize" && !sidePanelsHidden;
   const workspace = document.querySelector(".workspace-grid");
   const workspaceWidth = workspace instanceof HTMLElement ? workspace.getBoundingClientRect().width : 0;
-  const availableWidth = Math.max(0, workspaceWidth - (PANEL_RESIZER_WIDTH * 2));
-  if (!persist && !layoutResizeSession && availableWidth > 0) {
-    restorePanelWidthsFromUserSettings(availableWidth);
+  const availableWidth = resolveWorkspaceGridAvailableWidth(workspaceWidth, { sidePanelsHidden });
+  const beforeBinderPanelWidth = state.binderPanelWidth;
+  const beforeConsoleDockWidth = state.consoleDockWidth;
+
+  if (!sidePanelsHidden && availableWidth > 0) {
+    ensurePanelResizerFallbackProfile(availableWidth);
+  }
+
+  let restoreResult = null;
+  if (!sidePanelsHidden && !persistProfile && !layoutResizeSession && availableWidth > 0) {
+    restoreResult = restorePanelWidthsFromUserSettings(availableWidth, {
+      reason: syncOptions.reason,
+    });
   }
 
   const binderWidth = clampNumber(state.binderPanelWidth, MIN_BINDER_PANEL_WIDTH, Number.POSITIVE_INFINITY);
@@ -12732,16 +25639,18 @@ function syncLayoutWidths(persist = false) {
 
   let nextBinderWidth = binderWidth;
   let nextConsoleWidth = consoleWidth;
+  let maxBinderWidth = null;
+  let maxConsoleWidth = null;
 
-  if (availableWidth > 0) {
-    const maxBinderWidth = Math.max(
+  if (!sidePanelsHidden && availableWidth > 0) {
+    maxBinderWidth = Math.max(
       MIN_BINDER_PANEL_WIDTH,
       availableWidth - MIN_MANUSCRIPT_PANEL_WIDTH - currentConsoleWidth,
     );
     nextBinderWidth = clampNumber(binderWidth, MIN_BINDER_PANEL_WIDTH, maxBinderWidth);
 
     if (!state.consoleDockCollapsed) {
-      const maxConsoleWidth = Math.max(
+      maxConsoleWidth = Math.max(
         MIN_CONSOLE_PANEL_WIDTH,
         availableWidth - MIN_MANUSCRIPT_PANEL_WIDTH - nextBinderWidth,
       );
@@ -12771,47 +25680,608 @@ function syncLayoutWidths(persist = false) {
     state.consoleDockCollapsed ? "0px" : `${PANEL_RESIZER_WIDTH}px`,
   );
 
-  if (persist) {
-    persistPanelResizerUserSettings(availableWidth);
+  layoutStateLog.debug("layout", "panel-layout.sync", "Synchronized manuscript side-panel widths.", {
+    reason: syncOptions.reason,
+    handleId: syncOptions.handleId ?? layoutResizeSession?.handleId ?? "",
+    persistProfileRequested,
+    persistProfileApplied: persistProfile,
+    layoutResizeSessionActive: Boolean(layoutResizeSession),
+    beforeBinderPanelWidth,
+    beforeConsoleDockWidth,
+    requestedBinderPanelWidth: binderWidth,
+    requestedConsoleDockWidth: consoleWidth,
+    maxBinderWidth,
+    maxConsoleWidth,
+    binderPanelWidth: state.binderPanelWidth,
+    consoleDockWidth: state.consoleDockWidth,
+    consoleDockCollapsed: state.consoleDockCollapsed,
+    sidePanelsHidden,
+    restoreSource: restoreResult?.restoreSource ?? "",
+    selectedProfileKey: restoreResult?.selectedProfileKey ?? "",
+    profileKeys: Object.keys(state.panelResizerLayoutProfiles ?? {}),
+    ...getLayoutViewportLogContext(workspaceWidth, availableWidth),
+  });
+
+  if (persistProfileRequested && !persistProfile) {
+    layoutStateLog.warn("layout", "panel-layout.persist-blocked", "Blocked side-panel profile persistence from a non-resizer layout sync.", {
+      reason: syncOptions.reason,
+      handleId: syncOptions.handleId ?? "",
+      binderPanelWidth: state.binderPanelWidth,
+      consoleDockWidth: state.consoleDockWidth,
+      profileKeys: Object.keys(state.panelResizerLayoutProfiles ?? {}),
+      ...getLayoutViewportLogContext(workspaceWidth, availableWidth),
+    });
+  }
+
+  if (persistProfile) {
+    persistPanelResizerUserSettings(availableWidth, {
+      reason: syncOptions.reason,
+      handleId: syncOptions.handleId,
+    });
+    writeStoredJsonRaw(EDITOR_PANEL_RESIZER_LAYOUT_PROFILES_KEY, state.panelResizerLayoutProfiles);
     writeStoredJsonRaw(EDITOR_BINDER_WIDTH_KEY, state.binderPanelWidth);
     writeStoredJsonRaw(EDITOR_CONSOLE_WIDTH_KEY, state.consoleDockWidth);
     persistCurrentProjectRecord();
   }
 }
 
-function restorePanelWidthsFromUserSettings(availableWidth) {
-  // Intent: restore project-file user settings as proportions of the current workspace width.
-  const leftWidth = panelWidthFromPercent(state.userSettingPanelResizerLeftPercent, availableWidth);
-  const rightWidth = panelWidthFromPercent(state.userSettingPanelResizerRightPercent, availableWidth);
-  if (leftWidth !== null) {
-    state.binderPanelWidth = leftWidth;
+function normalizeLayoutSyncOptions(options) {
+  // Intent: keep old boolean/event call shapes observable without letting them update layout profiles.
+  const isDomEvent = typeof Event !== "undefined" && options instanceof Event;
+  if (options === true) {
+    return {
+      persistProfile: true,
+      reason: "legacy-persist",
+      handleId: "",
+    };
   }
-  if (rightWidth !== null) {
-    state.consoleDockWidth = rightWidth;
+  if (
+    !options ||
+    options === false ||
+    isDomEvent
+  ) {
+    return {
+      persistProfile: false,
+      reason: isDomEvent ? `dom-${options.type || "event"}` : "unspecified",
+      handleId: "",
+    };
   }
+
+  if (typeof options !== "object") {
+    return {
+      persistProfile: false,
+      reason: "unspecified",
+      handleId: "",
+    };
+  }
+
+  return {
+    persistProfile: options.persistProfile === true,
+    reason: String(options.reason || "unspecified"),
+    handleId: String(options.handleId || ""),
+  };
 }
 
-function persistPanelResizerUserSettings(availableWidth) {
-  // Intent: save layout handles with userSetting-prefixed names so the values can later move to profiles.
+function getLayoutViewportLogContext(workspaceWidth, availableWidth) {
+  // Intent: include enough browser geometry to diagnose monitor/maximize bucket changes.
+  return {
+    windowInnerWidth: window.innerWidth,
+    windowInnerHeight: window.innerHeight,
+    windowOuterWidth: window.outerWidth,
+    windowOuterHeight: window.outerHeight,
+    screenWidth: window.screen?.width ?? null,
+    screenHeight: window.screen?.height ?? null,
+    screenAvailWidth: window.screen?.availWidth ?? null,
+    screenAvailHeight: window.screen?.availHeight ?? null,
+    devicePixelRatio: window.devicePixelRatio,
+    workspaceWidth,
+    availableWidth,
+    profileKey: resolvePanelResizerLayoutProfileKey(availableWidth),
+  };
+}
+
+function restorePanelWidthsFromUserSettings(availableWidth, { reason = "" } = {}) {
+  // Intent: restore the size-specific profile first so compact display moves do not overwrite wide layouts.
+  const previousBinderPanelWidth = state.binderPanelWidth;
+  const previousConsoleDockWidth = state.consoleDockWidth;
+  const profiles = normalizePanelResizerLayoutProfiles(state.panelResizerLayoutProfiles);
+  state.panelResizerLayoutProfiles = profiles;
+  const sizeProfile = resolvePanelResizerLayoutProfile(profiles, availableWidth);
+  const fallbackProfile = profiles[PANEL_RESIZER_FALLBACK_PROFILE_KEY] ?? null;
+  const sizeProfileLooksClamped = doesPanelResizerProfileLookClamped(sizeProfile, profiles);
+  const fallbackProfileLooksClamped = doesPanelResizerProfileLookClamped(fallbackProfile, profiles);
+
+  let selectedProfile = null;
+  let recoveredProfile = null;
+  let restoreSource = "legacy-percent";
+  if (sizeProfile && !sizeProfileLooksClamped) {
+    selectedProfile = sizeProfile;
+    restoreSource = "size-profile";
+  } else if (fallbackProfile && !fallbackProfileLooksClamped) {
+    selectedProfile = fallbackProfile;
+    restoreSource = sizeProfileLooksClamped ? "fallback-after-clamped-size-profile" : "fallback";
+  } else if (sizeProfileLooksClamped) {
+    recoveredProfile = sizeProfile;
+    restoreSource = "recovered-clamped-size-profile";
+  } else if (fallbackProfileLooksClamped) {
+    recoveredProfile = fallbackProfile;
+    restoreSource = "recovered-clamped-fallback";
+  }
+
+  const profileWidths = selectedProfile
+    ? resolvePanelResizerLayoutProfileWidths(selectedProfile, availableWidth, {
+        preferStoredPixels: true,
+      })
+    : recoveredProfile
+      ? recoverPanelResizerWidthsFromClampedProfile(recoveredProfile, availableWidth)
+      : resolvePanelResizerPercentWidths({
+          leftPercent: state.userSettingPanelResizerLeftPercent,
+          rightPercent: state.userSettingPanelResizerRightPercent,
+          availableWidth,
+        });
+
+  if (recoveredProfile) {
+    layoutStateLog.warn("layout", "panel-layout.profile-recovered", "Recovered a wide side-panel profile that matched a compact layout.", {
+      reason,
+      availableWidth,
+      profileKey: recoveredProfile.profileKey,
+      profileWorkspaceWidth: recoveredProfile.workspaceWidth,
+      storedBinderPanelWidth: recoveredProfile.binderPanelWidth,
+      storedConsoleDockWidth: recoveredProfile.consoleDockWidth,
+      recoveredBinderPanelWidth: profileWidths.binderPanelWidth,
+      recoveredConsoleDockWidth: profileWidths.consoleDockWidth,
+    });
+  }
+
+  layoutStateLog.debug("layout", "panel-layout.restore", "Resolved manuscript side-panel widths for current workspace.", {
+    reason,
+    availableWidth,
+    restoreSource,
+    sizeProfileKey: sizeProfile?.profileKey ?? "",
+    sizeProfileWorkspaceWidth: sizeProfile?.workspaceWidth ?? null,
+    sizeProfileLooksClamped,
+    fallbackProfileLooksClamped,
+    selectedProfileKey: selectedProfile?.profileKey ?? recoveredProfile?.profileKey ?? "",
+    previousBinderPanelWidth,
+    previousConsoleDockWidth,
+    nextBinderPanelWidth: profileWidths.binderPanelWidth,
+    nextConsoleDockWidth: profileWidths.consoleDockWidth,
+    profileKeys: Object.keys(profiles),
+  });
+
+  if (profileWidths.binderPanelWidth !== null) {
+    state.binderPanelWidth = profileWidths.binderPanelWidth;
+  }
+  if (profileWidths.consoleDockWidth !== null) {
+    state.consoleDockWidth = profileWidths.consoleDockWidth;
+  }
+
+  return {
+    restoreSource,
+    selectedProfileKey: selectedProfile?.profileKey ?? recoveredProfile?.profileKey ?? "",
+    sizeProfileKey: sizeProfile?.profileKey ?? "",
+    sizeProfileWorkspaceWidth: sizeProfile?.workspaceWidth ?? null,
+    sizeProfileLooksClamped,
+    fallbackProfileLooksClamped,
+    binderPanelWidth: profileWidths.binderPanelWidth,
+    consoleDockWidth: profileWidths.consoleDockWidth,
+  };
+}
+
+function doesPanelResizerProfileLookClamped(profile, profiles) {
+  // Intent: keep compact display buckets from masquerading as a saved wide-workspace preference.
+  return isPanelResizerLayoutProfileLikelyClamped(profile, profiles, {
+    minWideWorkspaceWidth: MIN_MANUSCRIPT_PANEL_WIDTH + DEFAULT_BINDER_PANEL_WIDTH + DEFAULT_CONSOLE_PANEL_WIDTH,
+    minWideBinderWidth: DEFAULT_BINDER_PANEL_WIDTH,
+  });
+}
+
+function recoverPanelResizerWidthsFromClampedProfile(profile, availableWidth) {
+  // Intent: preserve the right-console width when only the wide binder profile was compacted.
+  return recoverPanelResizerLayoutProfileWidths(profile, availableWidth, {
+    minBinderPanelWidth: DEFAULT_BINDER_PANEL_WIDTH,
+    fallbackConsoleDockWidth: DEFAULT_CONSOLE_PANEL_WIDTH,
+  });
+}
+
+function persistPanelResizerUserSettings(availableWidth, { reason = "", handleId = "" } = {}) {
+  // Intent: save layout handles by workspace-size bucket while keeping legacy fallback fields stable.
   if (availableWidth <= 0) {
+    layoutStateLog.warn("layout", "panel-layout.persist-skipped", "Skipped side-panel layout persistence without a measurable workspace.", {
+      reason,
+      handleId,
+      availableWidth,
+    });
     return;
   }
 
-  state.userSettingPanelResizerLeftPercent = panelWidthToPercent(state.binderPanelWidth, availableWidth);
-  state.userSettingPanelResizerRightPercent = panelWidthToPercent(state.consoleDockWidth, availableWidth);
+  const profileKey = resolvePanelResizerLayoutProfileKey(availableWidth);
+  const profile = createPanelResizerLayoutProfile({
+    profileKey,
+    availableWidth,
+    binderPanelWidth: state.binderPanelWidth,
+    consoleDockWidth: state.consoleDockWidth,
+  });
+  state.panelResizerLayoutProfiles = upsertPanelResizerLayoutProfile(
+    state.panelResizerLayoutProfiles,
+    profile,
+  );
+  layoutStateLog.debug("layout", "panel-layout.persist", "Persisted manuscript side-panel layout profile.", {
+    reason,
+    handleId,
+    availableWidth,
+    profileKey,
+    binderPanelWidth: state.binderPanelWidth,
+    consoleDockWidth: state.consoleDockWidth,
+    profileWorkspaceWidth: profile?.workspaceWidth ?? null,
+    profileKeys: Object.keys(state.panelResizerLayoutProfiles),
+  });
+
+  const fallbackProfile = state.panelResizerLayoutProfiles[PANEL_RESIZER_FALLBACK_PROFILE_KEY] ?? null;
+  if (!shouldReplacePanelResizerFallbackProfile(fallbackProfile, availableWidth)) {
+    layoutStateLog.debug("layout", "panel-layout.fallback-preserved", "Preserved the wider side-panel fallback profile.", {
+      reason,
+      handleId,
+      availableWidth,
+      fallbackWorkspaceWidth: fallbackProfile?.workspaceWidth ?? null,
+      fallbackBinderPanelWidth: fallbackProfile?.binderPanelWidth ?? null,
+      fallbackConsoleDockWidth: fallbackProfile?.consoleDockWidth ?? null,
+    });
+    return;
+  }
+
+  const nextFallbackProfile = createPanelResizerLayoutProfile({
+    profileKey: PANEL_RESIZER_FALLBACK_PROFILE_KEY,
+    availableWidth,
+    binderPanelWidth: state.binderPanelWidth,
+    consoleDockWidth: state.consoleDockWidth,
+  });
+  state.panelResizerLayoutProfiles = upsertPanelResizerLayoutProfile(
+    state.panelResizerLayoutProfiles,
+    nextFallbackProfile,
+  );
+  state.userSettingPanelResizerLeftPercent = nextFallbackProfile?.leftPercent ?? null;
+  state.userSettingPanelResizerRightPercent = nextFallbackProfile?.rightPercent ?? null;
+  layoutStateLog.debug("layout", "panel-layout.fallback-updated", "Updated the wide side-panel fallback profile.", {
+    reason,
+    handleId,
+    availableWidth,
+    fallbackWorkspaceWidth: nextFallbackProfile?.workspaceWidth ?? null,
+    fallbackBinderPanelWidth: nextFallbackProfile?.binderPanelWidth ?? null,
+    fallbackConsoleDockWidth: nextFallbackProfile?.consoleDockWidth ?? null,
+  });
 }
 
-function panelWidthFromPercent(percent, availableWidth) {
-  const normalizedPercent = normalizePanelResizerPercent(percent);
-  return normalizedPercent === null || availableWidth <= 0
-    ? null
-    : Math.round((availableWidth * normalizedPercent) / 100);
+function ensurePanelResizerFallbackProfile(availableWidth) {
+  // Intent: preserve legacy pixel widths before automatic resize clamping mutates runtime panel state.
+  state.panelResizerLayoutProfiles = normalizePanelResizerLayoutProfiles(state.panelResizerLayoutProfiles);
+  if (state.panelResizerLayoutProfiles[PANEL_RESIZER_FALLBACK_PROFILE_KEY]) {
+    return;
+  }
+
+  const hasLegacyPercent =
+    normalizePanelResizerPercent(state.userSettingPanelResizerLeftPercent) !== null ||
+    normalizePanelResizerPercent(state.userSettingPanelResizerRightPercent) !== null;
+  if (hasLegacyPercent) {
+    state.panelResizerLayoutProfiles = upsertPanelResizerLayoutProfile(
+      state.panelResizerLayoutProfiles,
+      {
+        profileKey: PANEL_RESIZER_FALLBACK_PROFILE_KEY,
+        workspaceWidth: availableWidth,
+        binderPanelWidth: null,
+        consoleDockWidth: null,
+        leftPercent: state.userSettingPanelResizerLeftPercent,
+        rightPercent: state.userSettingPanelResizerRightPercent,
+      },
+    );
+    return;
+  }
+
+  const fallbackProfile = createPanelResizerLayoutProfile({
+    profileKey: PANEL_RESIZER_FALLBACK_PROFILE_KEY,
+    availableWidth,
+    binderPanelWidth: state.binderPanelWidth,
+    consoleDockWidth: state.consoleDockWidth,
+  });
+  state.panelResizerLayoutProfiles = upsertPanelResizerLayoutProfile(
+    state.panelResizerLayoutProfiles,
+    fallbackProfile,
+  );
 }
 
-function panelWidthToPercent(width, availableWidth) {
-  return availableWidth > 0
-    ? normalizePanelResizerPercent((Number(width) / availableWidth) * 100)
-    : null;
+// Intent: keep World Spine side-panel widths clamped and remembered per browser-window size.
+function syncWorldSpinePanelLayout(options = {}) {
+  const syncOptions = normalizeLayoutSyncOptions(options);
+  const persistProfileRequested = syncOptions.persistProfile === true;
+  const sidePanelsHidden = state.sidePanelsHidden === true;
+  const persistProfile = persistProfileRequested && syncOptions.reason === "world-spine-panel-resize" && !sidePanelsHidden;
+  const workspace = document.querySelector("[data-world-spine-root]");
+  const workspaceWidth = workspace instanceof HTMLElement ? workspace.getBoundingClientRect().width : 0;
+  const availableWidth = Math.max(0, workspaceWidth - (PANEL_RESIZER_WIDTH * 2));
+  const beforeEventRailWidth = state.worldSpineEventRailWidth;
+  const beforeManuscriptPaneWidth = state.worldSpineManuscriptPaneWidth;
+
+  if (!sidePanelsHidden && availableWidth > 0) {
+    ensureWorldSpineLayoutFallbackProfile(availableWidth);
+  }
+
+  let restoreResult = null;
+  if (!sidePanelsHidden && !persistProfile && !worldSpineLayoutResizeSession && availableWidth > 0) {
+    restoreResult = restoreWorldSpinePanelWidthsFromUserSettings(availableWidth, {
+      reason: syncOptions.reason,
+    });
+  }
+
+  if (!sidePanelsHidden) {
+    const nextWidths = clampWorldSpinePanelWidths({
+      availableWidth,
+      eventRailWidth: state.worldSpineEventRailWidth,
+      manuscriptPaneWidth: state.worldSpineManuscriptPaneWidth,
+      activeHandleId: syncOptions.handleId || worldSpineLayoutResizeSession?.handleId || "",
+    });
+    state.worldSpineEventRailWidth = nextWidths.eventRailWidth;
+    state.worldSpineManuscriptPaneWidth = nextWidths.manuscriptPaneWidth;
+  }
+
+  if (workspace instanceof HTMLElement) {
+    workspace.style.setProperty("--world-spine-event-rail-width", `${state.worldSpineEventRailWidth}px`);
+    workspace.style.setProperty("--world-spine-manuscript-pane-width", `${state.worldSpineManuscriptPaneWidth}px`);
+    workspace.style.setProperty("--world-spine-panel-resizer-width", `${PANEL_RESIZER_WIDTH}px`);
+  }
+
+  layoutStateLog.debug("layout", "world-spine-panel-layout.sync", "Synchronized World Spine side-panel widths.", {
+    reason: syncOptions.reason,
+    handleId: syncOptions.handleId ?? worldSpineLayoutResizeSession?.handleId ?? "",
+    persistProfileRequested,
+    persistProfileApplied: persistProfile,
+    worldSpineLayoutResizeSessionActive: Boolean(worldSpineLayoutResizeSession),
+    beforeEventRailWidth,
+    beforeManuscriptPaneWidth,
+    eventRailWidth: state.worldSpineEventRailWidth,
+    manuscriptPaneWidth: state.worldSpineManuscriptPaneWidth,
+    sidePanelsHidden,
+    timelineMinWidth: MIN_WORLD_SPINE_TIMELINE_WIDTH,
+    restoreSource: restoreResult?.restoreSource ?? "",
+    selectedProfileKey: restoreResult?.selectedProfileKey ?? "",
+    profileKeys: Object.keys(state.worldSpinePanelLayoutProfiles ?? {}),
+    ...getWorldSpineLayoutViewportLogContext(workspaceWidth, availableWidth),
+  });
+
+  if (persistProfileRequested && !persistProfile) {
+    layoutStateLog.warn("layout", "world-spine-panel-layout.persist-blocked", "Blocked World Spine layout profile persistence from a non-resizer sync.", {
+      reason: syncOptions.reason,
+      handleId: syncOptions.handleId ?? "",
+      eventRailWidth: state.worldSpineEventRailWidth,
+      manuscriptPaneWidth: state.worldSpineManuscriptPaneWidth,
+      profileKeys: Object.keys(state.worldSpinePanelLayoutProfiles ?? {}),
+      ...getWorldSpineLayoutViewportLogContext(workspaceWidth, availableWidth),
+    });
+  }
+
+  if (persistProfile) {
+    persistWorldSpinePanelLayoutUserSettings(availableWidth, {
+      reason: syncOptions.reason,
+      handleId: syncOptions.handleId,
+    });
+    writeStoredJsonRaw(EDITOR_WORLD_SPINE_PANEL_LAYOUT_PROFILES_KEY, state.worldSpinePanelLayoutProfiles);
+    writeStoredJsonRaw(EDITOR_WORLD_SPINE_EVENT_RAIL_WIDTH_KEY, state.worldSpineEventRailWidth);
+    writeStoredJsonRaw(EDITOR_WORLD_SPINE_MANUSCRIPT_PANE_WIDTH_KEY, state.worldSpineManuscriptPaneWidth);
+    persistCurrentProjectRecord({
+      domain: "app-settings",
+      dirtyReason: "world-spine-panel-layout-updated",
+      source: "syncWorldSpinePanelLayout",
+    });
+  }
+
+  syncWorldbuildingEntryPopoverPosition();
+}
+
+function clampWorldSpinePanelWidths({
+  availableWidth,
+  eventRailWidth,
+  manuscriptPaneWidth,
+  activeHandleId = "",
+} = {}) {
+  // Intent: reserve enough center canvas width while preserving the rail currently being dragged.
+  let nextEventRailWidth = clampNumber(
+    eventRailWidth,
+    MIN_WORLD_SPINE_EVENT_RAIL_WIDTH,
+    Number.POSITIVE_INFINITY,
+  );
+  let nextManuscriptPaneWidth = clampNumber(
+    manuscriptPaneWidth,
+    MIN_WORLD_SPINE_MANUSCRIPT_PANE_WIDTH,
+    Number.POSITIVE_INFINITY,
+  );
+
+  if (availableWidth <= 0) {
+    return {
+      eventRailWidth: nextEventRailWidth,
+      manuscriptPaneWidth: nextManuscriptPaneWidth,
+    };
+  }
+
+  const maxSidePanelTotal = Math.max(
+    MIN_WORLD_SPINE_EVENT_RAIL_WIDTH + MIN_WORLD_SPINE_MANUSCRIPT_PANE_WIDTH,
+    availableWidth - MIN_WORLD_SPINE_TIMELINE_WIDTH,
+  );
+  nextEventRailWidth = clampNumber(
+    nextEventRailWidth,
+    MIN_WORLD_SPINE_EVENT_RAIL_WIDTH,
+    Math.max(MIN_WORLD_SPINE_EVENT_RAIL_WIDTH, maxSidePanelTotal - MIN_WORLD_SPINE_MANUSCRIPT_PANE_WIDTH),
+  );
+  nextManuscriptPaneWidth = clampNumber(
+    nextManuscriptPaneWidth,
+    MIN_WORLD_SPINE_MANUSCRIPT_PANE_WIDTH,
+    Math.max(MIN_WORLD_SPINE_MANUSCRIPT_PANE_WIDTH, maxSidePanelTotal - nextEventRailWidth),
+  );
+
+  const overflow = Math.max(0, nextEventRailWidth + nextManuscriptPaneWidth - maxSidePanelTotal);
+  if (overflow > 0 && activeHandleId === "event-rail") {
+    nextManuscriptPaneWidth = Math.max(MIN_WORLD_SPINE_MANUSCRIPT_PANE_WIDTH, nextManuscriptPaneWidth - overflow);
+  } else if (overflow > 0 && activeHandleId === "manuscript-pane") {
+    nextEventRailWidth = Math.max(MIN_WORLD_SPINE_EVENT_RAIL_WIDTH, nextEventRailWidth - overflow);
+  } else if (overflow > 0 && nextEventRailWidth - MIN_WORLD_SPINE_EVENT_RAIL_WIDTH >= nextManuscriptPaneWidth - MIN_WORLD_SPINE_MANUSCRIPT_PANE_WIDTH) {
+    nextEventRailWidth = Math.max(MIN_WORLD_SPINE_EVENT_RAIL_WIDTH, nextEventRailWidth - overflow);
+  } else if (overflow > 0) {
+    nextManuscriptPaneWidth = Math.max(MIN_WORLD_SPINE_MANUSCRIPT_PANE_WIDTH, nextManuscriptPaneWidth - overflow);
+  }
+
+  return {
+    eventRailWidth: nextEventRailWidth,
+    manuscriptPaneWidth: nextManuscriptPaneWidth,
+  };
+}
+
+function restoreWorldSpinePanelWidthsFromUserSettings(availableWidth, { reason = "" } = {}) {
+  // Intent: restore World Spine rail widths from the nearest window-size profile without overwriting it on resize.
+  const previousEventRailWidth = state.worldSpineEventRailWidth;
+  const previousManuscriptPaneWidth = state.worldSpineManuscriptPaneWidth;
+  const profiles = normalizeWorldSpineLayoutProfiles(state.worldSpinePanelLayoutProfiles);
+  state.worldSpinePanelLayoutProfiles = profiles;
+  const sizeProfile = resolveWorldSpineLayoutProfile(profiles, availableWidth);
+  const fallbackProfile = profiles[WORLD_SPINE_LAYOUT_FALLBACK_PROFILE_KEY] ?? null;
+  const selectedProfile = sizeProfile ?? fallbackProfile;
+  const restoreSource = sizeProfile ? "size-profile" : fallbackProfile ? "fallback" : "state";
+  const profileWidths = selectedProfile
+    ? resolveWorldSpineLayoutProfileWidths(selectedProfile, availableWidth, {
+        preferStoredPixels: true,
+      })
+    : {
+        eventRailWidth: null,
+        manuscriptPaneWidth: null,
+      };
+
+  if (profileWidths.eventRailWidth !== null) {
+    state.worldSpineEventRailWidth = profileWidths.eventRailWidth;
+  }
+  if (profileWidths.manuscriptPaneWidth !== null) {
+    state.worldSpineManuscriptPaneWidth = profileWidths.manuscriptPaneWidth;
+  }
+
+  layoutStateLog.debug("layout", "world-spine-panel-layout.restore", "Resolved World Spine side-panel widths for current workspace.", {
+    reason,
+    availableWidth,
+    restoreSource,
+    sizeProfileKey: sizeProfile?.profileKey ?? "",
+    selectedProfileKey: selectedProfile?.profileKey ?? "",
+    previousEventRailWidth,
+    previousManuscriptPaneWidth,
+    nextEventRailWidth: profileWidths.eventRailWidth,
+    nextManuscriptPaneWidth: profileWidths.manuscriptPaneWidth,
+    profileKeys: Object.keys(profiles),
+  });
+
+  return {
+    restoreSource,
+    selectedProfileKey: selectedProfile?.profileKey ?? "",
+    sizeProfileKey: sizeProfile?.profileKey ?? "",
+    eventRailWidth: profileWidths.eventRailWidth,
+    manuscriptPaneWidth: profileWidths.manuscriptPaneWidth,
+  };
+}
+
+function persistWorldSpinePanelLayoutUserSettings(availableWidth, { reason = "", handleId = "" } = {}) {
+  // Intent: store World Spine rail widths by workspace-size bucket while keeping a wide fallback profile.
+  if (availableWidth <= 0) {
+    layoutStateLog.warn("layout", "world-spine-panel-layout.persist-skipped", "Skipped World Spine layout persistence without a measurable workspace.", {
+      reason,
+      handleId,
+      availableWidth,
+    });
+    return;
+  }
+
+  const profileKey = resolveWorldSpineLayoutProfileKey(availableWidth);
+  const profile = createWorldSpineLayoutProfile({
+    profileKey,
+    availableWidth,
+    eventRailWidth: state.worldSpineEventRailWidth,
+    manuscriptPaneWidth: state.worldSpineManuscriptPaneWidth,
+  });
+  state.worldSpinePanelLayoutProfiles = upsertWorldSpineLayoutProfile(
+    state.worldSpinePanelLayoutProfiles,
+    profile,
+  );
+  layoutStateLog.debug("layout", "world-spine-panel-layout.persist", "Persisted World Spine side-panel layout profile.", {
+    reason,
+    handleId,
+    availableWidth,
+    profileKey,
+    eventRailWidth: state.worldSpineEventRailWidth,
+    manuscriptPaneWidth: state.worldSpineManuscriptPaneWidth,
+    profileWorkspaceWidth: profile?.workspaceWidth ?? null,
+    profileKeys: Object.keys(state.worldSpinePanelLayoutProfiles),
+  });
+
+  const fallbackProfile = state.worldSpinePanelLayoutProfiles[WORLD_SPINE_LAYOUT_FALLBACK_PROFILE_KEY] ?? null;
+  if (!shouldReplaceWorldSpineFallbackProfile(fallbackProfile, availableWidth)) {
+    layoutStateLog.debug("layout", "world-spine-panel-layout.fallback-preserved", "Preserved the wider World Spine fallback profile.", {
+      reason,
+      handleId,
+      availableWidth,
+      fallbackWorkspaceWidth: fallbackProfile?.workspaceWidth ?? null,
+      fallbackEventRailWidth: fallbackProfile?.eventRailWidth ?? null,
+      fallbackManuscriptPaneWidth: fallbackProfile?.manuscriptPaneWidth ?? null,
+    });
+    return;
+  }
+
+  const nextFallbackProfile = createWorldSpineLayoutProfile({
+    profileKey: WORLD_SPINE_LAYOUT_FALLBACK_PROFILE_KEY,
+    availableWidth,
+    eventRailWidth: state.worldSpineEventRailWidth,
+    manuscriptPaneWidth: state.worldSpineManuscriptPaneWidth,
+  });
+  state.worldSpinePanelLayoutProfiles = upsertWorldSpineLayoutProfile(
+    state.worldSpinePanelLayoutProfiles,
+    nextFallbackProfile,
+  );
+  layoutStateLog.debug("layout", "world-spine-panel-layout.fallback-updated", "Updated the wide World Spine side-panel fallback profile.", {
+    reason,
+    handleId,
+    availableWidth,
+    fallbackWorkspaceWidth: nextFallbackProfile?.workspaceWidth ?? null,
+    fallbackEventRailWidth: nextFallbackProfile?.eventRailWidth ?? null,
+    fallbackManuscriptPaneWidth: nextFallbackProfile?.manuscriptPaneWidth ?? null,
+  });
+}
+
+function ensureWorldSpineLayoutFallbackProfile(availableWidth) {
+  // Intent: seed a World Spine fallback profile before automatic resize clamping can distort the defaults.
+  state.worldSpinePanelLayoutProfiles = normalizeWorldSpineLayoutProfiles(state.worldSpinePanelLayoutProfiles);
+  if (state.worldSpinePanelLayoutProfiles[WORLD_SPINE_LAYOUT_FALLBACK_PROFILE_KEY]) {
+    return;
+  }
+
+  const fallbackProfile = createWorldSpineLayoutProfile({
+    profileKey: WORLD_SPINE_LAYOUT_FALLBACK_PROFILE_KEY,
+    availableWidth,
+    eventRailWidth: state.worldSpineEventRailWidth,
+    manuscriptPaneWidth: state.worldSpineManuscriptPaneWidth,
+  });
+  state.worldSpinePanelLayoutProfiles = upsertWorldSpineLayoutProfile(
+    state.worldSpinePanelLayoutProfiles,
+    fallbackProfile,
+  );
+}
+
+function getWorldSpineLayoutViewportLogContext(workspaceWidth, availableWidth) {
+  // Intent: log enough viewport context to diagnose per-window World Spine profile restores.
+  return {
+    windowInnerWidth: window.innerWidth,
+    windowInnerHeight: window.innerHeight,
+    windowOuterWidth: window.outerWidth,
+    windowOuterHeight: window.outerHeight,
+    screenWidth: window.screen?.width ?? null,
+    screenHeight: window.screen?.height ?? null,
+    screenAvailWidth: window.screen?.availWidth ?? null,
+    screenAvailHeight: window.screen?.availHeight ?? null,
+    devicePixelRatio: window.devicePixelRatio,
+    workspaceWidth,
+    availableWidth,
+    profileKey: resolveWorldSpineLayoutProfileKey(availableWidth),
+  };
 }
 
 function normalizePanelResizerPercent(value) {
@@ -12936,7 +26406,7 @@ async function postDeveloperLogEntryToDesktopHost(entry) {
     return false;
   }
 
-  const baseUrls = ["http://127.0.0.1:4310", "http://localhost:4310"];
+  const baseUrls = getDesktopApiBaseUrls();
   const payload = {
     level: entry.level,
     scope: String(entry.source ?? "browser"),
@@ -13011,7 +26481,7 @@ function resolveDeveloperLogCategory(scope) {
 }
 
 async function postJsonToDesktopHost(pathname, payload, options = {}) {
-  const baseUrls = ["http://127.0.0.1:4310", "http://localhost:4310"];
+  const baseUrls = getDesktopApiBaseUrls();
   const body = JSON.stringify(payload);
   const failedOrigins = [];
   const shouldLogTransport = options.logTransport !== false && pathname !== "/api/log";
@@ -13104,7 +26574,3 @@ function cloneValue(value) {
 
   return JSON.parse(JSON.stringify(value));
 }
-
-
-
-

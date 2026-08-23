@@ -84,6 +84,7 @@ export function resolveNarrationTakeSelectionFromTextInput({
   scene,
   contextRange = null,
   caretOffset = 0,
+  caretRange = null,
   inlinePosition = null,
   projectId = "",
   findSceneBlockAtOffset = () => null,
@@ -102,15 +103,26 @@ export function resolveNarrationTakeSelectionFromTextInput({
   }
 
   const blockRange = getSceneBlockRanges(scene).find((candidate) => candidate.blockId === block.blockId) ?? null;
+  const hasCaretRange = !contextRange?.hasExplicitSelection &&
+    caretRange?.blockId === block.blockId &&
+    Number.isInteger(caretRange.startOffset) &&
+    Number.isInteger(caretRange.endOffset) &&
+    caretRange.startOffset >= 0 &&
+    caretRange.endOffset > caretRange.startOffset;
   const selectedText = contextRange?.selectedText?.trim()
+    || (hasCaretRange ? String(caretRange.selectedText ?? "").trim() : "")
     || String(block.text ?? "").trim()
     || "";
   const startOffset = contextRange?.hasExplicitSelection
     ? contextRange.startOffset
-    : blockRange?.startOffset ?? 0;
+    : hasCaretRange
+      ? caretRange.startOffset
+      : blockRange?.startOffset ?? 0;
   const endOffset = contextRange?.hasExplicitSelection
     ? contextRange.endOffset
-    : blockRange?.endOffset ?? selectedText.length;
+    : hasCaretRange
+      ? caretRange.endOffset
+      : blockRange?.endOffset ?? selectedText.length;
 
   return buildNarrationTakeSelection(scene, block, {
     blockRange,

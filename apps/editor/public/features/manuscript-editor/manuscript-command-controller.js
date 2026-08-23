@@ -23,9 +23,15 @@ export const INLINE_FORMATS = Object.freeze({
   }),
 });
 
+export const INLINE_DECORATION_ERASER = Object.freeze({
+  id: "clearDecorations",
+  label: "Clear decorations",
+});
+
 export function createDefaultManuscriptInlineFormattingState() {
   return {
     pendingFormats: {},
+    pendingClearDecorations: false,
     lastCommand: null,
   };
 }
@@ -44,6 +50,7 @@ export function normalizeManuscriptInlineFormattingState(candidate) {
 
   return {
     pendingFormats,
+    pendingClearDecorations: candidate?.pendingClearDecorations === true,
     lastCommand: typeof candidate?.lastCommand === "string" ? candidate.lastCommand : null,
   };
 }
@@ -131,6 +138,7 @@ export function executeToggleInlineFormat({
   const nextState = normalizeManuscriptInlineFormattingState({
     ...state,
     pendingFormats: createNextPendingFormatState(state.pendingFormats, format.id, mutation),
+    pendingClearDecorations: false,
     lastCommand: `toggleInlineFormat:${format.id}`,
   });
 
@@ -146,6 +154,26 @@ export function executeToggleInlineFormat({
     mutation,
     state: nextState,
   };
+}
+
+// Intent: make the decoration eraser mutually exclusive with all pending author styling tools.
+export function createNextDecorationEraserState(candidate, active) {
+  const state = normalizeManuscriptInlineFormattingState(candidate);
+  const pendingFormats = {};
+  for (const formatId of Object.keys(INLINE_FORMATS)) {
+    pendingFormats[formatId] = false;
+  }
+
+  return normalizeManuscriptInlineFormattingState({
+    ...state,
+    pendingFormats,
+    pendingClearDecorations: active === true,
+    lastCommand: `${INLINE_DECORATION_ERASER.id}:${active === true ? "start" : "stop"}`,
+  });
+}
+
+export function isDecorationEraserPending(candidate) {
+  return normalizeManuscriptInlineFormattingState(candidate).pendingClearDecorations === true;
 }
 
 // Intent: preserve stacked active decoration tools while updating only the commanded tool.
@@ -286,6 +314,51 @@ export function applyInlineFormatRange(ranges, selection, formatId) {
       endOffset,
     },
   ], textLength);
+}
+
+// Intent: remove every legacy inline decoration crossing the selected manuscript range.
+export function clearInlineFormatRangesForSelection(ranges, selection, textLength = selection?.text?.length ?? Number.POSITIVE_INFINITY) {
+  const safeTextLength = typeof selection?.text === "string"
+    ? selection.text.length
+    : textLength;
+  const normalizedRanges = normalizeInlineFormatRanges(ranges, safeTextLength);
+  if (!selection || selection.collapsed) {
+    return normalizedRanges;
+  }
+
+  const startOffset = clampOffset(selection.startOffset, safeTextLength);
+  const endOffset = clampOffset(selection.endOffset, safeTextLength);
+  const start = Math.min(startOffset, endOffset);
+  const end = Math.max(startOffset, endOffset);
+  if (end <= start) {
+    return normalizedRanges;
+  }
+
+  const nextRanges = [];
+  for (const range of normalizedRanges) {
+    if (range.endOffset <= start || range.startOffset >= end) {
+      nextRanges.push(range);
+      continue;
+    }
+
+    if (range.startOffset < start) {
+      nextRanges.push({
+        ...range,
+        id: createInlineFormatRangeId(range.formatId, range.startOffset, start),
+        endOffset: start,
+      });
+    }
+
+    if (range.endOffset > end) {
+      nextRanges.push({
+        ...range,
+        id: createInlineFormatRangeId(range.formatId, end, range.endOffset),
+        startOffset: end,
+      });
+    }
+  }
+
+  return mergeInlineFormatRanges(nextRanges, safeTextLength);
 }
 
 export function updateInlineFormatRangesForTextEdit({

@@ -68,6 +68,7 @@ export interface ImportedProjectData {
   world: WorldModel;
   manuscriptTasks: any[];
   passageNotes: any[];
+  metadataSubgroups?: any[];
   sourceArchive?: ProjectArchiveItem[];
   importReport: Record<string, unknown>;
 }
@@ -121,6 +122,7 @@ export interface ProjectLibrarySeedRecord {
   templateDrafts: unknown[];
   manuscriptTasks: any[];
   passageNotes: any[];
+  metadataSubgroups: any[];
   sourceArchive: ProjectArchiveItem[];
   importReport: Record<string, unknown>;
   projectSettings: ProjectSettingsSnapshot;
@@ -129,8 +131,10 @@ export interface ProjectLibrarySeedRecord {
 }
 
 export interface ProjectLibrarySeedSnapshot {
+  schemaVersion?: number;
   activeProjectId: string;
   projects: ProjectLibrarySeedRecord[];
+  sceneStore?: Record<string, Record<string, unknown>>;
 }
 
 // Intent: locate bundled project assets from the desktop package without hard-coding caller cwd.
@@ -139,6 +143,9 @@ const SERVA_VITAE_BUNDLED_PROJECT_LIBRARY_PATH = fileURLToPath(
     "../../../apps/editor/public/serva-vitae-project-library.js",
     import.meta.url,
   ),
+);
+const SERVA_VITAE_PROJECT_FILE_PATH = fileURLToPath(
+  new URL("../../../project-serva-vitae.abe-project.json", import.meta.url),
 );
 let cachedServaVitaeProjectLibrarySeed: ProjectLibrarySeedSnapshot | null = null;
 
@@ -343,6 +350,21 @@ export function createServaVitaeProjectLibrarySeed(): ProjectLibrarySeedSnapshot
 
 function loadBundledServaVitaeProjectLibrarySeed(): ProjectLibrarySeedSnapshot {
   try {
+    const projectFileSeed = loadServaVitaeProjectFileSeed();
+    logDesktopInfo("import", "Loaded the Serva Vitae project library from the checked project JSON file.", {
+      projectFilePath: SERVA_VITAE_PROJECT_FILE_PATH,
+      activeProjectId: projectFileSeed.activeProjectId,
+      projectCount: projectFileSeed.projects.length,
+    });
+    return projectFileSeed;
+  } catch (error) {
+    logDesktopError("import", "Unable to load the checked Serva Vitae project JSON; falling back to the bundled JS seed.", {
+      error,
+      projectFilePath: SERVA_VITAE_PROJECT_FILE_PATH,
+    });
+  }
+
+  try {
     const bundled = readFileSync(SERVA_VITAE_BUNDLED_PROJECT_LIBRARY_PATH, "utf8");
     // Intent: allow generated seed files to carry ownership comments without breaking fallback loading.
     const match = bundled.match(
@@ -354,14 +376,17 @@ function loadBundledServaVitaeProjectLibrarySeed(): ProjectLibrarySeedSnapshot {
 
     const payload = JSON.parse(match[1]) as ProjectLibrarySeedSnapshot;
     const normalizedProjects = payload.projects.map((project) => normalizeProjectLibrarySeedRecord(project));
+    const sceneStore = normalizeProjectLibrarySeedSceneStore(payload.sceneStore);
     logDesktopInfo("import", "Loaded the bundled Serva Vitae project library snapshot.", {
       fallback: true,
       activeProjectId: payload.activeProjectId,
       projectCount: normalizedProjects.length,
     });
     return {
+      schemaVersion: payload.schemaVersion,
       activeProjectId: payload.activeProjectId,
       projects: normalizedProjects,
+      sceneStore,
     };
   } catch (error) {
     logDesktopError("import", "Unable to load the bundled Serva Vitae project library snapshot.", {
@@ -372,13 +397,59 @@ function loadBundledServaVitaeProjectLibrarySeed(): ProjectLibrarySeedSnapshot {
   }
 }
 
+// Intent: use the real loaded JSON file as the project-file authority before falling back to generated browser seed data.
+function loadServaVitaeProjectFileSeed(): ProjectLibrarySeedSnapshot {
+  const payload = JSON.parse(readFileSync(SERVA_VITAE_PROJECT_FILE_PATH, "utf8")) as ProjectLibrarySeedSnapshot;
+  const normalizedProjects = payload.projects.map((project) =>
+    normalizeProjectLibrarySeedRecord({
+      ...project,
+      projectSettings: {
+        ...(project.projectSettings ?? {}),
+        projectFilePath: SERVA_VITAE_PROJECT_FILE_PATH,
+      },
+    }),
+  );
+
+  return {
+    schemaVersion: payload.schemaVersion,
+    activeProjectId: payload.activeProjectId,
+    projects: normalizedProjects,
+    sceneStore: normalizeProjectLibrarySeedSceneStore(payload.sceneStore),
+  };
+}
+
+// Intent: preserve split-storage manuscript bodies when desktop seed snapshots cross into the editor runtime.
+function normalizeProjectLibrarySeedSceneStore(candidate: unknown): Record<string, Record<string, unknown>> {
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+    return {};
+  }
+
+  const sceneStore: Record<string, Record<string, unknown>> = {};
+  for (const [projectId, projectSceneStore] of Object.entries(candidate as Record<string, unknown>)) {
+    if (typeof projectId !== "string" || !projectId.trim()) {
+      continue;
+    }
+    if (!projectSceneStore || typeof projectSceneStore !== "object" || Array.isArray(projectSceneStore)) {
+      continue;
+    }
+
+    sceneStore[projectId] = cloneValue(projectSceneStore) as Record<string, unknown>;
+  }
+
+  return sceneStore;
+}
+
 function normalizeProjectLibrarySeedRecord(
   project: ProjectLibrarySeedRecord,
 ): ProjectLibrarySeedRecord {
   const generatedAt = project.updatedAt || project.createdAt;
+  const defaultProjectSettings = createDefaultProjectSettingsSnapshot(generatedAt);
   return {
     ...project,
-    projectSettings: project.projectSettings ?? createDefaultProjectSettingsSnapshot(generatedAt),
+    projectSettings: {
+      ...defaultProjectSettings,
+      ...(project.projectSettings ?? {}),
+    },
     editorPrefs: project.editorPrefs ?? {},
     localAiPrefs: project.localAiPrefs ?? { enabled: true },
     sceneDrafts: project.sceneDrafts ?? {},
@@ -386,6 +457,7 @@ function normalizeProjectLibrarySeedRecord(
     templateDrafts: project.templateDrafts ?? [],
     manuscriptTasks: project.manuscriptTasks ?? [],
     passageNotes: project.passageNotes ?? [],
+    metadataSubgroups: project.metadataSubgroups ?? [],
     sourceArchive: project.sourceArchive ?? [],
     importReport: project.importReport ?? {},
   };
@@ -1341,6 +1413,7 @@ function buildSpineRecord(
         label: node.label,
         summary: node.summary,
         order: node.order,
+        ...buildTimelineNodeLocationRecordFields(node),
         primaryBlockId: node.manuscriptAnchors[0]?.blockId,
         lineNumbers: node.manuscriptAnchors
           .map((anchor) => resolveManuscriptAnchor(project, anchor).index.lineNumber)
@@ -1357,6 +1430,32 @@ function buildSpineRecord(
     kind: spine.kind,
     description: spine.description,
     nodes,
+  };
+}
+
+// Intent: expose canonical placement as both a typed DTO and legacy flat fields for the current editor panel.
+function buildTimelineNodeLocationRecordFields(node: TimelineNode): Partial<TimelineNodeRecord> {
+  const placement = node.locationPlacement;
+  if (!placement) {
+    return {};
+  }
+
+  return {
+    location: placement.locationLabel,
+    locationLabel: placement.locationLabel,
+    locationKey: placement.locationKey,
+    locationRowLabel: placement.locationRowLabel,
+    locationRowKey: placement.locationRowKey,
+    locationScope: placement.locationScope,
+    eventLocationLabel: placement.eventLocationLabel,
+    eventLocationKey: placement.eventLocationKey,
+    coreLocationLabel: placement.coreLocationLabel,
+    coreLocationKey: placement.coreLocationKey,
+    sublocation: placement.sublocationLabel,
+    sublocationLabel: placement.sublocationLabel,
+    sublocationKey: placement.sublocationKey,
+    orbitalBand: placement.orbitalBand,
+    locationPlacement: placement,
   };
 }
 

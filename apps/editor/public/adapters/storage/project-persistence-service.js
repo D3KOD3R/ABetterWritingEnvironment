@@ -39,9 +39,20 @@ import {
   loadProjectFileHandleReference,
   saveProjectFileHandleReference,
 } from "./project-file-handle-store.js";
+import {
+  buildScrivenerProjectSnapshotFromFiles,
+  canUseBrowserDirectoryPicker,
+  pickScrivenerProjectPackageFromDirectory,
+  promptForScrivenerProjectPackageFromInput,
+} from "./scrivener-import-service.js";
 
 function toErrorMessage(error) {
   return error instanceof Error ? error.message : String(error);
+}
+
+// Intent: detect cancelled browser picker flows without depending on a specific DOMException constructor.
+function isAbortError(error) {
+  return typeof error?.name === "string" && error.name === "AbortError";
 }
 
 // Intent: classify recoverable browser-handle permission failures so autosave can pause without error loops.
@@ -76,6 +87,28 @@ function cloneValue(value) {
   }
 
   return JSON.parse(JSON.stringify(value));
+}
+
+const WORKSPACE_PANE_IDS = Object.freeze(["manuscript", "world", "narration"]);
+
+function normalizeWorkspacePaneSetting(value) {
+  const normalizedValue = String(value ?? "").trim();
+  if (normalizedValue === "voice") {
+    return "narration";
+  }
+
+  return WORKSPACE_PANE_IDS.includes(normalizedValue) ? normalizedValue : "";
+}
+
+function hasExplicitProjectSetting(projectRecord, settingKey) {
+  const settings = projectRecord?.projectSettings && typeof projectRecord.projectSettings === "object" && !Array.isArray(projectRecord.projectSettings)
+    ? projectRecord.projectSettings
+    : {};
+  return Object.prototype.hasOwnProperty.call(settings, settingKey);
+}
+
+function getProjectActivePaneSetting(projectRecord) {
+  return normalizeWorkspacePaneSetting(projectRecord?.projectSettings?.activePane);
 }
 
 function normalizeDirtyDomain(value) {
@@ -191,6 +224,18 @@ function buildDomainComparablePayload(projectRecord, {
     };
   }
 
+  if (
+    normalizedDomain === "metadata-folders" ||
+    normalizedDomain === "metadatafolders" ||
+    normalizedDomain === "metadata-subgroups" ||
+    normalizedDomain === "metadatasubgroups"
+  ) {
+    return {
+      id: projectRecord.id ?? "",
+      metadataSubgroups: projectRecord.metadataSubgroups ?? [],
+    };
+  }
+
   if (normalizedDomain === "draft-proofing" || normalizedDomain === "draftproofing") {
     return {
       id: projectRecord.id ?? "",
@@ -219,13 +264,23 @@ function buildDomainComparablePayload(projectRecord, {
   if (normalizedDomain === "app-settings" || normalizedDomain === "appsettings") {
     return {
       id: projectRecord.id ?? "",
+      activePane: settings.activePane ?? null,
       editorPrefs: settings.editorPrefs ?? null,
       localAiPrefs: settings.localAiPrefs ?? null,
       binderPanelWidth: settings.binderPanelWidth ?? null,
       consoleDockWidth: settings.consoleDockWidth ?? null,
       userSettingPanelResizerLeftPercent: settings.userSettingPanelResizerLeftPercent ?? null,
       userSettingPanelResizerRightPercent: settings.userSettingPanelResizerRightPercent ?? null,
+      panelResizerLayoutProfiles: settings.panelResizerLayoutProfiles ?? null,
+      worldSpineEventRailWidth: settings.worldSpineEventRailWidth ?? null,
+      worldSpineManuscriptPaneWidth: settings.worldSpineManuscriptPaneWidth ?? null,
+      worldSpinePanelLayoutProfiles: settings.worldSpinePanelLayoutProfiles ?? null,
+      worldSpineRightPaneMode: settings.worldSpineRightPaneMode ?? null,
+      worldSpineLocationFilter: settings.worldSpineLocationFilter ?? null,
       consoleDockCollapsed: settings.consoleDockCollapsed ?? null,
+      sidePanelsHidden: settings.sidePanelsHidden ?? null,
+      sidePanelVisibility: settings.sidePanelVisibility ?? null,
+      topPanelVisibility: settings.topPanelVisibility ?? null,
       collapsedChapterIds: settings.collapsedChapterIds ?? null,
       collapsedConsoleChapterIds: settings.collapsedConsoleChapterIds ?? null,
     };
@@ -301,6 +356,26 @@ function getSingleProjectSceneStore(sceneStore) {
   return sceneStores.length === 1 ? cloneValue(sceneStores[0]) : null;
 }
 
+function normalizeProjectLibrarySceneStore(sceneStore) {
+  if (!sceneStore || typeof sceneStore !== "object" || Array.isArray(sceneStore)) {
+    return {};
+  }
+
+  const normalized = {};
+  for (const [projectId, projectSceneStore] of Object.entries(sceneStore)) {
+    if (typeof projectId !== "string" || !projectId.trim()) {
+      continue;
+    }
+    if (!projectSceneStore || typeof projectSceneStore !== "object" || Array.isArray(projectSceneStore)) {
+      continue;
+    }
+
+    normalized[projectId] = cloneValue(projectSceneStore);
+  }
+
+  return normalized;
+}
+
 function sceneDraftHasSubstantiveBody(draft) {
   if (!draft || typeof draft !== "object" || Array.isArray(draft)) {
     return false;
@@ -313,6 +388,185 @@ function sceneDraftHasSubstantiveBody(draft) {
   return Array.isArray(draft.blocks) && draft.blocks.some((block) =>
     typeof block?.text === "string" && block.text.trim().length > 0,
   );
+}
+
+// Intent: keep legacy full-line project files saveable even when browser scene chunks cannot be written.
+function collectProjectSceneStoreFromRecord(projectRecord) {
+  const sceneStore = {};
+  const sceneDrafts = projectRecord?.sceneDrafts && typeof projectRecord.sceneDrafts === "object" && !Array.isArray(projectRecord.sceneDrafts)
+    ? projectRecord.sceneDrafts
+    : {};
+  for (const [sceneId, sceneDraft] of Object.entries(sceneDrafts)) {
+    if (typeof sceneId === "string" && sceneId.trim() && sceneDraft && typeof sceneDraft === "object" && !Array.isArray(sceneDraft)) {
+      sceneStore[sceneId] = cloneValue(sceneDraft);
+    }
+  }
+
+  const lines = Array.isArray(projectRecord?.workspace?.project?.lines)
+    ? projectRecord.workspace.project.lines
+    : [];
+  const linesBySceneId = new Map();
+  for (const line of lines) {
+    const sceneId = typeof line?.sceneId === "string" && line.sceneId.trim() ? line.sceneId.trim() : "";
+    if (!sceneId) {
+      continue;
+    }
+
+    if (!linesBySceneId.has(sceneId)) {
+      linesBySceneId.set(sceneId, {
+        sceneId,
+        chapterId: typeof line.chapterId === "string" ? line.chapterId : "",
+        chapterTitle: typeof line.chapterTitle === "string" ? line.chapterTitle : "",
+        sceneTitle: typeof line.sceneTitle === "string" ? line.sceneTitle : "",
+        sceneSynopsis: typeof line.sceneSynopsis === "string" ? line.sceneSynopsis : "",
+        lines: [],
+      });
+    }
+    linesBySceneId.get(sceneId).lines.push(line);
+  }
+
+  for (const [sceneId, group] of linesBySceneId.entries()) {
+    const editorText = group.lines.map((line) => String(line?.text ?? "")).join("\n\n");
+    if (!editorText.trim() || sceneDraftHasSubstantiveBody(sceneStore[sceneId])) {
+      continue;
+    }
+
+    const existingSceneRecord = sceneStore[sceneId] && typeof sceneStore[sceneId] === "object" && !Array.isArray(sceneStore[sceneId])
+      ? cloneValue(sceneStore[sceneId])
+      : {};
+    sceneStore[sceneId] = {
+      ...existingSceneRecord,
+      sceneId,
+      chapterId: group.chapterId,
+      chapterTitle: group.chapterTitle,
+      sceneTitle: group.sceneTitle,
+      sceneSynopsis: group.sceneSynopsis,
+      editorText,
+      blocks: group.lines.map((line, index) => ({
+        blockId: typeof line?.blockId === "string" && line.blockId.trim() ? line.blockId : `${sceneId}-block-${index + 1}`,
+        lineNumber: Number.isInteger(line?.lineNumber) ? line.lineNumber : index + 1,
+        kind: typeof line?.kind === "string" && line.kind.trim() ? line.kind : "narration",
+        speakerLabel: typeof line?.speakerLabel === "string" ? line.speakerLabel : "",
+        text: String(line?.text ?? ""),
+        issueIds: Array.isArray(line?.issueIds) ? cloneValue(line.issueIds) : [],
+        eventTagIds: Array.isArray(line?.eventTagIds) ? cloneValue(line.eventTagIds) : [],
+        isDraft: line?.isDraft === true,
+      })),
+    };
+  }
+
+  return sceneStore;
+}
+
+function countManuscriptWords(text) {
+  return String(text ?? "").trim().split(/\s+/).filter(Boolean).length;
+}
+
+function getSceneDraftBodyText(sceneDraft) {
+  if (!sceneDraft || typeof sceneDraft !== "object" || Array.isArray(sceneDraft)) {
+    return "";
+  }
+
+  if (typeof sceneDraft.editorText === "string") {
+    return sceneDraft.editorText;
+  }
+
+  return Array.isArray(sceneDraft.blocks)
+    ? sceneDraft.blocks.map((block) => String(block?.text ?? "")).join("\n\n")
+    : "";
+}
+
+function buildSceneLineCountsById(projectRecord) {
+  const lineCounts = new Map();
+  const lines = Array.isArray(projectRecord?.workspace?.project?.lines)
+    ? projectRecord.workspace.project.lines
+    : [];
+  for (const line of lines) {
+    const sceneId = typeof line?.sceneId === "string" && line.sceneId.trim() ? line.sceneId.trim() : "";
+    if (!sceneId) {
+      continue;
+    }
+
+    lineCounts.set(sceneId, (lineCounts.get(sceneId) ?? 0) + 1);
+  }
+
+  return lineCounts;
+}
+
+// Intent: reject split-storage manuscript payloads whose scene-body store has collapsed while scene anchors remain.
+function assertProjectSceneBodyCoverage(projectRecord, projectSceneStore, {
+  operation = "save",
+} = {}) {
+  const indexedScenes = Array.isArray(projectRecord?.projectIndex?.scenes)
+    ? projectRecord.projectIndex.scenes
+    : [];
+  const workspaceLineCounts = buildSceneLineCountsById(projectRecord);
+  const sceneIds = new Set([
+    ...indexedScenes.map((scene) => (typeof scene?.id === "string" ? scene.id.trim() : "")).filter(Boolean),
+    ...workspaceLineCounts.keys(),
+  ]);
+
+  if (sceneIds.size < 5) {
+    return;
+  }
+
+  const sceneStore = projectSceneStore && typeof projectSceneStore === "object" && !Array.isArray(projectSceneStore)
+    ? projectSceneStore
+    : {};
+  const indexedSceneById = new Map(indexedScenes
+    .map((scene) => [typeof scene?.id === "string" ? scene.id.trim() : "", scene])
+    .filter(([sceneId]) => Boolean(sceneId)));
+  const lineBackedScenes = [];
+  const emptyLineBackedScenes = [];
+  for (const sceneId of sceneIds) {
+    const indexedScene = indexedSceneById.get(sceneId) ?? {};
+    const lineCount = Math.max(
+      0,
+      Number.isFinite(Number(indexedScene.lineCount)) ? Math.round(Number(indexedScene.lineCount)) : 0,
+      workspaceLineCounts.get(sceneId) ?? 0,
+    );
+    if (lineCount <= 0) {
+      continue;
+    }
+
+    const bodyWordCount = countManuscriptWords(getSceneDraftBodyText(sceneStore[sceneId]));
+    lineBackedScenes.push({
+      sceneId,
+      title: typeof indexedScene.title === "string" ? indexedScene.title : "",
+      lineCount,
+      bodyWordCount,
+    });
+    if (bodyWordCount === 0) {
+      emptyLineBackedScenes.push(sceneId);
+    }
+  }
+
+  const minimumCollapsedSceneCount = Math.max(3, Math.ceil(lineBackedScenes.length * 0.25));
+  if (lineBackedScenes.length < 5 || emptyLineBackedScenes.length < minimumCollapsedSceneCount) {
+    return;
+  }
+
+  const projectTitle = typeof projectRecord?.title === "string" && projectRecord.title.trim()
+    ? projectRecord.title.trim()
+    : typeof projectRecord?.id === "string" && projectRecord.id.trim()
+      ? projectRecord.id.trim()
+      : "Untitled Project";
+  throw new Error(
+    `Project manuscript body store looks collapsed for "${projectTitle}": ${emptyLineBackedScenes.length} of ${lineBackedScenes.length} line-backed scenes have no scene body text. Refusing to ${operation} so the manuscript is not overwritten with empty scene bodies.`,
+  );
+}
+
+function assertProjectLibrarySceneBodyCoverage(librarySnapshot, options = {}) {
+  const sceneStore = librarySnapshot?.sceneStore && typeof librarySnapshot.sceneStore === "object" && !Array.isArray(librarySnapshot.sceneStore)
+    ? librarySnapshot.sceneStore
+    : {};
+  for (const projectRecord of Array.isArray(librarySnapshot?.projects) ? librarySnapshot.projects : []) {
+    if (!projectRecord?.id) {
+      continue;
+    }
+
+    assertProjectSceneBodyCoverage(projectRecord, sceneStore[projectRecord.id], options);
+  }
 }
 
 function mergeProjectSceneStores(primaryStore, fallbackStore) {
@@ -329,7 +583,16 @@ function mergeProjectSceneStores(primaryStore, fallbackStore) {
     const fallbackDraft = mergedStore[sceneId];
     if (sceneDraftHasSubstantiveBody(sceneDraft) || !sceneDraftHasSubstantiveBody(fallbackDraft)) {
       mergedStore[sceneId] = cloneValue(sceneDraft);
+      continue;
     }
+
+    // Intent: keep metadata-only scene DTO patches while retaining the manuscript body from the fallback store.
+    mergedStore[sceneId] = {
+      ...cloneValue(fallbackDraft),
+      ...cloneValue(sceneDraft),
+      editorText: typeof fallbackDraft?.editorText === "string" ? fallbackDraft.editorText : "",
+      blocks: Array.isArray(fallbackDraft?.blocks) ? cloneValue(fallbackDraft.blocks) : [],
+    };
   }
 
   return mergedStore;
@@ -356,6 +619,14 @@ function resolveMutationDomain(options = {}) {
   }
   if (classifier.includes("passage-note") || classifier.includes("passage note") || classifier.includes("inspiration") || classifier.includes("research")) {
     return "passage-notes";
+  }
+  if (
+    classifier.includes("metadata-folder") ||
+    classifier.includes("metadata folder") ||
+    classifier.includes("metadata-subgroup") ||
+    classifier.includes("metadata subgroup")
+  ) {
+    return "metadata-folders";
   }
   if (classifier.includes("draft-proof") || classifier.includes("draft proof") || classifier.includes("proof-read") || classifier.includes("proofread")) {
     return "draft-proofing";
@@ -451,6 +722,12 @@ export function createProjectPersistenceService({
       activeProjectId: state.activeProjectId,
       projectLibrarySelectionId: state.projectLibrarySelectionId,
     });
+  }
+
+  // Intent: retain file-loaded scene bodies in memory so save files do not depend on browser chunk availability.
+  function rememberLoadedProjectSceneStore(sceneStore) {
+    state.loadedProjectSceneStore = normalizeProjectLibrarySceneStore(sceneStore);
+    return state.loadedProjectSceneStore;
   }
 
   async function persistDesktopProjectFilePath(filePath, explicit = true) {
@@ -594,6 +871,7 @@ export function createProjectPersistenceService({
     const dirtyReason = normalizeDirtyReason(options.dirtyReason);
     const source = normalizeMutationSource(options.source, "commitCanonicalProjectMutation");
     const skipProjectFileAutosave = options.skipProjectFileAutosave === true;
+    const flushProjectFileAutosave = options.flushProjectFileAutosave === true;
     const changedSceneIds = Array.isArray(options.changedSceneIds) ? options.changedSceneIds : [];
 
     if (options.markWorkingState !== false) {
@@ -620,11 +898,13 @@ export function createProjectPersistenceService({
 
     const currentActiveProjectId = state.activeProjectId ?? state.projectLibrarySelectionId ?? projectRecord.id;
     const previousProjectRecord = state.projectLibrary.find((project) => project?.id === currentActiveProjectId) ?? null;
+    // Intent: scene DTO repairs can be scene-store-only, so trusted scene mutation IDs must still dirty autosave.
+    const hasExplicitSceneMutation = changedSceneIds.length > 0;
     const hasCanonicalMutation = hasCanonicalDomainMutation(previousProjectRecord, projectRecord, {
       domain,
       changedSceneIds,
     });
-    if (!hasCanonicalMutation) {
+    if (!hasCanonicalMutation && !hasExplicitSceneMutation) {
       projectPersistenceLog.debug(
         "state-change",
         "project.persist.noop",
@@ -707,6 +987,16 @@ export function createProjectPersistenceService({
       },
     });
 
+    if (!skipProjectFileAutosave && flushProjectFileAutosave) {
+      autosaveCoordinatorLog.info("autosave", "project.persist.flush-requested", "Project persistence requested an immediate autosave flush.", {
+        projectId: projectRecord.id,
+        domain,
+        dirtyReason,
+        source,
+      });
+      void flushProjectAutosave();
+    }
+
     return projectRecord;
   }
 
@@ -716,6 +1006,7 @@ export function createProjectPersistenceService({
   }
 
   function setActiveProjectFileDestination(pathValue, handle = null, options = {}) {
+    const sideEffects = [];
     state.projectFilePath = resolveProjectFilePath(pathValue);
     state.projectFileHandle = handle;
     state.projectFileHandlePermission = handle
@@ -726,13 +1017,15 @@ export function createProjectPersistenceService({
     }
 
     if (handle && options.persistBrowserFileHandle !== false) {
-      void persistBrowserProjectFileHandle(
-        handle,
-        state.projectFilePath || handle.name || "",
-        options.source ?? "setActiveProjectFileDestination",
+      sideEffects.push(
+        persistBrowserProjectFileHandle(
+          handle,
+          state.projectFilePath || handle.name || "",
+          options.source ?? "setActiveProjectFileDestination",
+        ),
       );
     } else if (!handle && options.clearBrowserFileHandle === true) {
-      void clearBrowserProjectFileHandle(options.source ?? "setActiveProjectFileDestination");
+      sideEffects.push(clearBrowserProjectFileHandle(options.source ?? "setActiveProjectFileDestination"));
     }
 
     if (options.skipProjectRecordPersistence !== true) {
@@ -746,10 +1039,12 @@ export function createProjectPersistenceService({
     }
 
     if (options.persistDesktopProjectFilePath === true) {
-      void persistDesktopProjectFilePath(state.projectFilePath, hasProjectFilePath(state.projectFilePath));
+      sideEffects.push(persistDesktopProjectFilePath(state.projectFilePath, hasProjectFilePath(state.projectFilePath)));
     } else if (options.clearDesktopProjectFilePath === true) {
-      void persistDesktopProjectFilePath("", false);
+      sideEffects.push(persistDesktopProjectFilePath("", false));
     }
+
+    return Promise.all(sideEffects);
   }
 
   // Intent: build the canonical payload written to every `.abe-project.json` destination.
@@ -765,16 +1060,149 @@ export function createProjectPersistenceService({
     const activeProjectId = state.activeProjectId ?? state.projectLibrarySelectionId ?? state.projectLibrary[0]?.id ?? null;
     const activeProjectRecord = state.projectLibrary.find((project) => project?.id === activeProjectId) ?? state.projectLibrary[0] ?? null;
     const projects = activeProjectRecord ? [cloneValue(activeProjectRecord)] : [];
-    return projectService.exportProjectLibrarySnapshot({
+    const retainedProjectSceneStore = activeProjectRecord?.id
+      ? getProjectSceneStore(state.loadedProjectSceneStore, activeProjectRecord.id)
+      : null;
+    const fallbackProjectSceneStore = activeProjectRecord?.id
+      ? collectProjectSceneStoreFromRecord(activeProjectRecord)
+      : null;
+    const projectSceneStore = mergeProjectSceneStores(retainedProjectSceneStore, fallbackProjectSceneStore);
+    const retainedSceneStore = activeProjectRecord?.id && projectSceneStore && Object.keys(projectSceneStore).length
+      ? { [activeProjectRecord.id]: projectSceneStore }
+      : {};
+    const snapshot = projectService.exportProjectLibrarySnapshot({
       librarySnapshot: {
         schemaVersion: projectSchemaVersion,
         activeProjectId: activeProjectRecord?.id ?? activeProjectId,
         projects,
+        sceneStore: retainedSceneStore,
       },
     }) ?? {
       activeProjectId: activeProjectRecord?.id ?? activeProjectId,
       projects,
     };
+    assertProjectLibrarySceneBodyCoverage(snapshot, {
+      operation: "save",
+    });
+    if (snapshot?.sceneStore) {
+      rememberLoadedProjectSceneStore(snapshot.sceneStore);
+    }
+    return snapshot;
+  }
+
+  function isCollapsedSceneBodyStoreError(error) {
+    return /manuscript body store looks collapsed/i.test(toErrorMessage(error));
+  }
+
+  function getRecoverableProjectSceneStoreFromSnapshot(snapshot = {}) {
+    const activeProjectId = state.activeProjectId ?? state.projectLibrarySelectionId ?? state.workspace?.project?.id ?? "";
+    const projects = Array.isArray(snapshot?.projects) ? snapshot.projects.filter(Boolean) : [];
+    const snapshotActiveProjectId = typeof snapshot?.activeProjectId === "string" && snapshot.activeProjectId.trim()
+      ? snapshot.activeProjectId.trim()
+      : "";
+    const fileProjectRecord = projects.find((project) => project?.id === activeProjectId)
+      ?? projects.find((project) => project?.id === snapshotActiveProjectId)
+      ?? projects[0]
+      ?? null;
+    const fileProjectId = typeof fileProjectRecord?.id === "string" && fileProjectRecord.id.trim()
+      ? fileProjectRecord.id.trim()
+      : snapshotActiveProjectId;
+    const fileSceneStore = getProjectSceneStore(snapshot?.sceneStore, fileProjectId)
+      ?? getProjectSceneStore(snapshot?.sceneStore, activeProjectId)
+      ?? getSingleProjectSceneStore(snapshot?.sceneStore)
+      ?? null;
+    const recordSceneStore = collectProjectSceneStoreFromRecord(fileProjectRecord);
+    return mergeProjectSceneStores(recordSceneStore, fileSceneStore);
+  }
+
+  async function recoverCollapsedSceneBodiesFromCurrentProjectFile({
+    reason = "save-project",
+    originalError = null,
+  } = {}) {
+    const activeProjectId = state.activeProjectId ?? state.projectLibrarySelectionId ?? state.workspace?.project?.id ?? "";
+    if (!activeProjectId) {
+      return false;
+    }
+
+    let snapshot = null;
+    let source = "";
+    let filePath = "";
+    try {
+      if (state.projectFileHandle) {
+        snapshot = await readProjectLibraryFromBrowserHandle(state.projectFileHandle);
+        source = "browser-handle";
+        filePath = state.projectFilePath ?? state.projectFileHandle?.name ?? "";
+      } else {
+        const resolvedPath = normalizeProjectFilePath(state.projectFilePath);
+        if (!hasProjectFilePath(resolvedPath)) {
+          return false;
+        }
+        snapshot = await readProjectLibraryFromDesktopPath(resolvedPath, {
+          fetchJsonFromDesktopApi,
+        });
+        source = "desktop-path";
+        filePath = resolvedPath;
+      }
+    } catch (error) {
+      desktopFileSystemLog.warn("persistence", "project.save.scene-body-recovery-read-failed", "Unable to read current project file for scene-body recovery.", {
+        projectId: activeProjectId,
+        reason,
+        filePath: filePath || state.projectFilePath || state.projectFileHandle?.name || "",
+        originalError,
+        error,
+      });
+      return false;
+    }
+
+    const recoveredProjectSceneStore = getRecoverableProjectSceneStoreFromSnapshot(snapshot);
+    if (!recoveredProjectSceneStore || !Object.keys(recoveredProjectSceneStore).length) {
+      desktopFileSystemLog.warn("persistence", "project.save.scene-body-recovery-empty", "Current project file did not contain recoverable scene bodies.", {
+        projectId: activeProjectId,
+        reason,
+        filePath,
+        source,
+        originalError,
+      });
+      return false;
+    }
+
+    const existingProjectSceneStore = getProjectSceneStore(state.loadedProjectSceneStore, activeProjectId) ?? {};
+    const mergedProjectSceneStore = mergeProjectSceneStores(existingProjectSceneStore, recoveredProjectSceneStore);
+    if (!mergedProjectSceneStore || !Object.keys(mergedProjectSceneStore).length) {
+      return false;
+    }
+
+    state.loadedProjectSceneStore = {
+      ...normalizeProjectLibrarySceneStore(state.loadedProjectSceneStore),
+      [activeProjectId]: mergedProjectSceneStore,
+    };
+    desktopFileSystemLog.info("persistence", "project.save.scene-body-recovered", "Recovered retained scene bodies from the current project file before save.", {
+      projectId: activeProjectId,
+      reason,
+      filePath,
+      source,
+      recoveredSceneCount: Object.keys(mergedProjectSceneStore).length,
+    });
+    return true;
+  }
+
+  async function buildProjectSnapshotForSaveFileWithRecovery(options = {}) {
+    try {
+      return buildProjectSnapshotForSaveFile();
+    } catch (error) {
+      if (!isCollapsedSceneBodyStoreError(error)) {
+        throw error;
+      }
+
+      const recovered = await recoverCollapsedSceneBodiesFromCurrentProjectFile({
+        reason: options.reason ?? "save-project",
+        originalError: error,
+      });
+      if (!recovered) {
+        throw error;
+      }
+      return buildProjectSnapshotForSaveFile();
+    }
   }
 
   // Intent: mirror the last saved canonical project snapshot into browser storage so refresh restores the latest revision.
@@ -787,6 +1215,7 @@ export function createProjectPersistenceService({
         projects: snapshotProjects,
         sceneStore: snapshot?.sceneStore ?? {},
       });
+      rememberLoadedProjectSceneStore(snapshot?.sceneStore ?? {});
       state.projectLibrary = persistedLibrary.projects;
       state.activeProjectId = persistedLibrary.activeProjectId;
       state.projectLibrarySelectionId = persistedLibrary.activeProjectId;
@@ -885,6 +1314,66 @@ export function createProjectPersistenceService({
     }
   }
 
+  // Intent: require the stored project JSON to match the just-built save snapshot before a file save is considered durable.
+  function assertSavedProjectSnapshotMatches(writtenSnapshot, expectedSnapshot, {
+    mode = "project-file",
+    filePath = "",
+  } = {}) {
+    if (stableSerialize(writtenSnapshot) === stableSerialize(expectedSnapshot)) {
+      return;
+    }
+
+    throw new Error(`Project file verification failed: ${mode} at ${filePath || "unknown target"} does not contain the latest project snapshot.`);
+  }
+
+  async function verifyBrowserHandleSnapshotSynced(handle, snapshot) {
+    const filePath = handle?.name ?? state.projectFilePath ?? "";
+    try {
+      const writtenSnapshot = await readProjectLibraryFromBrowserHandle(handle);
+      assertSavedProjectSnapshotMatches(writtenSnapshot, snapshot, {
+        mode: "browser-handle",
+        filePath,
+      });
+      desktopFileSystemLog.info("persistence", "project.save.browser-handle-verified", "Verified project file JSON after browser-handle write.", {
+        projectId: state.activeProjectId ?? state.workspace?.project?.id ?? "",
+        filePath,
+      });
+      return true;
+    } catch (error) {
+      desktopFileSystemLog.error("persistence", "project.save.browser-handle-verification-failed", "Project file JSON verification failed after browser-handle write.", {
+        projectId: state.activeProjectId ?? state.workspace?.project?.id ?? "",
+        filePath,
+        error,
+      });
+      throw error;
+    }
+  }
+
+  async function verifyDesktopPathSnapshotSynced(filePath, snapshot) {
+    const resolvedPath = normalizeProjectFilePath(filePath);
+    try {
+      const writtenSnapshot = await readProjectLibraryFromDesktopPath(resolvedPath, {
+        fetchJsonFromDesktopApi,
+      });
+      assertSavedProjectSnapshotMatches(writtenSnapshot, snapshot, {
+        mode: "desktop-path",
+        filePath: resolvedPath,
+      });
+      desktopFileSystemLog.info("persistence", "project.save.file-path-verified", "Verified project file JSON after desktop-path write.", {
+        projectId: state.activeProjectId ?? state.workspace?.project?.id ?? "",
+        filePath: resolvedPath,
+      });
+      return true;
+    } catch (error) {
+      desktopFileSystemLog.error("persistence", "project.save.file-path-verification-failed", "Project file JSON verification failed after desktop-path write.", {
+        projectId: state.activeProjectId ?? state.workspace?.project?.id ?? "",
+        filePath: resolvedPath,
+        error,
+      });
+      throw error;
+    }
+  }
+
   // Intent: keep project save result logs consistent across file-backed and browser-cache fallback paths.
   function reportProjectLibrarySaveResult(target, message = "Saved current project to library.") {
     if (!state.workspace?.project?.stats) return;
@@ -898,11 +1387,25 @@ export function createProjectPersistenceService({
     });
   }
 
-  async function saveProjectSnapshotToBrowserHandle(handle, snapshot = buildProjectSnapshotForSaveFile(), options = {}) {
+  // Intent: derive Save As filenames from the currently active project, including newly imported projects.
+  function resolveSaveAsSuggestedFileName(projectTitle = "") {
+    const fallbackTitle = projectTitle ||
+      state.projectTitle ||
+      state.workspace?.project?.title ||
+      getActiveProjectRecord()?.title ||
+      "Untitled Project";
+    const suggestedName = resolveSuggestedProjectFileName(fallbackTitle);
+    return normalizeProjectFilePath(suggestedName) || getSuggestedProjectFileName(fallbackTitle);
+  }
+
+  async function saveProjectSnapshotToBrowserHandle(handle, snapshot = null, options = {}) {
     if (!handle) {
       throw new Error("A browser file handle is required.");
     }
 
+    const resolvedSnapshot = snapshot ?? await buildProjectSnapshotForSaveFileWithRecovery({
+      reason: options.reason ?? "save-project",
+    });
     const saveProjectId = state.activeProjectId ?? state.workspace?.project?.id ?? "";
     const saveRevision = state.projectFileAutosaveRevision;
     const browserHandleProjectFilePath = state.projectFilePath || handle.name || "";
@@ -919,10 +1422,11 @@ export function createProjectPersistenceService({
         throw new Error("Project file write permission is unavailable. Use Ctrl+S or Save as file to re-authorize this file.");
       }
 
-      const savedLabel = await writeProjectLibraryToBrowserHandle(handle, snapshot, {
+      const savedLabel = await writeProjectLibraryToBrowserHandle(handle, resolvedSnapshot, {
         fallbackFileName: resolveSuggestedProjectFileName(),
         skipPermissionCheck: true,
       });
+      await verifyBrowserHandleSnapshotSynced(handle, resolvedSnapshot);
       const activeProjectId = state.activeProjectId ?? state.workspace?.project?.id ?? "";
       if (activeProjectId !== saveProjectId) {
         desktopFileSystemLog.warn(
@@ -938,14 +1442,14 @@ export function createProjectPersistenceService({
         return savedLabel;
       }
 
-      setActiveProjectFileDestination(browserHandleProjectFilePath || savedLabel, handle, {
+      await setActiveProjectFileDestination(browserHandleProjectFilePath || savedLabel, handle, {
         skipProjectFileAutosave: true,
         handlePermission: "granted",
         persistBrowserFileHandle: true,
         persistDesktopProjectFilePath: hasProjectFilePath(browserHandleProjectFilePath),
         clearDesktopProjectFilePath: !hasProjectFilePath(browserHandleProjectFilePath),
       });
-      persistProjectSnapshotToBrowserCache(snapshot, {
+      persistProjectSnapshotToBrowserCache(resolvedSnapshot, {
         target: "browser-handle",
         reason: "save-project",
         filePath: savedLabel,
@@ -970,10 +1474,10 @@ export function createProjectPersistenceService({
       const writeProgress = getProjectFileWriteProgress(error);
       const browserAcceptedSnapshotWrite = writeProgress?.writeCompleted === true;
       if (isBackgroundWritePolicyError && activeProjectId === saveProjectId) {
-        const verifiedSynced = await isBrowserHandleSnapshotSynced(handle, snapshot);
+        const verifiedSynced = await isBrowserHandleSnapshotSynced(handle, resolvedSnapshot);
         if (verifiedSynced || browserAcceptedSnapshotWrite) {
           const savedLabel = handle?.name || browserHandleProjectFilePath || resolveSuggestedProjectFileName();
-          setActiveProjectFileDestination(browserHandleProjectFilePath || savedLabel, handle, {
+          await setActiveProjectFileDestination(browserHandleProjectFilePath || savedLabel, handle, {
             skipProjectFileAutosave: true,
             handlePermission: "granted",
             persistBrowserFileHandle: true,
@@ -981,7 +1485,7 @@ export function createProjectPersistenceService({
             clearDesktopProjectFilePath: !hasProjectFilePath(browserHandleProjectFilePath),
             source: "saveProjectSnapshotToBrowserHandleVerified",
           });
-          persistProjectSnapshotToBrowserCache(snapshot, {
+          persistProjectSnapshotToBrowserCache(resolvedSnapshot, {
             target: "browser-handle",
             reason: "save-project",
             filePath: savedLabel,
@@ -1039,12 +1543,15 @@ export function createProjectPersistenceService({
     }
   }
 
-  async function saveProjectSnapshotToFilePath(filePath, snapshot = buildProjectSnapshotForSaveFile(), options = {}) {
+  async function saveProjectSnapshotToFilePath(filePath, snapshot = null, options = {}) {
     const resolvedPath = normalizeProjectFilePath(filePath);
     if (!resolvedPath) {
       throw new Error("A project file path is required.");
     }
 
+    const resolvedSnapshot = snapshot ?? await buildProjectSnapshotForSaveFileWithRecovery({
+      reason: options.reason ?? "save-project",
+    });
     const saveProjectId = state.activeProjectId ?? state.workspace?.project?.id ?? "";
     const saveRevision = state.projectFileAutosaveRevision;
     state.projectFileBusy = true;
@@ -1052,9 +1559,10 @@ export function createProjectPersistenceService({
     renderHeader();
 
     try {
-      const savedPath = await writeProjectLibraryToDesktopPath(resolvedPath, snapshot, {
+      const savedPath = await writeProjectLibraryToDesktopPath(resolvedPath, resolvedSnapshot, {
         fetchJsonFromDesktopApi,
       });
+      await verifyDesktopPathSnapshotSynced(savedPath, resolvedSnapshot);
       const activeProjectId = state.activeProjectId ?? state.workspace?.project?.id ?? "";
       if (activeProjectId !== saveProjectId) {
         desktopFileSystemLog.warn(
@@ -1070,13 +1578,13 @@ export function createProjectPersistenceService({
         return savedPath;
       }
 
-      setActiveProjectFileDestination(savedPath, null, {
+      await setActiveProjectFileDestination(savedPath, null, {
         skipProjectFileAutosave: true,
         persistDesktopProjectFilePath: true,
         clearBrowserFileHandle: true,
         source: "saveProjectSnapshotToFilePath",
       });
-      persistProjectSnapshotToBrowserCache(snapshot, {
+      persistProjectSnapshotToBrowserCache(resolvedSnapshot, {
         target: "desktop-path",
         reason: "save-project",
         filePath: savedPath,
@@ -1147,6 +1655,10 @@ export function createProjectPersistenceService({
       },
     );
     const loadedActiveProject = loadedProjects.find((project) => project.id === loadedActiveProjectId) ?? loadedProjects[0];
+    const loadedRawActiveProject = loadedLibrary.projects.find((project) => project?.id === loadedActiveProjectId)
+      ?? loadedLibrary.projects[0]
+      ?? null;
+    const loadedFileHasExplicitActivePane = hasExplicitProjectSetting(loadedRawActiveProject, "activePane");
     const durableLoadedFilePath = hasProjectFilePath(options.filePath) ? normalizeProjectFilePath(options.filePath) : "";
     const loadedHandleFileName = normalizeProjectFilePath(options.fileName || options.fileHandle?.name || "");
     const loadedFileDisplayPath = durableLoadedFilePath || loadedHandleFileName;
@@ -1173,6 +1685,12 @@ export function createProjectPersistenceService({
       Boolean(loadedFileDisplayPath) &&
       Boolean(existingProjectWithSameId) &&
       normalizeProjectFilePath(existingProjectFilePath) !== loadedFileDisplayPath;
+    const cachedActivePane = !loadedFileHasExplicitActivePane &&
+      options.reason === "boot-reconnect" &&
+      existingProjectWithSameId &&
+      !shouldRemapLoadedProjectId
+        ? getProjectActivePaneSetting(existingProjectWithSameId) || normalizeWorkspacePaneSetting(state.activePane)
+        : "";
     const loadedProjectId = shouldRemapLoadedProjectId
       ? getProjectFileIdentity(loadedFileDisplayPath) || loadedActiveProject.id
       : loadedActiveProject?.id ?? "";
@@ -1195,18 +1713,29 @@ export function createProjectPersistenceService({
           ...(loadedActiveProject.projectSettings && typeof loadedActiveProject.projectSettings === "object" && !Array.isArray(loadedActiveProject.projectSettings)
             ? loadedActiveProject.projectSettings
             : {}),
+          ...(cachedActivePane ? { activePane: cachedActivePane } : {}),
           projectFilePath: loadedFileDisplayPath,
         },
       }
       : null;
     const loadedSceneStore = loadedActiveProject
-      ? getProjectSceneStore(loadedLibrary.sceneStore, loadedActiveProject.id) ?? getSingleProjectSceneStore(loadedLibrary.sceneStore)
+      ? getProjectSceneStore(loadedLibrary.sceneStore, loadedActiveProject.id)
+        ?? getSingleProjectSceneStore(loadedLibrary.sceneStore)
+        ?? collectProjectSceneStoreFromRecord(loadedActiveProject)
       : null;
     const importedSceneStore = mergeProjectSceneStores(loadedSceneStore, null);
     const importedProjects = importedProject ? [importedProject] : loadedProjects;
     const importedSceneStoreByProject = importedSceneStore
       ? { [importedProject.id]: importedSceneStore }
       : loadedLibrary.sceneStore ?? {};
+    assertProjectLibrarySceneBodyCoverage({
+      activeProjectId: importedProject?.id ?? loadedLibrary.activeProjectId,
+      projects: importedProjects,
+      sceneStore: importedSceneStoreByProject,
+    }, {
+      operation: "load",
+    });
+    rememberLoadedProjectSceneStore(importedSceneStoreByProject);
 
     const activeProjectId = resolveActiveProjectId(
       importedProject?.id ?? loadedLibrary.activeProjectId,
@@ -1257,7 +1786,7 @@ export function createProjectPersistenceService({
       : "";
     clearProjectAutosaveState();
     clearEditorWorkingDirtyState("project-load");
-    setActiveProjectFileDestination(loadedDestination.filePath, loadedDestination.fileHandle, {
+    await setActiveProjectFileDestination(loadedDestination.filePath, loadedDestination.fileHandle, {
       skipProjectFileAutosave: true,
       skipProjectRecordPersistence: true,
       handlePermission: loadedHandlePermission,
@@ -1365,8 +1894,158 @@ export function createProjectPersistenceService({
     }
   }
 
-  function exportProjectLibrarySnapshot(snapshot, fileName = resolveSuggestedProjectFileName()) {
+  function exportProjectLibrarySnapshot(snapshot, fileName = resolveSaveAsSuggestedFileName()) {
     return downloadProjectLibrarySnapshot(snapshot, { fileName });
+  }
+
+  // Intent: open an explicit chooser when the author wants to switch project files.
+  async function chooseProjectSnapshotFileForLoad() {
+    if (canUseBrowserOpenPicker(windowRef)) {
+      try {
+        const handle = await pickProjectFileHandleForOpen({
+          windowRef,
+          types: getProjectFilePickerTypes(),
+        });
+        if (!handle) {
+          state.projectFileStatus = "Load cancelled.";
+          renderHeader();
+          return;
+        }
+
+        await loadProjectSnapshotFromBrowserHandle(handle);
+        return;
+      } catch (error) {
+        if (isAbortError(error)) {
+          state.projectFileStatus = "Load cancelled.";
+          renderHeader();
+          return;
+        }
+
+        state.projectFileStatus = `Load picker unavailable: ${toErrorMessage(error)}`;
+        renderHeader();
+      }
+    }
+
+    try {
+      const file = await promptForProjectFileFromInput();
+      if (file) {
+        await loadProjectSnapshotFromBrowserFile(file, {
+          filePath: "",
+          fileName: file.name ?? "",
+          fileHandle: null,
+          sourceLabel: "browser file",
+          reason: "load-project-file",
+          mode: "browser-input",
+        });
+        return;
+      }
+
+      state.projectFileStatus = "Load cancelled.";
+      renderHeader();
+      return;
+    } catch (error) {
+      state.projectFileStatus = `Load picker unavailable: ${toErrorMessage(error)}`;
+      renderHeader();
+    }
+  }
+
+  // Intent: port Scrivener packages into a new ABE project without treating the source `.scriv` as a save target.
+  async function chooseScrivenerProjectForImport() {
+    await preserveActiveProjectBeforeLoad("chooseScrivenerProjectForImport");
+    state.projectFileBusy = true;
+    state.projectFileStatus = "Porting Scrivener project...";
+    renderHeader();
+
+    try {
+      let scrivenerPackage = null;
+      if (canUseBrowserDirectoryPicker(windowRef)) {
+        try {
+          scrivenerPackage = await pickScrivenerProjectPackageFromDirectory({
+            windowRef,
+          });
+        } catch (error) {
+          if (isAbortError(error)) {
+            state.projectFileStatus = "Scrivener port cancelled.";
+            renderHeader();
+            return null;
+          }
+
+          state.projectFileStatus = `Scrivener folder picker unavailable: ${toErrorMessage(error)}`;
+          renderHeader();
+        }
+      }
+
+      if (!scrivenerPackage) {
+        scrivenerPackage = await promptForScrivenerProjectPackageFromInput({
+          windowRef,
+        });
+      }
+
+      if (!scrivenerPackage?.files?.length) {
+        state.projectFileStatus = "Scrivener port cancelled.";
+        renderHeader();
+        return null;
+      }
+
+      const snapshot = await buildScrivenerProjectSnapshotFromFiles(scrivenerPackage.files, {
+        sourceLabel: scrivenerPackage.sourceLabel ?? "Scrivener project",
+        sourcePath: scrivenerPackage.sourcePath ?? "",
+        schemaVersion: projectSchemaVersion,
+      });
+      await hydrateProjectLibraryFromLoadedSnapshot(snapshot, {
+        filePath: "",
+        fileName: "",
+        fileHandle: null,
+        sourceLabel: "Scrivener project",
+        reason: "scrivener-import",
+        mode: "scrivener-import",
+      });
+
+      const importedProject = snapshot.projects?.[0] ?? null;
+      const sceneCount = Number(importedProject?.importReport?.manuscriptSceneCount ?? 0);
+      const metadataCount = Number(importedProject?.importReport?.customMetadataFieldCount ?? 0);
+      const saveResult = await saveProjectSnapshotAs({
+        reason: "scrivener-import-save-as",
+        projectTitle: importedProject?.title ?? "",
+      });
+      const importSummary = `Ported Scrivener project: ${sceneCount} scene${sceneCount === 1 ? "" : "s"}, ${metadataCount} metadata field${metadataCount === 1 ? "" : "s"}.`;
+      if (saveResult?.status === "saved") {
+        state.projectFileStatus = `${importSummary} Saved ABE project file to ${saveResult.filePath || state.projectFilePath || "project file"}.`;
+      } else if (saveResult?.status === "downloaded") {
+        state.projectFileStatus = `${importSummary} Downloaded ${saveResult.filePath || "the ABE project file"}; use Load file to reopen it.`;
+      } else if (saveResult?.status === "fallback") {
+        state.projectFileStatus = `${importSummary} File save failed; latest project preserved in browser cache. Use Save as file before refreshing.`;
+      } else if (saveResult?.status === "cancelled") {
+        state.projectFileStatus = `${importSummary} Save As cancelled; use Save as file before refreshing.`;
+      } else {
+        state.projectFileStatus = `${importSummary} Use Save as file before refreshing.`;
+      }
+      reportBrowserLog("info", "project-file", "Ported a Scrivener project package.", {
+        projectId: snapshot.activeProjectId,
+        title: importedProject?.title ?? "",
+        sourceLabel: scrivenerPackage.sourceLabel ?? "",
+        scenes: sceneCount,
+        customMetadataFields: metadataCount,
+        mode: "scrivener-import",
+        saveMode: saveResult?.mode ?? "",
+        projectFilePersisted: saveResult?.projectFilePersisted === true,
+        fallbackPersisted: saveResult?.fallbackPersisted === true,
+        filePath: saveResult?.filePath ?? state.projectFilePath ?? "",
+      });
+      return snapshot;
+    } catch (error) {
+      state.projectFileStatus = `Scrivener port failed: ${toErrorMessage(error)}`;
+      reportBrowserLog("error", "project-file", "Scrivener project port failed.", {
+        error,
+        mode: "scrivener-import",
+      });
+      renderHeader();
+      return null;
+    } finally {
+      state.projectFileBusy = false;
+      queueProjectAutosaveIfDirty();
+      renderHeader();
+    }
   }
 
   async function loadProjectSnapshotFromFile() {
@@ -1403,53 +2082,7 @@ export function createProjectPersistenceService({
       return;
     }
 
-    if (canUseBrowserOpenPicker(windowRef)) {
-      try {
-        const handle = await pickProjectFileHandleForOpen({
-          windowRef,
-          types: getProjectFilePickerTypes(),
-        });
-        if (!handle) {
-          state.projectFileStatus = "Load cancelled.";
-          renderHeader();
-          return;
-        }
-
-        await loadProjectSnapshotFromBrowserHandle(handle);
-        return;
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") {
-          state.projectFileStatus = "Load cancelled.";
-          renderHeader();
-          return;
-        }
-
-        state.projectFileStatus = `Load picker unavailable: ${toErrorMessage(error)}`;
-        renderHeader();
-      }
-    }
-
-    try {
-      const file = await promptForProjectFileFromInput();
-      if (file) {
-        await loadProjectSnapshotFromBrowserFile(file, {
-          filePath: "",
-          fileName: file.name ?? "",
-          fileHandle: null,
-          sourceLabel: "browser file",
-          reason: "load-project-file",
-          mode: "browser-input",
-        });
-        return;
-      }
-
-      state.projectFileStatus = "Load cancelled.";
-      renderHeader();
-      return;
-    } catch (error) {
-      state.projectFileStatus = `Load picker unavailable: ${toErrorMessage(error)}`;
-      renderHeader();
-    }
+    await chooseProjectSnapshotFileForLoad();
   }
 
   function beginProjectCacheSuppression() {
@@ -1473,7 +2106,7 @@ export function createProjectPersistenceService({
     });
     try {
       await prepareProjectSnapshotForSave({ reason });
-      const snapshot = buildProjectSnapshotForSaveFile();
+      const snapshot = await buildProjectSnapshotForSaveFileWithRecovery({ reason });
       const filePath = normalizeProjectFilePath(state.projectFilePath);
       const shouldUseBrowserHandle = Boolean(state.projectFileHandle);
       const shouldUseDesktopPath = !shouldUseBrowserHandle && hasProjectFilePath(filePath);
@@ -1545,6 +2178,7 @@ export function createProjectPersistenceService({
                 : isBrowserHandlePermissionError(error)
                   ? "write-permission-required"
                   : "write-failed",
+              errorMessage: toErrorMessage(error),
             });
           }
         }
@@ -1590,6 +2224,7 @@ export function createProjectPersistenceService({
           if (fallbackPersisted) {
             blockProjectAutosave({
               reason: "write-failed",
+              errorMessage: toErrorMessage(error),
             });
           }
           desktopFileSystemLog.warn("persistence", "project.save.file-path-failed", "Saving project library to file path failed.", {
@@ -1637,36 +2272,48 @@ export function createProjectPersistenceService({
     }
   }
 
-  async function saveProjectSnapshotAs() {
+  async function saveProjectSnapshotAs(options = {}) {
+    const reason = options.reason ?? "save-project-as";
+    const suggestedProjectFileName = options.suggestedName
+      ? normalizeProjectFilePath(options.suggestedName)
+      : resolveSaveAsSuggestedFileName(options.projectTitle ?? "");
     beginProjectCacheSuppression();
     beginProjectAutosaveSuppression();
     projectSaveGateLog.info("user-action", "project.save-as.begin", "Starting Save As flow.", {
       projectId: state.activeProjectId ?? state.workspace?.project?.id ?? "",
       typedPath: state.projectFilePath ?? "",
+      reason,
     });
     try {
       const typedPath = normalizeProjectFilePath(state.projectFilePath);
       if (hasProjectFilePath(typedPath)) {
-        await prepareProjectSnapshotForSave({ reason: "save-project-as" });
-        setActiveProjectFileDestination(typedPath, null, {
+        await prepareProjectSnapshotForSave({ reason });
+        await setActiveProjectFileDestination(typedPath, null, {
           skipProjectFileAutosave: true,
           persistDesktopProjectFilePath: true,
           clearBrowserFileHandle: true,
           source: "saveProjectSnapshotAs",
         });
-        const snapshot = buildProjectSnapshotForSaveFile();
+        const snapshot = await buildProjectSnapshotForSaveFileWithRecovery({ reason });
         try {
-          await saveProjectSnapshotToFilePath(typedPath, snapshot, {
+          const savedPath = await saveProjectSnapshotToFilePath(typedPath, snapshot, {
             clearAutosaveStateOnSuccess: true,
           });
           projectSaveGateLog.info("persistence", "project.save-as.file-path", "Saved project snapshot using typed file path.", {
             projectId: state.activeProjectId ?? state.workspace?.project?.id ?? "",
             filePath: typedPath,
           });
+          return {
+            status: "saved",
+            mode: "desktop-path",
+            filePath: savedPath,
+            projectFilePersisted: true,
+            fallbackPersisted: false,
+          };
         } catch (error) {
           const fallbackPersisted = persistProjectSnapshotFallbackAfterFileSaveFailure(snapshot, {
             target: "save-as-desktop-path-fallback",
-            reason: "save-project-as",
+            reason,
             filePath: typedPath,
             error,
           });
@@ -1681,22 +2328,29 @@ export function createProjectPersistenceService({
           }
           blockProjectAutosave({
             reason: "write-failed",
+            errorMessage: toErrorMessage(error),
           });
+          return {
+            status: "fallback",
+            mode: "desktop-path-fallback",
+            filePath: typedPath,
+            projectFilePersisted: false,
+            fallbackPersisted,
+          };
         }
-        return;
       }
 
       if (canUseBrowserSavePicker(windowRef)) {
         try {
           const handle = await pickProjectFileHandleForSave({
-            suggestedName: resolveSuggestedProjectFileName(),
+            suggestedName: suggestedProjectFileName,
             types: getProjectFilePickerTypes(),
             windowRef,
           });
           const handlePermission = await requestProjectFileHandleWritePermission(handle);
-          await prepareProjectSnapshotForSave({ reason: "save-project-as" });
-          const browserHandleProjectFilePath = handle.name || resolveSuggestedProjectFileName();
-          setActiveProjectFileDestination(browserHandleProjectFilePath, handle, {
+          await prepareProjectSnapshotForSave({ reason });
+          const browserHandleProjectFilePath = handle.name || suggestedProjectFileName;
+          await setActiveProjectFileDestination(browserHandleProjectFilePath, handle, {
             skipProjectFileAutosave: true,
             handlePermission,
             persistBrowserFileHandle: handlePermission === "granted",
@@ -1704,20 +2358,33 @@ export function createProjectPersistenceService({
             clearDesktopProjectFilePath: !hasProjectFilePath(browserHandleProjectFilePath),
             source: "saveProjectSnapshotAs",
           });
-          const snapshot = buildProjectSnapshotForSaveFile();
-          await saveProjectSnapshotToBrowserHandle(handle, snapshot, {
+          const snapshot = await buildProjectSnapshotForSaveFileWithRecovery({ reason });
+          const savedLabel = await saveProjectSnapshotToBrowserHandle(handle, snapshot, {
             requestPermission: false,
             clearAutosaveStateOnSuccess: true,
           });
-          return;
+          return {
+            status: "saved",
+            mode: "browser-handle",
+            filePath: savedLabel,
+            fileHandle: handle,
+            projectFilePersisted: true,
+            fallbackPersisted: false,
+          };
         } catch (error) {
-          if (error instanceof DOMException && error.name === "AbortError") {
+          if (isAbortError(error)) {
             state.projectFileStatus = "Save As cancelled.";
             projectSaveGateLog.info("user-action", "project.save-as.cancelled", "Save As picker was cancelled.", {
               projectId: state.activeProjectId ?? state.workspace?.project?.id ?? "",
             });
             renderHeader();
-            return;
+            return {
+              status: "cancelled",
+              mode: "browser-handle",
+              filePath: "",
+              projectFilePersisted: false,
+              fallbackPersisted: false,
+            };
           }
 
           state.projectFileStatus = `Save picker unavailable: ${toErrorMessage(error)}`;
@@ -1728,23 +2395,31 @@ export function createProjectPersistenceService({
         }
       }
 
-      await prepareProjectSnapshotForSave({ reason: "save-project-as" });
-      const snapshot = buildProjectSnapshotForSaveFile();
+      await prepareProjectSnapshotForSave({ reason });
+      const snapshot = await buildProjectSnapshotForSaveFileWithRecovery({ reason });
       persistProjectSnapshotToBrowserCache(snapshot, {
         target: "download",
-        reason: "save-project-as",
-        filePath: typedPath || resolveSuggestedProjectFileName(),
+        reason,
+        filePath: typedPath || suggestedProjectFileName,
       });
-      const downloadedName = exportProjectLibrarySnapshot(snapshot, typedPath || resolveSuggestedProjectFileName());
+      const downloadedName = exportProjectLibrarySnapshot(snapshot, typedPath || suggestedProjectFileName);
       state.projectFileStatus = `Downloaded ${downloadedName}. Use Load file to reopen it later.`;
       projectSaveGateLog.info("persistence", "project.save-as.download", "Downloaded project snapshot as fallback file.", {
         projectId: state.activeProjectId ?? state.workspace?.project?.id ?? "",
         downloadedName,
       });
       renderHeader();
+      return {
+        status: "downloaded",
+        mode: "download",
+        filePath: downloadedName,
+        projectFilePersisted: false,
+        fallbackPersisted: true,
+      };
     } finally {
       projectSaveGateLog.info("lifecycle", "project.save-as.end", "Save As flow completed.", {
         projectId: state.activeProjectId ?? state.workspace?.project?.id ?? "",
+        reason,
       });
       endProjectAutosaveSuppression();
       endProjectCacheSuppression();
@@ -1819,7 +2494,7 @@ export function createProjectPersistenceService({
       }
     }
 
-    setActiveProjectFileDestination(displayPath, cachedHandleRecord.fileHandle, {
+    await setActiveProjectFileDestination(displayPath, cachedHandleRecord.fileHandle, {
       skipProjectFileAutosave: true,
       skipProjectRecordPersistence: true,
       handlePermission,
@@ -1841,22 +2516,27 @@ export function createProjectPersistenceService({
   }
 
   async function restoreLastOpenedProject(desktopSettings = null) {
+    const explicitDesktopProjectFilePath = desktopSettings?.lastProjectFilePathExplicit === true
+      ? resolveProjectFilePath(desktopSettings?.lastProjectFilePath)
+      : "";
+    const activeProjectFilePath = resolveProjectFilePath(state.projectFilePath);
+    // Intent: the desktop host's explicit last-opened file wins over stale browser/cache project records on refresh.
     const candidatePath = [
-      state.projectFilePath,
-      desktopSettings?.lastProjectFilePathExplicit === true ? desktopSettings?.lastProjectFilePath : "",
-    ]
-      .map((pathValue) => resolveProjectFilePath(pathValue))
-      .find((pathValue) => hasProjectFilePath(pathValue));
+      explicitDesktopProjectFilePath,
+      activeProjectFilePath,
+    ].find((pathValue) => hasProjectFilePath(pathValue));
 
     if (!candidatePath) {
       await restoreProjectFileHandleDestinationFromCache("restoreLastOpenedProject");
       return;
     }
 
-    if (candidatePath !== state.projectFilePath) {
-      setActiveProjectFileDestination(candidatePath, null, {
+    if (candidatePath !== activeProjectFilePath) {
+      await setActiveProjectFileDestination(candidatePath, null, {
         skipProjectFileAutosave: true,
+        skipProjectRecordPersistence: true,
         persistDesktopProjectFilePath: true,
+        source: "restoreLastOpenedProject",
       });
     }
 
@@ -1983,6 +2663,8 @@ export function createProjectPersistenceService({
   return {
     beginProjectAutosaveSuppression,
     buildProjectSnapshotForSaveFile,
+    chooseProjectSnapshotFileForLoad,
+    chooseScrivenerProjectForImport,
     clearProjectAutosaveState,
     clearProjectAutosaveTimer,
     clearEditorWorkingDirtyState,

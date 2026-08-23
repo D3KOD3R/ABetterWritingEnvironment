@@ -5,6 +5,7 @@ import {
   createProjectLibraryStateService,
   mergeProjectLibraryItemsById,
   normalizeProjectSelectionDefaults,
+  shouldPreferBrowserCacheProjectLibraryOnBoot,
 } from "../apps/editor/public/state/project-library-state.js";
 
 export function runProjectLibraryStateTest() {
@@ -67,10 +68,24 @@ export function runProjectLibraryStateTest() {
     {
       activeProjectId: "stale-project",
       projects: [staleCache],
+      sceneStore: {
+        "stale-project": {
+          "scene-stale": {
+            editorText: "Cached scene body.",
+          },
+        },
+      },
     },
     {
       activeProjectId: "seed-project",
       projects: [canonicalSeed],
+      sceneStore: {
+        "seed-project": {
+          "scene-seed": {
+            editorText: "Seed scene body.",
+          },
+        },
+      },
     },
     { projectTitle: "Legacy Title" },
   );
@@ -78,6 +93,70 @@ export function runProjectLibraryStateTest() {
   assert.equal(merged.projects.length, 1);
   assert.equal(merged.projects[0].id, "seed-project");
   assert.equal(merged.projects[0].retainedFromCache, "stale-project");
+  assert.equal(merged.sceneStore["seed-project"]["scene-seed"].editorText, "Seed scene body.");
+  assert.equal(merged.sceneStore["stale-project"]["scene-stale"].editorText, "Cached scene body.");
+
+  const browserHandleDuplicate = createProject(
+    "originfileproject-serva-vitae",
+    "OriginFileproject-serva-vitae",
+    "user",
+    2,
+    3,
+    "OriginFileproject-serva-vitae.abe-project.json",
+  );
+  const projectFileDuplicate = createProject(
+    "project-serva-vitae",
+    "Project Serva Vitae Novel & Worldbuild",
+    "project-file",
+    4,
+    29,
+    "OriginFileproject-serva-vitae.abe-project.json",
+  );
+  const fileDuplicateMerged = service.mergeProjectLibrarySnapshots(
+    {
+      activeProjectId: "originfileproject-serva-vitae",
+      projects: [browserHandleDuplicate],
+      sceneStore: {
+        "originfileproject-serva-vitae": {
+          "scene-cached": {
+            editorText: "Cached duplicate scene body.",
+          },
+        },
+      },
+    },
+    {
+      activeProjectId: "project-serva-vitae",
+      projects: [projectFileDuplicate],
+      sceneStore: {
+        "project-serva-vitae": {
+          "scene-file": {
+            editorText: "File-backed duplicate scene body.",
+          },
+        },
+      },
+    },
+  );
+  assert.equal(fileDuplicateMerged.projects.length, 1);
+  assert.equal(fileDuplicateMerged.projects[0].id, "project-serva-vitae");
+  assert.equal(fileDuplicateMerged.projects[0].title, "Project Serva Vitae Novel & Worldbuild");
+  assert.equal(fileDuplicateMerged.projects[0].retainedFromCache, "originfileproject-serva-vitae");
+  assert.equal(fileDuplicateMerged.activeProjectId, "project-serva-vitae");
+  assert.equal(
+    fileDuplicateMerged.sceneStore["project-serva-vitae"]["scene-cached"].editorText,
+    "Cached duplicate scene body.",
+  );
+  assert.equal(
+    fileDuplicateMerged.sceneStore["project-serva-vitae"]["scene-file"].editorText,
+    "File-backed duplicate scene body.",
+  );
+
+  const normalizedDuplicateSnapshot = service.normalizeProjectLibrarySnapshot({
+    activeProjectId: "originfileproject-serva-vitae",
+    projects: [browserHandleDuplicate, projectFileDuplicate],
+  });
+  assert.equal(normalizedDuplicateSnapshot.projects.length, 1);
+  assert.equal(normalizedDuplicateSnapshot.projects[0].id, "project-serva-vitae");
+  assert.equal(normalizedDuplicateSnapshot.activeProjectId, "project-serva-vitae");
 
   assert.equal(service.resolveActiveProjectId("project-second", {
     activeProjectId: "project-active",
@@ -128,13 +207,79 @@ export function runProjectLibraryStateTest() {
   assert.equal(selectionDefaults.sceneSelectionStart, 4);
   assert.equal(selectionDefaults.inlinePassageDraft.noteType, "research");
   assert.equal(selectionDefaults.inlinePassageDraft.body, "Track supporting reference.");
+
+  const bundledSeedPath = "C:\\Repos\\ABetterNovelAuthoringEnvironment\\project-serva-vitae.abe-project.json";
+  const cachedLoadedProject = createProject(
+    "project-serva-vitae",
+    "Project Serva Vitae",
+    "project-file",
+    4,
+    29,
+    "SaveTestFile\\project-serva-vitae.abe-project.json",
+  );
+  const bundledSeedProject = createProject(
+    "project-serva-vitae",
+    "Project Serva Vitae",
+    "project-file",
+    4,
+    29,
+    bundledSeedPath,
+  );
+  assert.equal(
+    shouldPreferBrowserCacheProjectLibraryOnBoot({
+      storedLibrary: {
+        activeProjectId: "project-serva-vitae",
+        projects: [cachedLoadedProject],
+      },
+      seedLibrary: {
+        activeProjectId: "project-serva-vitae",
+        projects: [bundledSeedProject],
+      },
+      storedActiveProjectId: "project-serva-vitae",
+      explicitProjectFilePath: bundledSeedPath,
+    }),
+    true,
+  );
+  assert.equal(
+    shouldPreferBrowserCacheProjectLibraryOnBoot({
+      storedLibrary: {
+        activeProjectId: "project-serva-vitae",
+        projects: [cachedLoadedProject],
+      },
+      seedLibrary: {
+        activeProjectId: "project-serva-vitae",
+        projects: [bundledSeedProject],
+      },
+      storedActiveProjectId: "project-serva-vitae",
+      explicitProjectFilePath: "D:\\Writing\\active-novel.abe-project.json",
+    }),
+    false,
+  );
+  assert.equal(
+    shouldPreferBrowserCacheProjectLibraryOnBoot({
+      storedLibrary: {
+        activeProjectId: "project-serva-vitae",
+        projects: [cachedLoadedProject],
+      },
+      seedLibrary: {
+        activeProjectId: "project-serva-vitae",
+        projects: [bundledSeedProject],
+      },
+      storedActiveProjectId: "project-serva-vitae",
+      explicitProjectFilePath: "",
+    }),
+    true,
+  );
 }
 
-function createProject(id, title, source, chapterCount, sceneCount) {
+function createProject(id, title, source, chapterCount, sceneCount, projectFilePath = "") {
   return {
     id,
     title,
     source,
+    projectSettings: {
+      projectFilePath,
+    },
     workspace: {
       project: {
         id,

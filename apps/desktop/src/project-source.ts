@@ -120,8 +120,10 @@ function normalizeProjectLibrarySnapshot(
   }
 
   const snapshot = candidate as Partial<ProjectLibrarySeedSnapshot> & {
+    schemaVersion?: unknown;
     activeProjectId?: unknown;
     projects?: unknown;
+    sceneStore?: unknown;
   };
 
   if (!Array.isArray(snapshot.projects)) {
@@ -132,13 +134,41 @@ function normalizeProjectLibrarySnapshot(
     normalizeProjectLibraryRecord(project, now, index),
   );
 
-  return {
+  const schemaVersion = Number(snapshot.schemaVersion);
+  const normalized: ProjectLibrarySeedSnapshot = {
     activeProjectId:
       typeof snapshot.activeProjectId === "string" && snapshot.activeProjectId.trim()
         ? snapshot.activeProjectId
         : projects[0]?.id ?? "",
     projects,
+    sceneStore: normalizeProjectLibrarySceneStore(snapshot.sceneStore),
   };
+  if (Number.isFinite(schemaVersion) && schemaVersion > 0) {
+    normalized.schemaVersion = schemaVersion;
+  }
+
+  return normalized;
+}
+
+function normalizeProjectLibrarySceneStore(candidate: unknown): Record<string, Record<string, unknown>> {
+  // Intent: preserve split-storage manuscript bodies from project files while validating the top-level shape.
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+    return {};
+  }
+
+  const sceneStore: Record<string, Record<string, unknown>> = {};
+  for (const [projectId, projectSceneStore] of Object.entries(candidate as Record<string, unknown>)) {
+    if (typeof projectId !== "string" || !projectId.trim()) {
+      continue;
+    }
+    if (!projectSceneStore || typeof projectSceneStore !== "object" || Array.isArray(projectSceneStore)) {
+      continue;
+    }
+
+    sceneStore[projectId] = cloneValue(projectSceneStore) as Record<string, unknown>;
+  }
+
+  return sceneStore;
 }
 
 function normalizeProjectLibraryRecord(
@@ -179,6 +209,7 @@ function normalizeProjectLibraryRecord(
     templateDrafts: Array.isArray(project.templateDrafts) ? project.templateDrafts : [],
     manuscriptTasks: Array.isArray(project.manuscriptTasks) ? project.manuscriptTasks : [],
     passageNotes: Array.isArray(project.passageNotes) ? project.passageNotes : [],
+    metadataSubgroups: Array.isArray(project.metadataSubgroups) ? project.metadataSubgroups : [],
     sourceArchive: Array.isArray(project.sourceArchive) ? project.sourceArchive : [],
     importReport: normalizeObject(project.importReport, "importReport"),
     projectSettings: normalizeObject(project.projectSettings, "projectSettings", {
@@ -226,6 +257,14 @@ function normalizeObject<T extends Record<string, unknown>>(
     ...fallback,
     ...(candidate as Record<string, unknown>),
   } as T;
+}
+
+function cloneValue(value: unknown) {
+  if (typeof structuredClone === "function") {
+    return structuredClone(value);
+  }
+
+  return JSON.parse(JSON.stringify(value));
 }
 
 function findMatchingFiles(rootPath: string, predicate: (filePath: string) => boolean, limit = Number.POSITIVE_INFINITY) {

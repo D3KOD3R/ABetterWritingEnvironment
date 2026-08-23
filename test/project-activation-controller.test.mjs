@@ -8,6 +8,8 @@ export function runProjectActivationControllerTest() {
   const state = {
     narrationTakeSelection: { id: "selection-old" },
     narrationTakeSession: { id: "session-old" },
+    narrationRecordingReview: { recordingId: "take-old" },
+    narrationRecordingPreviewId: "take-old",
     sceneDrafts: {},
     writingTargetState: null,
     selectedSceneId: "scene-old",
@@ -79,6 +81,7 @@ export function runProjectActivationControllerTest() {
     writeProjectSourcePath: () => events.push("source-path.write"),
     writeBinderWidth: () => events.push("binder-width.write"),
     writeConsoleWidth: () => events.push("console-width.write"),
+    writePanelResizerLayoutProfiles: () => events.push("panel-layout-profiles.write"),
     persistConsoleDockCollapsedState: () => events.push("dock.write"),
     persistCollapsedChapterState: () => events.push("chapters.write"),
     persistCollapsedConsoleChapterState: () => events.push("console-chapters.write"),
@@ -112,6 +115,8 @@ export function runProjectActivationControllerTest() {
   });
 
   assert.equal(narrationRuntime, null);
+  assert.equal(state.narrationRecordingReview, null);
+  assert.equal(state.narrationRecordingPreviewId, null);
   assert.equal(previewAudio, null);
   assert.equal(previewUrl, null);
   assert.deepEqual(store["project-1"], { history: [] });

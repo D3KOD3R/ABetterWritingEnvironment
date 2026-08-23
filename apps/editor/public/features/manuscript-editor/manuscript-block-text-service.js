@@ -45,6 +45,8 @@ export function updateSceneBlocksForTextEdit({
   separator = DEFAULT_SCENE_BLOCK_SEPARATOR,
   selectionStart = null,
   selectionEnd = null,
+  selectionBeforeInputStart = null,
+  selectionBeforeInputEnd = null,
 } = {}) {
   const sourceBlocks = Array.isArray(blocks) ? blocks : [];
   const previous = String(previousText ?? "");
@@ -79,6 +81,8 @@ export function updateSceneBlocksForTextEdit({
     nextText: next,
     selectionStart,
     selectionEnd,
+    selectionBeforeInputStart,
+    selectionBeforeInputEnd,
   });
   if (!transaction || !blockRanges.length) {
     return sourceBlocks.map(cloneBlock);

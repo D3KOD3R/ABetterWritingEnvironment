@@ -4,6 +4,7 @@ export function createNarrationMediaService({
   fetchJson,
   saveEndpoint = "/api/project-media/save",
   loadEndpoint = "/api/project-media/load",
+  deleteEndpoint = "/api/project-media/delete",
 } = {}) {
   if (typeof fetchJson !== "function") {
     throw new TypeError("createNarrationMediaService requires a fetchJson function.");
@@ -12,6 +13,7 @@ export function createNarrationMediaService({
   return {
     saveMediaBlob: (request) => saveMediaBlob(request, { fetchJson, saveEndpoint }),
     loadMediaBlob: (request) => loadMediaBlob(request, { fetchJson, loadEndpoint }),
+    deleteMediaFile: (request) => deleteMediaFile(request, { fetchJson, deleteEndpoint }),
   };
 }
 
@@ -81,6 +83,40 @@ export async function loadMediaBlob({
     ok: true,
     filePath: normalizedPath,
     blob,
+  };
+}
+
+// Intent: delete saved narration media through the desktop project-media boundary.
+export async function deleteMediaFile({
+  filePath = "",
+} = {}, {
+  fetchJson,
+  deleteEndpoint = "/api/project-media/delete",
+} = {}) {
+  const normalizedPath = String(filePath ?? "").trim();
+  if (!normalizedPath) {
+    throw new Error("A media file path is required.");
+  }
+
+  const response = await fetchJson(deleteEndpoint, {
+    method: "POST",
+    body: {
+      filePath: normalizedPath,
+    },
+  });
+
+  if (!response?.ok) {
+    throw response?.error ?? new Error("Unable to delete the voice recording.");
+  }
+
+  const responseValue = response.value && typeof response.value === "object"
+    ? response.value
+    : response;
+
+  return {
+    ok: true,
+    filePath: normalizedPath,
+    removed: responseValue?.removed !== false,
   };
 }
 

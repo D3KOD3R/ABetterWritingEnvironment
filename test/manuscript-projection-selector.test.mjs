@@ -8,6 +8,12 @@ import {
 } from "../apps/editor/public/features/manuscript-editor/projection-selector.js";
 
 export function runManuscriptProjectionSelectorTest() {
+  const metadataIcon = {
+    dataUrl: "data:image/png;base64,AAAA",
+    mediaType: "image/png",
+    name: "lore.png",
+    size: 3,
+  };
   const projections = selectManuscriptProjections({
     sceneId: "scene-1",
     text: "Quiet dooor.",
@@ -49,6 +55,12 @@ export function runManuscriptProjectionSelectorTest() {
       startOffset: 6,
       endOffset: 11,
     },
+    narrationRecordingPreviews: [{
+      id: "recording-1",
+      sceneId: "scene-1",
+      startOffset: 0,
+      endOffset: 5,
+    }],
   });
 
   const authorMarks = selectProjectionChannel(projections, MANUSCRIPT_PROJECTION_CHANNELS.AUTHOR_MARK);
@@ -56,6 +68,7 @@ export function runManuscriptProjectionSelectorTest() {
   const notes = selectProjectionChannel(projections, MANUSCRIPT_PROJECTION_CHANNELS.NOTE);
   const search = selectProjectionChannel(projections, MANUSCRIPT_PROJECTION_CHANNELS.SEARCH);
   const narration = selectProjectionChannel(projections, MANUSCRIPT_PROJECTION_CHANNELS.NARRATION_FOLLOW);
+  const recordings = selectProjectionChannel(projections, MANUSCRIPT_PROJECTION_CHANNELS.NARRATION_RECORDING);
   const spellcheck = selectProjectionChannel(projections, MANUSCRIPT_PROJECTION_CHANNELS.SPELLCHECK);
   assert.equal(authorMarks.length, 1);
   assert.equal(authorMarks[0].styleToken, "italic");
@@ -72,9 +85,39 @@ export function runManuscriptProjectionSelectorTest() {
   assert.equal(narration.length, 1);
   assert.equal(narration[0].styleToken, "narration-follow");
   assert.equal(narration[0].persistence, "runtime-only");
+  assert.equal(recordings.length, 1);
+  assert.equal(recordings[0].styleToken, "narration-recording");
+  assert.equal(recordings[0].persistence, "derived-durable");
+  assert.equal(recordings[0].sourceRef.recordId, "recording-1");
   assert.equal(spellcheck.length, 1);
   assert.equal(spellcheck[0].styleToken, "misspelled");
   assert.equal(spellcheck[0].persistence, "runtime-only");
+
+  const layeredNarration = selectProjectionChannel(selectManuscriptProjections({
+    sceneId: "scene-1",
+    text: "Quiet dooor.",
+    narrationSelection: [{
+      id: "take-read",
+      sceneId: "scene-1",
+      startOffset: 0,
+      endOffset: 11,
+      styleToken: "narration-follow-read",
+    }, {
+      id: "take-current",
+      sceneId: "scene-1",
+      startOffset: 6,
+      endOffset: 11,
+      styleToken: "narration-follow-current",
+    }],
+    includeAuthorMarks: false,
+    includeDraftProofing: false,
+    includeDiagnostics: false,
+    includeAnchoredRecords: false,
+    includeSpellcheck: false,
+  }), MANUSCRIPT_PROJECTION_CHANNELS.NARRATION_FOLLOW);
+  assert.equal(layeredNarration.length, 2);
+  assert.equal(layeredNarration.some((projection) => projection.styleToken === "narration-follow-read"), true);
+  assert.equal(layeredNarration.some((projection) => projection.styleToken === "narration-follow-current"), true);
 
   const canonicalMarkText = "Alpha target.\n\nSecond block.";
   const canonicalMarkBlocks = [{
@@ -145,6 +188,13 @@ export function runManuscriptProjectionSelectorTest() {
         label: "Draft proof 1",
         iterationNumber: 1,
         status: "active",
+        settings: {
+          backdropColor: "#c69fc6",
+          highlightIntensityByTheme: {
+            light: 64,
+            dark: 90,
+          },
+        },
         coverageByScene: {
           "scene-1": [{
             startOffset: 0,
@@ -175,6 +225,8 @@ export function runManuscriptProjectionSelectorTest() {
     recordType: "draftProofRun",
     recordId: "draft-proof-run-0001",
   });
+  assert.equal(explicitDraftProof[0].visualStyle.backdropColor, "#c69fc6");
+  assert.deepEqual(explicitDraftProof[0].visualStyle.highlightIntensityByTheme, { light: 64, dark: 90 });
   assert.equal(explicitAuthorMarks[0].styleToken, "bold");
   assert.equal(explicitAuthorMarks[0].startOffset, 0);
   assert.equal(explicitAuthorMarks[0].endOffset, 5);
@@ -395,6 +447,97 @@ export function runManuscriptProjectionSelectorTest() {
     includeSpellcheck: false,
   });
   assert.deepEqual(invalidAnchoredRecord, []);
+
+  const customMetadataProjection = selectManuscriptProjections({
+    sceneId: "scene-1",
+    text: "Quiet.",
+    anchoredRecordPreviews: [{
+      recordType: "passageNote",
+      recordId: "note-lore",
+      sceneId: "scene-1",
+      noteType: "metadata-lore",
+      startOffset: 0,
+      endOffset: 5,
+      visualStyle: {
+        highlightColor: "#7fcf9f",
+      },
+    }],
+    includeAuthorMarks: false,
+    includeSpellcheck: false,
+  });
+  assert.equal(customMetadataProjection[0].channel, MANUSCRIPT_PROJECTION_CHANNELS.NOTE);
+  assert.equal(customMetadataProjection[0].styleToken, "metadata");
+  assert.equal(customMetadataProjection[0].visualStyle.highlightColor, "rgba(127, 207, 159, 0.56)");
+
+  const manuScriptInfographicLaneProjections = selectProjectionChannel(selectManuscriptProjections({
+    sceneId: "scene-1",
+    text: "Quiet.\n\nThe customs ring waits.",
+    manuScriptInfographicLanePreviews: [{
+      markerType: "task",
+      recordType: "task",
+      recordId: "task-1",
+      sceneId: "scene-1",
+      startOffset: 0,
+      endOffset: 5,
+      label: "Task: Check continuity",
+    }, {
+      markerType: "research",
+      recordType: "passageNote",
+      recordId: "note-research",
+      sceneId: "scene-1",
+      startOffset: 0,
+      endOffset: 5,
+      label: "Research: Ceres reference",
+    }, {
+      markerType: "world",
+      recordType: "eventTag",
+      recordId: "event-1",
+      nodeId: "event:event-1",
+      sceneId: "scene-1",
+      startOffset: 0,
+      endOffset: 5,
+      label: "World Spine: Docking",
+    }, {
+      markerType: "metadata",
+      recordType: "passageNote",
+      recordId: "note-lore",
+      sceneId: "scene-1",
+      startOffset: 12,
+      endOffset: 24,
+      label: "Lore: Customs ring",
+      metadataIcon,
+    }, {
+      markerType: "world",
+      recordType: "unknown",
+      recordId: "bad",
+      sceneId: "scene-1",
+      startOffset: 0,
+      endOffset: 5,
+    }],
+    includeAuthorMarks: false,
+    includeDraftProofing: false,
+    includeDiagnostics: false,
+    includeAnchoredRecords: false,
+    includeRuntimeSelections: false,
+    includeSpellcheck: false,
+  }), MANUSCRIPT_PROJECTION_CHANNELS.MANU_SCRIPT_INFOGRAPHIC_LANE);
+  assert.equal(manuScriptInfographicLaneProjections.length, 4);
+  const taskLaneProjection = manuScriptInfographicLaneProjections.find((projection) => projection.styleToken === "task");
+  const researchLaneProjection = manuScriptInfographicLaneProjections.find((projection) => projection.styleToken === "research");
+  const worldLaneProjection = manuScriptInfographicLaneProjections.find((projection) => projection.styleToken === "world");
+  const customManuScriptInfographicLaneProjection = manuScriptInfographicLaneProjections.find((projection) => projection.styleToken === "metadata");
+  assert.deepEqual(taskLaneProjection?.sourceRef, {
+    recordType: "task",
+    recordId: "task-1",
+  });
+  assert.equal(researchLaneProjection?.label, "Research: Ceres reference");
+  assert.deepEqual(worldLaneProjection?.sourceRef, {
+    recordType: "eventTag",
+    recordId: "event-1",
+    nodeId: "event:event-1",
+  });
+  assert.equal(customManuScriptInfographicLaneProjection?.label, "Lore: Customs ring");
+  assert.equal(customManuScriptInfographicLaneProjection?.visualStyle.icon.dataUrl, metadataIcon.dataUrl);
 
   const invalidRuntimeSelections = selectManuscriptProjections({
     sceneId: "scene-1",

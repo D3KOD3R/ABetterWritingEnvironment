@@ -44,6 +44,74 @@ function composeEditorText(blocks = []) {
     .join("\n\n");
 }
 
+const SCENE_DRAFT_METADATA_KEYS = Object.freeze([
+  "location",
+  "storyLocation",
+  "place",
+  "setting",
+  "locality",
+  "sublocation",
+  "subLocation",
+  "specificLocation",
+  "localPlace",
+  "ship",
+  "vehicle",
+  "orbitalBand",
+  "orbit",
+  "orbitalPosition",
+  "position",
+  "locationRowLabel",
+  "timelineRowLabel",
+  "assignedLocationRow",
+  "locationRowKey",
+  "timelineRowKey",
+  "assignedLocationRowKey",
+  "locationScope",
+  "timelineLocationScope",
+  "date",
+  "storyDate",
+  "timelineDate",
+  "chronologyDate",
+  "time",
+  "storyTime",
+  "timelineTime",
+  "chronologyTime",
+  "people",
+  "peoplePresent",
+  "characters",
+  "charactersPresent",
+  "cast",
+  "criticalEvents",
+  "criticalEvent",
+  "importantEvents",
+  "majorEvents",
+  "locationChanges",
+  "locationChange",
+  "settingChanges",
+  "placeChanges",
+  "worldSpineMetadata",
+  "worldMetadata",
+  "timelineMetadata",
+  "storyMetadata",
+  "customMetadata",
+  "metadata",
+]);
+
+// Intent: preserve structured scene DTO metadata while keeping scene body chunking deterministic.
+function copySceneDraftMetadata(source = {}) {
+  if (!source || typeof source !== "object" || Array.isArray(source)) {
+    return {};
+  }
+
+  const metadata = {};
+  for (const key of SCENE_DRAFT_METADATA_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(source, key)) {
+      metadata[key] = cloneValue(source[key]);
+    }
+  }
+  return metadata;
+}
+
 function normalizeSceneDraft(candidate, fallback = {}) {
   const base = candidate && typeof candidate === "object" && !Array.isArray(candidate)
     ? candidate
@@ -82,6 +150,7 @@ function normalizeSceneDraft(candidate, fallback = {}) {
     chapterTitle: typeof base.chapterTitle === "string" ? base.chapterTitle : (fallback.chapterTitle ?? "Untitled Chapter"),
     sceneTitle: typeof base.sceneTitle === "string" ? base.sceneTitle : (fallback.sceneTitle ?? "Untitled Scene"),
     sceneSynopsis: typeof base.sceneSynopsis === "string" ? base.sceneSynopsis : (fallback.sceneSynopsis ?? ""),
+    ...copySceneDraftMetadata(base),
     editorText,
     blocks,
     // Intent: preserve author-applied formatting metadata until canonical manuscript marks replace this compatibility field.
@@ -122,6 +191,7 @@ function mergeSceneMetadataIntoStoredScene(existingScene, candidateScene, sceneI
     if (typeof candidateScene.sceneSynopsis === "string") {
       merged.sceneSynopsis = candidateScene.sceneSynopsis;
     }
+    Object.assign(merged, copySceneDraftMetadata(candidateScene));
   }
 
   return normalizeSceneDraft(merged, {
@@ -654,9 +724,11 @@ export function createProjectRepository({
       targetSchemaVersion: schemaVersion,
     });
     const currentManifest = loadStoredManifestSnapshot();
-    const existingProjectsById = new Map(
-      (currentManifest.projects ?? []).map((project) => [project.id, project]),
-    );
+    const shouldUseExistingSceneBodies = options.replaceExistingCache !== true;
+    // Intent: authoritative JSON/project imports must not rehydrate manuscript bodies from stale browser chunks.
+    const existingProjectsById = shouldUseExistingSceneBodies
+      ? new Map((currentManifest.projects ?? []).map((project) => [project.id, project]))
+      : new Map();
     const changedSceneIdsByProject = options.changedSceneIdsByProject && typeof options.changedSceneIdsByProject === "object"
       ? options.changedSceneIdsByProject
       : {};
@@ -708,26 +780,31 @@ export function createProjectRepository({
       const changedSceneIds = Array.isArray(changedSceneIdsByProject[projectId])
         ? new Set(changedSceneIdsByProject[projectId].map((sceneId) => normalizeSceneId(sceneId)).filter(Boolean))
         : null;
-      for (const existingSceneId of previousSceneIds) {
-        const storedScene = loadScene(projectId, existingSceneId);
-        if (!storedScene) {
-          continue;
-        }
-        const candidateScene = sceneMap.get(existingSceneId);
-        if (!candidateScene) {
-          sceneMap.set(existingSceneId, cloneValue(storedScene));
-          continue;
-        }
+      if (shouldUseExistingSceneBodies) {
+        for (const existingSceneId of previousSceneIds) {
+          const storedScene = loadScene(projectId, existingSceneId);
+          if (!storedScene) {
+            continue;
+          }
+          const candidateScene = sceneMap.get(existingSceneId);
+          if (!candidateScene) {
+            sceneMap.set(existingSceneId, cloneValue(storedScene));
+            continue;
+          }
 
-        const sceneWasExplicitlyChanged = changedSceneIds ? changedSceneIds.has(existingSceneId) : false;
-        if (sceneWasExplicitlyChanged) {
-          continue;
-        }
+          const sceneWasExplicitlyChanged = changedSceneIds ? changedSceneIds.has(existingSceneId) : false;
+          const candidateHasBody = sceneDraftHasSubstantiveBody(candidateScene);
+          const storedHasBody = sceneDraftHasSubstantiveBody(storedScene);
+          if (sceneWasExplicitlyChanged) {
+            if (!candidateHasBody && storedHasBody) {
+              sceneMap.set(existingSceneId, mergeSceneMetadataIntoStoredScene(storedScene, candidateScene, existingSceneId));
+            }
+            continue;
+          }
 
-        const candidateHasBody = sceneDraftHasSubstantiveBody(candidateScene);
-        const storedHasBody = sceneDraftHasSubstantiveBody(storedScene);
-        if (!candidateHasBody && storedHasBody) {
-          sceneMap.set(existingSceneId, mergeSceneMetadataIntoStoredScene(storedScene, candidateScene, existingSceneId));
+          if (!candidateHasBody && storedHasBody) {
+            sceneMap.set(existingSceneId, mergeSceneMetadataIntoStoredScene(storedScene, candidateScene, existingSceneId));
+          }
         }
       }
       const sceneIdsToWrite = changedSceneIds

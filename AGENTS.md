@@ -36,6 +36,7 @@ and less like:
 ## Working through feature sets. 
 Each feature of the program is underpinned and numbered in the word doc named "An AI augmented author writing environment." 
 - As you work through each feature, you should create a process header which explains the feature and updates the features.md list. 
+- Every time a new feature or feature behavior is added, update the matching numbered feature section in `features.md` during the same work. The update must describe the author-facing behavior, any persistence/rendering implications, and where the implementation lives; do not leave new behavior undocumented for a later cleanup pass.
 - When the user says `Feature working`, treat that as explicit confirmation that the current feature or workflow is accepted. Before moving on, update `features.md` without waiting to be asked again.
 - A `Feature working` update must add or revise the feature in the appropriate numbered feature section, and must add or update a matching entry in the `Feature Implementation Index` with the implementing code locations and line numbers.
 - The feature index entry must describe the workflow in product language, list the main functions/modules that implement it, summarize the execution flow from user interaction to persistence/rendering, and note tests or manual verification evidence.
@@ -46,6 +47,7 @@ Each feature of the program is underpinned and numbered in the word doc named "A
 - When you are working on features, you should decide what level or service the feature is implemented at. If the feature doesn't fall under an existing service, a new service branch should be created. 
 - Do not just continue adding code to the app.js file. This should call services, with logging, so that as features are rolled out, the developer can follow the log trail and fix issues. 
 - Always comment intent before code blocks. 
+- When the user says to `bench` a feature or UI element, leave the underlying function/service logic intact unless they explicitly ask for deletion. Disable or omit the live entry point/render path, and add a concise `BENCHED:` intent comment immediately above that disabled path explaining why it is parked and what remains available for later revival. Do not comment out the function body or core logic itself, because that can break dependent callers and make revival harder.
 
 ## Token efficiency
 - Keep responses terse. Do not narrate routine actions, explain obvious code changes, or provide summaries unless requested.
@@ -735,6 +737,7 @@ When making changes in this repository:
 - document major decisions when they affect shared architecture
 - prefer extensible provider interfaces before choosing one engine
 - prefer explicit typed data over hidden implicit state
+- when a form field maps to a searchable project, manuscript, worldbuilding, catalogue, or service index, provide a quick-reference dropdown/combobox filtered as the author types while preserving free-text entry unless the workflow explicitly requires a closed set
 
 When uncertain:
 - preserve existing contracts

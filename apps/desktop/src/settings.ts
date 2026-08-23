@@ -14,6 +14,7 @@ function createDefaultDesktopSettingsSnapshot(): DesktopSettingsSnapshot {
     modelRoot: "C:\\Models\\AuthorSuite",
     assetRoot: "C:\\AuthorAssets",
     projectRoot: "",
+    spotifyClientId: normalizeDesktopPublicId(process.env.ABE_SPOTIFY_CLIENT_ID),
     lastProjectFilePath: "",
     lastProjectFilePathExplicit: false,
   };
@@ -40,9 +41,14 @@ function normalizeDesktopSettingsSnapshot(candidate: unknown): DesktopSettingsSn
     projectRoot: typeof normalized.projectRoot === "string" && normalized.projectRoot.trim()
       ? normalized.projectRoot.trim()
       : defaults.projectRoot,
+    spotifyClientId: normalizeDesktopPublicId(normalized.spotifyClientId) || defaults.spotifyClientId,
     lastProjectFilePath: hasAbsoluteProjectFilePath ? normalizedProjectFilePath : defaults.lastProjectFilePath,
     lastProjectFilePathExplicit: normalized.lastProjectFilePathExplicit === true && hasAbsoluteProjectFilePath,
   };
+}
+
+function normalizeDesktopPublicId(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function readDesktopSettingsState(): DesktopSettingsSnapshot {

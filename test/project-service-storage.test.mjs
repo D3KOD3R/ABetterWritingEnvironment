@@ -292,6 +292,119 @@ export async function runProjectServiceStorageTest() {
     projectRepository.loadScene("project-test", "scene-1")?.editorText,
     "Scene one opening line.",
   );
+  const runtimeMetadataOnlyRecord = structuredClone(opened.projectRecord);
+  runtimeMetadataOnlyRecord.sceneDrafts = {
+    ...(runtimeMetadataOnlyRecord.sceneDrafts ?? {}),
+    "scene-1": {
+      sceneId: "scene-1",
+      chapterId: "chapter-1",
+      chapterTitle: "Chapter One",
+      sceneTitle: "Scene One",
+      location: "Earth",
+      locationRowLabel: "Earth",
+      locationRowKey: "earth",
+      locationScope: "planetary",
+      worldSpineMetadata: {
+        location: "Earth",
+        locationRowLabel: "Earth",
+        locationRowKey: "earth",
+        locationScope: "planetary",
+        sublocation: "The Lost Facility",
+      },
+    },
+  };
+  const exportedMetadataOnlySnapshot = projectService.exportProjectLibrarySnapshot({
+    librarySnapshot: {
+      activeProjectId: "project-test",
+      projects: [runtimeMetadataOnlyRecord],
+    },
+  });
+  assert.equal(
+    exportedMetadataOnlySnapshot.sceneStore["project-test"]["scene-1"].editorText,
+    "Scene one opening line.",
+  );
+  assert.equal(exportedMetadataOnlySnapshot.sceneStore["project-test"]["scene-1"].location, "Earth");
+  assert.equal(exportedMetadataOnlySnapshot.sceneStore["project-test"]["scene-1"].locationRowKey, "earth");
+  assert.equal(exportedMetadataOnlySnapshot.sceneStore["project-test"]["scene-1"].worldSpineMetadata.location, "Earth");
+  assert.equal(exportedMetadataOnlySnapshot.sceneStore["project-test"]["scene-1"].worldSpineMetadata.sublocation, "The Lost Facility");
+  projectService.saveProjectLibrarySnapshot({
+    activeProjectId: "project-test",
+    projects: [runtimeMetadataOnlyRecord],
+    sceneStore: exportedMetadataOnlySnapshot.sceneStore,
+  }, {
+    changedSceneIdsByProject: {
+      "project-test": ["scene-1"],
+    },
+  });
+  const storedMetadataOnlyScene = projectRepository.loadScene("project-test", "scene-1");
+  assert.equal(storedMetadataOnlyScene.editorText, "Scene one opening line.");
+  assert.equal(storedMetadataOnlyScene.location, "Earth");
+  assert.equal(storedMetadataOnlyScene.locationRowLabel, "Earth");
+  assert.equal(storedMetadataOnlyScene.locationRowKey, "earth");
+  assert.equal(storedMetadataOnlyScene.worldSpineMetadata.location, "Earth");
+  const reopenedMetadataOnlyProject = projectService.openProject();
+  assert.equal(reopenedMetadataOnlyProject.projectRecord.sceneDrafts["scene-1"].location, "Earth");
+  assert.equal(reopenedMetadataOnlyProject.projectRecord.sceneDrafts["scene-1"].locationRowKey, "earth");
+  assert.equal(reopenedMetadataOnlyProject.projectRecord.sceneDrafts["scene-1"].worldSpineMetadata.location, "Earth");
+  const metadataOnlyChangedSceneRecord = structuredClone(opened.projectRecord);
+  metadataOnlyChangedSceneRecord.sceneDrafts = {
+    "scene-2": {
+      sceneId: "scene-2",
+      chapterId: "chapter-1",
+      chapterTitle: "Chapter One",
+      sceneTitle: "Scene Two",
+      location: "Mars",
+      locationRowLabel: "Mars",
+      locationRowKey: "mars",
+      locationScope: "planetary",
+      worldSpineMetadata: {
+        location: "Mars",
+        locationRowLabel: "Mars",
+        locationRowKey: "mars",
+        locationScope: "planetary",
+      },
+    },
+  };
+  projectService.saveProject({
+    projectRecord: metadataOnlyChangedSceneRecord,
+    persist: true,
+    changedSceneIds: ["scene-2"],
+  });
+  const storedMetadataOnlyChangedScene = projectRepository.loadScene("project-test", "scene-2");
+  assert.equal(storedMetadataOnlyChangedScene.editorText, "Scene two opening line.");
+  assert.equal(storedMetadataOnlyChangedScene.blocks[0].text, "Scene two opening line.");
+  assert.equal(storedMetadataOnlyChangedScene.location, "Mars");
+  assert.equal(storedMetadataOnlyChangedScene.locationRowKey, "mars");
+  assert.equal(storedMetadataOnlyChangedScene.worldSpineMetadata.location, "Mars");
+
+  // Intent: project-file scene stores are authoritative for unopened scenes during export.
+  const exportedAuthoritativeFileSnapshot = projectService.exportProjectLibrarySnapshot({
+    librarySnapshot: {
+      activeProjectId: "project-test",
+      projects: [
+        {
+          ...opened.projectRecord,
+          sceneDrafts: {},
+        },
+      ],
+      sceneStore: {
+        "project-test": {
+          "scene-1": {
+            ...projectRepository.loadScene("project-test", "scene-1"),
+            editorText: "File authority scene one.",
+          },
+          "scene-2": {
+            ...projectRepository.loadScene("project-test", "scene-2"),
+            editorText: "File authority scene two.",
+          },
+        },
+      },
+    },
+  });
+  assert.equal(
+    exportedAuthoritativeFileSnapshot.sceneStore["project-test"]["scene-2"].editorText,
+    "File authority scene two.",
+  );
 
   const rewrittenSceneRecord = projectService.saveScene({
     projectRecord: opened.projectRecord,
@@ -351,6 +464,58 @@ export async function runProjectServiceStorageTest() {
   assert.equal(storageAdapter.readJson("test-project-library-v1:scene:stale-project:scene-old"), null);
   assert.equal(storageAdapter.readJson("test-project-library-v1:stale-extra"), null);
   assert.equal(storageAdapter.readJson("test-project-library-v1").projects.length, 1);
+
+  // Intent: authoritative file loads must not borrow old scene bodies even when browser cache removal fails.
+  const removeFailWindow = createMemoryWindow();
+  const removeFailStorageAdapter = createBrowserStorageAdapter({
+    windowRef: removeFailWindow,
+  });
+  const removeFailProjectService = createProjectService({
+    projectRepository: createProjectRepository({
+      storageAdapter: removeFailStorageAdapter,
+      libraryStorageKey: "remove-fail-project-library-v1",
+      activeProjectIdStorageKey: "remove-fail-active-v1",
+    }),
+    preferencesRepository: createPreferencesRepository({
+      storageAdapter: removeFailStorageAdapter,
+    }),
+    now: () => "2026-05-14T00:00:00.000Z",
+  });
+  removeFailProjectService.saveProjectLibrarySnapshot({
+    activeProjectId: "project-test",
+    projects: [createProjectRecord()],
+  });
+  removeFailStorageAdapter.writeJson("remove-fail-project-library-v1:scene:project-test:scene-1", {
+    sceneId: "scene-1",
+    editorText: "Stale browser manuscript body.",
+    blocks: [
+      {
+        blockId: "block-stale",
+        lineNumber: 1,
+        kind: "narration",
+        speakerLabel: "",
+        text: "Stale browser manuscript body.",
+        issueIds: [],
+        eventTagIds: [],
+        isDraft: false,
+      },
+    ],
+  });
+  const manifestOnlyRecord = structuredClone(
+    removeFailStorageAdapter.readJson("remove-fail-project-library-v1").projects[0],
+  );
+  removeFailWindow.__setRemoveFailure(true);
+  const authoritativeReplacement = removeFailProjectService.saveProjectLibrarySnapshot({
+    activeProjectId: "project-test",
+    projects: [manifestOnlyRecord],
+  }, {
+    replaceExistingCache: true,
+  });
+  assert.equal(authoritativeReplacement.storagePersisted, false);
+  assert.equal(
+    authoritativeReplacement.projects[0].sceneDrafts?.["scene-1"]?.editorText,
+    "",
+  );
 }
 
 function createProjectRecord() {
@@ -459,6 +624,7 @@ function createMemoryWindow() {
   const values = new Map();
   const readCounts = new Map();
   const writeCounts = new Map();
+  let removeShouldFail = false;
 
   function increment(counter, key) {
     counter.set(key, (counter.get(key) ?? 0) + 1);
@@ -474,6 +640,9 @@ function createMemoryWindow() {
     },
     __getWriteCount(key) {
       return writeCounts.get(key) ?? 0;
+    },
+    __setRemoveFailure(value) {
+      removeShouldFail = value === true;
     },
     localStorage: {
       get length() {
@@ -492,6 +661,9 @@ function createMemoryWindow() {
       },
       removeItem(key) {
         increment(writeCounts, key);
+        if (removeShouldFail) {
+          throw new Error("Synthetic remove failure.");
+        }
         values.delete(key);
       },
     },

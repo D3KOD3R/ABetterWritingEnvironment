@@ -6,6 +6,12 @@ import { createNarrationRecordingRuntimeService } from "../apps/editor/public/fe
 export function runNarrationRecordingRuntimeServiceTest() {
   const events = [];
   const speechRecognition = {
+    onstart: () => {},
+    onaudiostart: () => {},
+    onaudioend: () => {},
+    onspeechstart: () => {},
+    onspeechend: () => {},
+    onnomatch: () => {},
     onresult: () => {},
     onerror: () => {},
     onend: () => {},
@@ -46,6 +52,12 @@ export function runNarrationRecordingRuntimeServiceTest() {
     stoppedSpeechRecognition: true,
     stoppedTracks: 2,
   });
+  assert.equal(speechRecognition.onstart, null);
+  assert.equal(speechRecognition.onaudiostart, null);
+  assert.equal(speechRecognition.onaudioend, null);
+  assert.equal(speechRecognition.onspeechstart, null);
+  assert.equal(speechRecognition.onspeechend, null);
+  assert.equal(speechRecognition.onnomatch, null);
   assert.equal(speechRecognition.onresult, null);
   assert.equal(speechRecognition.onerror, null);
   assert.equal(speechRecognition.onend, null);

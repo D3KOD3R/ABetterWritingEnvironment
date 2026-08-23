@@ -1,8 +1,11 @@
 // Intent: derive one truthful project-file autosave status for every editor surface.
 export function buildProjectAutosaveStatusModel(state, {
   connected = false,
+  saveShortcutLabel = "Ctrl+S",
 } = {}) {
   const enabled = state?.editorPrefs?.projectFileAutosaveEnabled === true;
+  const manualSavePrompt = formatManualSavePrompt(saveShortcutLabel, { sentenceStart: true });
+  const inlineManualSavePrompt = formatManualSavePrompt(saveShortcutLabel);
   const dirtyDomains = state?.projectPersistenceDirtyDomains && typeof state.projectPersistenceDirtyDomains === "object"
     ? Object.keys(state.projectPersistenceDirtyDomains)
     : [];
@@ -21,7 +24,7 @@ export function buildProjectAutosaveStatusModel(state, {
       return createStatus({
         statusKey: "waiting",
         statusLabel: "Needs permission",
-        note: "Press Ctrl+S to re-authorize the project file.",
+        note: `${manualSavePrompt} to re-authorize the project file.`,
         tone: "waiting",
       });
     }
@@ -56,6 +59,7 @@ export function buildProjectAutosaveStatusModel(state, {
   if (hasDirtyProjectFileState && blocked && typeof blocked === "object") {
     const permissionRequired = blocked.reason === "write-permission-required";
     const manualSaveRequired = blocked.reason === "manual-save-required";
+    const failureCause = formatAutosaveFailureCause(blocked.errorMessage);
     return createStatus({
       statusKey: permissionRequired
         ? "permission-required"
@@ -68,10 +72,12 @@ export function buildProjectAutosaveStatusModel(state, {
           ? "Manual save"
           : "Out of sync",
       note: permissionRequired
-        ? "Project file is out of sync. Latest changes are preserved in browser cache; press Ctrl+S to re-authorize."
+        ? `Project file is out of sync. Latest changes are preserved in browser cache; ${inlineManualSavePrompt} to re-authorize.`
         : manualSaveRequired
-          ? "Browser blocked background file writes. Latest changes are preserved in browser cache; press Ctrl+S to write the project file."
-          : "Project file is out of sync. Latest changes are preserved in browser cache; press Ctrl+S to retry.",
+          ? `Browser blocked background file writes. Latest changes are preserved in browser cache; ${inlineManualSavePrompt} to write the project file.`
+          : failureCause
+            ? `Project file is out of sync: ${failureCause} Latest changes are preserved in browser cache; ${inlineManualSavePrompt} to retry.`
+            : `Project file is out of sync. Latest changes are preserved in browser cache; ${inlineManualSavePrompt} to retry.`,
       tone: "waiting",
     });
   }
@@ -91,6 +97,27 @@ export function buildProjectAutosaveStatusModel(state, {
     note: "Project file is in sync.",
     tone: "ready",
   });
+}
+
+// Intent: let UI callers avoid stale hard-coded shortcut text after keymap customization.
+function formatManualSavePrompt(saveShortcutLabel, { sentenceStart = false } = {}) {
+  const shortcut = String(saveShortcutLabel ?? "").trim();
+  if (shortcut) {
+    return `${sentenceStart ? "Press" : "press"} ${shortcut}`;
+  }
+
+  return sentenceStart ? "Use Save" : "use Save";
+}
+
+// Intent: keep the autosave badge diagnostic useful without letting a raw stack or large error fill the header.
+function formatAutosaveFailureCause(value) {
+  const candidate = typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
+  if (!candidate) {
+    return "";
+  }
+
+  const truncated = candidate.length > 180 ? `${candidate.slice(0, 177)}...` : candidate;
+  return /[.!?]$/.test(truncated) ? truncated : `${truncated}.`;
 }
 
 function createStatus({

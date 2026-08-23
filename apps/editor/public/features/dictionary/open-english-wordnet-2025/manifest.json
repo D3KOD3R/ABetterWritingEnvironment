@@ -1,0 +1,122 @@
+{
+  "id": "open-english-wordnet-2025-core",
+  "label": "Open English WordNet 2025",
+  "version": "2025",
+  "releaseDate": "2025-12-31",
+  "sourceLabel": "Open English WordNet 2025 (CC BY 4.0)",
+  "sourceUrl": "https://en-word.net/downloads",
+  "license": "CC-BY 4.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+  "attribution": "Open English WordNet by the Open English WordNet Community, derived from Princeton WordNet.",
+  "generator": "build-open-english-wordnet-index.mjs",
+  "shards": {
+    "0": {
+      "path": "shards/0.json",
+      "entryCount": 0
+    },
+    "a": {
+      "path": "shards/a.json",
+      "entryCount": 8895
+    },
+    "b": {
+      "path": "shards/b.json",
+      "entryCount": 7981
+    },
+    "c": {
+      "path": "shards/c.json",
+      "entryCount": 13062
+    },
+    "d": {
+      "path": "shards/d.json",
+      "entryCount": 6579
+    },
+    "e": {
+      "path": "shards/e.json",
+      "entryCount": 4776
+    },
+    "f": {
+      "path": "shards/f.json",
+      "entryCount": 5579
+    },
+    "g": {
+      "path": "shards/g.json",
+      "entryCount": 4582
+    },
+    "h": {
+      "path": "shards/h.json",
+      "entryCount": 5198
+    },
+    "i": {
+      "path": "shards/i.json",
+      "entryCount": 4336
+    },
+    "j": {
+      "path": "shards/j.json",
+      "entryCount": 1099
+    },
+    "k": {
+      "path": "shards/k.json",
+      "entryCount": 1286
+    },
+    "l": {
+      "path": "shards/l.json",
+      "entryCount": 4945
+    },
+    "m": {
+      "path": "shards/m.json",
+      "entryCount": 7253
+    },
+    "n": {
+      "path": "shards/n.json",
+      "entryCount": 3174
+    },
+    "o": {
+      "path": "shards/o.json",
+      "entryCount": 3189
+    },
+    "p": {
+      "path": "shards/p.json",
+      "entryCount": 10688
+    },
+    "q": {
+      "path": "shards/q.json",
+      "entryCount": 566
+    },
+    "r": {
+      "path": "shards/r.json",
+      "entryCount": 5684
+    },
+    "s": {
+      "path": "shards/s.json",
+      "entryCount": 14963
+    },
+    "t": {
+      "path": "shards/t.json",
+      "entryCount": 6841
+    },
+    "u": {
+      "path": "shards/u.json",
+      "entryCount": 3242
+    },
+    "v": {
+      "path": "shards/v.json",
+      "entryCount": 2131
+    },
+    "w": {
+      "path": "shards/w.json",
+      "entryCount": 3526
+    },
+    "x": {
+      "path": "shards/x.json",
+      "entryCount": 161
+    },
+    "y": {
+      "path": "shards/y.json",
+      "entryCount": 474
+    },
+    "z": {
+      "path": "shards/z.json",
+      "entryCount": 339
+    }
+  }
+}

@@ -18,6 +18,12 @@ import {
   logDesktopWarn,
 } from "./logger.ts";
 import {
+  createDesktopRealtimeSpeechBridge,
+  createWhisperCppCapability,
+} from "./realtime-speech-bridge.ts";
+import {
+  createLocalAiModelLibrarySnapshot,
+  ensureLocalAiModelLibraryFolders,
   LlamaCppProvider,
   LocalAiRouter,
   type AiRequest,
@@ -41,6 +47,7 @@ const SESSION_TRACKER_WORKING_PEN_SVG_PATH = fileURLToPath(
 const SESSION_TRACKER_FLAMING_PEN_SVG_PATH = fileURLToPath(
   new URL("../../editor/public/assets/icons/session-tracker-flaming-pen.svg", import.meta.url),
 );
+const METADATA_FOLDER_MANIFEST_FILE_NAME = "_folder.json";
 const APP_JS_PATH = fileURLToPath(new URL("../../editor/public/app.js", import.meta.url));
 const EDITOR_MODEL_JS_PATH = fileURLToPath(
   new URL("../../editor/public/editor-model.js", import.meta.url),
@@ -77,7 +84,7 @@ interface DeveloperRuntimeLogSessionFile {
 export interface DesktopHttpResponse {
   statusCode: number;
   headers: Record<string, string>;
-  body: string;
+  body: string | Buffer;
 }
 
 export interface DesktopHttpRequest {
@@ -87,6 +94,30 @@ export interface DesktopHttpRequest {
 }
 
 const localAiRouter = new LocalAiRouter(new LlamaCppProvider());
+const realtimeSpeechBridge = createDesktopRealtimeSpeechBridge({
+  getSettings: createDesktopSettingsSnapshot,
+});
+
+// Intent: serve local realtime speech capabilities from both desktop GET paths used by the host.
+function createRealtimeSpeechProvidersResponse(): DesktopHttpResponse {
+  const result = realtimeSpeechBridge.listProviders();
+  logDesktopInfo("realtime-speech", "Served local realtime speech provider capabilities.", {
+    providerCount: result.providers?.length ?? 0,
+    sidecarUrl: result.sidecar?.url ?? "",
+  });
+  return jsonResponse(result.statusCode, result, apiCorsHeaders());
+}
+
+// Intent: expose stop-time whisper.cpp availability without requiring the editor to know filesystem paths.
+function createWhisperCppCapabilityResponse(): DesktopHttpResponse {
+  const result = createWhisperCppCapability(process.cwd());
+  logDesktopInfo("whisper-cpp", "Served local whisper.cpp capability.", {
+    available: result.available,
+    binary: result.binary,
+    model: result.model,
+  });
+  return jsonResponse(200, result, apiCorsHeaders());
+}
 
 // Intent: serve read-only editor assets and boot snapshots for simple GET requests.
 export function createDesktopResponse(pathname: string): DesktopHttpResponse {
@@ -203,6 +234,14 @@ export function createDesktopResponse(pathname: string): DesktopHttpResponse {
       JSON.stringify(createDesktopSettingsSnapshot()),
       apiCorsHeaders(),
     );
+  }
+
+  if (pathname === "/api/realtime-speech/providers") {
+    return createRealtimeSpeechProvidersResponse();
+  }
+
+  if (pathname === "/api/whisper-cpp/capability") {
+    return createWhisperCppCapabilityResponse();
   }
 
   const editorPublicAsset = serveEditorPublicAsset(pathname);
@@ -378,6 +417,32 @@ export async function createDesktopResponseForRequest(
     return textResponse(200, "application/json; charset=utf-8", JSON.stringify(snapshot), apiCorsHeaders());
   }
 
+  if (method === "POST" && request.pathname === "/api/local-ai/model-settings") {
+    const body = parseJsonBody(request.body);
+    const modelRoot = typeof body.modelRoot === "string" ? body.modelRoot.trim() : "";
+    const executionMode = body.executionMode === "hybrid" ? "hybrid" : "local-only";
+    if (!modelRoot) {
+      return jsonResponse(400, {
+        ok: false,
+        message: "A local model folder path is required.",
+      }, apiCorsHeaders());
+    }
+
+    const settings = updateDesktopSettingsSnapshot({
+      executionMode,
+      modelRoot,
+    });
+    logDesktopInfo("local-ai", "Updated local AI model settings.", {
+      modelRoot: settings.modelRoot,
+      executionMode: settings.executionMode,
+    });
+    return jsonResponse(200, {
+      ok: true,
+      settings,
+      modelLibrary: await createLocalAiModelLibrarySnapshot(settings.modelRoot),
+    }, apiCorsHeaders());
+  }
+
   if (method === "POST" && request.pathname === "/api/project-file/save") {
     const body = parseJsonBody(request.body);
     const filePath = normalizeFilePath(body.filePath);
@@ -521,12 +586,184 @@ export async function createDesktopResponseForRequest(
     }
   }
 
+  // Intent: let browser media elements lazy-load local project media by URL without embedding blobs in project JSON.
+  if (method === "GET" && request.pathname.startsWith("/api/project-media/file/")) {
+    const filePath = decodeProjectMediaFilePathFromRoute(request.pathname);
+    if (!filePath) {
+      return jsonResponse(400, {
+        ok: false,
+        message: "A media file path is required.",
+      }, apiCorsHeaders());
+    }
+
+    try {
+      const resolvedPath = resolvePath(filePath);
+      const stats = await stat(resolvedPath);
+      if (!stats.isFile()) {
+        return jsonResponse(404, {
+          ok: false,
+          message: "The requested media path is not a file.",
+        }, apiCorsHeaders());
+      }
+
+      const content = await readFile(resolvedPath);
+      logDesktopInfo("project-media", "Served a project media file URL.", {
+        filePath: resolvedPath,
+        byteLength: content.byteLength,
+      });
+      return binaryResponse(200, contentTypeForMediaPath(resolvedPath), content, {
+        ...apiCorsHeaders(),
+        "Cache-Control": "private, max-age=3600",
+      });
+    } catch (error) {
+      logDesktopError("project-media", "Failed to serve a project media file URL.", {
+        error,
+        filePath,
+      });
+      return jsonResponse(404, {
+        ok: false,
+        message: error instanceof Error ? error.message : "Unable to serve the project media file.",
+      }, apiCorsHeaders());
+    }
+  }
+
+  // Intent: let editor workflows remove obsolete local media while keeping missing files idempotent.
+  if (method === "POST" && request.pathname === "/api/project-media/delete") {
+    const body = parseJsonBody(request.body);
+    const filePath = normalizeFilePath(body.filePath);
+    if (!filePath) {
+      return jsonResponse(400, {
+        ok: false,
+        message: "A media file path is required.",
+      }, apiCorsHeaders());
+    }
+
+    try {
+      const result = await deleteBinaryFile(filePath);
+      logDesktopInfo("project-media", result.removed
+        ? "Deleted a project media file."
+        : "Project media file was already absent during delete.", {
+        filePath: result.filePath,
+        removed: result.removed,
+      });
+      return jsonResponse(200, {
+        ok: true,
+        filePath: result.filePath,
+        removed: result.removed,
+      }, apiCorsHeaders());
+    } catch (error) {
+      logDesktopError("project-media", "Failed to delete a project media file.", {
+        error,
+        filePath,
+      });
+      return jsonResponse(500, {
+        ok: false,
+        message: error instanceof Error ? error.message : "Unable to delete the project media file.",
+      }, apiCorsHeaders());
+    }
+  }
+
+  if (method === "GET" && request.pathname === "/api/realtime-speech/providers") {
+    return createRealtimeSpeechProvidersResponse();
+  }
+
+  if (method === "GET" && request.pathname === "/api/whisper-cpp/capability") {
+    return createWhisperCppCapabilityResponse();
+  }
+
+  if (method === "POST" && request.pathname === "/api/whisper-cpp/word-timings") {
+    const result = await realtimeSpeechBridge.createWhisperCppWordTimings(parseJsonBody(request.body));
+    if (result.ok) {
+      logDesktopInfo("whisper-cpp", "Created local whisper.cpp word timings.", {
+        providerId: result.providerId ?? "",
+        wordCount: result.words?.length ?? 0,
+        model: result.whisper?.model ?? "",
+      });
+    } else {
+      logDesktopWarn("whisper-cpp", "Local whisper.cpp word timing request failed.", {
+        message: result.message ?? "",
+        whisperAvailable: result.whisper?.available === true,
+        errorMessage: result.whisper?.errorMessage ?? "",
+      });
+    }
+    return jsonResponse(result.statusCode, result, apiCorsHeaders());
+  }
+
+  if (method === "POST" && request.pathname === "/api/realtime-speech/session/start") {
+    const result = await realtimeSpeechBridge.startSession(parseJsonBody(request.body));
+    if (result.ok) {
+      logDesktopInfo("realtime-speech", "Started local realtime speech session.", {
+        sessionId: result.session?.id ?? "",
+        providerId: result.session?.providerId ?? "",
+        sidecarStarted: result.sidecar?.started === true,
+      });
+    } else {
+      logDesktopWarn("realtime-speech", "Local realtime speech session could not start.", {
+        message: result.message,
+      });
+    }
+    return jsonResponse(result.statusCode, result, apiCorsHeaders());
+  }
+
+  if (method === "POST" && request.pathname === "/api/realtime-speech/session/audio") {
+    const result = await realtimeSpeechBridge.acceptAudioFrame(parseJsonBody(request.body));
+    const transcriptLength = result.transcriptSnapshot?.transcript.length ?? 0;
+    if (result.ok && (transcriptLength > 0 || result.transcriptSnapshot?.isEndpoint === true)) {
+      logDesktopInfo("realtime-speech", "Accepted local realtime speech transcript chunk.", {
+        sessionId: result.session?.id ?? "",
+        transcriptLength,
+        isEndpoint: result.transcriptSnapshot?.isEndpoint === true,
+      });
+    } else if (!result.ok) {
+      logDesktopWarn("realtime-speech", "Local realtime speech audio frame failed.", {
+        sessionId: result.session?.id ?? "",
+        message: result.message,
+      });
+    }
+    return jsonResponse(result.statusCode, result, apiCorsHeaders());
+  }
+
+  if (method === "POST" && request.pathname === "/api/realtime-speech/session/stop") {
+    const result = await realtimeSpeechBridge.stopSession(parseJsonBody(request.body));
+    logDesktopInfo("realtime-speech", "Stopped local realtime speech session.", {
+      sessionId: result.session?.id ?? "",
+      status: result.session?.status ?? "",
+      finalTranscriptLength: result.finalTranscript?.length ?? 0,
+      whisperAvailable: result.whisper?.available === true,
+      whisperError: result.whisper?.errorMessage ?? "",
+    });
+    return jsonResponse(result.statusCode, result, apiCorsHeaders());
+  }
+
   if (method === "OPTIONS" && request.pathname.startsWith("/api/")) {
     return textResponse(204, "text/plain; charset=utf-8", "", apiCorsHeaders());
   }
 
   if (method === "GET" && request.pathname === "/api/local-ai/status") {
     return jsonResponse(200, await localAiRouter.status(), apiCorsHeaders());
+  }
+
+  if (method === "GET" && request.pathname === "/api/local-ai/models") {
+    const settings = createDesktopSettingsSnapshot();
+    return jsonResponse(200, await createLocalAiModelLibrarySnapshot(settings.modelRoot), apiCorsHeaders());
+  }
+
+  if (method === "POST" && request.pathname === "/api/local-ai/models/ensure-folders") {
+    const body = parseJsonBody(request.body);
+    const modelRoot = typeof body.modelRoot === "string" && body.modelRoot.trim()
+      ? body.modelRoot.trim()
+      : createDesktopSettingsSnapshot().modelRoot;
+    const snapshot = await ensureLocalAiModelLibraryFolders(modelRoot);
+    const settings = updateDesktopSettingsSnapshot({ modelRoot: snapshot.modelRoot });
+    logDesktopInfo("local-ai", "Ensured local AI model library folders.", {
+      modelRoot: settings.modelRoot,
+      folderCount: snapshot.folders.length,
+    });
+    return jsonResponse(200, {
+      ok: true,
+      settings,
+      modelLibrary: snapshot,
+    }, apiCorsHeaders());
   }
 
   if (method === "POST" && request.pathname === "/api/local-ai/generate-title") {
@@ -627,6 +864,23 @@ function textResponse(
   };
 }
 
+function binaryResponse(
+  statusCode: number,
+  contentType: string,
+  body: Buffer,
+  extraHeaders: Record<string, string> = {},
+): DesktopHttpResponse {
+  return {
+    statusCode,
+    headers: {
+      "Content-Type": contentType,
+      "Cache-Control": "no-store",
+      ...extraHeaders,
+    },
+    body,
+  };
+}
+
 function jsonResponse(
   statusCode: number,
   value: unknown,
@@ -658,6 +912,48 @@ function contentTypeForExtension(extension: string): string {
       return "application/json; charset=utf-8";
     default:
       return "text/plain; charset=utf-8";
+  }
+}
+
+function contentTypeForMediaPath(filePath: string): string {
+  switch (extname(filePath).toLowerCase()) {
+    case ".png":
+      return "image/png";
+    case ".jpg":
+    case ".jpeg":
+      return "image/jpeg";
+    case ".webp":
+      return "image/webp";
+    case ".gif":
+      return "image/gif";
+    case ".webm":
+      return "audio/webm";
+    case ".ogg":
+      return "audio/ogg";
+    case ".wav":
+      return "audio/wav";
+    case ".m4a":
+      return "audio/mp4";
+    default:
+      return "application/octet-stream";
+  }
+}
+
+function decodeProjectMediaFilePathFromRoute(pathname: string): string {
+  const prefix = "/api/project-media/file/";
+  if (!pathname.startsWith(prefix)) {
+    return "";
+  }
+
+  const encodedPath = pathname.slice(prefix.length);
+  if (!encodedPath) {
+    return "";
+  }
+
+  try {
+    return decodeURIComponent(encodedPath).trim();
+  } catch {
+    return "";
   }
 }
 
@@ -949,6 +1245,400 @@ function defaultSceneFilePath(projectId: string, sceneId: string): string {
   return `manuscript/scenes/${sanitizePathToken(projectId || "project")}/scene_${sanitizePathToken(sceneId || "scene")}.json`;
 }
 
+function normalizeMetadataText(candidate: unknown): string {
+  return typeof candidate === "string" ? candidate.trim() : "";
+}
+
+function normalizeMetadataFolderId(candidate: unknown): string {
+  const value = normalizeMetadataText(candidate);
+  return /^metadata-(?:folder|subgroup)-[a-z0-9-]+$/.test(value) ? value : "";
+}
+
+function normalizeMetadataFolderNoteId(candidate: unknown): string {
+  const value = normalizeMetadataText(candidate);
+  return /^metadata-(?:folder|subgroup)-note-[a-z0-9-]+$/.test(value) ? value : "";
+}
+
+function normalizeMetadataTitle(candidate: unknown, fallback: string): string {
+  const title = String(candidate ?? "")
+    .normalize("NFKC")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 64);
+  return title || fallback;
+}
+
+function createMetadataFolderIdFromTitle(title: string): string {
+  return `metadata-folder-${sanitizePathToken(title || "folder") || "folder"}`;
+}
+
+function createMetadataFolderNoteIdFromTitle(title: string): string {
+  return `metadata-folder-note-${sanitizePathToken(title || "note") || "note"}`;
+}
+
+function normalizeMetadataNoteAnchor(candidate: unknown): Record<string, any> | null {
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+    return null;
+  }
+
+  const source = candidate as Record<string, any>;
+  const sceneId = normalizeMetadataText(source.sceneId);
+  const selectedText = String(source.selectedText ?? "").trim();
+  const startOffset = Number(source.startOffset);
+  const endOffset = Number(source.endOffset);
+  if (!sceneId || !selectedText || !Number.isInteger(startOffset) || !Number.isInteger(endOffset) || endOffset <= startOffset) {
+    return null;
+  }
+
+  return {
+    sceneId,
+    sceneTitle: normalizeMetadataText(source.sceneTitle),
+    chapterId: normalizeMetadataText(source.chapterId),
+    chapterTitle: normalizeMetadataText(source.chapterTitle),
+    selectedText,
+    startOffset,
+    endOffset,
+    createdAt: normalizeMetadataText(source.createdAt),
+  };
+}
+
+function normalizeMetadataFolderNoteRecord(candidate: unknown, index = 0): Record<string, any> | null {
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+    return null;
+  }
+
+  const source = candidate as Record<string, any>;
+  const title = normalizeMetadataTitle(source.title, "Note");
+  return {
+    id: normalizeMetadataFolderNoteId(source.id) || createMetadataFolderNoteIdFromTitle(`${title}-${index + 1}`),
+    title,
+    body: typeof source.body === "string" ? source.body : "",
+    createdAt: normalizeMetadataText(source.createdAt),
+    updatedAt: normalizeMetadataText(source.updatedAt),
+    anchor: normalizeMetadataNoteAnchor(source.anchor ?? source.manuscriptAnchor),
+  };
+}
+
+function normalizeMetadataFolderRecord(candidate: unknown, index = 0, parentGroupId = ""): Record<string, any> | null {
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+    return null;
+  }
+
+  const source = candidate as Record<string, any>;
+  const groupId = normalizeMetadataText(source.groupId ?? source.noteType ?? parentGroupId);
+  if (!groupId) {
+    return null;
+  }
+
+  const title = normalizeMetadataTitle(source.title, "Notes");
+  const notes = Array.isArray(source.notes)
+    ? source.notes
+      .map((note, noteIndex) => normalizeMetadataFolderNoteRecord(note, noteIndex))
+      .filter((note): note is Record<string, any> => Boolean(note))
+    : [];
+  const childFolderSource = Array.isArray(source.folders)
+    ? source.folders
+    : Array.isArray(source.subgroups)
+      ? source.subgroups
+      : Array.isArray(source.children)
+        ? source.children
+        : [];
+  const folders = childFolderSource
+    .map((folder, folderIndex) => normalizeMetadataFolderRecord(folder, folderIndex, groupId))
+    .filter((folder): folder is Record<string, any> => Boolean(folder));
+
+  return {
+    id: normalizeMetadataFolderId(source.id) || createMetadataFolderIdFromTitle(`${title}-${index + 1}`),
+    groupId,
+    title,
+    createdAt: normalizeMetadataText(source.createdAt),
+    updatedAt: normalizeMetadataText(source.updatedAt),
+    notes,
+    folders,
+  };
+}
+
+function normalizeMetadataFolderRecords(candidate: unknown): Array<Record<string, any>> {
+  if (!Array.isArray(candidate)) {
+    return [];
+  }
+
+  return candidate
+    .map((folder, index) => normalizeMetadataFolderRecord(folder, index))
+    .filter((folder): folder is Record<string, any> => Boolean(folder));
+}
+
+function createUniqueFileName(baseName: string, usedNames: Set<string>): string {
+  const safeBaseName = sanitizePathToken(baseName || "note") || "note";
+  let fileName = `${safeBaseName}.json`;
+  let suffix = 2;
+  while (usedNames.has(fileName)) {
+    fileName = `${safeBaseName}-${suffix}.json`;
+    suffix += 1;
+  }
+  usedNames.add(fileName);
+  return fileName;
+}
+
+function toProjectStoragePath(...segments: string[]): string {
+  return segments
+    .map((segment) => sanitizePathToken(segment))
+    .filter(Boolean)
+    .join("/");
+}
+
+function createUniqueMetadataFolderRelativePath(basePath: string, folderId: string, usedPaths: Set<string>): string {
+  const safeBasePath = basePath || toProjectStoragePath("metadata", "project", "metadata", "folder");
+  let folderPath = safeBasePath;
+  let suffix = sanitizePathToken(folderId);
+  let duplicateCount = 2;
+  while (usedPaths.has(folderPath)) {
+    folderPath = `${safeBasePath}-${suffix || duplicateCount}`;
+    suffix = `${sanitizePathToken(folderId) || "folder"}-${duplicateCount}`;
+    duplicateCount += 1;
+  }
+  usedPaths.add(folderPath);
+  return folderPath;
+}
+
+function resolveProjectRelativeStoragePath(projectRoot: string, relativeStoragePath: unknown): string {
+  const normalizedPath = String(relativeStoragePath ?? "")
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "")
+    .trim();
+  if (!normalizedPath || normalizedPath.split("/").some((segment) => segment === ".." || segment === "")) {
+    return "";
+  }
+
+  const resolvedPath = resolvePath(projectRoot, normalizedPath);
+  const relativePath = relative(projectRoot, resolvedPath);
+  if (!relativePath || relativePath.startsWith("..") || relativePath.includes(":")) {
+    return "";
+  }
+
+  return resolvedPath;
+}
+
+// Intent: store metadata folders as inspectable project-package files while preserving the legacy project record field.
+async function writeMetadataFolderFilesForProject(projectRoot: string, projectRecord: Record<string, any>) {
+  const projectId = typeof projectRecord?.id === "string" && projectRecord.id.trim()
+    ? projectRecord.id.trim()
+    : "project";
+  const metadataFolders = normalizeMetadataFolderRecords(projectRecord.metadataSubgroups);
+  const metadataStorage: Record<string, any> = {
+    format: "metadata-folder-package-v1",
+    folderOrder: metadataFolders.map((folder) => folder.id),
+    folderFiles: {},
+    noteFiles: {},
+  };
+  const usedFolderPaths = new Set<string>();
+
+  // Intent: mirror nested metadata folders as nested physical directories while retaining a flat lookup map for loads.
+  const writeFolder = async (folder: Record<string, any>, baseRelativePath: string): Promise<string> => {
+    const folderRelativePath = createUniqueMetadataFolderRelativePath(baseRelativePath, folder.id, usedFolderPaths);
+    const folderPath = resolvePath(projectRoot, folderRelativePath);
+    await mkdir(folderPath, { recursive: true });
+
+    const usedNoteFileNames = new Set<string>();
+    const noteFiles: Record<string, string> = {};
+    const noteOrder: string[] = [];
+    for (const note of folder.notes) {
+      const noteFileName = createUniqueFileName(`note-${note.title || note.id}`, usedNoteFileNames);
+      const noteRelativePath = `${folderRelativePath}/${noteFileName}`;
+      const notePath = resolvePath(projectRoot, noteRelativePath);
+      noteFiles[note.id] = noteRelativePath;
+      noteOrder.push(note.id);
+      await writeFile(notePath, JSON.stringify({
+        ...note,
+        groupId: folder.groupId,
+        folderId: folder.id,
+      }, null, 2), "utf8");
+    }
+
+    const childFolderFiles: Record<string, string> = {};
+    const childFolderOrder: string[] = [];
+    for (const childFolder of Array.isArray(folder.folders) ? folder.folders : []) {
+      const childBaseRelativePath = `${folderRelativePath}/${sanitizePathToken(childFolder.title || childFolder.id) || sanitizePathToken(childFolder.id) || "folder"}`;
+      const childManifestRelativePath = await writeFolder(childFolder, childBaseRelativePath);
+      childFolderFiles[childFolder.id] = childManifestRelativePath;
+      childFolderOrder.push(childFolder.id);
+    }
+
+    const folderManifestRelativePath = `${folderRelativePath}/${METADATA_FOLDER_MANIFEST_FILE_NAME}`;
+    const folderManifest = {
+      id: folder.id,
+      groupId: folder.groupId,
+      title: folder.title,
+      createdAt: folder.createdAt,
+      updatedAt: folder.updatedAt,
+      noteOrder,
+      noteFiles,
+      folderOrder: childFolderOrder,
+      folderFiles: childFolderFiles,
+    };
+    await writeFile(
+      resolvePath(projectRoot, folderManifestRelativePath),
+      JSON.stringify(folderManifest, null, 2),
+      "utf8",
+    );
+
+    metadataStorage.folderFiles[folder.id] = folderManifestRelativePath;
+    metadataStorage.noteFiles[folder.id] = noteFiles;
+    return folderManifestRelativePath;
+  };
+
+  for (const folder of metadataFolders) {
+    const folderRelativePath = toProjectStoragePath(
+      "metadata",
+      projectId,
+      folder.groupId,
+      folder.title || folder.id,
+    ) || toProjectStoragePath("metadata", projectId, "metadata", folder.id);
+    await writeFolder(folder, folderRelativePath);
+  }
+
+  return metadataStorage;
+}
+
+function mergeMetadataFoldersById(primaryFolders: Array<Record<string, any>>, fallbackFolders: Array<Record<string, any>>) {
+  const merged = new Map<string, Record<string, any>>();
+  for (const folder of fallbackFolders) {
+    merged.set(folder.id, cloneValue(folder));
+  }
+  for (const folder of primaryFolders) {
+    merged.set(folder.id, cloneValue(folder));
+  }
+  return [...merged.values()];
+}
+
+async function readMetadataFolderFromManifest(
+  projectRoot: string,
+  folderManifestPath: string,
+  storage: Record<string, any>,
+  fallbackIndex = 0,
+): Promise<Record<string, any> | null> {
+  try {
+    const folderManifest = parseJsonText(await readFile(folderManifestPath, "utf8")) as Record<string, any>;
+    const folderId = normalizeMetadataFolderId(folderManifest.id);
+    const manifestNoteFiles = folderManifest.noteFiles && typeof folderManifest.noteFiles === "object" && !Array.isArray(folderManifest.noteFiles)
+      ? folderManifest.noteFiles
+      : {};
+    const storageNoteFiles = folderId && storage.noteFiles?.[folderId] && typeof storage.noteFiles[folderId] === "object" && !Array.isArray(storage.noteFiles[folderId])
+      ? storage.noteFiles[folderId]
+      : {};
+    const noteFiles = {
+      ...storageNoteFiles,
+      ...manifestNoteFiles,
+    };
+    const noteOrder = Array.isArray(folderManifest.noteOrder)
+      ? folderManifest.noteOrder.map((noteId: unknown) => normalizeMetadataFolderNoteId(noteId)).filter(Boolean)
+      : Object.keys(noteFiles).map((noteId) => normalizeMetadataFolderNoteId(noteId)).filter(Boolean);
+    const notes: Array<Record<string, any>> = [];
+
+    for (const noteId of noteOrder) {
+      const notePath = resolveProjectRelativeStoragePath(projectRoot, noteFiles[noteId]);
+      if (!notePath || !(await pathExists(notePath))) {
+        continue;
+      }
+
+      try {
+        const noteRecord = normalizeMetadataFolderNoteRecord(parseJsonText(await readFile(notePath, "utf8")), notes.length);
+        if (noteRecord) {
+          notes.push(noteRecord);
+        }
+      } catch {
+        // Skip malformed metadata note files while preserving manifest-backed fallback records.
+      }
+    }
+
+    const manifestFolderFiles = folderManifest.folderFiles && typeof folderManifest.folderFiles === "object" && !Array.isArray(folderManifest.folderFiles)
+      ? folderManifest.folderFiles
+      : {};
+    const storageFolderFiles = storage.folderFiles && typeof storage.folderFiles === "object" && !Array.isArray(storage.folderFiles)
+      ? storage.folderFiles
+      : {};
+    const childFolderFiles = {
+      ...storageFolderFiles,
+      ...manifestFolderFiles,
+    };
+    const childFolderOrder = Array.isArray(folderManifest.folderOrder)
+      ? folderManifest.folderOrder.map((childFolderId: unknown) => normalizeMetadataFolderId(childFolderId)).filter(Boolean)
+      : Object.keys(manifestFolderFiles).map((childFolderId) => normalizeMetadataFolderId(childFolderId)).filter(Boolean);
+    const folders: Array<Record<string, any>> = [];
+
+    for (const childFolderId of childFolderOrder) {
+      const childFolderManifestPath = resolveProjectRelativeStoragePath(projectRoot, childFolderFiles[childFolderId]);
+      if (!childFolderManifestPath || !(await pathExists(childFolderManifestPath))) {
+        continue;
+      }
+
+      const childFolderRecord = await readMetadataFolderFromManifest(
+        projectRoot,
+        childFolderManifestPath,
+        storage,
+        folders.length,
+      );
+      if (childFolderRecord) {
+        folders.push(childFolderRecord);
+      }
+    }
+
+    return normalizeMetadataFolderRecord({
+      ...folderManifest,
+      notes,
+      folders,
+    }, fallbackIndex);
+  } catch {
+    return null;
+  }
+}
+
+async function readMetadataFoldersForProject(projectRoot: string, projectRecord: Record<string, any>) {
+  const storage = projectRecord?.projectStorage?.metadataFolders
+    && typeof projectRecord.projectStorage.metadataFolders === "object"
+    && !Array.isArray(projectRecord.projectStorage.metadataFolders)
+    ? projectRecord.projectStorage.metadataFolders
+    : null;
+  if (!storage) {
+    return normalizeMetadataFolderRecords(projectRecord.metadataSubgroups);
+  }
+
+  const folderFiles = storage.folderFiles && typeof storage.folderFiles === "object" && !Array.isArray(storage.folderFiles)
+    ? storage.folderFiles
+    : {};
+  const folderOrder = Array.isArray(storage.folderOrder)
+    ? storage.folderOrder.map((folderId: unknown) => normalizeMetadataFolderId(folderId)).filter(Boolean)
+    : Object.keys(folderFiles).map((folderId) => normalizeMetadataFolderId(folderId)).filter(Boolean);
+  const diskFolders: Array<Record<string, any>> = [];
+
+  for (const folderId of folderOrder) {
+    const folderManifestPath = resolveProjectRelativeStoragePath(projectRoot, folderFiles[folderId]);
+    if (!folderManifestPath || !(await pathExists(folderManifestPath))) {
+      continue;
+    }
+
+    const folderRecord = await readMetadataFolderFromManifest(projectRoot, folderManifestPath, storage, diskFolders.length);
+    if (folderRecord) {
+      diskFolders.push(folderRecord);
+    }
+  }
+
+  return mergeMetadataFoldersById(
+    diskFolders,
+    normalizeMetadataFolderRecords(projectRecord.metadataSubgroups),
+  );
+}
+
+async function hydrateProjectMetadataFoldersFromPackage(projectRoot: string, manifestProjects: Array<Record<string, any>>) {
+  const hydratedProjects: Array<Record<string, any>> = [];
+  for (const project of manifestProjects) {
+    const record = cloneValue(project);
+    record.metadataSubgroups = await readMetadataFoldersForProject(projectRoot, record);
+    hydratedProjects.push(record);
+  }
+  return hydratedProjects;
+}
+
 function normalizeProjectLibrarySnapshotCandidate(snapshot: unknown): {
   schemaVersion: number;
   activeProjectId: string | null;
@@ -1091,6 +1781,7 @@ function buildProjectManifestRecord(
   projectRecord: Record<string, any>,
   sceneOrder: string[],
   sceneFiles: Record<string, string>,
+  metadataFolderStorage: Record<string, any> | null = null,
 ): Record<string, any> {
   const record = cloneValue(projectRecord);
   record.schemaVersion = Number(record.schemaVersion) || 2;
@@ -1122,6 +1813,9 @@ function buildProjectManifestRecord(
     sceneOrder: [...sceneOrder],
     sceneFiles: cloneValue(sceneFiles),
   };
+  if (metadataFolderStorage) {
+    record.projectStorage.metadataFolders = cloneValue(metadataFolderStorage);
+  }
 
   if (!record.structureDrafts || typeof record.structureDrafts !== "object" || Array.isArray(record.structureDrafts)) {
     record.structureDrafts = { scenes: [] };
@@ -1164,6 +1858,7 @@ async function ensureProjectPackageScaffold(projectRoot: string) {
     join(projectRoot, "assets"),
     join(projectRoot, "assets", "audio"),
     join(projectRoot, "assets", "images"),
+    join(projectRoot, "metadata"),
     join(projectRoot, "transcripts"),
     join(projectRoot, "cache"),
     join(projectRoot, "cache", "waveforms"),
@@ -1248,11 +1943,12 @@ async function readProjectPackage(filePath: string): Promise<Record<string, any>
     }
     const manifestContent = await readFile(manifestPath, "utf8");
     const manifestSnapshot = normalizeProjectLibrarySnapshotCandidate(parseJsonText(manifestContent));
-    const sceneStore = await readSceneStoreFromManifest(resolvedPath, manifestSnapshot.projects);
+    const projects = await hydrateProjectMetadataFoldersFromPackage(resolvedPath, manifestSnapshot.projects);
+    const sceneStore = await readSceneStoreFromManifest(resolvedPath, projects);
     return {
       schemaVersion: manifestSnapshot.schemaVersion,
       activeProjectId: manifestSnapshot.activeProjectId,
-      projects: manifestSnapshot.projects,
+      projects,
       sceneStore,
       _meta: {
         rootPath: resolvedPath,
@@ -1266,11 +1962,12 @@ async function readProjectPackage(filePath: string): Promise<Record<string, any>
   if (resolvedPath.toLowerCase().endsWith("project.json")) {
     const rootPath = dirname(resolvedPath);
     const manifestSnapshot = normalizeProjectLibrarySnapshotCandidate(parsed);
-    const sceneStore = await readSceneStoreFromManifest(rootPath, manifestSnapshot.projects);
+    const projects = await hydrateProjectMetadataFoldersFromPackage(rootPath, manifestSnapshot.projects);
+    const sceneStore = await readSceneStoreFromManifest(rootPath, projects);
     return {
       schemaVersion: manifestSnapshot.schemaVersion,
       activeProjectId: manifestSnapshot.activeProjectId,
-      projects: manifestSnapshot.projects,
+      projects,
       sceneStore,
       _meta: {
         rootPath,
@@ -1365,8 +2062,10 @@ async function writeProjectPackage(filePath: string, snapshot: unknown): Promise
       await writeFile(scenePath, JSON.stringify(mergedScenes[normalizedId], null, 2), "utf8");
     }
 
+    const metadataFolderStorage = await writeMetadataFolderFilesForProject(projectRoot, projectRecord);
+
     manifestProjects.push(
-      buildProjectManifestRecord(projectRecord, sceneOrder, sceneFiles),
+      buildProjectManifestRecord(projectRecord, sceneOrder, sceneFiles, metadataFolderStorage),
     );
   }
 
@@ -1389,6 +2088,35 @@ async function writeBinaryFile(filePath: string, content: Buffer): Promise<strin
   await mkdir(dirname(resolvedPath), { recursive: true });
   await writeFile(resolvedPath, content);
   return resolvedPath;
+}
+
+// Intent: delete a project media file without failing stale metadata cleanup when the file is already absent.
+async function deleteBinaryFile(filePath: string): Promise<{ filePath: string; removed: boolean }> {
+  const resolvedPath = resolvePath(filePath);
+  try {
+    await unlink(resolvedPath);
+    return {
+      filePath: resolvedPath,
+      removed: true,
+    };
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return {
+        filePath: resolvedPath,
+        removed: false,
+      };
+    }
+    throw error;
+  }
+}
+
+function isMissingFileError(error: unknown): boolean {
+  return Boolean(
+    error &&
+    typeof error === "object" &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "ENOENT"
+  );
 }
 
 function normalizeLogLevel(candidate: unknown): "debug" | "info" | "warn" | "error" {

@@ -10,6 +10,7 @@ export async function runNarrationRecordingCommandServiceTest() {
     sceneTitle: "Scene One",
     blockId: "block-1",
     lineNumber: 1,
+    displayLineNumber: 315,
     verseText: "Line one.",
   };
   let runtime = null;
@@ -29,6 +30,9 @@ export async function runNarrationRecordingCommandServiceTest() {
     },
   };
   const recognition = {
+    providerId: "browser-web-speech",
+    providerLabel: "Browser Web Speech",
+    providerKind: "browser-web-speech",
     start() {
       events.push("speech.start");
     },
@@ -72,6 +76,8 @@ export async function runNarrationRecordingCommandServiceTest() {
   assert.equal(runtime.stream, stream);
   assert.equal(runtime.mediaRecorder, recorder);
   assert.equal(runtime.speechRecognition, recognition);
+  assert.equal(runtime.speechProviderId, "browser-web-speech");
+  assert.equal(runtime.speechProviderLabel, "Browser Web Speech");
   assert.equal(session.recordingId, "take-10-scene-1-block-1");
 
   await service.stopRecording();
@@ -84,14 +90,17 @@ export async function runNarrationRecordingCommandServiceTest() {
     "recorder.create",
     "runtime.set:Requesting microphone access...",
     "speech.create",
-    "runtime.set:Speech tracker active",
+    "runtime.set:Speech tracker listening at line 315",
     "speech.start",
-    "session.refresh:recording:Speech tracker active",
+    "session.refresh:recording:Speech tracker listening at line 315",
     "recorder.start:1000",
-    "runtime.set:Finalizing narration take...",
-    "session.refresh::",
+    "runtime.set:Saving narration take...",
+    "session.refresh:finalizing:Saving narration take...",
     "recorder.stop",
   ]);
+
+  await service.stopRecording();
+  assert.equal(events.filter((event) => event === "recorder.stop").length, 1);
 
   runtime = null;
   session = null;

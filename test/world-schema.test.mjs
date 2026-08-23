@@ -12,6 +12,7 @@ import {
   addTimelineNode,
   addTimelineSpine,
   addWorldTemplate,
+  createTimelineNodeLocationPlacement,
   createWorldModel,
   instantiateWorldEntity,
   linkTimelineNodes,
@@ -124,6 +125,12 @@ export function runWorldSchemaTest() {
     {
       label: "First Survey",
       summary: "The team establishes orbital contact.",
+      locationPlacement: {
+        location: "The Icarus",
+        locationRowLabel: "Khepri",
+        sublocation: "The Icarus",
+        orbitalBand: "Low orbit",
+      },
       manuscriptAnchors: [introductionAnchor],
     },
     "2026-04-21T04:14:00.000Z",
@@ -166,9 +173,45 @@ export function runWorldSchemaTest() {
   );
   world = edgeResult.world;
 
+  const implicationEdgeResult = linkTimelineNodes(
+    world,
+    {
+      fromNodeId: nodeTwoResult.node.id,
+      toNodeId: nodeOneResult.node.id,
+      kind: "implicates",
+      label: "Diplomacy reframes the original survey",
+    },
+    "2026-04-21T04:18:00.000Z",
+  );
+  world = implicationEdgeResult.world;
+
   assert.equal(world.entities[0].introduction.id, introductionResult.introduction.id);
   assert.equal(world.nodes[0].linkedEntityIds[0], entityResult.entity.id);
+  assert.deepEqual(world.nodes[0].locationPlacement, {
+    locationLabel: "The Icarus",
+    locationKey: "the-icarus",
+    locationRowLabel: "Khepri",
+    locationRowKey: "khepri",
+    locationScope: "planetary",
+    eventLocationLabel: "The Icarus",
+    eventLocationKey: "the-icarus",
+    coreLocationLabel: "Khepri",
+    coreLocationKey: "khepri",
+    childLocation: "The Icarus",
+    childLocationLabel: "The Icarus",
+    childLocationKey: "the-icarus",
+    sublocationLabel: "The Icarus",
+    sublocationKey: "the-icarus",
+    orbitalBand: "Low orbit",
+  });
+  const childLocationPlacement = createTimelineNodeLocationPlacement({
+    location: "  Khepri Orbit  ",
+    childLocation: " Relay Dock ",
+  });
+  assert.equal(childLocationPlacement.childLocationKey, "relay-dock");
+  assert.equal(childLocationPlacement.sublocationKey, "relay-dock");
   assert.equal(world.entityLinks.length, 2);
   assert.equal(world.edges[0].kind, "causes");
-  assert.equal(world.updatedAt, "2026-04-21T04:17:00.000Z");
+  assert.equal(world.edges[1].kind, "implicates");
+  assert.equal(world.updatedAt, "2026-04-21T04:18:00.000Z");
 }

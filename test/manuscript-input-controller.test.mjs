@@ -91,6 +91,36 @@ export function runManuscriptInputControllerTest() {
   assert.equal(highlightedCommit.selectionStart, 4);
   assert.equal(highlightedCommit.selectionEnd, 4);
 
+  let replacementCommit = null;
+  const replacementController = createManuscriptInputController({
+    getSceneText: () => "aaaa",
+    getSceneInlineFormatRanges: () => [],
+    getInlineFormattingState: () => ({}),
+    commitSceneTextEdit: (mutation) => {
+      replacementCommit = mutation;
+    },
+    isGrammarCheckEnabled: () => false,
+  });
+  const replacementSurface = {
+    value: "aaaa",
+    selectionStart: 0,
+    selectionEnd: 1,
+  };
+  assert.equal(replacementController.handleEditorTextBeforeInput({
+    sceneId: "scene-replacement",
+    editorSurface: replacementSurface,
+  }), true);
+  replacementSurface.value = "aaaaa";
+  replacementSurface.selectionStart = 2;
+  replacementSurface.selectionEnd = 2;
+  assert.equal(replacementController.handleEditorTextInput({
+    sceneId: "scene-replacement",
+    editorSurface: replacementSurface,
+  }).handled, true);
+  assert.equal(replacementCommit.nextText, "aaaaa");
+  assert.equal(replacementCommit.selectionBeforeInputStart, 0);
+  assert.equal(replacementCommit.selectionBeforeInputEnd, 1);
+
   const alignedBlocks = updateSceneBlocksForTextEdit({
     sceneId: "scene-highlight",
     previousText: "abcabc\n\ntail",
@@ -143,6 +173,25 @@ export function runManuscriptInputControllerTest() {
   assert.equal(reconciledStaleSingleBlock.length, 1);
   assert.equal(reconciledStaleSingleBlock[0].chapterId, "draft-chapter-fresh");
   assert.equal(reconciledStaleSingleBlock[0].text, "Visible text that was ahead of state.");
+
+  const readOnlyEffects = [];
+  const readOnlyController = createManuscriptInputController({
+    markEditorAsCurrent: () => readOnlyEffects.push("current"),
+    commitSceneTextEdit: () => readOnlyEffects.push("commit"),
+    scheduleSpellcheckRefresh: () => readOnlyEffects.push("spellcheck"),
+  });
+  const readOnlyResult = readOnlyController.handleEditorTextInput({
+    sceneId: "scene-readonly",
+    editorSurface: {
+      value: "Blocked narration edit.",
+      readOnly: true,
+      selectionStart: 0,
+      selectionEnd: 0,
+    },
+  });
+  assert.equal(readOnlyResult.handled, false);
+  assert.equal(readOnlyResult.reason, "readonly-editor-input");
+  assert.deepEqual(readOnlyEffects, []);
 
   const disabledController = createManuscriptInputController({
     getSceneText: () => "",

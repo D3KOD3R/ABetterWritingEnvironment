@@ -99,6 +99,7 @@ export function createProjectRuntimeRecordStateService({
       persistedProjectIndex: currentProjectIndexRecord?.projectIndex ?? null,
       manuscriptTasks: state.manuscriptTasks,
       passageNotes: state.passageNotes,
+      metadataSubgroups: state.metadataSubgroups,
       draftProofing: state.draftProofing,
       revisions: state.revisionState,
       sourceArchive: workspaceProjectRecord?.sourceArchive ?? [],

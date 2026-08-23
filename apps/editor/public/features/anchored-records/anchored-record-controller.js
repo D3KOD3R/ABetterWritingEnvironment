@@ -2,8 +2,14 @@
 import {
   createManuscriptTask,
   createPassageNote,
+  isSupportedPassageNoteType,
 } from "../../editor-model.js";
 import { createOffsetAnchoredRecordEvidencePatch } from "../manuscript-anchors/manuscript-anchor-record-service.js";
+import {
+  findCustomMetadataDefinition,
+  getMetadataNoteLabel,
+  isCustomMetadataNoteType,
+} from "../metadata-console/custom-metadata-service.js";
 
 export function buildTaskComposerFromContextMenu(menu, point = {}) {
   if (!menu) {
@@ -18,11 +24,14 @@ export function buildTaskComposerFromContextMenu(menu, point = {}) {
   };
 }
 
-export function buildInlinePassageNoteDraftFromContextMenu(menu, noteType) {
-  if (!menu || (noteType !== "inspiration" && noteType !== "research")) {
+export function buildInlinePassageNoteDraftFromContextMenu(menu, noteType, {
+  customMetadataDefinitions = [],
+} = {}) {
+  if (!menu || !isSupportedPassageNoteType(noteType)) {
     return null;
   }
 
+  const customDefinition = findCustomMetadataDefinition(customMetadataDefinitions, noteType);
   const selectedText = menu.hasExplicitSelection ? String(menu.selectedText ?? "") : "";
   const anchorStartOffset = menu.hasExplicitSelection
     ? menu.startOffset
@@ -34,6 +43,13 @@ export function buildInlinePassageNoteDraftFromContextMenu(menu, noteType) {
   return {
     sceneId: menu.sceneId,
     noteType,
+    ...(customDefinition
+      ? {
+          metadataDefinitionId: customDefinition.id,
+          metadataLabel: customDefinition.label,
+          metadataHighlightColor: customDefinition.highlightColor,
+        }
+      : {}),
     selectedText,
     startOffset: anchorStartOffset,
     endOffset: anchorEndOffset,
@@ -83,6 +99,9 @@ export function buildPassageNoteFromComposer({
     startOffset: composer.startOffset,
     endOffset: composer.endOffset,
     body,
+    metadataDefinitionId: composer.metadataDefinitionId,
+    metadataLabel: composer.metadataLabel,
+    metadataHighlightColor: composer.metadataHighlightColor,
   }, composer.noteType);
 
   return applyInitialAnchorEvidence(note, scene?.editorText);
@@ -308,8 +327,10 @@ export function selectPassageNotesByType(notes = [], noteType = "") {
   return (Array.isArray(notes) ? notes : []).filter((note) => note?.noteType === noteType);
 }
 
-export function getPassageNoteTypeLabel(noteType) {
-  return noteType === "research" ? "Research" : "Inspiration";
+export function getPassageNoteTypeLabel(noteType, {
+  customMetadataDefinitions = [],
+} = {}) {
+  return getMetadataNoteLabel(noteType, customMetadataDefinitions);
 }
 
 // Intent: derive panel-ready anchored record groupings without taking over rendering effects.
@@ -321,11 +342,20 @@ export function buildTaskPanelModel(tasks = [], sceneChapters = []) {
   };
 }
 
-export function buildPassageNotePanelModel(notes = [], noteType = "", sceneChapters = []) {
+export function buildPassageNotePanelModel(notes = [], noteType = "", sceneChapters = [], {
+  customMetadataDefinitions = [],
+} = {}) {
   const filteredNotes = selectPassageNotesByType(notes, noteType);
+  const customDefinition = isCustomMetadataNoteType(noteType)
+    ? findCustomMetadataDefinition(customMetadataDefinitions, noteType)
+    : null;
   return {
     noteType,
-    label: getPassageNoteTypeLabel(noteType),
+    label: getPassageNoteTypeLabel(noteType, { customMetadataDefinitions }),
+    ...(customDefinition ? {
+      highlightColor: customDefinition.highlightColor,
+      ...(customDefinition.icon ? { metadataIcon: customDefinition.icon } : {}),
+    } : {}),
     noteCount: filteredNotes.length,
     groups: groupAnchoredRecordsByChapter(filteredNotes, sceneChapters),
   };

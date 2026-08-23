@@ -352,18 +352,28 @@ function buildWritingTargetSummaryForRecord(record) {
       ? `${formatMinuteCount(sessionLastActiveMinutes)} idle`
       : "Active"
     : `${formatMinuteCount(sessionLastActiveMinutes ?? 0)} idle`;
+  const goalSyncSource = getWritingTargetGoalSyncSource(syncedRecord);
   const effectiveWordsPerDay = Math.max(0, pace.wordsPerDay || 0);
-  const projectedDaysToTarget = effectiveWordsPerDay > 0 ? remainingWords / effectiveWordsPerDay : null;
+  const targetPaceWordsPerDay = Math.max(0, Number(targetWordsPerDay) || 0);
+  const projectionWordsPerDay = goalSyncSource === "sessionTargetWords"
+    ? targetPaceWordsPerDay
+    : effectiveWordsPerDay;
+  // Intent: daily-target mode is a plan projection; release-date mode remains an actual-pace forecast.
+  const projectedDaysToTarget = projectionWordsPerDay > 0 ? remainingWords / projectionWordsPerDay : null;
   const projectedCompletionDate = projectedDaysToTarget != null ? addDays(now, projectedDaysToTarget) : null;
   const daysUntilRelease = releaseDate ? getWritingTargetDaysUntilDate(releaseDate, now) : null;
   const requiredDailyWords =
-    releaseDate && daysUntilRelease != null && daysUntilRelease > 0
+    goalSyncSource === "releaseDate" && releaseDate && daysUntilRelease != null && daysUntilRelease > 0
       ? Math.max(0, Math.ceil(remainingWords / daysUntilRelease))
       : null;
-  const projectedReleaseGap = releaseDate && projectedCompletionDate
+  const projectedReleaseGap = goalSyncSource === "releaseDate" && releaseDate && projectedCompletionDate
     ? Math.ceil((startOfLocalDay(projectedCompletionDate).getTime() - startOfLocalDay(releaseDate).getTime()) / 86400000)
     : null;
-  const releaseTrackStatus = releaseDate
+  const releaseTrackStatus = goalSyncSource === "sessionTargetWords"
+    ? projectedCompletionDate
+      ? "Projected from daily target"
+      : "Set a daily target"
+    : releaseDate
     ? projectedReleaseGap == null
       ? "Need more writing history"
       : projectedReleaseGap <= 0
@@ -400,6 +410,7 @@ function buildWritingTargetSummaryForRecord(record) {
       projectedReleaseGap,
       releaseTrackStatus,
       now,
+      goalSyncSource,
     }));
   const archiveEntries = buildWritingTargetArchiveEntries(syncedRecord, now);
 
@@ -413,13 +424,13 @@ function buildWritingTargetSummaryForRecord(record) {
     : projectedCompletionDate
       ? `ETA ${formatDateLabel(projectedCompletionDate)}`
       : `Track ${lookbackDays} days`;
-  const releaseComparisonLabel = releaseDate
-    ? `${formatGoalDateLabel(releaseDate)} → ${projectedCompletionDate ? formatGoalDateLabel(projectedCompletionDate) : "—"}`
+  const projectionStartDate = goalSyncSource === "sessionTargetWords" ? now : releaseDate;
+  const releaseComparisonLabel = projectionStartDate
+    ? `${formatGoalDateLabel(projectionStartDate)} → ${projectedCompletionDate ? formatGoalDateLabel(projectedCompletionDate) : "—"}`
     : "";
-  const goalSyncSource = getWritingTargetGoalSyncSource(syncedRecord);
   const goalSyncHint = goalSyncSource === "releaseDate"
     ? "Release date recalculates the target pace."
-    : "Target pace recalculates the release date.";
+    : "Daily target projects the completion date.";
   const streakSummary = buildWritingTargetStreakSummary(syncedRecord.history);
   logWritingTargetMetricCheckpoint("metric.summary", {
     currentWordCount,
@@ -473,6 +484,7 @@ function buildWritingTargetSummaryForRecord(record) {
     targetWordsPerDay,
     effectiveWordsPerDay,
     releaseDate,
+    projectionStartDate,
     daysUntilRelease,
     requiredDailyWords,
     averageWordsPerDayText,
@@ -538,6 +550,7 @@ function buildWritingTargetMetric(metricKey, context) {
     requiredDailyWords,
     projectedReleaseGap,
     releaseTrackStatus,
+    goalSyncSource,
     now,
   } = context;
   const targetWords = clampPositiveNumber(record.targetWords, DEFAULT_WRITING_TARGET_WORDS);
@@ -598,15 +611,16 @@ function buildWritingTargetMetric(metricKey, context) {
     };
   }
 
-  if (releaseDate) {
+  if (releaseDate || goalSyncSource === "sessionTargetWords") {
+    const forecastStartDate = goalSyncSource === "sessionTargetWords" ? now : releaseDate;
     return {
       key: metricKey,
       label: "Days to release",
       value: projectedDaysToTarget != null ? formatDayCount(projectedDaysToTarget) : "—",
-      leftLabel: formatGoalDateLabel(releaseDate),
+      leftLabel: forecastStartDate ? formatGoalDateLabel(forecastStartDate) : "—",
       rightLabel: projectedCompletionDate ? formatGoalDateLabel(projectedCompletionDate) : "—",
       comparison: true,
-      progress: releaseDate && requiredDailyWords > 0
+      progress: goalSyncSource === "releaseDate" && releaseDate && requiredDailyWords > 0
         ? Math.min(1, (effectiveWordsPerDay || 0) / requiredDailyWords)
         : targetWords > 0
           ? Math.min(1, currentWordCount / targetWords)
@@ -1002,7 +1016,7 @@ function buildWritingTargetDashboardCards(summary, dashboard) {
       icon: "⌛",
       label: "Days to release",
       value: summary.projectedDaysToTarget != null ? formatDayCount(summary.projectedDaysToTarget) : "—",
-      leftLabel: summary.releaseDate ? formatGoalDateLabel(summary.releaseDate) : `Track ${summary.lookbackDays} days`,
+      leftLabel: summary.projectionStartDate ? formatGoalDateLabel(summary.projectionStartDate) : `Track ${summary.lookbackDays} days`,
       rightLabel: summary.projectedCompletionDate ? formatGoalDateLabel(summary.projectedCompletionDate) : "—",
       comparison: true,
       note: summary.releaseTrackStatus || `Based on ${summary.lookbackDays}-day average`,
@@ -1489,13 +1503,8 @@ function syncWritingTargetGoalFields(record, currentWordCount, now = new Date())
       }
     }
   } else if (goalSyncSource === "sessionTargetWords") {
-    const wordsPerDay = cadenceDays > 0 ? sessionTargetWords / cadenceDays : 0;
-    if (wordsPerDay > 0) {
-      const projectedDays = remainingWords > 0 ? remainingWords / wordsPerDay : 0;
-      nextRecord.releaseDate = getLocalDateKey(addDays(now, projectedDays));
-    } else {
-      nextRecord.releaseDate = releaseDate ? getLocalDateKey(releaseDate) : "";
-    }
+    // Intent: keep the authored release-date field stable; daily target drives only the visible projection.
+    nextRecord.releaseDate = releaseDate ? getLocalDateKey(releaseDate) : "";
   }
 
   return nextRecord;

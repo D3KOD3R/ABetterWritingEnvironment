@@ -24,11 +24,11 @@ export function buildSpellcheckContextMenuModel(menu, viewport = {}) {
     words,
     left,
     top,
-    countLabel: `${words.length} flagged word${words.length === 1 ? "" : "s"}`,
     startOffset: menu.startOffset,
     endOffset: menu.endOffset,
     sceneId: menu.sceneId,
     word: menu.normalizedWord ?? menu.word ?? "",
+    displayWord: words[0] ?? menu.word ?? "",
   };
 }
 
@@ -45,12 +45,35 @@ export function renderSpellcheckContextMenuHTML(menu, viewport = {}) {
         role="menu"
         data-spellcheck-menu
       >
-        <p class="spellcheck-context-menu__label">Grammar check</p>
-        <strong class="spellcheck-context-menu__word">${escapeHtml(model.countLabel)}</strong>
-        <div class="spellcheck-context-menu__selection-list">
-          ${model.words.length
-            ? model.words.map((word) => `<span class="spellcheck-context-menu__chip">${escapeHtml(word)}</span>`).join("")
-            : `<p class="spellcheck-context-menu__empty">No flagged words found.</p>`}
+        <div class="spellcheck-context-menu__header">
+          <div class="spellcheck-context-menu__selection-list" aria-label="Flagged spelling word">
+            ${model.words.length
+              ? model.words.map((word) => `<span class="spellcheck-context-menu__chip">${escapeHtml(word)}</span>`).join("")
+              : `<p class="spellcheck-context-menu__empty">No flagged words found.</p>`}
+          </div>
+          <button class="spellcheck-context-menu__dictionary-button" data-action="add-grammar-check-dictionary" role="menuitem">
+            <span class="task-menu-icon" aria-hidden="true">+</span>
+            <span>Add to project dictionary</span>
+          </button>
+          ${model.mode === "word" && model.displayWord
+            ? `
+              <button
+                class="spellcheck-context-menu__dictionary-button"
+                data-action="lookup-dictionary-word"
+                data-dictionary-word="${escapeHtml(model.displayWord)}"
+                data-dictionary-normalized-word="${escapeHtml(model.word)}"
+                data-dictionary-scene-id="${escapeHtml(model.sceneId)}"
+                data-dictionary-start-offset="${escapeHtml(String(model.startOffset))}"
+                data-dictionary-end-offset="${escapeHtml(String(model.endOffset))}"
+                data-dictionary-x="${escapeHtml(String(model.left))}"
+                data-dictionary-y="${escapeHtml(String(model.top))}"
+                role="menuitem"
+              >
+                <span class="task-menu-icon" aria-hidden="true">d</span>
+                <span>Dictionary</span>
+              </button>
+            `
+            : ""}
         </div>
         ${model.mode === "word" && model.suggestions.length
           ? `
@@ -73,18 +96,6 @@ export function renderSpellcheckContextMenuHTML(menu, viewport = {}) {
             </div>
           `
           : ""}
-        <button class="task-menu-item spellcheck-add-item" data-action="add-grammar-check-dictionary" role="menuitem">
-          <span class="task-menu-icon" aria-hidden="true">+</span>
-          <span>Add to project dictionary</span>
-        </button>
-        <button class="task-menu-item spellcheck-add-item" data-action="add-grammar-check-exceptions" role="menuitem">
-          <span class="task-menu-icon" aria-hidden="true">⟲</span>
-          <span>Add to project exceptions</span>
-        </button>
-        <button class="task-menu-item spellcheck-dismiss" data-action="dismiss-spellcheck-menu" role="menuitem">
-          <span class="task-menu-icon" aria-hidden="true">×</span>
-          <span>Close grammar check</span>
-        </button>
       </div>
     `;
 }

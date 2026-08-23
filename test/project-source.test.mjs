@@ -26,8 +26,8 @@ export function runProjectSourceTest() {
   assert.equal(project?.id, "project-serva-vitae");
   assert.equal(project.title, "Project Serva Vitae");
   assert.equal(project.source, "project-file");
-  assert.equal(project.workspace.project.stats.chapterCount, 4);
-  assert.equal(project.workspace.project.stats.sceneCount, 29);
+  assert.equal(project.workspace.project.stats.chapterCount, 5);
+  assert.equal(project.workspace.project.stats.sceneCount, 30);
   assert.equal(project.workspace.project.stats.lineCount, 855);
   assert.equal(project.workspace.world.templates.filter((template) => template.source === "source-template").length, 6);
   assert.equal(
@@ -57,6 +57,8 @@ export function runProjectSourceTest() {
   assert.equal(project.sourceArchive.length, 5);
   assert.equal(project.importReport.importedTasks, 52);
   assert.equal(project.projectSettings.projectSourcePath, "");
+  assert.equal(Object.keys(library.sceneStore?.[project.id] ?? {}).length >= project.workspace.project.stats.sceneCount, true);
+  assert.equal(countSceneStoreWords(library.sceneStore?.[project.id] ?? {}) > 70000, true);
 
   const tempDir = mkdtempSync(path.join(tmpdir(), "abe-project-source-"));
   const saveCopyPath = path.join(tempDir, "Project Source Demo.abe-project.json");
@@ -95,8 +97,8 @@ export function runProjectSourceTest() {
     const data = JSON.parse(readFileSync(outputPath, "utf8"));
 
     assert.equal(summary.projectCount, library.projects.length);
-    assert.equal(summary.chapters, 4);
-    assert.equal(summary.scenes, 29);
+    assert.equal(summary.chapters, 5);
+    assert.equal(summary.scenes, 30);
     assert.equal(summary.blocks, 855);
     assert.equal(summary.tasks, 52);
     assert.equal(summary.passageNotes, 19);
@@ -106,8 +108,8 @@ export function runProjectSourceTest() {
     assert.equal(summary.archivedItems, 5);
 
     assert.equal(data.activeProjectId, "project-serva-vitae");
-    assert.equal(data.project.stats.chapterCount, 4);
-    assert.equal(data.project.stats.sceneCount, 29);
+    assert.equal(data.project.stats.chapterCount, 5);
+    assert.equal(data.project.stats.sceneCount, 30);
     assert.equal(data.project.stats.lineCount, 855);
     assert.equal(data.world.stats.templateCount, 7);
     assert.equal(data.world.stats.entityCount, 31);
@@ -136,4 +138,15 @@ export function runProjectSourceTest() {
   } finally {
     rmSync(ambiguousDir, { recursive: true, force: true });
   }
+}
+
+function countSceneStoreWords(sceneStore) {
+  return Object.values(sceneStore).reduce((total, sceneDraft) => {
+    const text = typeof sceneDraft?.editorText === "string"
+      ? sceneDraft.editorText
+      : Array.isArray(sceneDraft?.blocks)
+        ? sceneDraft.blocks.map((block) => block?.text ?? "").join(" ")
+        : "";
+    return total + String(text).trim().split(/\s+/).filter(Boolean).length;
+  }, 0);
 }

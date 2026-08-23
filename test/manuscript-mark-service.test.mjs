@@ -13,6 +13,7 @@ import {
 } from "../apps/editor/public/features/manuscript-anchors/manuscript-anchor-record-service.js";
 import {
   applyManuscriptMarksForSceneSelection,
+  clearManuscriptMarksForSceneSelection,
   createAuthorMarkProjectionFromManuscriptMark,
   deriveManuscriptMarksFromInlineFormatRanges,
   isCompatibilityManuscriptMark,
@@ -1053,6 +1054,118 @@ export function runManuscriptMarkServiceTest() {
       startOffset: 12,
       endOffset: 13,
       evidenceExcerpt: ".",
+      metadata: {
+        purpose: "emphasis",
+      },
+    },
+  ]);
+
+  const clearedMixedAuthorMarks = clearManuscriptMarksForSceneSelection({
+    marks: [
+      {
+        id: "mark-bold-whole",
+        kind: "bold",
+        source: "author",
+        anchorStatus: "resolved",
+        anchorDirtyReason: "",
+        anchor: {
+          projectId: "project-1",
+          chapterId: "chapter-1",
+          sceneId: "scene-1",
+          blockId: "block-1",
+          paragraphId: "paragraph-1",
+          startOffset: 0,
+          endOffset: 13,
+        },
+        metadata: {
+          purpose: "emphasis",
+        },
+      },
+      {
+        id: "mark-highlight-target",
+        kind: "highlight",
+        source: "author",
+        anchorStatus: "resolved",
+        anchorDirtyReason: "",
+        anchor: {
+          projectId: "project-1",
+          chapterId: "chapter-1",
+          sceneId: "scene-1",
+          blockId: "block-1",
+          paragraphId: "paragraph-1",
+          startOffset: 6,
+          endOffset: 12,
+        },
+        metadata: {
+          purpose: "reference",
+        },
+      },
+      {
+        id: "mark-analysis-keep",
+        kind: "highlight",
+        source: "analysis",
+        anchorStatus: "resolved",
+        anchorDirtyReason: "",
+        anchor: {
+          projectId: "project-1",
+          chapterId: "chapter-1",
+          sceneId: "scene-1",
+          blockId: "block-1",
+          paragraphId: "paragraph-1",
+          startOffset: 6,
+          endOffset: 12,
+        },
+      },
+    ],
+    sequences: {
+      mark: 20,
+    },
+    projectId: "project-1",
+    sceneId: "scene-1",
+    text,
+    sceneBlocks,
+    selection: {
+      startOffset: 6,
+      endOffset: 12,
+    },
+    now: "2026-07-15T00:00:00.000Z",
+  });
+  assert.equal(clearedMixedAuthorMarks.changed, true);
+  assert.equal(clearedMixedAuthorMarks.reason, "cleared-marks");
+  assert.deepEqual(clearedMixedAuthorMarks.removedMarkIds, ["mark-bold-whole", "mark-highlight-target"]);
+  assert.equal(clearedMixedAuthorMarks.sequences.mark, 22);
+  assert.deepEqual(clearedMixedAuthorMarks.marks.map((mark) => ({
+    id: mark.id,
+    kind: mark.kind,
+    source: mark.source,
+    startOffset: mark.anchor.startOffset,
+    endOffset: mark.anchor.endOffset,
+    metadata: mark.metadata,
+  })), [
+    {
+      id: "mark-analysis-keep",
+      kind: "highlight",
+      source: "analysis",
+      startOffset: 6,
+      endOffset: 12,
+      metadata: undefined,
+    },
+    {
+      id: "mark-0021",
+      kind: "bold",
+      source: "author",
+      startOffset: 0,
+      endOffset: 6,
+      metadata: {
+        purpose: "emphasis",
+      },
+    },
+    {
+      id: "mark-0022",
+      kind: "bold",
+      source: "author",
+      startOffset: 12,
+      endOffset: 13,
       metadata: {
         purpose: "emphasis",
       },

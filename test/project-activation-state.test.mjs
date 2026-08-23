@@ -9,7 +9,20 @@ export function runProjectActivationStateTest() {
     selectedTaskId: "stale-task",
     selectedPassageNoteId: "stale-note",
     taskContextMenu: { open: true },
+    sidePanelCustomizationOpen: true,
+    sidePanelCustomizationPosition: { x: 100, y: 120 },
+    topPanelCustomizationOpen: true,
+    topPanelCustomizationPosition: { x: 20, y: 30 },
+    topPanelCustomizationGroupId: "target-strip",
+    grammarCheckPanel: {
+      open: true,
+      position: { left: 200, top: 120 },
+      bounds: { left: 200, top: 120, width: 480, height: 520 },
+      selectedWords: ["serva"],
+      selectionAnchorIndex: 0,
+    },
     writingTargetState: { previous: true },
+    draftProofMarksVisible: false,
   };
   const service = createProjectActivationStateService({
     state,
@@ -25,11 +38,42 @@ export function runProjectActivationStateTest() {
     normalizeProjectSettingsSnapshot: () => ({
       editorPrefs: { grammarCheckEnabled: true },
       localAiPrefs: { localOnly: true },
+      activePane: "world",
       binderPanelWidth: 312,
       consoleDockWidth: 296,
       userSettingPanelResizerLeftPercent: 20,
       userSettingPanelResizerRightPercent: 22,
+      panelResizerLayoutProfiles: {
+        "workspace-1600": {
+          profileKey: "workspace-1600",
+          workspaceWidth: 1600,
+          binderPanelWidth: 312,
+          consoleDockWidth: 296,
+          leftPercent: 19.5,
+          rightPercent: 18.5,
+        },
+      },
+      worldSpineEventRailWidth: 248,
+      worldSpineManuscriptPaneWidth: 372,
+      worldSpinePanelLayoutProfiles: {
+        "workspace-1600": {
+          profileKey: "workspace-1600",
+          workspaceWidth: 1600,
+          eventRailWidth: 248,
+          manuscriptPaneWidth: 372,
+          leftPercent: 15.5,
+          rightPercent: 23.3,
+        },
+      },
+      worldSpineRightPaneMode: "related-cards",
       consoleDockCollapsed: false,
+      sidePanelsHidden: true,
+      sidePanelVisibility: { issues: false, inspiration: true, research: true },
+      topPanelVisibility: {
+        manuscript: { wordTarget: false, developerLogs: true },
+        world: { wordTarget: true, developerLogs: true },
+        narration: { wordTarget: true, developerLogs: true },
+      },
       collapsedChapterIds: ["chapter-1"],
       collapsedConsoleChapterIds: [],
       projectSourcePath: "C:/projects/project-1.abe-project.json",
@@ -77,13 +121,64 @@ export function runProjectActivationStateTest() {
   assert.equal(state.passageNotes[0].id, "note-1");
   assert.equal(state.draftProofing.activeRunId, "draft-proof-run-0001");
   assert.equal(state.draftProofing.runs[0].coverageByScene["scene-1"][0].endOffset, 10);
+  assert.equal(state.draftProofMarksVisible, true);
   assert.equal(state.revisionPanelState.selectedSessionId, "revision-1");
   assert.deepEqual(state.binderSceneMoveHistory, { undoStack: [], redoStack: [] });
+  assert.deepEqual(state.manuscriptMarkHistory, { undoStack: [], redoStack: [] });
+  assert.deepEqual(state.worldSpineHistory, { undoStack: [], redoStack: [] });
   assert.equal(state.selectedTaskId, null);
   assert.equal(state.taskContextMenu, null);
+  assert.equal(state.sidePanelCustomizationOpen, false);
+  assert.equal(state.sidePanelCustomizationPosition, null);
+  assert.equal(state.topPanelCustomizationOpen, false);
+  assert.equal(state.topPanelCustomizationPosition, null);
+  assert.equal(state.topPanelCustomizationGroupId, "");
+  assert.deepEqual(state.grammarCheckPanel, {
+    open: false,
+    position: null,
+    bounds: null,
+    selectedWords: [],
+    selectionAnchorIndex: null,
+  });
   assert.equal(state.projectSourcePath, "C:/projects/project-1.abe-project.json");
+  assert.equal(state.activePane, "world");
+  assert.equal(state.sidePanelsHidden, true);
+  assert.deepEqual(state.sidePanelVisibility, { issues: false, inspiration: true, research: true });
+  assert.deepEqual(state.topPanelVisibility, {
+    manuscript: { wordTarget: false, developerLogs: true },
+    world: { wordTarget: true, developerLogs: true },
+    narration: { wordTarget: true, developerLogs: true },
+  });
   assert.equal(state.writingTargetProjectId, "project-1");
   assert.equal(state.writingTargetState.history[0].dateKey, "2026-05-23");
+  assert.equal(state.panelResizerLayoutProfiles["workspace-1600"].binderPanelWidth, 312);
+  assert.equal(state.worldSpineEventRailWidth, 248);
+  assert.equal(state.worldSpineManuscriptPaneWidth, 372);
+  assert.equal(state.worldSpinePanelLayoutProfiles["workspace-1600"].eventRailWidth, 248);
+  assert.equal(state.worldSpineRightPaneMode, "related-cards");
+
+  state.draftProofMarksVisible = true;
+  service.applyProjectRecordToState({
+    id: "project-2",
+    title: "Completed Project",
+    workspace: {
+      project: {
+        id: "project-2",
+        title: "Prior Completed Title",
+      },
+    },
+    draftProofing: {
+      activeRunId: "",
+      runs: [{
+        id: "draft-proof-run-0001",
+        status: "completed",
+        coverageByScene: {
+          "scene-1": [{ startOffset: 0, endOffset: 10 }],
+        },
+      }],
+    },
+  });
+  assert.equal(state.draftProofMarksVisible, false);
 
   assert.throws(() => service.applyProjectRecordToState(null), /Unable to load a saved project/);
 }

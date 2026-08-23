@@ -34,12 +34,13 @@ export function resolveProjectFileDisplayState({
     recordPath,
   });
   const displayNameSource = resolvedPath || directPath || handleDisplayPath || recordPath;
+  const tooltipSource = resolvedPath || handleDisplayPath;
 
   return {
     displayName: getProjectFileDisplayName(displayNameSource),
     inputValue: resolvedPath,
     pathLabel: resolvedPath,
-    tooltip: resolvedPath || PROJECT_FILE_PATH_UNAVAILABLE_TOOLTIP,
+    tooltip: tooltipSource || PROJECT_FILE_PATH_UNAVAILABLE_TOOLTIP,
   };
 }
 

@@ -118,12 +118,19 @@ export function createNarrationTakeSession(selection, options = {}, {
     : nowMs;
 
   return {
-    status: options.status === "recording" ? "recording" : "paused",
+    status: options.status === "recording" || options.status === "finalizing" ? options.status : "paused",
     trackerStatus: normalizeNarrationTakeStatusText(options.trackerStatus) || "Speech tracker idle",
     transcript: typeof options.transcript === "string" ? options.transcript : "",
+    liveTranscript: typeof options.liveTranscript === "string" ? options.liveTranscript : "",
+    liveChangedTranscript: typeof options.liveChangedTranscript === "string" ? options.liveChangedTranscript : "",
+    liveTranscriptUpdatedAt: normalizeNarrationTakeStatusText(options.liveTranscriptUpdatedAt),
+    cleanupTranscript: typeof options.cleanupTranscript === "string" ? options.cleanupTranscript : "",
     elapsedLabel: typeof options.elapsedLabel === "string" ? options.elapsedLabel : "0:00",
     recordingId: typeof options.recordingId === "string" ? options.recordingId : null,
     mediaPath: typeof options.mediaPath === "string" ? options.mediaPath : null,
+    speechProviderId: normalizeNarrationTakeStatusText(options.speechProviderId),
+    speechProviderLabel: normalizeNarrationTakeStatusText(options.speechProviderLabel),
+    speechProviderKind: normalizeNarrationTakeStatusText(options.speechProviderKind),
     startedAt: new Date(startedAtMs).toISOString(),
     sceneId: selection?.sceneId ?? normalizeNarrationTakeStatusText(options.sceneId) ?? "",
     sceneTitle: selection?.sceneTitle ?? normalizeNarrationTakeStatusText(options.sceneTitle) ?? "",
@@ -131,6 +138,9 @@ export function createNarrationTakeSession(selection, options = {}, {
     chapterTitle: selection?.chapterTitle ?? normalizeNarrationTakeStatusText(options.chapterTitle) ?? "",
     blockId: selection?.blockId ?? normalizeNarrationTakeStatusText(options.blockId) ?? "",
     selection: cloneSelection(selection, clone),
+    followSelection: cloneSelection(options.followSelection, clone),
+    followMatch: cloneSelection(options.followMatch, clone),
+    speechSnapshot: cloneSelection(options.speechSnapshot, clone),
   };
 }
 
@@ -160,9 +170,19 @@ export function createNarrationRecordingRuntime(selection, {
     stream: null,
     mediaRecorder: null,
     speechRecognition: null,
+    speechProviderId: "",
+    speechProviderLabel: "",
+    speechProviderKind: "",
     timerId,
     transcript: "",
+    liveTranscript: "",
+    liveChangedTranscript: "",
+    liveTranscriptUpdatedAt: "",
+    cleanupTranscript: "",
+    speechSnapshot: null,
     trackerStatus: "Requesting microphone access...",
+    followSelection: null,
+    followMatch: null,
   };
 }
 
@@ -171,9 +191,16 @@ export function createNarrationRecordingInitialSessionOptions(runtime) {
     status: "paused",
     trackerStatus: "Requesting microphone access...",
     transcript: "",
+    liveTranscript: runtime?.liveTranscript ?? "",
+    liveChangedTranscript: runtime?.liveChangedTranscript ?? "",
+    liveTranscriptUpdatedAt: runtime?.liveTranscriptUpdatedAt ?? "",
+    cleanupTranscript: runtime?.cleanupTranscript ?? "",
     elapsedLabel: "0:00",
     recordingId: runtime?.recordingId ?? null,
     mediaPath: runtime?.mediaPath ?? null,
+    speechProviderId: runtime?.speechProviderId ?? "",
+    speechProviderLabel: runtime?.speechProviderLabel ?? "",
+    speechProviderKind: runtime?.speechProviderKind ?? "",
     startedAtMs: runtime?.startedAtMs,
   };
 }
@@ -199,6 +226,9 @@ export function createNarrationRecordingRecord(selection, options = {}) {
     ? options.mediaPath.trim()
     : buildVoiceRecordingMediaPath(projectId, recordingId, mediaMimeType);
 
+  const cleanupTranscript = normalizeNarrationTakeTranscript(options.cleanupTranscript);
+  const cleanupTranscriptUpdatedAt = normalizeNarrationTakeStatusText(options.cleanupTranscriptUpdatedAt);
+
   return {
     id: recordingId,
     projectId,
@@ -209,8 +239,12 @@ export function createNarrationRecordingRecord(selection, options = {}) {
     blockId: selection?.blockId ?? "",
     paragraphId: selection?.paragraphId ?? "",
     lineNumber: Number.isInteger(selection?.lineNumber) ? selection.lineNumber : 0,
+    startOffset: Number.isInteger(selection?.startOffset) ? Math.max(0, selection.startOffset) : null,
+    endOffset: Number.isInteger(selection?.endOffset) ? Math.max(0, selection.endOffset) : null,
     verseText: normalizeNarrationTakeTranscript(selection?.verseText ?? selection?.selectedText ?? ""),
     transcript: normalizeNarrationTakeTranscript(options.transcript),
+    ...(cleanupTranscript ? { cleanupTranscript } : {}),
+    ...(cleanupTranscriptUpdatedAt ? { cleanupTranscriptUpdatedAt } : {}),
     mediaPath,
     mediaName,
     mediaMimeType,
@@ -218,6 +252,30 @@ export function createNarrationRecordingRecord(selection, options = {}) {
     status: options.status === "recorded" || options.status === "failed" ? options.status : "saved",
     createdAt,
     updatedAt,
+  };
+}
+
+// Intent: preserve the live/browser transcript as the take transcript while retaining Whisper cleanup for review and diagnostics.
+export function applyNarrationCleanupTranscriptToRecord(record, cleanupTranscript, {
+  updatedAt = new Date().toISOString(),
+} = {}) {
+  if (!record || typeof record !== "object") {
+    return null;
+  }
+
+  const normalizedCleanupTranscript = normalizeNarrationTakeTranscript(cleanupTranscript);
+  if (!normalizedCleanupTranscript) {
+    return record;
+  }
+
+  const existingTranscript = normalizeNarrationTakeTranscript(record.transcript);
+  const normalizedUpdatedAt = normalizeNarrationTakeStatusText(updatedAt) || new Date().toISOString();
+  return {
+    ...record,
+    transcript: existingTranscript || normalizedCleanupTranscript,
+    cleanupTranscript: normalizedCleanupTranscript,
+    cleanupTranscriptUpdatedAt: normalizedUpdatedAt,
+    updatedAt: normalizedUpdatedAt,
   };
 }
 
@@ -252,6 +310,8 @@ export function buildNarrationRecordingFinalizationContext(runtime, {
     recordingId,
     selection,
     transcript: normalizeNarrationTakeTranscript(runtime?.transcript),
+    cleanupTranscript: normalizeNarrationTakeTranscript(runtime?.cleanupTranscript),
+    cleanupTranscriptUpdatedAt: normalizeNarrationTakeStatusText(runtime?.cleanupTranscriptUpdatedAt),
     durationMs,
     mediaMimeType,
     mediaName,
@@ -269,6 +329,8 @@ export function createFinalNarrationRecordingRecord(finalization, {
     projectId: finalization.projectId,
     recordingId: finalization.recordingId,
     transcript: finalization.transcript,
+    cleanupTranscript: finalization.cleanupTranscript,
+    cleanupTranscriptUpdatedAt: finalization.cleanupTranscriptUpdatedAt,
     mediaPath: finalization.mediaPath,
     mediaName: finalization.mediaName,
     mediaMimeType: finalization.mediaMimeType,

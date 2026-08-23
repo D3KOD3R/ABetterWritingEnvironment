@@ -25,7 +25,6 @@ export function runSpellcheckContextMenuTest() {
   });
   assert.equal(model.left, 640);
   assert.equal(model.top, 500);
-  assert.equal(model.countLabel, "1 flagged word");
   assert.deepEqual(model.words, ["Wehn"]);
 
   const markup = renderSpellcheckContextMenuHTML(wordMenu, {
@@ -33,10 +32,18 @@ export function runSpellcheckContextMenuTest() {
     height: 800,
   });
   assert.match(markup, /data-spellcheck-menu/);
+  assert.doesNotMatch(markup, /Grammar check/);
+  assert.doesNotMatch(markup, /1 flagged word/);
+  assert.match(markup, /spellcheck-context-menu__chip">Wehn/);
   assert.match(markup, /data-action="apply-spellcheck-suggestion"/);
   assert.match(markup, /data-spellcheck-replacement="When"/);
   assert.match(markup, /data-spellcheck-word="wehn"/);
   assert.match(markup, /data-action="add-grammar-check-dictionary"/);
+  assert.match(markup, /data-action="lookup-dictionary-word"/);
+  assert.match(markup, /data-dictionary-word="Wehn"/);
+  assert.doesNotMatch(markup, /data-action="add-grammar-check-exceptions"/);
+  assert.doesNotMatch(markup, /Close grammar check/);
+  assert.ok(markup.indexOf("add-grammar-check-dictionary") < markup.indexOf("apply-spellcheck-suggestion"));
 
   const selectionMarkup = renderSpellcheckContextMenuHTML({
     mode: "selection",
@@ -47,6 +54,8 @@ export function runSpellcheckContextMenuTest() {
     width: 320,
     height: 240,
   });
-  assert.match(selectionMarkup, /2 flagged words/);
+  assert.doesNotMatch(selectionMarkup, /2 flagged words/);
+  assert.match(selectionMarkup, /Wehn/);
+  assert.match(selectionMarkup, /breaze/);
   assert.doesNotMatch(selectionMarkup, /apply-spellcheck-suggestion/);
 }

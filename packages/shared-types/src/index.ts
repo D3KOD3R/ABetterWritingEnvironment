@@ -14,6 +14,7 @@ import type {
 import type {
   TemplateFieldType,
   TimelineEdgeKind,
+  TimelineNodeLocationPlacement,
   WorldModel,
 } from "../../world-schema/src/index.ts";
 import type {
@@ -31,6 +32,7 @@ export interface DesktopSettingsSnapshot {
   modelRoot: string;
   assetRoot: string;
   projectRoot: string;
+  spotifyClientId: string;
   lastProjectFilePath: string;
   lastProjectFilePathExplicit: boolean;
 }
@@ -47,6 +49,7 @@ export interface AudioProviderDescriptor {
   label: string;
   availability: ProviderAvailability;
   alignmentStrategy: string;
+  realtimeSpeechProviders?: RealtimeSpeechProviderDescriptor[];
 }
 
 export interface VoiceProviderDescriptor {
@@ -291,6 +294,116 @@ export interface NarrationSessionSnapshot {
   updatedAt: string;
 }
 
+export type RealtimeSpeechProviderKind =
+  | "local-sherpa-onnx"
+  | "browser-web-speech"
+  | "whisper-cpp-window"
+  | "disabled";
+
+export type RealtimeSpeechStreamingMode =
+  | "true-streaming"
+  | "browser-managed"
+  | "chunked-window"
+  | "none";
+
+export interface RealtimeSpeechModelBundleDescriptor {
+  root: string;
+  tokens?: string;
+  encoder?: string;
+  decoder?: string;
+  joiner?: string;
+}
+
+export interface RealtimeSpeechProviderDescriptor {
+  id: string;
+  label: string;
+  kind: RealtimeSpeechProviderKind;
+  availability: ProviderAvailability;
+  executionMode: ExecutionMode;
+  streamingMode: RealtimeSpeechStreamingMode;
+  requiresInternet: boolean;
+  engine: string;
+  modelBundle?: RealtimeSpeechModelBundleDescriptor;
+  endpointUrl?: string;
+  fallbackProviderId?: string;
+  unavailableReason?: string;
+}
+
+export type RealtimeSpeechSessionStatus =
+  | "starting"
+  | "listening"
+  | "paused"
+  | "stopped"
+  | "failed";
+
+export interface RealtimeSpeechTranscriptSegment {
+  index: number;
+  transcript: string;
+  isFinal: boolean;
+  confidence?: number | null;
+  startedAtMs?: number | null;
+  endedAtMs?: number | null;
+}
+
+export interface RealtimeSpeechTranscriptSnapshot {
+  sessionId: string;
+  providerId: string;
+  sequence: number;
+  transcript: string;
+  finalTranscript: string;
+  interimTranscript: string;
+  changedTranscript: string;
+  segmentCount: number;
+  finalSegmentCount: number;
+  interimSegmentCount: number;
+  resultIndex: number;
+  isEndpoint: boolean;
+  receivedAt: string;
+}
+
+export interface StartRealtimeSpeechSessionInput {
+  projectId: string;
+  recordingId: string;
+  sceneId: string;
+  blockId?: string;
+  language?: string;
+  sampleRate?: number;
+  channelCount?: number;
+  preferredProviderId?: string;
+  now?: string;
+}
+
+export interface AcceptRealtimeSpeechSnapshotInput {
+  sessionId: string;
+  segments: RealtimeSpeechTranscriptSegment[];
+  resultIndex?: number;
+  isEndpoint?: boolean;
+  now?: string;
+}
+
+export interface StopRealtimeSpeechSessionInput {
+  sessionId: string;
+  now?: string;
+  errorMessage?: string;
+}
+
+export interface RealtimeSpeechSessionSnapshot {
+  id: string;
+  projectId: string;
+  recordingId: string;
+  sceneId: string;
+  blockId?: string;
+  providerId: string;
+  status: RealtimeSpeechSessionStatus;
+  language: string;
+  sampleRate: number;
+  channelCount: number;
+  startedAt: string;
+  updatedAt: string;
+  transcriptSnapshot?: RealtimeSpeechTranscriptSnapshot;
+  errorMessage?: string;
+}
+
 export interface VoiceProfile {
   id: string;
   label: string;
@@ -311,6 +424,8 @@ export interface VoiceRecordingRecord {
   lineNumber: number;
   verseText: string;
   transcript: string;
+  cleanupTranscript?: string;
+  cleanupTranscriptUpdatedAt?: string;
   mediaPath?: string;
   mediaName?: string;
   mediaMimeType?: string;
@@ -361,6 +476,10 @@ export interface AudioServiceContract {
     session: NarrationSessionSnapshot;
     job: AlignmentJob;
   };
+  listRealtimeSpeechProviders(): RealtimeSpeechProviderDescriptor[];
+  startRealtimeSpeechSession(input: StartRealtimeSpeechSessionInput): RealtimeSpeechSessionSnapshot;
+  acceptRealtimeSpeechSnapshot(input: AcceptRealtimeSpeechSnapshotInput): RealtimeSpeechSessionSnapshot;
+  stopRealtimeSpeechSession(input: StopRealtimeSpeechSessionInput): RealtimeSpeechSessionSnapshot | null;
 }
 
 export interface VoiceServiceContract {
@@ -492,6 +611,24 @@ export interface TimelineNodeRecord {
   label: string;
   summary: string;
   order: number;
+  location?: string;
+  locationLabel?: string;
+  locationKey?: string;
+  locationRowLabel?: string;
+  locationRowKey?: string;
+  locationScope?: string;
+  eventLocationLabel?: string;
+  eventLocationKey?: string;
+  coreLocationLabel?: string;
+  coreLocationKey?: string;
+  childLocation?: string;
+  childLocationLabel?: string;
+  childLocationKey?: string;
+  sublocation?: string;
+  sublocationLabel?: string;
+  sublocationKey?: string;
+  orbitalBand?: string;
+  locationPlacement?: TimelineNodeLocationPlacement;
   primaryBlockId?: string;
   lineNumbers: number[];
   linkedEntityIds: string[];
