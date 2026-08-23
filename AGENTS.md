@@ -47,6 +47,14 @@ Each feature of the program is underpinned and numbered in the word doc named "A
 - Do not just continue adding code to the app.js file. This should call services, with logging, so that as features are rolled out, the developer can follow the log trail and fix issues. 
 - Always comment intent before code blocks. 
 
+## Token efficiency
+- Keep responses terse. Do not narrate routine actions, explain obvious code changes, or provide summaries unless requested.
+- Make the required edits, run only necessary checks, and report only errors or important decisions.
+- Do not restate the task or repeatedly describe the same plan after work has begun.
+- Prefer targeted file reads, searches, syntax checks, and focused tests over broad repository scans or full test-suite runs when the task does not require them.
+- Reuse existing project context and source-of-truth files instead of re-reading large files unless their contents may have changed or the relevant section is not already known.
+- Escalate to broader tests, deeper analysis, or a stronger model only when focused verification fails, the change crosses architectural boundaries, or risk justifies it.
+
 
 ## Core product pillars
 
