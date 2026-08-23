@@ -2,7 +2,7 @@
 const prefixes = (...values) => ({ prefixes: values });
 
 export const TEST_GROUPS = {
-  editor: prefixes("anchored-", "editor-", "manuscript-", "scene-", "task-", "passage-", "revision-", "user-highlight-", "top-panel-", "keyboard-", "custom-metadata-", "metadata-", "progress-tracker", "delete-confirmation-dialog"),
+  editor: prefixes("anchored-", "editor-", "manuscript-", "scene-", "task-", "passage-", "revision-", "user-highlight-", "top-panel-", "keyboard-", "custom-metadata-", "metadata-", "progress-tracker", "delete-confirmation-dialog", "milestone-sound-effects-service", "spotify-music-service", "writing-goals-state-service"),
   project: prefixes("project-", "editor-storage", "scrivener-import-service"),
   narration: prefixes("narration-", "audio-service", "realtime-speech-"),
   voice: prefixes("voice-"),
@@ -29,6 +29,10 @@ export function resolveGroupTestIds(groupName, testIds) {
   const group = TEST_GROUPS[groupName];
   if (!group) throw new Error(`Unknown test group: ${groupName}`);
   return testIds.filter((id) => group.prefixes.some((prefix) => id.startsWith(prefix)));
+}
+
+export function findUngroupedTestIds(testIds) {
+  return testIds.filter((testId) => !Object.keys(TEST_GROUPS).some((groupName) => resolveGroupTestIds(groupName, testIds).includes(testId)));
 }
 
 export function expandGroups(groupNames, { includeDependents = false } = {}) {

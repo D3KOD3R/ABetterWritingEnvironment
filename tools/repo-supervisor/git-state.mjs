@@ -1,6 +1,9 @@
 // Intent: collect current-worktree Git facts without modifying repository history or user files.
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { classifyChangedPath } from "./routing-config.mjs";
 
 export function runGit(args, { cwd } = {}) {
   const result = spawnSync("git", args, { cwd, encoding: "utf8", shell: false });
@@ -31,8 +34,48 @@ export function combineChangedFiles(...collections) {
   return [...byPath.values()].sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
 }
 
-export function fingerprintChangedFiles(files) {
-  return createHash("sha256").update(files.map((file) => `${file.changeType}:${file.path}`).join("\n")).digest("hex");
+function hashContent(content) {
+  return createHash("sha256").update(content).digest("hex");
+}
+
+function shouldHashFileContents(file) {
+  return file.changeType !== "deleted" && !["documentation", "static"].includes(classifyChangedPath(file.path).classification);
+}
+
+function hashWorktreeFile(file, cwd) {
+  if (!shouldHashFileContents(file)) return "metadata-only";
+  try {
+    return hashContent(readFileSync(path.join(cwd, file.path)));
+  } catch {
+    return "missing";
+  }
+}
+
+function hashIndexFile(file, cwd) {
+  if (!shouldHashFileContents(file)) return "metadata-only";
+  const result = spawnSync("git", ["show", `:${file.path}`], { cwd, encoding: null, shell: false });
+  return result.error || result.status !== 0 ? "missing" : hashContent(result.stdout);
+}
+
+function fingerprintRecords(records, source, cwd) {
+  return records.map((file) => {
+    const contentHash = source === "staged" ? hashIndexFile(file, cwd) : source === "committed" ? "head-owned" : hashWorktreeFile(file, cwd);
+    return `${source}:${file.changeType}:${file.path}:${contentHash}`;
+  });
+}
+
+export function fingerprintChangedFiles(files, { cwd = process.cwd() } = {}) {
+  return createHash("sha256").update(fingerprintRecords(files, "worktree", cwd).join("\n")).digest("hex");
+}
+
+export function fingerprintGitState({ committed = [], staged = [], unstaged = [], untracked = [] }, { cwd = process.cwd() } = {}) {
+  const records = [
+    ...fingerprintRecords(committed, "committed", cwd),
+    ...fingerprintRecords(staged, "staged", cwd),
+    ...fingerprintRecords(unstaged, "unstaged", cwd),
+    ...fingerprintRecords(untracked, "untracked", cwd),
+  ];
+  return createHash("sha256").update(records.join("\n")).digest("hex");
 }
 
 export function summarizeChangedFiles({ committed = [], staged = [], unstaged = [], untracked = [], changedFiles = [] }) {
@@ -71,5 +114,5 @@ export function collectGitState({ cwd, baseRef = "main" } = {}) {
   }
   const changedFiles = combineChangedFiles(committed, staged, unstaged, untracked);
   const changeSummary = summarizeChangedFiles({ committed, staged, unstaged, untracked, changedFiles });
-  return { schemaVersion: 1, worktreeRoot, branch, headSha, baseRef, mergeBaseSha, baseAvailable, ahead, behind, clean: changedFiles.length === 0, conflicts: conflicts.length > 0, staged, unstaged, untracked, committed, changedFiles, changeSummary, changedFilesFingerprint: fingerprintChangedFiles(changedFiles) };
+  return { schemaVersion: 1, worktreeRoot, branch, headSha, baseRef, mergeBaseSha, baseAvailable, ahead, behind, clean: changedFiles.length === 0, conflicts: conflicts.length > 0, staged, unstaged, untracked, committed, changedFiles, changeSummary, changedFilesFingerprint: fingerprintGitState({ committed, staged, unstaged, untracked }, { cwd: worktreeRoot }) };
 }

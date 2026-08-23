@@ -47,6 +47,62 @@ class UsageError extends Error {}
 function emit(value, options, human) { process.stdout.write(options.json ? `${JSON.stringify(value)}\n` : `${human ?? JSON.stringify(value, null, 2)}\n`); }
 function logLine(lines, text) { lines.push(text); }
 
+function compactReasons(reasons) {
+  return [...new Set(reasons.map((reason) => reason.reason).filter(Boolean))];
+}
+
+function compactGitState(gitState) {
+  return {
+    schemaVersion: 1,
+    status: gitState.conflicts ? "blocked" : "ready",
+    branch: gitState.branch,
+    headSha: gitState.headSha,
+    baseRef: gitState.baseRef,
+    mergeBaseSha: gitState.mergeBaseSha,
+    baseAvailable: gitState.baseAvailable,
+    ahead: gitState.ahead,
+    behind: gitState.behind,
+    conflicts: gitState.conflicts,
+    clean: gitState.clean,
+    changeSummary: gitState.changeSummary,
+  };
+}
+
+function compactSelection(selection) {
+  return {
+    verificationLevel: selection.verificationLevel,
+    directGroups: selection.directGroups,
+    dependentGroups: selection.dependentGroups,
+    affectedGroups: selection.affectedGroups,
+    tests: { selected: selection.selectedTestIds.length },
+    syntax: { planned: selection.syntaxFiles.length },
+    fullSuiteRequired: selection.fullSuiteRequired,
+    escalationReasons: compactReasons(selection.reasons),
+    noTestsReason: selection.noTestsReason,
+  };
+}
+
+function compactReport(report) {
+  return {
+    schemaVersion: report.schemaVersion,
+    status: report.status,
+    runId: report.runId,
+    verificationLevel: report.verificationLevel,
+    branch: report.branch,
+    headSha: report.headSha,
+    baseRef: report.baseRef,
+    changeSummary: report.changeSummary,
+    affectedGroups: report.affectedGroups,
+    tests: report.tests,
+    syntax: report.syntax,
+    fullSuiteRequired: report.fullSuiteRequired,
+    escalationReasons: compactReasons(report.escalationReasons),
+    noTestsReason: report.noTestsReason,
+    failedTestIds: report.failures.map((failure) => failure.testId),
+    artifacts: report.artifacts,
+  };
+}
+
 async function runVerification(options, gitState) {
   const startedAt = new Date().toISOString(); const logs = []; const definitions = await discoverTestDefinitions(); const testIds = definitions.map((definition) => definition.id);
   const selection = buildSelection({ changedFiles: gitState.changedFiles, testIds, level: options.level, explicitName: options.name, explicitGroup: options.group });
@@ -74,14 +130,14 @@ async function main() {
   let gitState;
   try { gitState = collectGitState({ cwd: process.cwd(), baseRef: options.baseRef }); }
   catch (error) { emit({ schemaVersion: 1, status: "blocked", message: error.message }, options); process.exitCode = EXIT.blocked; return; }
-  if (options.command === "status") { const summary = gitState.changeSummary; emit(gitState, options, `Git state: ${gitState.branch}; committed ${summary.committedRelativeToBase}, staged ${summary.staged}, unstaged ${summary.unstaged}, untracked ${summary.untracked}; ${summary.uniqueChangedFiles} unique changed file(s).`); return; }
+  if (options.command === "status") { const summary = gitState.changeSummary; emit(compactGitState(gitState), options, `Git state: ${gitState.branch}; committed ${summary.committedRelativeToBase}, staged ${summary.staged}, unstaged ${summary.unstaged}, untracked ${summary.untracked}; ${summary.uniqueChangedFiles} unique changed file(s).`); return; }
   if (options.command === "handoff") { const handoff = await createHandoff({ repoRoot: gitState.worktreeRoot, gitState }); emit(handoff, options, handoff.summary); process.exitCode = handoff.taskStatus === "blocked" ? EXIT.blocked : EXIT.passed; return; }
   if (options.command === "plan") {
-    try { const definitions = await discoverTestDefinitions(); const selection = buildSelection({ changedFiles: gitState.changedFiles, testIds: definitions.map((definition) => definition.id), level: options.level }); const plan = { schemaVersion: 1, git: gitState, ...selection }; emit(plan, options, `Plan: ${selection.verificationLevel}; ${selection.selectedTestIds.length} test(s); ${selection.syntaxFiles.length} syntax file(s).`); }
+    try { const definitions = await discoverTestDefinitions(); const selection = buildSelection({ changedFiles: gitState.changedFiles, testIds: definitions.map((definition) => definition.id), level: options.level }); const plan = { schemaVersion: 1, status: "ready", git: compactGitState(gitState), ...compactSelection(selection) }; emit(plan, options, `Plan: ${selection.verificationLevel}; ${selection.selectedTestIds.length} test(s); ${selection.syntaxFiles.length} syntax file(s).`); }
     catch (error) { emit({ schemaVersion: 1, status: "blocked", message: error.message }, options); process.exitCode = EXIT.blocked; }
     return;
   }
-  try { const report = await runVerification(options, gitState); emit(report, options, `${report.verificationLevel.toUpperCase()} verification: ${report.tests.passed}/${report.tests.selected} tests passed. Report: ${report.artifacts.report}`); process.exitCode = EXIT[report.status]; }
-  catch (error) { emit({ schemaVersion: 1, status: "blocked", message: error.stack ?? error.message }, options); process.exitCode = EXIT.blocked; }
+  try { const report = await runVerification(options, gitState); emit(compactReport(report), options, `${report.verificationLevel.toUpperCase()} verification: ${report.tests.passed}/${report.tests.selected} tests passed. Report: ${report.artifacts.report}`); process.exitCode = EXIT[report.status]; }
+  catch (error) { emit({ schemaVersion: 1, status: "blocked", message: error.message }, options); process.exitCode = EXIT.blocked; }
 }
 await main();
