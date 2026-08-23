@@ -51,6 +51,7 @@ Each feature of the program is underpinned and numbered in the word doc named "A
 
 ## Token efficiency
 - Keep responses terse. Do not narrate routine actions, explain obvious code changes, or provide summaries unless requested.
+- For JavaScript changes, prefer `npm run repo -- test --changed` and consume its compact report before manually expanding Git/test exploration. Use `npm test` for canonical FULL verification or when supervisor routing escalates; see `docs/architecture/test-harness-repo-supervisor-roadmap.md` only when changing supervisor architecture or routing policy.
 - Make the required edits, run only necessary checks, and report only errors or important decisions.
 - Do not restate the task or repeatedly describe the same plan after work has begun.
 - Prefer targeted file reads, searches, syntax checks, and focused tests over broad repository scans or full test-suite runs when the task does not require them.

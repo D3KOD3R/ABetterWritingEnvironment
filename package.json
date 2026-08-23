@@ -7,6 +7,7 @@
   },
   "scripts": {
     "desktop": "node --experimental-strip-types apps/desktop/server.mjs",
-    "test": "node --experimental-strip-types test/run-tests.mjs"
+    "test": "node --experimental-strip-types test/run-tests.mjs",
+    "repo": "node tools/repo-supervisor/supervisor.mjs"
   }
 }

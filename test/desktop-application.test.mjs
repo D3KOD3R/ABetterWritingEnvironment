@@ -5,14 +5,19 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import {
-  createDesktopResponse,
-  createDesktopResponseForRequest,
-} from "../apps/desktop/src/http-app.ts";
-import { createDesktopWorkspaceSnapshot } from "../apps/desktop/src/workspace.ts";
 import { resolveLoadedProjectFilePath } from "../apps/editor/public/shared/project-file-path.js";
 
 export async function runDesktopApplicationTest() {
+  // Intent: keep desktop runtime and structured logs out of the repository during host integration checks.
+  const runtimeLogDirectory = mkdtempSync(path.join(tmpdir(), "abe-desktop-runtime-logs-"));
+  const previousRuntimeLogDirectory = process.env.ABE_DEVELOPER_RUNTIME_LOG_DIR;
+  const previousDesktopLogPath = process.env.ABE_LOG_PATH;
+  process.env.ABE_DEVELOPER_RUNTIME_LOG_DIR = runtimeLogDirectory;
+  process.env.ABE_LOG_PATH = path.join(runtimeLogDirectory, "desktop.log");
+
+  try {
+    const { createDesktopResponse, createDesktopResponseForRequest } = await import("../apps/desktop/src/http-app.ts");
+    const { createDesktopWorkspaceSnapshot } = await import("../apps/desktop/src/workspace.ts");
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
   const workspace = createDesktopWorkspaceSnapshot();
 
@@ -1712,6 +1717,7 @@ export async function runDesktopApplicationTest() {
   const runtimeLogSessionBody = JSON.parse(runtimeLogSession.body);
   assert.equal(runtimeLogSessionBody.ok, true);
   assert.equal(typeof runtimeLogSessionBody.filePath, "string");
+  assert.equal(runtimeLogSessionBody.filePath.startsWith(runtimeLogDirectory), true);
   assert.match(runtimeLogSessionBody.fileName, /^developer-runtime-session-\d{4}-.+\.txt$/);
   assert.equal(typeof runtimeLogSessionBody.sessionNumber, "number");
   assert.equal(runtimeLogSessionBody.keepLatestSessions, 20);
@@ -1778,4 +1784,17 @@ export async function runDesktopApplicationTest() {
 
   const missing = createDesktopResponse("/missing");
   assert.equal(missing.statusCode, 404);
+  } finally {
+    if (previousRuntimeLogDirectory === undefined) {
+      delete process.env.ABE_DEVELOPER_RUNTIME_LOG_DIR;
+    } else {
+      process.env.ABE_DEVELOPER_RUNTIME_LOG_DIR = previousRuntimeLogDirectory;
+    }
+    if (previousDesktopLogPath === undefined) {
+      delete process.env.ABE_LOG_PATH;
+    } else {
+      process.env.ABE_LOG_PATH = previousDesktopLogPath;
+    }
+    rmSync(runtimeLogDirectory, { recursive: true, force: true });
+  }
 }

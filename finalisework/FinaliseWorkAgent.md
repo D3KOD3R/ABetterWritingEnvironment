@@ -62,7 +62,8 @@ Do not create new closeout documents as part of this workflow. If a new recurrin
 
 6. Run verification based on available tooling.
    - Inspect `package.json` scripts before choosing commands.
-   - At minimum, run `npm test` when JavaScript behavior changed and the script exists.
+   - When `npm run repo` exists, collect Git state then run AFFECTED verification with `npm run repo -- test --changed --level affected`; run `npm test` when routing escalates to FULL, finalisation policy requires canonical verification, or the supervisor is unavailable/blocked.
+   - Until the supervisor exists and passes its own tests, retain the prior `npm test` baseline for JavaScript behavior changes.
    - Run `node --check` for changed `.js` and `.mjs` files where practical.
    - Run `node --experimental-strip-types --check` for changed `.ts` files where practical.
    - Run additional scripts such as `npm run build`, `npm run lint`, or `npm run typecheck` only when they exist.

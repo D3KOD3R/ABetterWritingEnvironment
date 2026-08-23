@@ -1,40 +1,17 @@
-// Intent: ensure every focused test file is registered in the custom Node harness.
+// Intent: prevent orphan focused tests by validating deterministic discovery and runner exports.
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { compareTestIds, discoverTestDefinitions, loadTestRunner, toTestId } from "./test-registry.mjs";
 
-const testRoot = path.dirname(fileURLToPath(import.meta.url));
-
-export function runTestHarnessRegistrationTest() {
-  const runTestsSource = readFileSync(path.join(testRoot, "run-tests.mjs"), "utf8");
-  const discoveredTestFiles = readdirSync(testRoot)
-    .filter((fileName) => fileName.endsWith(".test.mjs"))
-    .sort();
-  const registeredTests = Array.from(
-    runTestsSource.matchAll(/import \{ (run[A-Za-z0-9]+Test) \} from "\.\/([^"]+\.test\.mjs)";/g),
-  ).map((match) => ({
-    runnerName: match[1],
-    fileName: match[2],
-  }));
-  const registeredTestFiles = registeredTests
-    .map((testRecord) => testRecord.fileName)
-    .sort();
-
-  // Intent: new tests should be imported by npm test instead of becoming orphan files.
-  assert.deepEqual(
-    registeredTestFiles,
-    discoveredTestFiles,
-    "test/run-tests.mjs must import every test/*.test.mjs file.",
-  );
-
-  // Intent: imported test functions must also be listed in the executed test-case array.
-  const missingTestCaseRunners = registeredTests
-    .map((testRecord) => testRecord.runnerName)
-    .filter((runnerName) => !new RegExp(`run:\\s*${runnerName}\\b`).test(runTestsSource));
-  assert.deepEqual(
-    missingTestCaseRunners,
-    [],
-    "test/run-tests.mjs must execute every imported test runner.",
-  );
+export async function runTestHarnessRegistrationTest() {
+  const definitions = await discoverTestDefinitions();
+  const ids = definitions.map((definition) => definition.id);
+  assert.ok(definitions.length > 0, "Test discovery must find focused test modules.");
+  assert.deepEqual(ids, [...ids].sort(compareTestIds), "Test discovery order must be deterministic.");
+  assert.equal(new Set(ids).size, ids.length, "Focused test IDs must be unique.");
+  assert.equal(toTestId("manuscript-projection-selector.test.mjs"), "manuscript-projection-selector");
+  assert.equal(toTestId("not-a-test.mjs"), null);
+  for (const definition of definitions) {
+    const runner = await loadTestRunner(definition);
+    assert.equal(typeof runner, "function", `${definition.id} must expose a runnable test function.`);
+  }
 }
