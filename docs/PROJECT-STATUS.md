@@ -18,12 +18,11 @@ This file is intentionally much smaller than `features.md`. Use `features.md` fo
 
 ## Current priority order
 
-1. **Agent-file/context refactor** — reduce standing Codex context on every task.
-2. **Task-scoped deterministic finalise / commit / push** — remove mechanical Git closeout work from Codex.
-3. **Compact evidence policy** — enforce supervisor handoff/report/diff-first reads before large files or logs.
-4. **Return to high-value product work** — World Spine, local writing AI, narration, voice/audiobook, persistence/editor boundaries.
-5. **Local Ollama developer advisory layer** — local summaries, failure triage, and commit-message suggestions after deterministic tooling is stable.
-6. **Clean merge automation** — automate conflict-free merges; reserve Codex for actual semantic conflicts.
+1. **Task-scoped deterministic finalise / commit / push** — remove mechanical Git closeout work from Codex.
+2. **Compact evidence policy** — enforce supervisor handoff/report/diff-first reads before large files or logs.
+3. **Return to high-value product work** — World Spine, local writing AI, narration, voice/audiobook, persistence/editor boundaries.
+4. **Local Ollama developer advisory layer** — local summaries, failure triage, and commit-message suggestions after deterministic tooling is stable.
+5. **Clean merge automation** — automate conflict-free merges; reserve Codex for actual semantic conflicts.
 
 External TrOCR accessibility R&D can continue in parallel because it is deliberately isolated from the production application.
 
@@ -33,9 +32,9 @@ External TrOCR accessibility R&D can continue in parallel because it is delibera
 
 | Workstream | Status | Current state | Next action | Priority |
 | --- | --- | --- | --- | --- |
-| Agent-file/context refactor | `ACTIVE` | Not implemented yet. Root `AGENTS.md` remains a large monolithic instruction file. | Replace it with a small global router plus scoped domain agent files. Preserve special trigger compatibility. | P1 |
+| Agent-file/context refactor | `DONE` | Matched final benchmark passed: root 35,487 → 4,969 bytes; read-only World Spine footprint 6,330 bytes; approximately 82.2% static reduction. Bounded-read quality retained and only `WorldbuildingAgent.md` loaded beyond root. | Maintenance only; separately measure task-generated search/tool context if useful. | Done |
 | Repository/test supervisor | `DONE` | Deterministic changed-file routing, FAST/AFFECTED/FULL selection, compact reports, Git-state fingerprinting, stale-handoff protection, and canonical full test entry point are implemented and hardened. | Maintenance only unless a routing/test regression is found. | Done |
-| Codex context/usage measurement | `ACTIVE` | A pre-refactor baseline and measurement protocol are recorded in `docs/research/agent-refactor-context-audit.md`. | Capture matched pre-refactor Codex benchmark runs before changing `AGENTS.md`; repeat after refactor. | P1 |
+| Codex context/usage measurement | `ACTIVE` | The scoped-agent benchmark is complete; exact token/credit measurement was unavailable. Task-generated search, shell, tool, and bounded-source context remains a separate measurement concern. | Measure task-generated context separately while preserving bounded-read quality. | P1 |
 | Deterministic finalise / commit / push | `PLANNED` | Design agreed; not implemented. Supervisor already knows Git state and verification freshness. | Add task-scope/baseline ownership, safe explicit staging, fresh-verification gate, commit, push, and remote-HEAD confirmation. | P2 |
 | Compact Codex evidence ladder | `ACTIVE` | Compact supervisor reports exist, but the policy is not yet fully encoded in scoped agent instructions. | Encode handoff → compact report → failure excerpt → diff → relevant source/test → full log as the normal escalation order. | P3 |
 | Local Ollama developer advisory layer | `PLANNED` | Intentionally deferred while deterministic facts remain the supervisor's responsibility. | Use local AI for failure/log summaries, diff summaries, commit-message suggestions, and advisory triage only. | P4 |

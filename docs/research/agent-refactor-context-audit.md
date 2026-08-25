@@ -307,6 +307,7 @@ Add rows rather than rewriting prior measurements. Preserve raw units as observe
 | Date | Phase | Task | HEAD | Model/reasoning | Root bytes | Scoped-agent bytes | Large broad reads | Observed Codex usage | Compaction/retrace | Result notes |
 | --- | --- | --- | --- | --- | ---: | ---: | ---: | --- | --- | --- |
 | 2026-08-25 | Baseline-static | Repository instruction inventory | `bc5d72f1042f9f040ef6397c0f7054f5c89bd868` before tracker commits | n/a | 35,487 | 0 | n/a | Not measured | n/a | Static repository baseline captured before agent refactor. |
+| 2026-08-25 | Final post-refactor matched benchmark / PASS | Read-only World Spine location-row deletion trace | `8ecdbce5b2e489fbe5893ca368067a8753197fc6` | GPT-5.6 Terra / Medium | 4,969 | 1,361 (`WorldbuildingAgent.md` only) | 0 | Not available | No | Completed in 1m 55s. Effective static instruction footprint: 6,330 bytes; approximately 82.2% reduction from the original root. Bounded-read quality retained. |
 
 Do not populate an “Observed Codex usage” value from an estimate. If the client does not expose a comparable number, record `Not available` and rely on static read footprint plus behaviour metrics.
 
@@ -357,15 +358,9 @@ Do not broaden the agent refactor into another supervisor implementation phase f
 
 ## Current refactor status and next step
 
-The scoped-agent refactor is implemented on the review branch, external review corrections are applied, and post-refactor benchmark v1 is complete. The benchmark found one TestSupervisor routing leak; the targeted root clarification is underway. A fresh matched benchmark is still required before merge or acceptance.
+The scoped-agent refactor is validated. External review corrections are applied and the final matched post-refactor benchmark passed. The representative read-only World Spine task loaded only `WorldbuildingAgent.md` beyond root and retained bounded-read quality.
 
-Current sequence:
-
-```text
-1. Apply the targeted TestSupervisor routing clarification.
-2. Run a fresh matched post-refactor benchmark.
-3. Accept or continue correcting the refactor based on that benchmark before merge.
-```
+Next context-efficiency investigation: measure task-generated context from bounded shell/search/tool output and source excerpts separately from standing instruction footprint. Do not implement that optimization as part of this refactor record.
 
 Before sending an implementation prompt to Codex, use this file as the durable research record rather than reconstructing the design from prior chat.
 
@@ -462,3 +457,17 @@ Specialised agents intentionally opened were `WorldbuildingAgent.md` and `TestSu
 Point-in-time observations at completion: Codex context indicator was 99,493 used / 258K, and the seven-day allowance snapshot was 66% remaining. These are not measured task token consumption or task allowance usage; no matched before-task allowance value is available.
 
 Finding: the scoped-agent architecture preserved good bounded-read behaviour and substantially reduced static instruction footprint, but the benchmark exposed unnecessary `TestSupervisorAgent.md` fan-out when merely identifying existing relevant tests. Root routing was subsequently tightened; another fresh matched benchmark is required before acceptance.
+
+---
+
+## Final post-refactor matched benchmark / PASS
+
+This final matched benchmark ran in a fresh GPT-5.6 Terra / Medium thread at `8ecdbce5b2e489fbe5893ca368067a8753197fc6` and completed in 1m 55s.
+
+- Root `AGENTS.md`: 4,969 bytes.
+- The only specialised instruction file opened was `agents/WorldbuildingAgent.md` at 1,361 bytes.
+- Effective read-only World Spine static instruction footprint: 6,330 bytes, approximately 82.2% below the 35,487-byte pre-refactor root.
+- `features.md`, `app.js`, and architecture roadmaps were not broadly read; source reads were bounded; no context compaction or retrace occurred.
+- Exact Codex token/credit measurement was not available.
+
+The point-in-time context indicator (113,694 used / 258K) and seven-day allowance snapshot (65% remaining) are not measured task consumption: no matched pre-task snapshot was captured. The scoped-agent/standing-context problem is substantially improved; task-generated context from searches, command output, source excerpts, and tool responses remains a separate future measurement opportunity. This validates the scoped-agent refactor without claiming token or credit savings beyond the documented static footprint.
