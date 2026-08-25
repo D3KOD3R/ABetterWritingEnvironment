@@ -1,39 +1,18 @@
-# Voice Issues Agent - Canonical Voice Workflow
+# Voice Issues Agent
 
-This agent is the single source of truth whenever we're working through the `fix issues` command in this repo. 
+Use whenever the user says `fix issues`. This workflow is the source of truth for resolving the voice issue backlog.
 
-## Primary files
-- `.voice/voice-issues.md` is the canonical backlog for this repo (legacy location; every `fix issues` run begins here).
-- `voiceissues/voice-issues.md` is the repo-local alternative when this repo opts into the `voiceissues/` directory.
-- `voiceissues/issues/issue-XXXX/` stores per-issue transcripts and attachments, and `voiceissues/incoming/` is the screenshot staging folder.
-- `voice_issue_daemon.py`, `voice_hotkey_daemon.py`, and `speech_server.py` are the helpers that feed these files; `codex_review_issues.ps1` / `codex_review_issues.sh` exercise them via `codex --full-auto`.
-- `.voice_config.json` (or `.voice_config.sample.json`) keeps repo aliases, repo paths, stop phrases, and the URLs used by the real-time transcript server.
-- Seeded target repos include a root `AGENTS.md` pointer with a first-page `fix issues` rule that sends Codex to `voiceissues/VoiceIssuesAgent.md` and the active issues file.
+## Required workflow
 
-## Workflow
-1. Always open the active checklist before touching any code. Prefer `voiceissues/voice-issues.md` when populated; otherwise work against `.voice/voice-issues.md` as configured via `.voice_config.json`. Summarize the outstanding entries so you know the remaining scope.
-2. Follow the process described in this agent and the README: obey the `load repo <alias>` behaviour (which updates `defaultRepo` and `.voice/repo_history.json`), append new issues immediately, and do not delete items without explicit confirmation.
-3. Never start work on `[~]` (waitlist) entries unless the user specifically asks for “work on waitlist”. Otherwise work through the unchecked `[ ]` entries in order.
-4. Before editing related code, set the checkbox to `[working on]` so the UI shows progress. Implement the fix, then either:
-   - Mark the entry `[x]` with a short clarifying note (e.g., `(fixed in voice_gui_app.py)`), or
-   - Leave it `[ ]` and explain in the final response why it still needs attention.
-   - Preserve the issue prefix like `[#12]` when you edit text so spoken references stay stable across follow-up issues.
-5. When an issue includes screenshots, inspect the matching folder under `voiceissues/issues/issue-XXXX/` and use the screenshot inbox only as staging.
-6. Do not declare the task complete until every entry that was present at the start of the session is either resolved or explained.
-7. If new issues appear while you work, append them immediately and keep them in scope; reopen the checklist after resolving the original queue to capture the additions.
-8. Report in the final reply which issues were completed and which remain, citing their text and line number from `.voice/voice-issues.md` (or `voiceissues/voice-issues.md`, whichever you edited) so the user can verify the changes.
-9. When the backlog is empty, mention the acceptance options in your reply: trust mode (fix and tick in one run) or the two-step mode (propose completions first, then mark them after confirmation).
+1. Before changing code, open the active checklist: prefer `voiceissues/voice-issues.md` when populated; otherwise use `.voice/voice-issues.md` as configured by `.voice_config.json`. Summarize the starting outstanding entries.
+2. Do not work `[~]` waitlist entries unless the user explicitly asks for waitlist work. Otherwise work unchecked `[ ]` entries in order.
+3. Before related edits, change the active entry to `[working on]`. Preserve its issue prefix (for example `[#12]`). After evidence-backed work, mark it `[x]` with a short location note, or restore/leave `[ ]` and explain why it remains.
+4. Inspect matching `voiceissues/issues/issue-XXXX/` attachments when present. Treat `voiceissues/incoming/` as staging only. Do not delete backlog entries without explicit confirmation.
+5. Append new issues immediately and keep them in scope; respect configured `load repo <alias>` behaviour. Reopen the checklist after the starting queue is addressed so new entries are included. Do not declare completion until every entry present at the start is resolved or explained.
+6. In the final response, list completed and remaining issues with checklist text and line numbers. If empty, offer trust mode (fix and tick in one run) or two-step mode (propose completions, then tick after confirmation).
 
-## Tooling reminders
-- `voice_issue_daemon.py` and `voice_hotkey_daemon.py` split transcripts by the configured `nextIssue` / `stop` phrases, honor `load repo <alias>`, and append to the issues file immediately.
-- `speech_server.py` relays transcripts to websocket clients (`voice_gui.py` and the real-time pane); its backlog is intentionally capped so the server never hoards more than ~50 entries and stays light on RAM.
-- `codex_review_issues.ps1` / `codex_review_issues.sh` resolve the active backlog and expect Codex to set `[working on]` / `[x]` as progress happens.
-- `config/voiceissues_gitignore.txt` and `config/gitignore_rules.json` describe which `.voice` or `voiceissues/` artifacts should stay out of source control (copy the template contents when setting up a new repo folder).
+## Boundaries
 
-## Promises
-- The voice issues list is the first and last place we consult for this task; every code change needs a matching tick/note in the checklist.
-- We never claim victory while any original entry remains unchecked.
-- We do not delete entries without confirmation, and we do not tick issues we have not actually fixed.
-
-## Templates
-- Seeded repos get root `AGENTS.md`, `voiceissues/VoiceIssuesAgent.md`, and `config/voiceissues_workflow.md`. When you encounter a repo-local `voiceissues/` workflow, follow the template there and keep it in sync with this consolidated guidance.
+- `voice_issue_daemon.py`, `voice_hotkey_daemon.py`, and `speech_server.py` feed transcript/backlog workflows; respect configured `load repo <alias>`, stop phrases, and issue appending behaviour.
+- Keep issue-list updates coupled to actual fixes. Do not tick issues that were not fixed.
+- Load `AudioVoiceAgent.md` when the issue changes narration/audio/voice product behaviour; do not load it merely to read the backlog.

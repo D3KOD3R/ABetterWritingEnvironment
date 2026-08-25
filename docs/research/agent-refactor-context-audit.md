@@ -380,3 +380,59 @@ Related sources:
 - `voiceissues/VoiceIssuesAgent.md`
 - `docs/architecture/test-harness-repo-supervisor-roadmap.md`
 - `docs/architecture/editor-application-roadmap.md`
+
+---
+
+## Refactor implementation record
+
+Implemented on 2026-08-25 at `cbb5530e4dff16a22802e32cf8bd59182da72210` (before the refactor working-tree changes). This was Markdown/instruction restructuring only; it did not change application, test, supervisor, or Codex configuration behaviour.
+
+### Final instruction structure
+
+```text
+AGENTS.md                         # universal router and special-trigger entry points
+agents/
+    FeatureWorkAgent.md            # feature workflow, Feature working, bench
+    EditorAgent.md                 # editor shell, slices, host and projection boundaries
+    PersistenceAgent.md            # project persistence semantics
+    DomainSchemaAgent.md           # schemas, anchors, DTOs and contracts
+    WorldbuildingAgent.md          # World Spine, templates, entities and suggestions
+    AudioVoiceAgent.md             # narration, audio, voice and providers
+    LocalAiAgent.md                # product Local AI only
+    TestSupervisorAgent.md         # supervisor routing and verification policy
+    DocumentationAgent.md          # documentation ownership
+agentContextRetrace.md             # compact recovery workflow
+finalisework/FinaliseWorkAgent.md  # compact closeout workflow
+voiceissues/VoiceIssuesAgent.md    # compact voice-issue workflow
+```
+
+Each normal domain task loads root plus the narrowest responsible agent. The root explicitly prohibits pre-emptive agent fan-out and routes by the responsibility being modified, not a dependency merely traversed. `FeatureWorkAgent.md` owns `Feature working` and `bench`; feature work does not automatically load `DocumentationAgent.md`.
+
+### Post-refactor static measurements
+
+These are exact filesystem bytes and lines, not token or credit measurements.
+
+| File | Bytes | Lines |
+| --- | ---: | ---: |
+| `AGENTS.md` | 4,045 | 39 |
+| `agents/AudioVoiceAgent.md` | 1,318 | 12 |
+| `agents/DocumentationAgent.md` | 1,146 | 11 |
+| `agents/DomainSchemaAgent.md` | 1,182 | 11 |
+| `agents/EditorAgent.md` | 1,594 | 15 |
+| `agents/FeatureWorkAgent.md` | 1,857 | 17 |
+| `agents/LocalAiAgent.md` | 1,074 | 11 |
+| `agents/PersistenceAgent.md` | 1,353 | 14 |
+| `agents/TestSupervisorAgent.md` | 1,327 | 13 |
+| `agents/WorldbuildingAgent.md` | 1,361 | 13 |
+| `agentContextRetrace.md` | 2,200 | 27 |
+| `finalisework/FinaliseWorkAgent.md` | 2,268 | 19 |
+| `voiceissues/VoiceIssuesAgent.md` | 1,899 | 18 |
+
+Root size changed from 35,487 bytes to 4,045 bytes: a reduction of 31,442 bytes (88.60%). Expected single-domain static footprints are 5,406 bytes for World Spine (root + `WorldbuildingAgent.md`), 5,398 bytes for persistence (root + `PersistenceAgent.md`), and 5,363 bytes for narration (root + `AudioVoiceAgent.md`).
+
+### Decisions and ambiguities
+
+- The root is 4,045 bytes, within the preferred 4–6 KiB range and safely below the 8 KiB maximum; no critical rule was removed to reach the target.
+- The existing `fix issues`, `finalise work`, `retrace steps on task ...`, `Feature working`, and `bench` trigger names and user-facing guarantees are retained. Their workflows now begin from supervisor/Git facts and conditional relevant reads instead of forced broad investigation.
+- No proposed scoped agent was redundant. Existing broad architecture/product explanations remain in their owning documents and are referenced only when relevant.
+- The matched post-refactor benchmark is intentionally not recorded here: it must run in a fresh Codex thread with the matched prompt/model/reasoning configuration. No Codex usage metric is claimed from these static measurements.
