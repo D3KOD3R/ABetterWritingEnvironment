@@ -387,6 +387,8 @@ Related sources:
 
 Implemented on 2026-08-25 at `cbb5530e4dff16a22802e32cf8bd59182da72210` (before the refactor working-tree changes). This was Markdown/instruction restructuring only; it did not change application, test, supervisor, or Codex configuration behaviour.
 
+OpenAI's documented default 32 KiB project-instruction budget is an aggregate limit for automatically discovered instructions while walking from project root toward the working directory; it is not a per-file limit. The scoped files under `agents/` are intentionally explicit/on-demand files, not files named `AGENTS.md`, so they do not each join that automatic discovery budget.
+
 ### Final instruction structure
 
 ```text
@@ -397,8 +399,10 @@ agents/
     PersistenceAgent.md            # project persistence semantics
     DomainSchemaAgent.md           # schemas, anchors, DTOs and contracts
     WorldbuildingAgent.md          # World Spine, templates, entities and suggestions
+    AnalysisAgent.md               # diagnostics, analysis, extraction and suggestions
     AudioVoiceAgent.md             # narration, audio, voice and providers
     LocalAiAgent.md                # product Local AI only
+    DesktopAgent.md                # desktop/Tauri integration and distribution
     TestSupervisorAgent.md         # supervisor routing and verification policy
     DocumentationAgent.md          # documentation ownership
 agentContextRetrace.md             # compact recovery workflow
@@ -406,7 +410,7 @@ finalisework/FinaliseWorkAgent.md  # compact closeout workflow
 voiceissues/VoiceIssuesAgent.md    # compact voice-issue workflow
 ```
 
-Each normal domain task loads root plus the narrowest responsible agent. The root explicitly prohibits pre-emptive agent fan-out and routes by the responsibility being modified, not a dependency merely traversed. `FeatureWorkAgent.md` owns `Feature working` and `bench`; feature work does not automatically load `DocumentationAgent.md`.
+Each normal domain task loads root plus the narrowest responsible agent. The root explicitly prohibits pre-emptive agent fan-out and routes by the responsibility being modified, not a dependency merely traversed. An author-facing feature implementation or behaviour change also loads `FeatureWorkAgent.md`; read-only navigation, inspection, or debugging does not. `FeatureWorkAgent.md` owns `Feature working` and `bench`; feature work does not automatically load `DocumentationAgent.md`.
 
 ### Post-refactor static measurements
 
@@ -414,13 +418,15 @@ These are exact filesystem bytes and lines, not token or credit measurements.
 
 | File | Bytes | Lines |
 | --- | ---: | ---: |
-| `AGENTS.md` | 4,045 | 39 |
+| `AGENTS.md` | 4,585 | 42 |
+| `agents/AnalysisAgent.md` | 1,057 | 10 |
 | `agents/AudioVoiceAgent.md` | 1,318 | 12 |
+| `agents/DesktopAgent.md` | 764 | 9 |
 | `agents/DocumentationAgent.md` | 1,146 | 11 |
 | `agents/DomainSchemaAgent.md` | 1,182 | 11 |
-| `agents/EditorAgent.md` | 1,594 | 15 |
-| `agents/FeatureWorkAgent.md` | 1,857 | 17 |
-| `agents/LocalAiAgent.md` | 1,074 | 11 |
+| `agents/EditorAgent.md` | 1,694 | 13 |
+| `agents/FeatureWorkAgent.md` | 2,068 | 17 |
+| `agents/LocalAiAgent.md` | 838 | 10 |
 | `agents/PersistenceAgent.md` | 1,353 | 14 |
 | `agents/TestSupervisorAgent.md` | 1,327 | 13 |
 | `agents/WorldbuildingAgent.md` | 1,361 | 13 |
@@ -428,11 +434,15 @@ These are exact filesystem bytes and lines, not token or credit measurements.
 | `finalisework/FinaliseWorkAgent.md` | 2,268 | 19 |
 | `voiceissues/VoiceIssuesAgent.md` | 1,899 | 18 |
 
-Root size changed from 35,487 bytes to 4,045 bytes: a reduction of 31,442 bytes (88.60%). Expected single-domain static footprints are 5,406 bytes for World Spine (root + `WorldbuildingAgent.md`), 5,398 bytes for persistence (root + `PersistenceAgent.md`), and 5,363 bytes for narration (root + `AudioVoiceAgent.md`).
+Root size changed from 35,487 bytes to 4,585 bytes: a reduction of 30,902 bytes (87.08%). Expected single-domain static footprints are 5,946 bytes for World Spine (root + `WorldbuildingAgent.md`), 5,938 bytes for persistence (root + `PersistenceAgent.md`), and 5,903 bytes for narration (root + `AudioVoiceAgent.md`).
 
 ### Decisions and ambiguities
 
-- The root is 4,045 bytes, within the preferred 4–6 KiB range and safely below the 8 KiB maximum; no critical rule was removed to reach the target.
+- The root is 4,585 bytes, within the preferred 4–6 KiB range and safely below the 8 KiB maximum.
 - The existing `fix issues`, `finalise work`, `retrace steps on task ...`, `Feature working`, and `bench` trigger names and user-facing guarantees are retained. Their workflows now begin from supervisor/Git facts and conditional relevant reads instead of forced broad investigation.
 - No proposed scoped agent was redundant. Existing broad architecture/product explanations remain in their owning documents and are referenced only when relevant.
 - The matched post-refactor benchmark is intentionally not recorded here: it must run in a fresh Codex thread with the matched prompt/model/reasoning configuration. No Codex usage metric is claimed from these static measurements.
+
+### External review corrections
+
+External review of the initial scoped-agent commit found and corrected a feature-work routing gap, missing analysis and desktop responsibilities, dropped styling and searchable-combobox safeguards, and moving EditorAgent checkpoint duplication. The correction makes author-facing implementation changes load `FeatureWorkAgent.md` alongside the narrow domain agent, keeps read-only navigation scoped to its domain agent, adds explicit `AnalysisAgent.md` and `DesktopAgent.md`, restores the editor safeguards, and keeps current roadmap status solely in architecture documentation.
