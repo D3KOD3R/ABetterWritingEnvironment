@@ -27,10 +27,12 @@ Read only the narrowest agent file for the responsibility being **modified**. Ad
 | Narration, recording, ASR/alignment, audio takes, TTS, voice conversion, or provider boundary | `agents/AudioVoiceAgent.md` |
 | Product Local AI (`services/local-ai` or author-facing local-AI features) | `agents/LocalAiAgent.md` |
 | Desktop/Tauri shell, lifecycle, filesystem integration, local desktop settings, packaging, or distribution | `agents/DesktopAgent.md` |
-| Repository-supervisor routing, test groups, or verification policy | `agents/TestSupervisorAgent.md` |
+| Changing repository-supervisor implementation, routing configuration, test-group definitions/registration, verification policy, or supervisor architecture | `agents/TestSupervisorAgent.md` |
 | Documentation architecture, source-of-truth placement, or public/product/architecture docs | `agents/DocumentationAgent.md` |
 
-Examples: read-only World Spine navigation loads `WorldbuildingAgent.md`; implementing an author-facing World Spine behaviour loads `WorldbuildingAgent.md` + `FeatureWorkAgent.md`; add `PersistenceAgent.md` only when persistence semantics change. Narration/voice work loads `AudioVoiceAgent.md`, not automatically `EditorAgent.md`. Product Local AI work loads `LocalAiAgent.md`; developer tooling is not product Local AI. Feature documentation does not by itself require `DocumentationAgent.md`.
+Examples: read-only World Spine navigation loads `WorldbuildingAgent.md`; implementing an author-facing World Spine behaviour loads `WorldbuildingAgent.md` + `FeatureWorkAgent.md`; changing which tests World Spine routes to loads `TestSupervisorAgent.md`. Add `PersistenceAgent.md` only when persistence semantics change. Narration/voice work loads `AudioVoiceAgent.md`, not automatically `EditorAgent.md`. Product Local AI work loads `LocalAiAgent.md`; developer tooling is not product Local AI. Feature documentation does not by itself require `DocumentationAgent.md`.
+
+Do not load `TestSupervisorAgent.md` merely to use or run the existing supervisor, consume a supervisor handoff/report, inspect existing tests, identify existing coverage for ordinary feature work, or run focused tests.
 
 ## Special workflows
 

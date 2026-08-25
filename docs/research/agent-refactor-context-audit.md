@@ -12,15 +12,15 @@ This document is research and measurement guidance, not a new universal instruct
 
 ---
 
-## Current decision
+## Historical / pre-refactor decision
 
-The next high-ROI context optimization is to replace the large root `AGENTS.md` with a small global router and scoped task/domain instructions.
+The high-ROI context optimization was to replace the large root `AGENTS.md` with a small global router and scoped task/domain instructions.
 
 The intended principle is:
 
 > Load universal rules plus only the agent instructions relevant to the current task. Do not read unrelated agent files pre-emptively.
 
-The refactor must preserve the special trigger workflows:
+The refactor was required to preserve the special trigger workflows:
 
 - `fix issues` → `voiceissues/VoiceIssuesAgent.md`
 - `finalise work` → `finalisework/FinaliseWorkAgent.md`
@@ -28,7 +28,7 @@ The refactor must preserve the special trigger workflows:
 - `Feature working` → feature documentation/update workflow
 - `bench` → preserve underlying service/function behaviour while disabling the live entry point according to the existing rule
 
-The refactor is documentation/instruction restructuring. It must not redesign application architecture while moving instructions.
+The refactor was documentation/instruction restructuring. It did not redesign application architecture while moving instructions.
 
 ---
 
@@ -59,9 +59,9 @@ Do not fabricate an exact token saving by dividing bytes by a constant and calli
 
 ---
 
-## Why the current root file is expensive
+## Why the pre-refactor root file was expensive
 
-The current root `AGENTS.md` combines material with very different scopes:
+The pre-refactor root `AGENTS.md` combined material with very different scopes:
 
 - universal repository safety/work rules;
 - token-efficiency rules;
@@ -81,7 +81,7 @@ The root also points at other large sources of truth. If the agent responds to u
 
 ---
 
-## Proposed agent layout
+## Historical / pre-refactor proposed agent layout
 
 Target structure (exact names may be refined during implementation while preserving responsibility boundaries):
 
@@ -149,7 +149,7 @@ Do not copy long architecture explanations into agent files. Point to the releva
 
 ---
 
-## Measurement plan
+## Historical / pre-refactor measurement plan
 
 The refactor should be evaluated with **matched tasks**, not impressions.
 
@@ -312,10 +312,10 @@ Do not populate an “Observed Codex usage” value from an estimate. If the cli
 
 ---
 
-## Current research findings
+## Historical / pre-refactor research findings
 
-1. The deterministic repository supervisor has already removed a major source of agent reasoning: changed-file discovery, test selection, test execution, and verification freshness can be decided locally.
-2. The current root instruction file is still large enough that instruction scoping is the next obvious standing-context target.
+1. The deterministic repository supervisor had already removed a major source of agent reasoning: changed-file discovery, test selection, test execution, and verification freshness can be decided locally.
+2. The large root instruction file made instruction scoping the next obvious standing-context target.
 3. `features.md`, `app.js`, the editor roadmap, the supervisor roadmap, and project-library data are large enough that **read discipline after the split is as important as the split itself**.
 4. Existing special agent files prove the repository already uses a trigger/scoped-agent pattern, but root currently carries too much universal and domain-specific detail.
 5. `FinaliseWorkAgent.md` and `agentContextRetrace.md` should be slimmed because they predate parts of the current supervisor workflow and can force redundant Git/diff/test investigation.
@@ -324,9 +324,9 @@ Do not populate an “Observed Codex usage” value from an estimate. If the cli
 
 ---
 
-## Implementation constraints for the upcoming refactor
+## Historical / pre-refactor implementation constraints
 
-When the agent refactor is sent to Codex:
+When the agent refactor was sent to Codex:
 
 - read this document and the current root/special agent files first;
 - inspect architecture docs only as needed to place existing rules correctly;
@@ -355,18 +355,16 @@ Do not broaden the agent refactor into another supervisor implementation phase f
 
 ---
 
-## Handoff to the next planning/implementation session
+## Current refactor status and next step
+
+The scoped-agent refactor is implemented on the review branch, external review corrections are applied, and post-refactor benchmark v1 is complete. The benchmark found one TestSupervisor routing leak; the targeted root clarification is underway. A fresh matched benchmark is still required before merge or acceptance.
 
 Current sequence:
 
 ```text
-1. Capture pre-refactor matched Codex benchmark runs if an observable usage comparison is desired.
-2. Implement scoped agent refactor.
-3. Record exact post-refactor instruction sizes.
-4. Repeat matched benchmark tasks.
-5. Review context leaks/fan-out and tidy routing if needed.
-6. Implement task-scoped deterministic finalise/commit/push.
-7. Return focus to product work while maintaining the tracker.
+1. Apply the targeted TestSupervisor routing clarification.
+2. Run a fresh matched post-refactor benchmark.
+3. Accept or continue correcting the refactor based on that benchmark before merge.
 ```
 
 Before sending an implementation prompt to Codex, use this file as the durable research record rather than reconstructing the design from prior chat.
@@ -412,7 +410,7 @@ voiceissues/VoiceIssuesAgent.md    # compact voice-issue workflow
 
 Each normal domain task loads root plus the narrowest responsible agent. The root explicitly prohibits pre-emptive agent fan-out and routes by the responsibility being modified, not a dependency merely traversed. An author-facing feature implementation or behaviour change also loads `FeatureWorkAgent.md`; read-only navigation, inspection, or debugging does not. `FeatureWorkAgent.md` owns `Feature working` and `bench`; feature work does not automatically load `DocumentationAgent.md`.
 
-### Post-refactor static measurements
+### Initial post-refactor static measurements
 
 These are exact filesystem bytes and lines, not token or credit measurements.
 
@@ -446,3 +444,21 @@ Root size changed from 35,487 bytes to 4,585 bytes: a reduction of 30,902 bytes 
 ### External review corrections
 
 External review of the initial scoped-agent commit found and corrected a feature-work routing gap, missing analysis and desktop responsibilities, dropped styling and searchable-combobox safeguards, and moving EditorAgent checkpoint duplication. The correction makes author-facing implementation changes load `FeatureWorkAgent.md` alongside the narrow domain agent, keeps read-only navigation scoped to its domain agent, adds explicit `AnalysisAgent.md` and `DesktopAgent.md`, restores the editor safeguards, and keeps current roadmap status solely in architecture documentation.
+
+---
+
+## Post-refactor benchmark v1
+
+This historical benchmark ran at `45dc7be767d0559edfd9c822bd6be8e02ef22e0c` with GPT-5.6 Terra / Medium and completed in 2m 08s.
+
+Instruction files intentionally opened:
+
+- `AGENTS.md`: 4,585 bytes
+- `agents/WorldbuildingAgent.md`: 1,361 bytes
+- `agents/TestSupervisorAgent.md`: 1,327 bytes
+
+Specialised agents intentionally opened were `WorldbuildingAgent.md` and `TestSupervisorAgent.md`. `features.md` and `app.js` were not broadly read; no architecture roadmap or context compaction/retrace was read. The observed exact Codex token/credit metric was not available.
+
+Point-in-time observations at completion: Codex context indicator was 99,493 used / 258K, and the seven-day allowance snapshot was 66% remaining. These are not measured task token consumption or task allowance usage; no matched before-task allowance value is available.
+
+Finding: the scoped-agent architecture preserved good bounded-read behaviour and substantially reduced static instruction footprint, but the benchmark exposed unnecessary `TestSupervisorAgent.md` fan-out when merely identifying existing relevant tests. Root routing was subsequently tightened; another fresh matched benchmark is required before acceptance.
