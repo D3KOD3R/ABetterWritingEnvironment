@@ -81,6 +81,16 @@ Therefore the main expected gain from the first agent refactor is not necessaril
 
 A successful post-refactor run should preserve this benchmark's correctness and bounded-read behaviour while materially shrinking the standing instruction payload.
 
+## Codex instruction-loading finding
+
+Current OpenAI Codex documentation describes project instruction discovery as aggregating `AGENTS.md`/`AGENTS.override.md` files from the Git/project root toward the working directory subject to a **32 KiB default project-document limit**. OpenAI's harness-engineering guidance also explicitly recommends a short `AGENTS.md` as a map rather than a large instruction manual.
+
+The current root `AGENTS.md` is **35,487 bytes**, which is larger than 32 KiB (32,768 bytes). Unless the local Codex configuration raises that limit, the existing file should not be treated as guaranteed to fit completely within the default project-instruction budget. This strengthens the refactor rationale: slimming root improves both context efficiency and confidence that universal instructions are actually included.
+
+Do not infer the exact truncation point or actual token usage from byte size alone; local configuration may change the default limit.
+
+References checked 2026-08-25: OpenAI, `Unrolling the Codex agent loop`; OpenAI, `Harness engineering: leveraging Codex in an agent-first world`.
+
 ## Matched post-refactor prompt
 
 Repeat the same World Spine inspection prompt used for this run, using the same model/reasoning configuration where practical. Do not change the production feature as part of the benchmark.
