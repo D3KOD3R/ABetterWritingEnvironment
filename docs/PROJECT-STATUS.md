@@ -19,10 +19,9 @@ This file is intentionally much smaller than `features.md`. Use `features.md` fo
 ## Current priority order
 
 1. **Task-scoped deterministic finalise / commit / push** — remove mechanical Git closeout work from Codex.
-2. **Compact evidence policy** — enforce supervisor handoff/report/diff-first reads before large files or logs.
-3. **Return to high-value product work** — World Spine, local writing AI, narration, voice/audiobook, persistence/editor boundaries.
-4. **Local Ollama developer advisory layer** — local summaries, failure triage, and commit-message suggestions after deterministic tooling is stable.
-5. **Clean merge automation** — automate conflict-free merges; reserve Codex for actual semantic conflicts.
+2. **Return to high-value product work** — World Spine, local writing AI, narration, voice/audiobook, persistence/editor boundaries.
+3. **Local Ollama developer advisory layer** — local summaries, failure triage, and commit-message suggestions after deterministic tooling is stable.
+4. **Clean merge automation** — automate conflict-free merges; reserve Codex for actual semantic conflicts.
 
 External TrOCR accessibility R&D can continue in parallel because it is deliberately isolated from the production application.
 
@@ -34,14 +33,14 @@ External TrOCR accessibility R&D can continue in parallel because it is delibera
 | --- | --- | --- | --- | --- |
 | Agent-file/context refactor | `DONE` | Matched final benchmark passed: root 35,487 → 4,969 bytes; read-only World Spine footprint 6,330 bytes; approximately 82.2% static reduction. Bounded-read quality retained and only `WorldbuildingAgent.md` loaded beyond root. | Maintenance only; separately measure task-generated search/tool context if useful. | Done |
 | Repository/test supervisor | `DONE` | Deterministic changed-file routing, FAST/AFFECTED/FULL selection, compact reports, Git-state fingerprinting, stale-handoff protection, and canonical full test entry point are implemented and hardened. | Maintenance only unless a routing/test regression is found. | Done |
-| Codex context/usage measurement | `ACTIVE` | The scoped-agent benchmark is complete; exact token/credit measurement was unavailable. Task-generated search, shell, tool, and bounded-source context remains a separate measurement concern. | Measure task-generated context separately while preserving bounded-read quality. | P1 |
-| Deterministic finalise / commit / push | `PLANNED` | Design agreed; not implemented. Supervisor already knows Git state and verification freshness. | Add task-scope/baseline ownership, safe explicit staging, fresh-verification gate, commit, push, and remote-HEAD confirmation. | P2 |
-| Compact Codex evidence ladder | `ACTIVE` | Compact supervisor reports exist, but the policy is not yet fully encoded in scoped agent instructions. | Encode handoff → compact report → failure excerpt → diff → relevant source/test → full log as the normal escalation order. | P3 |
+| Codex context/usage measurement | `ACTIVE` | The scoped-agent benchmark is complete; exact token/credit measurement was unavailable. Task-generated search, shell, tool, and bounded-source context remains a separate measurement concern. | Measure task-generated context separately while preserving bounded-read quality. | Ongoing |
+| Deterministic finalise / commit / push | `PLANNED` | Design agreed; not implemented. Supervisor already knows Git state and verification freshness. | Add task-scope/baseline ownership, safe explicit staging, fresh-verification gate, commit, push, and remote-HEAD confirmation. | P1 |
+| Compact Codex evidence ladder | `DONE` | The supervisor-first evidence ladder is encoded in root instructions and relevant special workflows: supervisor handoff → compact report → failure excerpt → relevant diff → relevant source/test region → full log/broad source last. | Maintenance only; separately measure task-generated search/tool context. | Done |
 | Local Ollama developer advisory layer | `PLANNED` | Intentionally deferred while deterministic facts remain the supervisor's responsibility. | Use local AI for failure/log summaries, diff summaries, commit-message suggestions, and advisory triage only. | P4 |
 | Clean merge automation | `PLANNED` | Concept agreed. | Node handles clean merge + verification + push; stop and hand only conflicting hunks/relevant context to Codex when conflicts exist. | P5 |
-| Context-retrace workflow | `ACTIVE` | `agentContextRetrace.md` exists but predates the compact supervisor-first evidence strategy and is relatively large. | Slim during agent refactor; begin from supervisor/Git facts and load only task-relevant agents/docs. | P1 refactor |
-| Finalise-work workflow | `ACTIVE` | `finalisework/FinaliseWorkAgent.md` exists and uses supervisor verification, but still repeats broad repository inspection/document rules. | Slim during/after agent refactor and later hand mechanical commit/push to deterministic finaliser. | P1/P2 |
-| Voice-issues workflow | `ACTIVE` | Dedicated `voiceissues/VoiceIssuesAgent.md` exists as a special trigger workflow. | Preserve trigger; remove duplication with universal rules where possible. | P1 refactor |
+| Context-retrace workflow | `DONE` | The compact recovery workflow begins from deterministic repository evidence, avoids preloading large docs/source/logs, and loads only the scoped agents needed for the resumed responsibility. | Maintenance only. | Done |
+| Finalise-work workflow | `DONE` | The instruction workflow starts from supervisor/Git evidence, conditionally reads feature/voice/docs information, and avoids broad closeout investigation. | Mechanical Git finalisation is tracked separately under Deterministic finalise / commit / push. | Done |
+| Voice-issues workflow | `DONE` | The dedicated trigger is preserved and duplicated universal rules were reduced. | Maintenance only. | Done |
 
 ---
 
