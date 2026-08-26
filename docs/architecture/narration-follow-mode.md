@@ -2,6 +2,8 @@
 
 Narration follow mode is the live reading reference view for audiobook-style recording and long-form read-through. Its job is to keep the narrator centered on the current manuscript line while speech recognition tracks progress through the text.
 
+Narration Follow is one sub-workflow inside the combined Narration + Voice workspace. It deliberately does **not** own character voice selection or synthesize performed emotion. The recorded human performance is the source of pacing, pauses, emphasis, prosody, and emotional delivery; later performance-conversion work may change vocal identity while preserving that source performance. See [Performance-Preserving Audiobook Architecture Roadmap](./performance-preserving-audiobook-roadmap.md) for the deferred end-to-end design.
+
 The key boundary is that the editor renders the viewport, but the audio service owns the follow-session state and alignment lifecycle. That keeps the cursor logic deterministic and prevents the UI from becoming the source of truth for speech tracking.
 
 ## Research Notes
@@ -36,6 +38,7 @@ The follow-track service is shaped around these rules:
 5. Emit alignment results back to canonical manuscript anchors and line numbers, never to DOM positions or pixels.
 6. Use Whisper or a forced-alignment pass after recording stops to produce cleaner transcript/timing metadata.
 7. Keep the voice-render pipeline separate so voice selection can evolve independently of STT.
+8. Treat live ASR and post-take transcription as alignment evidence only; neither is the source of performed emotion or delivery.
 
 That design keeps the narrator view stable. The line being read stays centered, while the service quietly updates the follow cursor in the background.
 
@@ -56,6 +59,8 @@ That design keeps the narrator view stable. The line being read stays centered, 
 - The voice service owns voice profiles, bindings, and render jobs.
 - The UI must not treat screen coordinates as durable narration state.
 - Persisted follow state must always resolve back to canonical manuscript anchors.
+- Speaker attribution belongs to manuscript/local-analysis workflows, not the live follow engine.
+- Performance conversion must consume preserved human source audio through the voice/audiobook pipeline; Narration Follow must not turn transcript text into a replacement performance.
 
 ## Current Foundation
 
