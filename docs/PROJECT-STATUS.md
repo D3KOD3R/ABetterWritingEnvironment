@@ -1,6 +1,6 @@
 # A Better Writing Environment — Master Project Status
 
-Last reviewed: 2026-08-25
+Last reviewed: 2026-08-26
 
 This is the high-level progress checklist for the product, platform/tooling work, and external R&D that may later be integrated into the application.
 
@@ -53,8 +53,9 @@ External TrOCR accessibility R&D can continue in parallel because it is delibera
 | Manuscript editor / Issue Console | `ACTIVE` | Broad functionality exists: anchored diagnostics, find/replace, metadata, tasks/notes, binder management, proofing/dictionary, writing targets, revisions, navigation, and decoration/projection work. | Continue canonical anchored-record work and move remaining shell behaviour behind stable feature/host boundaries. | Medium–High |
 | Local Writing Assistant | `ACTIVE` | Foundation implemented: local provider abstraction, `llama.cpp` route, model library/settings, local-only modes, and Tiny/Standard/Large routing design. | Incremental changed-block analysis, installed-model routing, runtime start/stop controls, Standard/Large adapters. | High |
 | Event Pinning | `ACTIVE` | Foundation implemented with structured event records, local detection, manual manuscript-to-World-Spine event creation, and navigation. | Richer taxonomy and later stronger AI detection/linking. | Medium |
-| Narration Follow Mode | `ACTIVE` | Substantial recording/follow/alignment foundation and UI exist. | Exercise real desktop microphone loop, tune Sherpa/Whisper behaviour, add pause/recovery, improve repeat/skip alignment. | High |
-| Character Voice / Audiobook Production | `ACTIVE` | Voice profile/job foundations plus audiobook schema for sections, clips, production lanes, take state, playback metadata, and legacy migration. | Wire recorder into audiobook clips, build section/take manager, add safe source-WAV/temp promotion pipeline. | High |
+| Narration Follow Mode | `ACTIVE` | Substantial recording/follow/alignment foundation and UI exist. Narration Follow is explicitly a tracking/alignment sub-workflow inside the combined Narration + Voice workspace; it does not own character identity or performed emotion. | Exercise real desktop microphone loop, tune Sherpa/Whisper behaviour, add pause/recovery, improve repeat/skip alignment. | High |
+| Character Voice / Audiobook Production | `ACTIVE` | Voice profile/job foundations plus audiobook schema for sections, clips, production lanes, take state, playback metadata, and legacy migration. The long-term performance-preserving conversion architecture is documented separately and remains deferred. | Wire recorder into audiobook clips, build section/take manager, add safe source-WAV/temp promotion pipeline. Do not begin deferred speaker-attribution/performance-conversion phases yet. | High |
+| Performance-preserving audiobook conversion roadmap | `DEFERRED` | Architecture is documented in `docs/architecture/performance-preserving-audiobook-roadmap.md`: human source performance remains authoritative; future local AI speaker attribution is advisory; performance segments bridge manuscript identity to source-audio ranges; TTS remains separate from voice conversion. | Keep as a design reference until World Spine/current product priorities, local AI, narration source recording, persistence safety, and voice-conversion R&D readiness gates are satisfied. | Later |
 | World Spine | `ACTIVE` | Major functional timeline/worldbuilding system exists: structured nodes/events, location rows, split spines, scene metadata, world entities, catalogue links, scene reordering, zoom/scroll/panel behaviour. | Direct node editing, filters, accepted-suggestion application, edge editing, richer cross-spine filtering. | High |
 | World Spine location-row CRUD | `ACTIVE` | Small near-term feature/learning slice; deletion is not being implemented by this tracker update. | Trace render → handler → canonical state → persistence → references → tests, then implement the delete behaviour manually with review support. | Good learning slice |
 | Dream Scaping | `ACTIVE` | Foundation exists with suggestion/domain structures and World Spine studio integration. | Author-facing idea submission, accept/reject, optional reviewed promotion to timeline nodes or scene drafts. | Medium |
@@ -74,7 +75,7 @@ Detailed feature status and implementation locations remain canonical in `featur
 | Handwriting accessibility / TrOCR | `D3KOD3R/TrOCR-Handwriting-Prototype` | `PROVING` | Webcam capture works; stage-gated Workbench works; Microsoft TrOCR runs locally and on CUDA; real handwriting recognition works; orientation materially affects recognition. | Continue focus/exposure/contrast/tight-ROI calibration. Then prove automatic orientation, page detection, stable capture, segmentation, and full-page OCR before production integration. | High external R&D |
 | TrOCR → authoring-app accessibility input | Production integration target | `DEFERRED` | External prototype is intentionally proving the pipeline first. | After reliable recognition, add a small production vertical slice and later Handwriting/Accessibility Settings + Advanced/Diagnostics using the proven service boundaries. | After proof |
 | AudioBookCurator | `D3KOD3R/AudioBookCurator` | `AUDIT` | Repository describes a local audiobook curation stack for narrators/character voices. | Compare useful components/lessons with the current in-app audiobook schema and voice services before porting anything. | Audit first |
-| MovieNarrator / RVC UI work | `D3KOD3R/MovieNarrator` | `AUDIT` | External RVC-derived voice tooling exists. | Audit against current `services/voice` provider boundaries; reuse only proven capabilities that still fit current architecture. | Audit first |
+| MovieNarrator / RVC UI work | `D3KOD3R/MovieNarrator` | `AUDIT` | External RVC-derived voice tooling exists. | Audit against current `services/voice` provider boundaries and the performance-preserving audiobook R&D exit gate; reuse only proven capabilities that preserve source performance and fit current architecture. | Audit first |
 | Other historical voice/narration prototypes | Other D3KOD3R voice/narration repos | `AUDIT` | Potential prior experimentation exists, but integration relevance has not been verified in this status pass. | Do not treat as active dependencies until individually audited. | Later |
 
 ### TrOCR current checkpoint
@@ -136,6 +137,9 @@ Work on PLATFORM or R&D is not automatically product delay; it should, however, 
 
 - Detailed product feature tracker: `features.md`
 - Editor architecture/refactor: `docs/architecture/editor-application-roadmap.md`
+- Narration Follow architecture: `docs/architecture/narration-follow-mode.md`
+- Voice pipeline architecture: `docs/architecture/voice-pipeline.md`
+- Deferred performance-preserving audiobook architecture: `docs/architecture/performance-preserving-audiobook-roadmap.md`
 - Test supervisor architecture: `docs/architecture/test-harness-repo-supervisor-roadmap.md`
 - Mobile architecture: `docs/architecture/mobile-friendly-architecture.md`
 - Agent/context baseline and refactor research: `docs/research/agent-refactor-context-audit.md`
