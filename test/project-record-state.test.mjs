@@ -70,6 +70,8 @@ export function runProjectRecordStateTest() {
   assert.equal(record.workspace.project.stats.sceneCount, 1);
   assert.equal(record.schemaVersion, 3);
   assert.equal(record.draftProofing.activeRunId, "draft-proof-run-0001");
+  assert.equal(record.draftProofing.schemaVersion, 2);
+  assert.equal(record.draftProofing.runs[0].changeHistoryAvailable, false);
   assert.deepEqual(record.draftProofing.runs[0].coverageByScene["scene-1"].map((span) => [
     span.startOffset,
     span.endOffset,

@@ -88,6 +88,10 @@ export function createProjectActivationStateService({
     state.metadataSubgroups = normalizeMetadataSubgroups(record.metadataSubgroups, getMetadataSubgroupGroupIds(record.projectSettings));
     state.draftProofing = normalizeDraftProofingState(record.draftProofing);
     state.draftProofMarksVisible = shouldRestoreDraftProofMarksVisible(state.draftProofing);
+    state.draftProofSettingsWindowOpen = false;
+    state.draftProofSettingsSelectedRunId = "";
+    state.draftProofHistoryReview = null;
+    state.draftProofHistoryHover = null;
     state.revisionState = readRevisionState(record);
     state.revisionPanelState = createRevisionPanelStateForProject(state.revisionState);
     state.binderSceneMoveHistory = {

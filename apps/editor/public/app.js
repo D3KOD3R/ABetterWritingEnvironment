@@ -78,6 +78,7 @@ import {
 } from "./features/manuscript-editor/manuscript-layout-service.js";
 import {
   DRAFT_PROOF_BACKDROP_COLOR_DEFAULT,
+  DRAFT_PROOF_HISTORY_REPLAY_ORIGIN,
   addDraftProofCoverageRange,
   addRecentDraftProofBackdropColor,
   clearDraftProofRunData,
@@ -88,11 +89,14 @@ import {
   getDraftProofSettingsForRun,
   normalizeDraftProofingState,
   pauseDraftProofRun,
+  planDraftProofRunReversal,
+  preflightDraftProofChangeReversal,
   pruneDraftProofCoverageForScenes,
   removeDraftProofCoverageRange,
   resolveDraftProofSettingsRunId,
   startNewDraftProofRun,
   startOrResumeDraftProofRun,
+  markDraftProofChangeReversal,
   updateDraftProofRunSettings,
   updateDraftProofSettings,
   updateDraftProofCoverageForTextEdit,
@@ -101,6 +105,16 @@ import {
   renderDraftProofSettingsWindowHTML,
   shouldCloseDraftProofSettingsWindowForClick,
 } from "./features/draft-proofing/draft-proofing-settings-window.js";
+import {
+  buildDraftProofHistoryCompareModel,
+  clearDraftProofHistoryReview,
+  createDefaultDraftProofHistoryReviewState,
+  isDraftProofHistoryReviewActive,
+  planDraftProofHistorySceneMutation,
+  selectDraftProofHistoryReviewRun,
+  setDraftProofHistoryPreflightResult,
+  updateDraftProofHistoryReviewFilter,
+} from "./features/draft-proofing/draft-proofing-history-controller.js";
 import {
   applyManuscriptMarksForSceneSelection,
   clearManuscriptMarksForSceneSelection,
@@ -711,6 +725,8 @@ const state = {
   writingTargetWindowOpen: false,
   revisionWindowOpen: false,
   draftProofSettingsWindowOpen: false,
+  draftProofHistoryReview: createDefaultDraftProofHistoryReviewState(),
+  draftProofHistoryHover: null,
   localAiPanelOpen: false,
   keyboardShortcutSettingsWindowOpen: false,
   keyboardShortcutCaptureBehaviorId: "",
@@ -2108,6 +2124,7 @@ function wireEvents() {
   document.addEventListener("pointermove", handleLayoutResizePointerMove);
   document.addEventListener("pointermove", handleWorldSpineLayoutResizePointerMove);
   document.addEventListener("pointermove", handleSpellcheckHoverPointerMove);
+  document.addEventListener("pointermove", handleDraftProofHistoryHoverPointerMove);
   document.addEventListener("pointermove", handleWorldbuildingCatalogueDragPointerMove);
   document.addEventListener("pointermove", (event) => worldSpineController.handlePointerMove(event));
   document.addEventListener("pointerup", endLayoutResize);
@@ -2640,6 +2657,42 @@ function wireEvents() {
 
     if (action === "cancel-clear-draft-proof-data") {
       cancelClearDraftProofData();
+      return;
+    }
+
+    if (action === "select-draft-proof-history-run") {
+      selectDraftProofSettingsRun(target.dataset.draftProofRunId);
+      return;
+    }
+
+    if (action === "filter-draft-proof-history") {
+      state.draftProofHistoryReview = updateDraftProofHistoryReviewFilter(
+        state.draftProofHistoryReview,
+        target.dataset.draftProofHistoryFilter,
+      );
+      renderDraftProofSettingsWindow();
+      return;
+    }
+
+    if (action === "go-to-draft-proof-change" || action === "compare-draft-proof-change") {
+      navigateToDraftProofHistoryChange(target.dataset.draftProofRunId, target.dataset.draftProofChangeId);
+      return;
+    }
+
+    if (action === "undo-draft-proof-change" || action === "redo-draft-proof-change") {
+      reverseDraftProofHistoryChange({
+        runId: target.dataset.draftProofRunId,
+        changeId: target.dataset.draftProofChangeId,
+        action: action.startsWith("redo") ? "redo" : "undo",
+      });
+      return;
+    }
+
+    if (action === "undo-safe-draft-proof-run" || action === "redo-safe-draft-proof-run") {
+      reverseDraftProofHistoryRun({
+        runId: target.dataset.draftProofRunId,
+        action: action.startsWith("redo") ? "redo" : "undo",
+      });
       return;
     }
 
@@ -8038,6 +8091,8 @@ function renderDraftProofSettingsWindow() {
         draftProofing: state.draftProofing,
         clearConfirmationArmed: state.draftProofClearConfirmationArmed,
         selectedRunId: state.draftProofSettingsSelectedRunId,
+        reviewState: state.draftProofHistoryReview,
+        historyHover: state.draftProofHistoryHover,
         activeTheme: resolveAppearanceTheme(state.editorPrefs?.appearanceMode),
       })
     : "";
@@ -8060,11 +8115,14 @@ function openDraftProofSettingsWindow() {
     state.draftProofing,
     state.draftProofSettingsSelectedRunId,
   );
+  state.draftProofHistoryReview = clearDraftProofHistoryReview();
   editorInteractionLog.info("user-action", "draft-proof.settings.open", "Opened proof-read settings.", {
     projectId: state.activeProjectId ?? "",
   });
   renderHeader();
   renderDraftProofSettingsWindow();
+  renderManuscriptPanel();
+  syncSceneDocumentLayout();
 }
 
 function closeDraftProofSettingsWindow() {
@@ -8075,11 +8133,15 @@ function closeDraftProofSettingsWindow() {
   state.draftProofSettingsWindowOpen = false;
   state.draftProofClearConfirmationArmed = false;
   state.draftProofSettingsSelectedRunId = "";
+  state.draftProofHistoryReview = clearDraftProofHistoryReview();
+  state.draftProofHistoryHover = null;
   editorInteractionLog.info("user-action", "draft-proof.settings.close", "Closed proof-read settings.", {
     projectId: state.activeProjectId ?? "",
   });
   renderHeader();
   renderDraftProofSettingsWindow();
+  renderManuscriptPanel();
+  syncSceneDocumentLayout();
 }
 
 // Intent: render desktop-backed Local AI model settings without giving browser code filesystem ownership.
@@ -13793,7 +13855,12 @@ function syncDraftProofLayer(editorHost, sceneId) {
   const scene = getScene(sceneId);
   const hasTextarea = editorHost?.textarea instanceof HTMLTextAreaElement;
   const marksVisible = state.draftProofMarksVisible === true;
-  if (state.activePane !== "manuscript" || !scene || !marksVisible || !hasTextarea) {
+  const historyReviewActive = isDraftProofHistoryReviewActive({
+    settingsOpen: state.draftProofSettingsWindowOpen,
+    activePane: state.activePane,
+    reviewState: state.draftProofHistoryReview,
+  });
+  if (state.activePane !== "manuscript" || !scene || (!marksVisible && !historyReviewActive) || !hasTextarea) {
     clearTextareaProjectionLayer(editorHost, MANUSCRIPT_PROJECTION_CHANNELS.DRAFT_PROOF);
     logDraftProofLayerSync({
       phase: "clear",
@@ -13802,7 +13869,7 @@ function syncDraftProofLayer(editorHost, sceneId) {
         ? "inactive-pane"
         : !scene
           ? "missing-scene"
-          : !marksVisible
+          : !marksVisible && !historyReviewActive
             ? "markers-hidden"
             : "missing-textarea",
       editorHost,
@@ -13816,8 +13883,12 @@ function syncDraftProofLayer(editorHost, sceneId) {
     sceneId,
     text: editorHost.textarea.value,
     draftProofing: state.draftProofing,
+    draftProofHistoryReview: state.draftProofHistoryReview,
+    draftProofSettingsOpen: state.draftProofSettingsWindowOpen,
+    activePane: state.activePane,
     includeAuthorMarks: false,
-    includeDraftProofing: true,
+    includeDraftProofing: marksVisible,
+    includeDraftProofHistory: historyReviewActive,
     includeDiagnostics: false,
     includeAnchoredRecords: false,
     includeRuntimeSelections: false,
@@ -15509,7 +15580,12 @@ function getSelectedDraftProofSettings() {
 
 function selectDraftProofSettingsRun(runId) {
   state.draftProofClearConfirmationArmed = false;
+  state.draftProofHistoryHover = null;
   state.draftProofSettingsSelectedRunId = resolveDraftProofSettingsRunId(state.draftProofing, runId);
+  state.draftProofHistoryReview = selectDraftProofHistoryReviewRun(state.draftProofHistoryReview, {
+    draftProofing: state.draftProofing,
+    runId: state.draftProofSettingsSelectedRunId,
+  });
   renderDraftProofSettingsWindow();
   syncDraftProofLayerForActiveEditor();
   editorInteractionLog.info("user-action", "draft-proof.settings.iteration", "Selected proof-read settings iteration.", {
@@ -15564,6 +15640,7 @@ function startDraftProofRun() {
   if (result.run?.id) {
     state.draftProofSettingsSelectedRunId = result.run.id;
     if (state.draftProofSettingsWindowOpen) {
+      state.draftProofHistoryReview = clearDraftProofHistoryReview();
       renderDraftProofSettingsWindow();
     }
   }
@@ -15831,6 +15908,8 @@ function deleteSelectedDraftProofRuns(target) {
     state.draftProofing,
     state.draftProofSettingsSelectedRunId,
   );
+  state.draftProofHistoryReview = clearDraftProofHistoryReview();
+  state.draftProofHistoryHover = null;
   renderDraftProofSettingsWindow();
   editorInteractionLog.info("user-action", "draft-proof.settings.delete-selected", "Deleted selected proof-read iterations.", {
     changed,
@@ -15858,6 +15937,8 @@ function collectCheckedDraftProofRunIds(target) {
 function clearAllDraftProofData() {
   state.draftProofClearConfirmationArmed = false;
   state.draftProofSettingsSelectedRunId = "";
+  state.draftProofHistoryReview = clearDraftProofHistoryReview();
+  state.draftProofHistoryHover = null;
   const result = clearDraftProofRunData(state.draftProofing);
   const changed = applyDraftProofingResult(result, {
     dirtyReason: "draft-proof-data-cleared",
@@ -15893,6 +15974,179 @@ function finishDraftProofRun() {
     reason: result.reason,
     runId: result.run?.id ?? "",
   });
+}
+
+// Intent: navigate through the manuscript scene/range boundary while retaining the selected historical review lens.
+function navigateToDraftProofHistoryChange(runId, changeId) {
+  const draftProofing = normalizeDraftProofingState(state.draftProofing);
+  const run = draftProofing.runs.find((candidate) => candidate.id === String(runId ?? "").trim()) ?? null;
+  const change = run?.changes.find((candidate) => candidate.changeId === String(changeId ?? "").trim()) ?? null;
+  if (!run || !change || !getScene(change.sceneId)) {
+    state.draftProofHistoryReview = setDraftProofHistoryPreflightResult(state.draftProofHistoryReview, {
+      safe: false,
+      unresolved: true,
+      changeId: change?.changeId ?? "",
+    }, { statusMessage: "Change location could not be resolved." });
+    renderDraftProofSettingsWindow();
+    return false;
+  }
+  state.draftProofSettingsSelectedRunId = run.id;
+  state.draftProofHistoryReview = {
+    ...selectDraftProofHistoryReviewRun(state.draftProofHistoryReview, {
+      draftProofing,
+      runId: run.id,
+    }),
+    selectedChangeId: change.changeId,
+  };
+  const startOffset = Math.max(0, Number(change.anchor?.startOffset) || 0);
+  const endOffset = Math.max(startOffset, Number(change.anchor?.endOffset) || startOffset);
+  takeToSceneRange(change.sceneId, startOffset, endOffset, { behavior: "smooth" });
+  renderDraftProofSettingsWindow();
+  syncDraftProofLayerForActiveEditor();
+  return true;
+}
+
+function reverseDraftProofHistoryChange({ runId = "", changeId = "", action = "undo" } = {}) {
+  const preflight = preflightDraftProofChangeReversal(state.draftProofing, {
+    runId,
+    changeId,
+    action,
+    sceneTexts: (sceneId) => getScene(sceneId)?.editorText ?? null,
+  });
+  if (!preflight.safe) {
+    state.draftProofHistoryReview = setDraftProofHistoryPreflightResult(state.draftProofHistoryReview, preflight, {
+      statusMessage: formatDraftProofHistoryPreflightMessage(preflight),
+    });
+    renderDraftProofSettingsWindow();
+    syncDraftProofLayerForActiveEditor();
+    return false;
+  }
+  const changed = applyDraftProofHistoryOperation(preflight, new Date().toISOString());
+  state.draftProofHistoryReview = setDraftProofHistoryPreflightResult(state.draftProofHistoryReview, {
+    ...preflight,
+    safe: true,
+  }, {
+    statusMessage: changed
+      ? `${preflight.action === "redo" ? "Redo" : "Undo"} applied safely.`
+      : "The manuscript was not changed.",
+  });
+  renderDraftProofSettingsWindow();
+  syncDraftProofLayerForActiveEditor();
+  return changed;
+}
+
+// Intent: complete run preflight before applying the safe subset in the service-defined sequence order.
+function reverseDraftProofHistoryRun({ runId = "", action = "undo" } = {}) {
+  const preflight = planDraftProofRunReversal(state.draftProofing, {
+    runId,
+    action,
+    sceneTexts: Object.fromEntries(state.scenes.map((scene) => [scene.sceneId, scene.editorText ?? ""])),
+  });
+  if (!preflight.available) {
+    state.draftProofHistoryReview = {
+      ...state.draftProofHistoryReview,
+      statusMessage: preflight.reason === "change-history-unavailable"
+        ? "Detailed change history was not recorded for this proofread."
+        : "Proof-read run could not be found.",
+    };
+    renderDraftProofSettingsWindow();
+    return false;
+  }
+  let appliedCount = 0;
+  for (const operation of preflight.safeOperations) {
+    const currentPreflight = preflightDraftProofChangeReversal(state.draftProofing, {
+      runId,
+      changeId: operation.changeId,
+      action,
+      sceneTexts: (sceneId) => getScene(sceneId)?.editorText ?? null,
+    });
+    if (currentPreflight.safe && applyDraftProofHistoryOperation(currentPreflight, new Date().toISOString())) {
+      appliedCount += 1;
+    }
+  }
+  const skippedCount = preflight.summary.totalCount - appliedCount;
+  state.draftProofHistoryReview = {
+    ...state.draftProofHistoryReview,
+    conflictChangeIds: preflight.results.filter((result) => !result.safe).map((result) => result.changeId),
+    preflightResult: preflight,
+    statusMessage: `${action === "redo" ? "Redid" : "Undid"} ${appliedCount} safe change${appliedCount === 1 ? "" : "s"}; skipped ${skippedCount}.`,
+  };
+  renderDraftProofSettingsWindow();
+  renderManuscriptPanel();
+  syncSceneDocumentLayout();
+  return appliedCount > 0;
+}
+
+function applyDraftProofHistoryOperation(preflight, now) {
+  const scene = getScene(preflight.sceneId);
+  const sourceBlocks = scene?.blocks ?? state.sceneDrafts?.[preflight.sceneId]?.blocks;
+  const mutation = planDraftProofHistorySceneMutation({
+    preflight,
+    scene,
+    sourceBlocks,
+    inlineFormatRanges: getSceneInlineFormatRanges(preflight.sceneId, String(scene?.editorText ?? "").length),
+  });
+  if (!mutation) {
+    return false;
+  }
+  const { previousText, nextText, selectionStart, nextBlocks, inlineFormatRanges } = mutation;
+  updateAnchoredRecordsForSceneTextEdit(scene.sceneId, previousText, nextText, {
+    selectionStart,
+    selectionEnd: selectionStart,
+    selectionBeforeInputStart: preflight.startOffset,
+    selectionBeforeInputEnd: preflight.endOffset,
+    origin: DRAFT_PROOF_HISTORY_REPLAY_ORIGIN,
+    sourceRunId: preflight.sourceRunId,
+    sourceChangeId: preflight.sourceChangeId,
+  });
+  state.manuscriptMarkHistory = createManuscriptMarkHistoryState();
+  state.worldSpineHistory = createWorldSpineHistoryState();
+  updateManuscriptMarksAfterSceneTextEdit({
+    sceneId: scene.sceneId,
+    previousText,
+    nextText,
+    previousSceneBlocks: scene.blocks,
+    nextSceneBlocks: nextBlocks,
+    pendingFormats: {},
+    selectionStart,
+    selectionEnd: selectionStart,
+  });
+  updateSceneDraft(scene.sceneId, (draft) => {
+    draft.editorText = nextText;
+    draft.blocks = nextBlocks;
+    draft.inlineFormatRanges = inlineFormatRanges;
+    draft.revisionStats = updateSceneRevisionStats(draft.revisionStats, previousText, nextText, now);
+  }, {
+    immediate: true,
+    markSessionActivity: false,
+    reason: DRAFT_PROOF_HISTORY_REPLAY_ORIGIN,
+    source: `${DRAFT_PROOF_HISTORY_REPLAY_ORIGIN}:${preflight.sourceRunId}:${preflight.sourceChangeId}`,
+  });
+  const marked = markDraftProofChangeReversal(state.draftProofing, {
+    runId: preflight.runId,
+    changeId: preflight.changeId,
+    action: preflight.action,
+    now,
+  });
+  return applyDraftProofingResult(marked, {
+    dirtyReason: `draft-proof-history-${preflight.action}`,
+    source: `${DRAFT_PROOF_HISTORY_REPLAY_ORIGIN}:${preflight.sourceRunId}:${preflight.sourceChangeId}`,
+    renderPanel: true,
+  });
+}
+
+function formatDraftProofHistoryPreflightMessage(preflight) {
+  if (preflight.unresolved) {
+    return "Change location could not be resolved.";
+  }
+  if (preflight.reason === "changed-by-later-proofread") {
+    const labels = preflight.provenance.map((item) => item.run?.label).filter(Boolean);
+    return labels.length ? `Changed by ${labels.join(" → ")}.` : "Changed by a later proofread.";
+  }
+  if (preflight.reason === "manuscript-changed") {
+    return "Manuscript changed after this proofread.";
+  }
+  return preflight.action === "redo" ? "This change cannot be safely redone." : "This change cannot be safely undone.";
 }
 
 // Intent: persist enough proof-read location context to resume a manual proofing pass deliberately.
@@ -16168,6 +16422,11 @@ function syncDraftProofLayerForActiveEditor() {
 function updateAnchoredRecordsForSceneTextEdit(sceneId, previousText, nextText, {
   selectionStart = null,
   selectionEnd = null,
+  selectionBeforeInputStart = null,
+  selectionBeforeInputEnd = null,
+  origin = "manual-editor",
+  sourceRunId = "",
+  sourceChangeId = "",
 } = {}) {
   const now = new Date().toISOString();
   const normalizedSceneId = String(sceneId ?? "");
@@ -16226,6 +16485,11 @@ function updateAnchoredRecordsForSceneTextEdit(sceneId, previousText, nextText, 
     now,
     selectionStart,
     selectionEnd,
+    selectionBeforeInputStart,
+    selectionBeforeInputEnd,
+    origin,
+    sourceRunId,
+    sourceChangeId,
   });
 
   if (taskResult.changedRecords.length) {
@@ -17723,6 +17987,8 @@ function selectWorkspacePane(paneId) {
     state.draftProofSettingsWindowOpen = false;
     state.draftProofClearConfirmationArmed = false;
     state.draftProofSettingsSelectedRunId = "";
+    state.draftProofHistoryReview = clearDraftProofHistoryReview();
+    state.draftProofHistoryHover = null;
   }
   if (normalizedPaneId !== "narration") {
     state.narrationRecordingPreviewId = null;
@@ -21917,6 +22183,65 @@ function hideSpellcheckContextMenu() {
   renderTaskContextMenu();
 }
 
+// Intent: let overlay rectangles assist hit testing while durable proof-read records remain the hover source of truth.
+function handleDraftProofHistoryHoverPointerMove(event) {
+  if (!isDraftProofHistoryReviewActive({
+    settingsOpen: state.draftProofSettingsWindowOpen,
+    activePane: state.activePane,
+    reviewState: state.draftProofHistoryReview,
+  })) {
+    clearDraftProofHistoryHover();
+    return;
+  }
+  const target = event.target instanceof Element ? event.target : null;
+  if (target?.closest("[data-draft-proof-history-hover]")) {
+    return;
+  }
+  let hit = null;
+  for (const element of document.querySelectorAll(".editor-draft-proof-range[data-draft-proof-change-id]")) {
+    if (!(element instanceof HTMLElement)) {
+      continue;
+    }
+    const inside = [...element.getClientRects()].some((rect) => (
+      event.clientX >= rect.left - 2 &&
+      event.clientX <= rect.right + 2 &&
+      event.clientY >= rect.top - 2 &&
+      event.clientY <= rect.bottom + 2
+    ));
+    if (inside) {
+      hit = element;
+      break;
+    }
+  }
+  if (!hit) {
+    clearDraftProofHistoryHover();
+    return;
+  }
+  const model = buildDraftProofHistoryCompareModel({
+    draftProofing: state.draftProofing,
+    runId: hit.dataset.draftProofRunId,
+    changeId: hit.dataset.draftProofChangeId,
+  });
+  if (!model?.lineage?.length) {
+    clearDraftProofHistoryHover();
+    return;
+  }
+  state.draftProofHistoryHover = {
+    ...model,
+    x: Math.min(window.innerWidth - 340, Math.max(12, event.clientX + 16)),
+    y: Math.min(window.innerHeight - 260, Math.max(12, event.clientY + 16)),
+  };
+  renderDraftProofSettingsWindow();
+}
+
+function clearDraftProofHistoryHover() {
+  if (!state.draftProofHistoryHover) {
+    return;
+  }
+  state.draftProofHistoryHover = null;
+  renderDraftProofSettingsWindow();
+}
+
 function handleSpellcheckHoverPointerMove(event) {
   if (
     (typeof PointerEvent !== "undefined" && !(event instanceof PointerEvent)) ||
@@ -22229,8 +22554,10 @@ function updateSceneDraft(sceneId, mutate, options = {}) {
   persistCurrentProjectRecord({
     changedSceneIds: [sceneId],
     domain: "manuscript",
-    dirtyReason: "user-edit",
-    source: "updateSceneDraft",
+    dirtyReason: options.dirtyReason ?? (options.reason === DRAFT_PROOF_HISTORY_REPLAY_ORIGIN
+      ? "proofread-history-replay"
+      : "user-edit"),
+    source: options.source ?? "updateSceneDraft",
   });
   sceneStorageLog.debug("persistence", "scene.update.persisted", "Persisted scene draft mutation into project record.", {
     sceneId,

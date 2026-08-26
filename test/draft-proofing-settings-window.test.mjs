@@ -97,10 +97,10 @@ export function runDraftProofingSettingsWindowTest() {
   assert.match(html, /data-draft-proof-settings-run/);
   assert.match(html, /Draft proof 1 - Completed/);
   assert.match(html, /Draft proof 2 - Active/);
+  assert.match(html, /data-action="select-draft-proof-history-run"/);
+  assert.match(html, /Detailed change history was not recorded for this proofread\./);
   assert.doesNotMatch(html, /draft-proof-settings-window__stats/);
   assert.doesNotMatch(html, />Runs</);
-  assert.doesNotMatch(html, />Active</);
-  assert.doesNotMatch(html, />Completed</);
   assert.doesNotMatch(html, />Scenes</);
   assert.doesNotMatch(html, />Spans</);
   assert.match(html, /data-draft-proof-setting="backdropColor"/);
@@ -144,6 +144,62 @@ export function runDraftProofingSettingsWindowTest() {
   assert.match(armedHtml, /Confirm clear/);
   assert.match(armedHtml, /data-action="clear-draft-proof-data"/);
   assert.match(armedHtml, /data-action="cancel-clear-draft-proof-data"/);
+
+  const historyHtml = renderDraftProofSettingsWindowHTML({
+    draftProofing: {
+      schemaVersion: 2,
+      activeRunId: "",
+      runs: [{
+        id: "draft-proof-run-0003",
+        label: "Draft proof 3",
+        iterationNumber: 3,
+        status: "completed",
+        startedAt: "2026-08-25T01:00:00.000Z",
+        updatedAt: "2026-08-25T02:00:00.000Z",
+        completedAt: "2026-08-25T02:00:00.000Z",
+        changeHistoryAvailable: true,
+        changes: [{
+          changeId: "change-3-1",
+          runId: "draft-proof-run-0003",
+          iterationNumber: 3,
+          sequence: 1,
+          sceneId: "scene-1",
+          beforeText: "completely still",
+          afterText: "glass-smooth",
+          state: "applied",
+          anchor: { sceneId: "scene-1", startOffset: 4, endOffset: 16 },
+          lineage: [],
+        }],
+      }],
+    },
+    selectedRunId: "draft-proof-run-0003",
+    reviewState: { reviewRunId: "draft-proof-run-0003", filter: "all" },
+    historyHover: {
+      x: 120,
+      y: 180,
+      runLabel: "Draft proof 3",
+      beforeText: "completely still",
+      afterText: "glass-smooth",
+      lineage: [{
+        runId: "draft-proof-run-0004",
+        runLabel: "Draft proof 4",
+        changeId: "change-4-1",
+        date: "2026-08-26T02:00:00.000Z",
+        beforeText: "glass-smooth",
+        afterText: "storm-bright",
+      }],
+    },
+  });
+  assert.match(historyHtml, /1 changes · 2 words changed/);
+  assert.match(historyHtml, /Before/);
+  assert.match(historyHtml, /completely still/);
+  assert.match(historyHtml, /glass-smooth/);
+  assert.match(historyHtml, /data-action="undo-draft-proof-change"/);
+  assert.match(historyHtml, /data-action="undo-safe-draft-proof-run"/);
+  assert.match(historyHtml, /data-action="filter-draft-proof-history"/);
+  assert.match(historyHtml, /data-draft-proof-history-hover/);
+  assert.match(historyHtml, /Changed again in Draft proof 4/);
+  assert.match(historyHtml, /Go to later Proofread change/);
 
   assert.equal(shouldCloseDraftProofSettingsWindowForClick(createClosestTarget([
     ".draft-proof-settings-window",

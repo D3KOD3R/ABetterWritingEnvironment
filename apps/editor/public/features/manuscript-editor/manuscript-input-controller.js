@@ -109,6 +109,7 @@ export function createManuscriptInputController({
     updateAnchoredRecordsForTextEdit?.(normalizedSceneId, previousText, nextText, {
       selectionStart: editorSurface.selectionStart,
       selectionEnd: editorSurface.selectionEnd,
+      ...selectionBeforeInput,
     });
     const activeTypingWordRange = getTypingSpellcheckRange?.(editorSurface) ?? null;
     commitSceneTextEdit?.({

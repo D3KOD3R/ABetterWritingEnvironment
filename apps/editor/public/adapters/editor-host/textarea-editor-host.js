@@ -826,7 +826,7 @@ export function renderTextareaDraftProofContent(snapshot) {
     }
 
     const styleAttribute = createDraftProofRangeStyleAttribute(activeProjection);
-    parts.push(renderTextareaDraftProofRangeSegment(segment, styleAttribute));
+    parts.push(renderTextareaDraftProofRangeSegment(segment, styleAttribute, activeProjection));
   }
 
   return parts.join("");
@@ -984,7 +984,15 @@ function normalizeCssPercentageNumber(value) {
 }
 
 // Intent: keep proof-read paint off hard returns so blank paragraph separators do not look vertically offset.
-function renderTextareaDraftProofRangeSegment(segment, styleAttribute = "") {
+function renderTextareaDraftProofRangeSegment(segment, styleAttribute = "", projection = null) {
+  const styleToken = ["review", "changed-later", "conflict"].includes(projection?.styleToken)
+    ? projection.styleToken
+    : "covered";
+  const semanticClass = styleToken === "covered" ? "" : ` is-${styleToken}`;
+  const sourceRef = projection?.sourceRef && typeof projection.sourceRef === "object" ? projection.sourceRef : {};
+  const sourceAttributes = sourceRef.recordType === "draftProofChange"
+    ? ` data-draft-proof-change-id="${escapeHtml(String(sourceRef.recordId ?? ""))}" data-draft-proof-run-id="${escapeHtml(String(sourceRef.runId ?? ""))}"`
+    : "";
   return String(segment ?? "")
     .split(/(\n)/)
     .map((part) => {
@@ -994,7 +1002,7 @@ function renderTextareaDraftProofRangeSegment(segment, styleAttribute = "") {
       if (!part) {
         return "";
       }
-      return `<span class="editor-draft-proof-range"${styleAttribute}>${escapeHtml(part)}</span>`;
+      return `<span class="editor-draft-proof-range${semanticClass}"${styleAttribute}${sourceAttributes}>${escapeHtml(part)}</span>`;
     })
     .join("");
 }

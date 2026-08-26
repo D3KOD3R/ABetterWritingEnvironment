@@ -6215,6 +6215,159 @@ aside#binder-slot {
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--editor-draft-proof-highlight-color) var(--editor-draft-proof-outline-strength), transparent);
 }
 
+/* Intent: make Project Settings the deliberate proof-read history surface while keeping the top panel compact. */
+.draft-proof-history__runs,
+.draft-proof-history__changes {
+  display: grid;
+  gap: 8px;
+}
+
+.draft-proof-history__run {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid rgba(52, 45, 36, 0.18);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.5);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.draft-proof-history__run.is-selected {
+  border-color: rgba(69, 101, 138, 0.72);
+  box-shadow: 0 0 0 2px rgba(69, 101, 138, 0.14);
+}
+
+.draft-proof-history__run-heading,
+.draft-proof-history__details > header,
+.draft-proof-history__change > header,
+.draft-proof-history__change > footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.draft-proof-history__run-meta,
+.draft-proof-history__run-metrics,
+.draft-proof-history__details header p,
+.draft-proof-history__change header span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.draft-proof-history__details {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(52, 45, 36, 0.16);
+}
+
+.draft-proof-history__details h3,
+.draft-proof-history__details p {
+  margin: 0;
+}
+
+.draft-proof-history__run-actions,
+.draft-proof-history__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.draft-proof-history__change {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(52, 45, 36, 0.16);
+  border-radius: 10px;
+}
+
+.draft-proof-history__change.is-changed-later {
+  border-style: dashed;
+  border-color: rgba(64, 89, 132, 0.62);
+}
+
+.draft-proof-history__change.is-conflict {
+  border-color: rgba(151, 46, 36, 0.78);
+  background: rgba(151, 46, 36, 0.08);
+}
+
+.draft-proof-history__compare {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.draft-proof-history__compare > div {
+  min-width: 0;
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(52, 45, 36, 0.05);
+}
+
+.draft-proof-history__compare p {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.draft-proof-history__status {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(69, 101, 138, 0.1);
+}
+
+.draft-proof-history__hover {
+  position: fixed;
+  z-index: 90;
+  display: grid;
+  gap: 8px;
+  width: min(320px, calc(100vw - 24px));
+  max-height: min(420px, calc(100vh - 24px));
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid rgba(64, 89, 132, 0.62);
+  border-radius: 10px;
+  background: var(--surface, #fffdf8);
+  box-shadow: 0 12px 30px rgba(25, 31, 42, 0.24);
+}
+
+.draft-proof-history__hover small {
+  color: var(--muted);
+}
+
+.draft-proof-history__hover-compare {
+  display: grid;
+  gap: 6px;
+}
+
+.draft-proof-history__hover-compare p {
+  margin: 0;
+  padding: 7px;
+  border-radius: 7px;
+  background: rgba(64, 89, 132, 0.07);
+  overflow-wrap: anywhere;
+}
+
+/* Intent: distinguish opt-in historical provenance and unsafe reversal without changing saved proof-read colours. */
+.editor-draft-proof-range.is-review {
+  box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--editor-draft-proof-highlight-color) 75%, #3a5f8f 25%);
+  outline: 1px dotted color-mix(in srgb, var(--editor-draft-proof-highlight-color) 72%, #3a5f8f 28%);
+}
+
+.editor-draft-proof-range.is-changed-later {
+  background-image: repeating-linear-gradient(135deg, transparent 0 4px, rgb(64 89 132 / 24%) 4px 7px);
+  outline-style: dashed;
+}
+
+.editor-draft-proof-range.is-conflict {
+  background-image: repeating-linear-gradient(135deg, rgb(151 46 36 / 16%) 0 4px, rgb(151 46 36 / 42%) 4px 7px);
+  outline: 2px solid rgb(151 46 36 / 78%);
+}
+
 /* Intent: make day-mode proof-read coverage easier to see without changing saved colours or dark-mode paint. */
 :root[data-theme="light"] .editor-draft-proof-range {
   --editor-draft-proof-fill-strength: var(--editor-draft-proof-light-fill-strength, 42%);

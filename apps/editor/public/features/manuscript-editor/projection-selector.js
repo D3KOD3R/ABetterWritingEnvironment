@@ -3,6 +3,9 @@ import {
   createDraftProofCoverageProjections,
 } from "../draft-proofing/draft-proofing-service.js";
 import {
+  createDraftProofHistoryProjections,
+} from "../draft-proofing/draft-proofing-history-controller.js";
+import {
   createAnchorDecorationProjection,
   createSpellcheckDecorationProjections,
 } from "../manuscript-anchors/manuscript-decoration-projection-service.js";
@@ -54,6 +57,9 @@ export function selectManuscriptProjections({
   manuscriptMarks = [],
   draftProofing = null,
   draftProofRunId = "",
+  draftProofHistoryReview = null,
+  draftProofSettingsOpen = false,
+  activePane = "",
   diagnosticIssues = [],
   manuScriptInfographicLanePreviews = [],
   anchoredRecordPreviews = [],
@@ -63,6 +69,7 @@ export function selectManuscriptProjections({
   spellcheckMisspellings = [],
   includeAuthorMarks = true,
   includeDraftProofing = true,
+  includeDraftProofHistory = true,
   includeDiagnostics = true,
   includeManuScriptInfographicLane = true,
   includeAnchoredRecords = true,
@@ -93,6 +100,19 @@ export function selectManuscriptProjections({
       runId: draftProofRunId,
       channel: MANUSCRIPT_PROJECTION_CHANNELS.DRAFT_PROOF,
       priority: PROJECTION_PRIORITY[MANUSCRIPT_PROJECTION_CHANNELS.DRAFT_PROOF],
+    }));
+  }
+
+  if (includeDraftProofHistory) {
+    projections.push(...createDraftProofHistoryProjections({
+      draftProofing,
+      reviewState: draftProofHistoryReview,
+      sceneId: normalizedSceneId,
+      textLength: normalizedText.length,
+      settingsOpen: draftProofSettingsOpen,
+      activePane,
+      channel: MANUSCRIPT_PROJECTION_CHANNELS.DRAFT_PROOF,
+      priority: PROJECTION_PRIORITY[MANUSCRIPT_PROJECTION_CHANNELS.DRAFT_PROOF] + 2,
     }));
   }
 

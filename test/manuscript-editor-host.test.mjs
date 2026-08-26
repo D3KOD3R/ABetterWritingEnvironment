@@ -178,6 +178,26 @@ export function runManuscriptEditorHostTest() {
   assert.match(renderTextareaDraftProofContent(snapshot), /--editor-draft-proof-light-fill-strength:64%/);
   assert.match(renderTextareaDraftProofContent(snapshot), /--editor-draft-proof-light-outline-strength:40%/);
   assert.match(renderTextareaDraftProofContent(snapshot), /--editor-draft-proof-dark-fill-strength:90%/);
+  const historyMarkup = renderTextareaDraftProofContent(createManuscriptEditorHostSnapshot({
+    sceneId: "scene-1",
+    text,
+    projections: [{
+      id: "draft-proof-history-change-1",
+      sceneId: "scene-1",
+      startOffset: 0,
+      endOffset: 5,
+      channel: MANUSCRIPT_PROJECTION_CHANNELS.DRAFT_PROOF,
+      styleToken: "changed-later",
+      sourceRef: {
+        recordType: "draftProofChange",
+        recordId: "change-1",
+        runId: "draft-proof-run-0001",
+      },
+    }],
+  }));
+  assert.match(historyMarkup, /editor-draft-proof-range is-changed-later/);
+  assert.match(historyMarkup, /data-draft-proof-change-id="change-1"/);
+  assert.match(historyMarkup, /data-draft-proof-run-id="draft-proof-run-0001"/);
   const paragraphText = "SOL year 2107\n\nthis is a test paragraph.";
   const paragraphStartOffset = "SOL year 2107".length;
   const paragraphSnapshot = createManuscriptEditorHostSnapshot({

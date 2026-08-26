@@ -2,8 +2,17 @@
 import {
   deriveManuscriptEditTransaction,
 } from "../manuscript-anchors/manuscript-edit-transaction-service.js";
+import {
+  MANUSCRIPT_ANCHOR_STATUS,
+  createManuscriptAnchor,
+  createStableTextHash,
+  normalizeManuscriptAnchor,
+} from "../manuscript-anchors/manuscript-anchor-service.js";
+import {
+  applyEditTransactionToAnchor,
+} from "../manuscript-anchors/manuscript-anchor-mutation-service.js";
 
-export const DRAFT_PROOFING_SCHEMA_VERSION = 1;
+export const DRAFT_PROOFING_SCHEMA_VERSION = 2;
 const LEGACY_DRAFT_PROOF_BACKDROP_COLOR_DEFAULT = "#d8d1c5";
 const LEGACY_DRAFT_PROOF_BACKDROP_COLOR_PRESET_DEFAULTS = Object.freeze([
   "#d8d1c5",
@@ -36,6 +45,15 @@ export const DRAFT_PROOF_RUN_STATUS = Object.freeze({
 
 const HEX_COLOR_PATTERN = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i;
 const COVERAGE_ADJACENCY_GAP = 0;
+const LOGICAL_CHANGE_BURST_WINDOW_MS = 1500;
+
+export const DRAFT_PROOF_CHANGE_STATE = Object.freeze({
+  APPLIED: "applied",
+  REVERTED: "reverted",
+  CONFLICT: "conflict",
+});
+
+export const DRAFT_PROOF_HISTORY_REPLAY_ORIGIN = "proofread-history-replay";
 
 export function createDefaultDraftProofSettings() {
   return {
@@ -60,8 +78,9 @@ export function normalizeDraftProofingState(candidate) {
     ? candidate
     : {};
   const settings = normalizeDraftProofSettings(source.settings ?? source);
+  const sourceSchemaVersion = Number.isInteger(source.schemaVersion) ? source.schemaVersion : 1;
   const runs = Array.isArray(source.runs)
-    ? source.runs.map((run) => normalizeDraftProofRun(run, settings)).filter(Boolean)
+    ? source.runs.map((run) => normalizeDraftProofRun(run, settings, { sourceSchemaVersion })).filter(Boolean)
     : [];
   const activeRunId = typeof source.activeRunId === "string" ? source.activeRunId.trim() : "";
   const hasActiveRun = runs.some((run) =>
@@ -568,7 +587,7 @@ export function pauseDraftProofRun(state, {
 
     changed = true;
     pausedRun = {
-      ...run,
+      ...closeDraftProofChangeBurst(run, now),
       status: DRAFT_PROOF_RUN_STATUS.PAUSED,
       updatedAt: now,
       resumePoint: normalizeDraftProofResumePoint(resumePoint) ?? run.resumePoint,
@@ -613,7 +632,7 @@ export function completeDraftProofRun(state, {
 
     changed = true;
     completedRun = {
-      ...run,
+      ...closeDraftProofChangeBurst(run, now),
       status: DRAFT_PROOF_RUN_STATUS.COMPLETED,
       updatedAt: now,
       completedAt: now,
@@ -789,36 +808,67 @@ export function updateDraftProofCoverageForTextEdit(state, {
   nextText = "",
   selectionStart = null,
   selectionEnd = null,
+  selectionBeforeInputStart = null,
+  selectionBeforeInputEnd = null,
+  origin = "manual-editor",
+  sourceRunId = "",
+  sourceChangeId = "",
   now = new Date().toISOString(),
 } = {}) {
   const normalized = normalizeDraftProofingState(state);
-  const activeRun = getActiveDraftProofRun(normalized);
   const normalizedSceneId = String(sceneId ?? "").trim();
-  if (!activeRun || !normalizedSceneId) {
+  if (!normalizedSceneId) {
     return {
       state: normalized,
-      run: activeRun,
+      run: getActiveDraftProofRun(normalized),
       changed: false,
       transaction: null,
-      reason: "no-active-run",
+      reason: "missing-scene",
     };
   }
 
-  const transaction = deriveManuscriptEditTransaction({
+  const derivedTransaction = deriveManuscriptEditTransaction({
     sceneId: normalizedSceneId,
     previousText,
     nextText,
     selectionStart,
     selectionEnd,
+    selectionBeforeInputStart,
+    selectionBeforeInputEnd,
     createdAt: now,
   });
-  if (!transaction) {
+  if (!derivedTransaction) {
     return {
       state: normalized,
-      run: activeRun,
+      run: getActiveDraftProofRun(normalized),
       changed: false,
       transaction: null,
       reason: "no-text-edit",
+    };
+  }
+
+  const transaction = {
+    ...derivedTransaction,
+    origin,
+    sourceRunId: String(sourceRunId ?? ""),
+    sourceChangeId: String(sourceChangeId ?? ""),
+  };
+  const historyResult = updateDraftProofHistoryForTransaction(normalized, {
+    transaction,
+    previousText,
+    nextText,
+    origin,
+    now,
+  });
+  const historyState = historyResult.state;
+  const activeRun = getActiveDraftProofRun(historyState);
+  if (!activeRun) {
+    return {
+      state: historyState,
+      run: null,
+      changed: historyResult.changed,
+      transaction,
+      reason: historyResult.changed ? historyResult.reason : "no-active-run",
     };
   }
 
@@ -833,9 +883,10 @@ export function updateDraftProofCoverageForTextEdit(state, {
     }))
     .filter(Boolean);
   const editRange = resolveEditCoverageRange(transaction, nextTextLength);
+  const includeEditCoverage = origin !== DRAFT_PROOF_HISTORY_REPLAY_ORIGIN;
   const nextSpans = mergeDraftProofCoverageSpans([
     ...shiftedSpans,
-    ...(editRange ? [{
+    ...(includeEditCoverage && editRange ? [{
       ...editRange,
       touchedAt: now,
     }] : []),
@@ -846,15 +897,15 @@ export function updateDraftProofCoverageForTextEdit(state, {
 
   if (serializeCoverageSpans(existingSpans) === serializeCoverageSpans(nextSpans)) {
     return {
-      state: normalized,
+      state: historyState,
       run: activeRun,
-      changed: false,
+      changed: historyResult.changed,
       transaction,
-      reason: "coverage-unchanged",
+      reason: historyResult.changed ? historyResult.reason : "coverage-unchanged",
     };
   }
 
-  const runs = normalized.runs.map((run) =>
+  const runs = historyState.runs.map((run) =>
     run.id === activeRun.id
       ? {
           ...run,
@@ -871,7 +922,7 @@ export function updateDraftProofCoverageForTextEdit(state, {
   const updatedRun = runs.find((run) => run.id === activeRun.id) ?? activeRun;
   return {
     state: {
-      ...normalized,
+      ...historyState,
       runs,
     },
     run: updatedRun,
@@ -948,6 +999,474 @@ export function createDraftProofCoverageProjections({
   }
 
   return projections;
+}
+
+// Intent: consume runtime-only manuscript edits into a proof-read-owned durable ledger and anchor drift state.
+export function updateDraftProofHistoryForTransaction(state, {
+  transaction = null,
+  previousText = "",
+  nextText = "",
+  origin = "manual-editor",
+  now = new Date().toISOString(),
+} = {}) {
+  const normalized = normalizeDraftProofingState(state);
+  if (!transaction || !transaction.sceneId || String(previousText ?? "") === String(nextText ?? "")) {
+    return { state: normalized, changed: false, change: null, reason: "no-text-edit" };
+  }
+
+  const activeRun = getActiveDraftProofRun(normalized);
+  const captureAllowed = Boolean(
+    activeRun?.changeHistoryAvailable &&
+    origin !== DRAFT_PROOF_HISTORY_REPLAY_ORIGIN,
+  );
+  const activeChanges = captureAllowed && Array.isArray(activeRun.changes) ? activeRun.changes : [];
+  const lastChange = activeChanges.at(-1) ?? null;
+  const coalesce = lastChange && canCoalesceDraftProofChange(lastChange, transaction, now);
+  const changeId = coalesce
+    ? lastChange.changeId
+    : captureAllowed
+      ? formatDraftProofChangeId(activeRun.id, resolveNextDraftProofChangeSequence(activeChanges))
+      : "";
+  const laterChangeIdentity = captureAllowed
+    ? {
+        changeId,
+        runId: activeRun.id,
+        iterationNumber: activeRun.iterationNumber,
+      }
+    : null;
+  let changed = false;
+  let capturedChange = null;
+  const runs = normalized.runs.map((run) => {
+    let nextChanges = (Array.isArray(run.changes) ? run.changes : []).map((change) => {
+      if (coalesce && run.id === activeRun.id && change.changeId === lastChange.changeId) {
+        const merged = mergeDraftProofLogicalChange(change, transaction, {
+          previousText,
+          nextText,
+          now,
+        });
+        capturedChange = merged;
+        changed = true;
+        return merged;
+      }
+
+      const anchorBeforeEdit = change.anchor;
+      const drift = applyEditTransactionToAnchor(anchorBeforeEdit, transaction, {
+        textLength: String(previousText ?? "").length,
+        now,
+      });
+      let nextChange = drift.changed
+        ? { ...change, anchor: drift.anchor, updatedAt: now }
+        : change;
+      if (drift.changed) {
+        changed = true;
+      }
+
+      if (
+        laterChangeIdentity &&
+        run.id !== laterChangeIdentity.runId &&
+        rangesOverlapForLineage(anchorBeforeEdit, transaction)
+      ) {
+        nextChange = {
+          ...nextChange,
+          lineage: upsertDraftProofLineage(nextChange.lineage, {
+            earlierChangeId: change.changeId,
+            laterChangeId: laterChangeIdentity.changeId,
+            earlierRunId: run.id,
+            laterRunId: laterChangeIdentity.runId,
+            relation: classifyDraftProofLineageRelation(anchorBeforeEdit, transaction),
+            createdAt: now,
+          }),
+          updatedAt: now,
+        };
+        changed = true;
+      }
+      return nextChange;
+    });
+
+    if (
+      origin === DRAFT_PROOF_HISTORY_REPLAY_ORIGIN &&
+      run.id === activeRun?.id &&
+      nextChanges.length
+    ) {
+      nextChanges = nextChanges.map((change, index) => index === nextChanges.length - 1
+        ? { ...change, burstClosedAt: now || transaction.createdAt || change.updatedAt }
+        : change);
+      changed = true;
+    }
+
+    if (captureAllowed && run.id === activeRun.id && !coalesce) {
+      capturedChange = createDraftProofLogicalChange({
+        run,
+        transaction,
+        previousText,
+        nextText,
+        now,
+        changeId,
+      });
+      nextChanges.push(capturedChange);
+      changed = true;
+    }
+
+    if (!run.changeHistoryAvailable) {
+      return run;
+    }
+    return {
+      ...run,
+      changes: nextChanges,
+      changeSummary: summarizeDraftProofChanges(nextChanges),
+      updatedAt: run.id === activeRun?.id && capturedChange ? now : run.updatedAt,
+    };
+  });
+
+  return {
+    state: changed ? { ...normalized, runs } : normalized,
+    changed,
+    change: capturedChange,
+    reason: captureAllowed
+      ? coalesce ? "logical-change-coalesced" : "logical-change-captured"
+      : changed ? "history-anchors-shifted" : origin === DRAFT_PROOF_HISTORY_REPLAY_ORIGIN
+        ? "history-replay-suppressed"
+        : "no-active-history-run",
+  };
+}
+
+export function summarizeDraftProofChanges(changes = []) {
+  const source = Array.isArray(changes) ? changes : [];
+  const summary = {
+    logicalChangeCount: source.length,
+    wordsAdded: 0,
+    wordsRemoved: 0,
+    wordsChanged: 0,
+    netWordDelta: 0,
+    appliedChangeCount: 0,
+    revertedChangeCount: 0,
+    changedLaterCount: 0,
+  };
+  for (const change of source) {
+    summary.wordsAdded += normalizeNonNegativeInteger(change?.wordsAdded);
+    summary.wordsRemoved += normalizeNonNegativeInteger(change?.wordsRemoved);
+    summary.wordsChanged += normalizeNonNegativeInteger(change?.wordsChanged);
+    summary.netWordDelta += normalizeInteger(change?.netWordDelta);
+    if (change?.state === DRAFT_PROOF_CHANGE_STATE.REVERTED) {
+      summary.revertedChangeCount += 1;
+    } else {
+      summary.appliedChangeCount += 1;
+    }
+    if (Array.isArray(change?.lineage) && change.lineage.length) {
+      summary.changedLaterCount += 1;
+    }
+  }
+  return summary;
+}
+
+export function preflightDraftProofChangeReversal(state, {
+  runId = "",
+  changeId = "",
+  action = "undo",
+  sceneTexts = {},
+} = {}) {
+  const normalized = normalizeDraftProofingState(state);
+  const target = resolveDraftProofChange(normalized, runId, changeId);
+  if (!target) {
+    return createDraftProofPreflightResult({ action, safe: false, reason: "missing-change" });
+  }
+  const { run, change } = target;
+  const normalizedAction = action === "redo" ? "redo" : "undo";
+  const requiredState = normalizedAction === "redo"
+    ? DRAFT_PROOF_CHANGE_STATE.REVERTED
+    : DRAFT_PROOF_CHANGE_STATE.APPLIED;
+  if (change.state !== requiredState) {
+    return createDraftProofPreflightResult({
+      action: normalizedAction,
+      run,
+      change,
+      safe: false,
+      reason: normalizedAction === "redo" ? "change-not-reverted" : "change-not-applied",
+    });
+  }
+
+  const sceneText = resolveSceneText(sceneTexts, change.sceneId);
+  if (sceneText === null) {
+    return createDraftProofPreflightResult({
+      action: normalizedAction,
+      run,
+      change,
+      safe: false,
+      unresolved: true,
+      reason: "unresolved-scene",
+    });
+  }
+  const expectedText = normalizedAction === "redo" ? change.beforeText : change.afterText;
+  const replacementText = normalizedAction === "redo" ? change.afterText : change.beforeText;
+  const location = resolveDraftProofExpectedTextLocation(change, sceneText, expectedText);
+  if (!location) {
+    const provenance = resolveDraftProofChangeLineage(normalized, change);
+    return createDraftProofPreflightResult({
+      action: normalizedAction,
+      run,
+      change,
+      safe: false,
+      conflict: true,
+      reason: provenance.length ? "changed-by-later-proofread" : "manuscript-changed",
+      provenance,
+    });
+  }
+
+  return createDraftProofPreflightResult({
+    action: normalizedAction,
+    run,
+    change,
+    safe: true,
+    reason: "safe",
+    startOffset: location.startOffset,
+    endOffset: location.endOffset,
+    expectedText,
+    replacementText,
+    provenance: resolveDraftProofChangeLineage(normalized, change),
+  });
+}
+
+export function planDraftProofRunReversal(state, {
+  runId = "",
+  action = "undo",
+  sceneTexts = {},
+} = {}) {
+  const normalized = normalizeDraftProofingState(state);
+  const run = normalized.runs.find((candidate) => candidate.id === String(runId ?? "").trim()) ?? null;
+  const normalizedAction = action === "redo" ? "redo" : "undo";
+  if (!run?.changeHistoryAvailable) {
+    return {
+      action: normalizedAction,
+      runId: run?.id ?? "",
+      available: false,
+      reason: run ? "change-history-unavailable" : "missing-run",
+      results: [],
+      safeOperations: [],
+      summary: createDraftProofRunPreflightSummary(0),
+    };
+  }
+  const eligibleState = normalizedAction === "redo"
+    ? DRAFT_PROOF_CHANGE_STATE.REVERTED
+    : DRAFT_PROOF_CHANGE_STATE.APPLIED;
+  const eligibleChanges = run.changes
+    .filter((change) => change.state === eligibleState)
+    .sort((left, right) => normalizedAction === "undo"
+      ? right.sequence - left.sequence
+      : left.sequence - right.sequence);
+  let simulatedState = normalized;
+  let simulatedSceneTexts = { ...sceneTexts };
+  const results = [];
+  for (const change of eligibleChanges) {
+    const result = preflightDraftProofChangeReversal(simulatedState, {
+      runId: run.id,
+      changeId: change.changeId,
+      action: normalizedAction,
+      sceneTexts: simulatedSceneTexts,
+    });
+    results.push(result);
+    if (result.safe) {
+      const simulation = executeDraftProofChangeReversal(simulatedState, {
+        runId: run.id,
+        changeId: change.changeId,
+        action: normalizedAction,
+        sceneTexts: simulatedSceneTexts,
+        now: "",
+      });
+      simulatedState = simulation.state;
+      simulatedSceneTexts = simulation.sceneTexts;
+    }
+  }
+  const safeOperations = results.filter((result) => result.safe);
+  const summary = createDraftProofRunPreflightSummary(eligibleChanges.length);
+  for (const result of results) {
+    if (result.safe) {
+      summary.safeCount += 1;
+    } else if (result.unresolved) {
+      summary.unresolvedCount += 1;
+    } else if (result.reason === "changed-by-later-proofread") {
+      summary.changedByLaterProofreadCount += 1;
+    } else {
+      summary.changedOutsideProofreadCount += 1;
+    }
+  }
+  return {
+    action: normalizedAction,
+    runId: run.id,
+    available: true,
+    reason: "preflight-complete",
+    results,
+    safeOperations,
+    summary,
+  };
+}
+
+// Intent: provide a deterministic pure executor for service tests and non-DOM callers; the editor shell applies the same plans through its normal mutation path.
+export function executeDraftProofChangeReversal(state, {
+  runId = "",
+  changeId = "",
+  action = "undo",
+  sceneTexts = {},
+  now = new Date().toISOString(),
+} = {}) {
+  const normalized = normalizeDraftProofingState(state);
+  const preflight = preflightDraftProofChangeReversal(normalized, {
+    runId,
+    changeId,
+    action,
+    sceneTexts,
+  });
+  if (!preflight.safe) {
+    return { state: normalized, sceneTexts: { ...sceneTexts }, changed: false, preflight };
+  }
+  const previousText = resolveSceneText(sceneTexts, preflight.sceneId);
+  const nextText = `${previousText.slice(0, preflight.startOffset)}${preflight.replacementText}${previousText.slice(preflight.endOffset)}`;
+  const derivedTransaction = deriveManuscriptEditTransaction({
+    sceneId: preflight.sceneId,
+    previousText,
+    nextText,
+    createdAt: now,
+  });
+  const transaction = {
+    ...derivedTransaction,
+    origin: DRAFT_PROOF_HISTORY_REPLAY_ORIGIN,
+    sourceRunId: preflight.sourceRunId,
+    sourceChangeId: preflight.sourceChangeId,
+  };
+  const drifted = updateDraftProofHistoryForTransaction(normalized, {
+    transaction,
+    previousText,
+    nextText,
+    origin: DRAFT_PROOF_HISTORY_REPLAY_ORIGIN,
+    now,
+  });
+  const marked = markDraftProofChangeReversal(drifted.state, {
+    runId: preflight.runId,
+    changeId: preflight.changeId,
+    action: preflight.action,
+    now,
+  });
+  return {
+    state: marked.state,
+    sceneTexts: { ...sceneTexts, [preflight.sceneId]: nextText },
+    changed: marked.changed,
+    preflight,
+    transaction,
+  };
+}
+
+export function executeDraftProofRunReversal(state, {
+  runId = "",
+  action = "undo",
+  sceneTexts = {},
+  now = new Date().toISOString(),
+} = {}) {
+  const preflight = planDraftProofRunReversal(state, { runId, action, sceneTexts });
+  let nextState = normalizeDraftProofingState(state);
+  let nextSceneTexts = { ...sceneTexts };
+  const applied = [];
+  const skipped = preflight.results.filter((result) => !result.safe);
+  for (const operation of preflight.safeOperations) {
+    const execution = executeDraftProofChangeReversal(nextState, {
+      runId,
+      changeId: operation.changeId,
+      action: preflight.action,
+      sceneTexts: nextSceneTexts,
+      now,
+    });
+    if (execution.changed) {
+      nextState = execution.state;
+      nextSceneTexts = execution.sceneTexts;
+      applied.push(execution.preflight);
+    } else {
+      skipped.push(execution.preflight);
+    }
+  }
+  return {
+    state: nextState,
+    sceneTexts: nextSceneTexts,
+    changed: applied.length > 0,
+    preflight,
+    applied,
+    skipped,
+  };
+}
+
+export function markDraftProofChangeReversal(state, {
+  runId = "",
+  changeId = "",
+  action = "undo",
+  now = new Date().toISOString(),
+} = {}) {
+  const normalized = normalizeDraftProofingState(state);
+  const normalizedAction = action === "redo" ? "redo" : "undo";
+  let changed = false;
+  const runs = normalized.runs.map((run) => {
+    if (run.id !== runId || !run.changeHistoryAvailable) {
+      return run;
+    }
+    const changes = run.changes.map((change) => {
+      if (change.changeId !== changeId) {
+        return change;
+      }
+      const stateValue = normalizedAction === "redo"
+        ? DRAFT_PROOF_CHANGE_STATE.APPLIED
+        : DRAFT_PROOF_CHANGE_STATE.REVERTED;
+      if (change.state === stateValue) {
+        return change;
+      }
+      changed = true;
+      return {
+        ...change,
+        state: stateValue,
+        updatedAt: now,
+        revertedAt: normalizedAction === "undo" ? now : change.revertedAt,
+        reappliedAt: normalizedAction === "redo" ? now : change.reappliedAt,
+      };
+    });
+    return changed
+      ? { ...run, changes, changeSummary: summarizeDraftProofChanges(changes), updatedAt: now }
+      : run;
+  });
+  return {
+    state: changed ? { ...normalized, runs } : normalized,
+    changed,
+    reason: changed ? `change-${normalizedAction === "redo" ? "reapplied" : "reverted"}` : "change-state-unchanged",
+  };
+}
+
+export function resolveDraftProofChangeLineage(state, changeOrId) {
+  const normalized = normalizeDraftProofingState(state);
+  const change = typeof changeOrId === "string"
+    ? normalized.runs.flatMap((run) => run.changes).find((candidate) => candidate.changeId === changeOrId)
+    : changeOrId;
+  if (!change) {
+    return [];
+  }
+  const changeIndex = new Map();
+  for (const run of normalized.runs) {
+    for (const candidate of run.changes) {
+      changeIndex.set(candidate.changeId, { run, change: candidate });
+    }
+  }
+  const results = [];
+  const visited = new Set();
+  const queue = [...(Array.isArray(change.lineage) ? change.lineage : [])];
+  while (queue.length) {
+    const relationship = queue.shift();
+    if (!relationship?.laterChangeId || visited.has(relationship.laterChangeId)) {
+      continue;
+    }
+    visited.add(relationship.laterChangeId);
+    const target = changeIndex.get(relationship.laterChangeId);
+    if (!target) {
+      continue;
+    }
+    results.push({ relationship, run: target.run, change: target.change });
+    queue.push(...(Array.isArray(target.change.lineage) ? target.change.lineage : []));
+  }
+  return results.sort((left, right) => (
+    left.run.iterationNumber - right.run.iterationNumber || left.change.sequence - right.change.sequence
+  ));
 }
 
 export function pruneDraftProofCoverageForScenes(state, {
@@ -1108,7 +1627,441 @@ export function subtractDraftProofCoverageSpans(spans = [], range = null, {
     }));
 }
 
-function normalizeDraftProofRun(candidate, fallbackSettings = createDefaultDraftProofSettings()) {
+function createDraftProofLogicalChange({
+  run,
+  transaction,
+  previousText,
+  nextText,
+  now,
+  changeId,
+}) {
+  const beforeText = String(transaction.deletedText ?? "");
+  const afterText = String(transaction.insertedText ?? "");
+  const startOffset = transaction.startOffset;
+  const anchor = createDraftProofChangeAnchor({
+    changeId,
+    sceneId: transaction.sceneId,
+    text: nextText,
+    startOffset,
+    endOffset: startOffset + afterText.length,
+    now,
+    editId: transaction.editId,
+  });
+  return normalizeDraftProofChange({
+    changeId,
+    runId: run.id,
+    iterationNumber: run.iterationNumber,
+    sequence: resolveNextDraftProofChangeSequence(run.changes),
+    sceneId: transaction.sceneId,
+    createdAt: now,
+    updatedAt: now,
+    beforeText,
+    afterText,
+    originalStartOffset: startOffset,
+    originalEndOffset: transaction.endOffset,
+    anchor,
+    beforeHash: createStableTextHash(beforeText),
+    afterHash: createStableTextHash(afterText),
+    changeType: classifyDraftProofChangeType(beforeText, afterText),
+    state: DRAFT_PROOF_CHANGE_STATE.APPLIED,
+    revertedAt: "",
+    reappliedAt: "",
+    burstClosedAt: "",
+    lineage: [],
+  }, {
+    runId: run.id,
+    iterationNumber: run.iterationNumber,
+    sequence: resolveNextDraftProofChangeSequence(run.changes),
+  });
+}
+
+function mergeDraftProofLogicalChange(change, transaction, {
+  previousText,
+  nextText,
+  now,
+}) {
+  const currentStart = change.anchor.startOffset;
+  const currentEnd = change.anchor.endOffset;
+  const unionStart = Math.min(currentStart, transaction.startOffset);
+  const unionEnd = Math.max(currentEnd, transaction.endOffset);
+  const baselineStart = unionStart <= currentStart ? unionStart : change.originalStartOffset;
+  const baselineEnd = unionEnd >= currentEnd
+    ? unionEnd + change.beforeText.length - change.afterText.length
+    : change.originalEndOffset;
+  const prefix = unionStart < currentStart ? String(previousText).slice(unionStart, currentStart) : "";
+  const suffix = unionEnd > currentEnd ? String(previousText).slice(currentEnd, unionEnd) : "";
+  const beforeText = `${prefix}${change.beforeText}${suffix}`;
+  const nextUnionEnd = Math.max(unionStart, unionEnd + transaction.delta);
+  const afterText = String(nextText).slice(unionStart, nextUnionEnd);
+  const anchor = createDraftProofChangeAnchor({
+    changeId: change.changeId,
+    sceneId: change.sceneId,
+    text: nextText,
+    startOffset: unionStart,
+    endOffset: unionStart + afterText.length,
+    now,
+    editId: transaction.editId,
+  });
+  return normalizeDraftProofChange({
+    ...change,
+    updatedAt: now,
+    beforeText,
+    afterText,
+    originalStartOffset: baselineStart,
+    originalEndOffset: baselineEnd,
+    anchor,
+    beforeHash: createStableTextHash(beforeText),
+    afterHash: createStableTextHash(afterText),
+    changeType: classifyDraftProofChangeType(beforeText, afterText),
+  }, {
+    runId: change.runId,
+    iterationNumber: change.iterationNumber,
+    sequence: change.sequence,
+  });
+}
+
+function createDraftProofChangeAnchor({
+  changeId,
+  sceneId,
+  text,
+  startOffset,
+  endOffset,
+  now,
+  editId,
+}) {
+  return createManuscriptAnchor({
+    anchorId: `proofread-change-anchor:${changeId}`,
+    sceneId,
+    startOffset,
+    endOffset,
+    text,
+    status: MANUSCRIPT_ANCHOR_STATUS.RESOLVED,
+    lastTouchedAt: now,
+    lastTouchedByEditId: editId,
+  });
+}
+
+function normalizeDraftProofChange(candidate, {
+  runId = "",
+  iterationNumber = 1,
+  sequence = 1,
+} = {}) {
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+    return null;
+  }
+  const changeId = String(candidate.changeId ?? candidate.id ?? "").trim();
+  const sceneId = String(candidate.sceneId ?? candidate.anchor?.sceneId ?? "").trim();
+  if (!changeId || !sceneId) {
+    return null;
+  }
+  const beforeText = String(candidate.beforeText ?? "");
+  const afterText = String(candidate.afterText ?? "");
+  const originalStartOffset = normalizeNonNegativeInteger(candidate.originalStartOffset);
+  const originalEndOffset = Math.max(originalStartOffset, normalizeNonNegativeInteger(
+    candidate.originalEndOffset ?? originalStartOffset + beforeText.length,
+  ));
+  const anchor = normalizeManuscriptAnchor(candidate.anchor, {
+    defaultSceneId: sceneId,
+    allowCollapsed: true,
+  }) ?? createDraftProofChangeAnchor({
+    changeId,
+    sceneId,
+    text: afterText,
+    startOffset: 0,
+    endOffset: afterText.length,
+    now: candidate.updatedAt ?? candidate.createdAt ?? "",
+    editId: "",
+  });
+  const statistics = calculateDraftProofChangeStatistics(beforeText, afterText);
+  return {
+    changeId,
+    runId: String(candidate.runId ?? runId).trim() || runId,
+    iterationNumber: normalizePositiveInteger(candidate.iterationNumber, iterationNumber),
+    sequence: normalizePositiveInteger(candidate.sequence, sequence),
+    sceneId,
+    createdAt: typeof candidate.createdAt === "string" ? candidate.createdAt : "",
+    updatedAt: typeof candidate.updatedAt === "string" ? candidate.updatedAt : "",
+    beforeText,
+    afterText,
+    originalStartOffset,
+    originalEndOffset,
+    anchor,
+    beforeHash: typeof candidate.beforeHash === "string" && candidate.beforeHash
+      ? candidate.beforeHash
+      : createStableTextHash(beforeText),
+    afterHash: typeof candidate.afterHash === "string" && candidate.afterHash
+      ? candidate.afterHash
+      : createStableTextHash(afterText),
+    changeType: classifyDraftProofChangeType(beforeText, afterText),
+    ...statistics,
+    state: Object.values(DRAFT_PROOF_CHANGE_STATE).includes(candidate.state)
+      ? candidate.state
+      : DRAFT_PROOF_CHANGE_STATE.APPLIED,
+    revertedAt: typeof candidate.revertedAt === "string" ? candidate.revertedAt : "",
+    reappliedAt: typeof candidate.reappliedAt === "string" ? candidate.reappliedAt : "",
+    burstClosedAt: typeof candidate.burstClosedAt === "string" ? candidate.burstClosedAt : "",
+    lineage: normalizeDraftProofLineage(candidate.lineage),
+  };
+}
+
+function calculateDraftProofChangeStatistics(beforeText, afterText) {
+  const wordsRemoved = countDraftProofWords(beforeText);
+  const wordsAdded = countDraftProofWords(afterText);
+  return {
+    wordsAdded,
+    wordsRemoved,
+    wordsChanged: Math.max(wordsRemoved, wordsAdded),
+    netWordDelta: wordsAdded - wordsRemoved,
+  };
+}
+
+function classifyDraftProofChangeType(beforeText, afterText) {
+  if (!beforeText && afterText) {
+    return "insertion";
+  }
+  if (beforeText && !afterText) {
+    return "deletion";
+  }
+  return "replacement";
+}
+
+function canCoalesceDraftProofChange(change, transaction, now) {
+  if (
+    !change ||
+    change.state !== DRAFT_PROOF_CHANGE_STATE.APPLIED ||
+    Boolean(change.burstClosedAt) ||
+    change.sceneId !== transaction.sceneId
+  ) {
+    return false;
+  }
+  const previousAt = Date.parse(change.updatedAt || change.createdAt);
+  const currentAt = Date.parse(now || transaction.createdAt);
+  if (
+    Number.isFinite(previousAt) &&
+    Number.isFinite(currentAt) &&
+    currentAt - previousAt > LOGICAL_CHANGE_BURST_WINDOW_MS
+  ) {
+    return false;
+  }
+  const start = Number(change.anchor?.startOffset);
+  const end = Number(change.anchor?.endOffset);
+  return Number.isInteger(start) && Number.isInteger(end) && (
+    transaction.startOffset <= end + 1 && transaction.endOffset >= Math.max(0, start - 1)
+  );
+}
+
+function rangesOverlapForLineage(anchor, transaction) {
+  const start = Number(anchor?.startOffset);
+  const end = Number(anchor?.endOffset);
+  if (!Number.isInteger(start) || !Number.isInteger(end)) {
+    return false;
+  }
+  if (start === end) {
+    return transaction.startOffset <= start && transaction.endOffset >= start;
+  }
+  if (transaction.startOffset === transaction.endOffset) {
+    return transaction.startOffset >= start && transaction.startOffset <= end;
+  }
+  return transaction.startOffset < end && transaction.endOffset > start;
+}
+
+function classifyDraftProofLineageRelation(anchor, transaction) {
+  const start = Number(anchor?.startOffset);
+  const end = Number(anchor?.endOffset);
+  if (transaction.startOffset <= start && transaction.endOffset >= end) {
+    return transaction.insertedLength > 0 ? "replaces" : "removes";
+  }
+  if (transaction.startOffset === transaction.endOffset) {
+    return "extends";
+  }
+  return "overlaps";
+}
+
+function upsertDraftProofLineage(lineage, relationship) {
+  const source = normalizeDraftProofLineage(lineage);
+  const index = source.findIndex((candidate) => candidate.laterChangeId === relationship.laterChangeId);
+  if (index < 0) {
+    return [...source, relationship];
+  }
+  return source.map((candidate, candidateIndex) => candidateIndex === index
+    ? { ...candidate, relation: relationship.relation }
+    : candidate);
+}
+
+function normalizeDraftProofLineage(lineage) {
+  return (Array.isArray(lineage) ? lineage : [])
+    .map((candidate) => ({
+      earlierChangeId: String(candidate?.earlierChangeId ?? "").trim(),
+      laterChangeId: String(candidate?.laterChangeId ?? "").trim(),
+      earlierRunId: String(candidate?.earlierRunId ?? "").trim(),
+      laterRunId: String(candidate?.laterRunId ?? "").trim(),
+      relation: ["overlaps", "replaces", "extends", "removes"].includes(candidate?.relation)
+        ? candidate.relation
+        : "overlaps",
+      createdAt: typeof candidate?.createdAt === "string" ? candidate.createdAt : "",
+    }))
+    .filter((candidate) => candidate.earlierChangeId && candidate.laterChangeId && candidate.earlierRunId && candidate.laterRunId);
+}
+
+function resolveDraftProofExpectedTextLocation(change, sceneText, expectedText) {
+  const source = String(sceneText ?? "");
+  const expected = String(expectedText ?? "");
+  const anchorStart = clampOffset(change.anchor?.startOffset, source.length);
+  const anchorEnd = Math.min(source.length, anchorStart + expected.length);
+  if (source.slice(anchorStart, anchorEnd) === expected && (
+    expected || doesCollapsedDraftProofContextMatch(change.anchor, source, anchorStart)
+  )) {
+    return { startOffset: anchorStart, endOffset: anchorEnd };
+  }
+
+  if (!expected) {
+    const candidates = [];
+    for (let offset = 0; offset <= source.length; offset += 1) {
+      if (doesCollapsedDraftProofContextMatch(change.anchor, source, offset)) {
+        candidates.push(offset);
+      }
+    }
+    return selectNearestUniqueOffset(candidates, anchorStart);
+  }
+
+  const candidates = [];
+  let offset = source.indexOf(expected);
+  while (offset >= 0) {
+    candidates.push(offset);
+    offset = source.indexOf(expected, offset + 1);
+  }
+  const selected = selectNearestUniqueOffset(candidates, anchorStart);
+  return selected ? { startOffset: selected.startOffset, endOffset: selected.startOffset + expected.length } : null;
+}
+
+function doesCollapsedDraftProofContextMatch(anchor, source, offset) {
+  const prefix = String(anchor?.prefixContext ?? "");
+  const suffix = String(anchor?.suffixContext ?? "");
+  if (!prefix && !suffix) {
+    return false;
+  }
+  return (!prefix || source.slice(Math.max(0, offset - prefix.length), offset) === prefix)
+    && (!suffix || source.slice(offset, offset + suffix.length) === suffix);
+}
+
+function selectNearestUniqueOffset(offsets, expectedOffset) {
+  if (!offsets.length) {
+    return null;
+  }
+  const ranked = offsets
+    .map((startOffset) => ({ startOffset, endOffset: startOffset, distance: Math.abs(startOffset - expectedOffset) }))
+    .sort((left, right) => left.distance - right.distance || left.startOffset - right.startOffset);
+  if (ranked.length > 1 && ranked[0].distance === ranked[1].distance) {
+    return null;
+  }
+  return ranked[0];
+}
+
+function createDraftProofPreflightResult({
+  action,
+  run = null,
+  change = null,
+  safe = false,
+  conflict = false,
+  unresolved = false,
+  reason = "",
+  startOffset = null,
+  endOffset = null,
+  expectedText = "",
+  replacementText = "",
+  provenance = [],
+}) {
+  return {
+    action: action === "redo" ? "redo" : "undo",
+    runId: run?.id ?? "",
+    changeId: change?.changeId ?? "",
+    sequence: change?.sequence ?? 0,
+    sceneId: change?.sceneId ?? "",
+    safe,
+    conflict,
+    unresolved,
+    reason,
+    startOffset,
+    endOffset,
+    expectedText,
+    replacementText,
+    provenance,
+    origin: DRAFT_PROOF_HISTORY_REPLAY_ORIGIN,
+    sourceRunId: run?.id ?? "",
+    sourceChangeId: change?.changeId ?? "",
+  };
+}
+
+function resolveDraftProofChange(state, runId, changeId) {
+  const run = state.runs.find((candidate) => candidate.id === String(runId ?? "").trim()) ?? null;
+  const change = run?.changes.find((candidate) => candidate.changeId === String(changeId ?? "").trim()) ?? null;
+  return run && change ? { run, change } : null;
+}
+
+function resolveSceneText(sceneTexts, sceneId) {
+  if (typeof sceneTexts === "function") {
+    const value = sceneTexts(sceneId);
+    return typeof value === "string" ? value : null;
+  }
+  return sceneTexts && typeof sceneTexts === "object" && typeof sceneTexts[sceneId] === "string"
+    ? sceneTexts[sceneId]
+    : null;
+}
+
+function createDraftProofRunPreflightSummary(totalCount) {
+  return {
+    totalCount,
+    safeCount: 0,
+    changedByLaterProofreadCount: 0,
+    changedOutsideProofreadCount: 0,
+    unresolvedCount: 0,
+  };
+}
+
+function countDraftProofWords(text) {
+  return String(text ?? "").match(/[\p{L}\p{N}]+(?:['’\-][\p{L}\p{N}]+)*/gu)?.length ?? 0;
+}
+
+function formatDraftProofChangeId(runId, sequence) {
+  return `${runId}-change-${String(sequence).padStart(4, "0")}`;
+}
+
+function resolveNextDraftProofChangeSequence(changes) {
+  return (Array.isArray(changes) ? changes : []).reduce((maximum, change) => (
+    Math.max(maximum, normalizePositiveInteger(change?.sequence, 0))
+  ), 0) + 1;
+}
+
+function normalizePositiveInteger(value, fallback = 1) {
+  const number = Number(value);
+  return Number.isInteger(number) && number > 0 ? number : fallback;
+}
+
+function normalizeNonNegativeInteger(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0, Math.floor(number)) : 0;
+}
+
+function normalizeInteger(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.trunc(number) : 0;
+}
+
+function closeDraftProofChangeBurst(run, now) {
+  if (!run?.changeHistoryAvailable || !Array.isArray(run.changes) || !run.changes.length) {
+    return run;
+  }
+  return {
+    ...run,
+    changes: run.changes.map((change, index) => index === run.changes.length - 1
+      ? { ...change, burstClosedAt: now || change.updatedAt }
+      : change),
+  };
+}
+
+function normalizeDraftProofRun(candidate, fallbackSettings = createDefaultDraftProofSettings(), {
+  sourceSchemaVersion = DRAFT_PROOFING_SCHEMA_VERSION,
+} = {}) {
   if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
     return null;
   }
@@ -1137,6 +2090,18 @@ function normalizeDraftProofRun(candidate, fallbackSettings = createDefaultDraft
     }
   }
 
+  const changeHistoryAvailable = candidate.changeHistoryAvailable === true
+    || (candidate.changeHistoryAvailable !== false && sourceSchemaVersion >= DRAFT_PROOFING_SCHEMA_VERSION);
+  const changes = changeHistoryAvailable && Array.isArray(candidate.changes)
+    ? candidate.changes
+      .map((change, index) => normalizeDraftProofChange(change, {
+        runId: id,
+        iterationNumber: Number.isInteger(candidate.iterationNumber) ? candidate.iterationNumber : extractDraftProofRunIteration(id),
+        sequence: index + 1,
+      }))
+      .filter(Boolean)
+    : [];
+
   return {
     id,
     label: typeof candidate.label === "string" && candidate.label.trim() ? candidate.label.trim() : id,
@@ -1150,6 +2115,11 @@ function normalizeDraftProofRun(candidate, fallbackSettings = createDefaultDraft
     completedAt: typeof candidate.completedAt === "string" ? candidate.completedAt : "",
     resumePoint: normalizeDraftProofResumePoint(candidate.resumePoint),
     coverageByScene,
+    changeHistoryAvailable,
+    changes,
+    changeSummary: changeHistoryAvailable
+      ? summarizeDraftProofChanges(changes)
+      : null,
   };
 }
 
@@ -1303,6 +2273,9 @@ function createDraftProofRunRecord(iteration, {
     updatedAt: now,
     completedAt: "",
     coverageByScene: {},
+    changeHistoryAvailable: true,
+    changes: [],
+    changeSummary: summarizeDraftProofChanges([]),
   };
 }
 

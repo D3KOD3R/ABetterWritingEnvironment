@@ -92,10 +92,14 @@ export function runManuscriptInputControllerTest() {
   assert.equal(highlightedCommit.selectionEnd, 4);
 
   let replacementCommit = null;
+  let replacementAnchorOptions = null;
   const replacementController = createManuscriptInputController({
     getSceneText: () => "aaaa",
     getSceneInlineFormatRanges: () => [],
     getInlineFormattingState: () => ({}),
+    updateAnchoredRecordsForTextEdit: (_sceneId, _previousText, _nextText, options) => {
+      replacementAnchorOptions = options;
+    },
     commitSceneTextEdit: (mutation) => {
       replacementCommit = mutation;
     },
@@ -120,6 +124,8 @@ export function runManuscriptInputControllerTest() {
   assert.equal(replacementCommit.nextText, "aaaaa");
   assert.equal(replacementCommit.selectionBeforeInputStart, 0);
   assert.equal(replacementCommit.selectionBeforeInputEnd, 1);
+  assert.equal(replacementAnchorOptions.selectionBeforeInputStart, 0);
+  assert.equal(replacementAnchorOptions.selectionBeforeInputEnd, 1);
 
   const alignedBlocks = updateSceneBlocksForTextEdit({
     sceneId: "scene-highlight",

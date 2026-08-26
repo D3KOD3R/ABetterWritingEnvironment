@@ -23,6 +23,9 @@ export function runProjectActivationStateTest() {
     },
     writingTargetState: { previous: true },
     draftProofMarksVisible: false,
+    draftProofSettingsWindowOpen: true,
+    draftProofSettingsSelectedRunId: "stale-run",
+    draftProofHistoryReview: { reviewRunId: "stale-run" },
   };
   const service = createProjectActivationStateService({
     state,
@@ -156,6 +159,9 @@ export function runProjectActivationStateTest() {
   assert.equal(state.worldSpineManuscriptPaneWidth, 372);
   assert.equal(state.worldSpinePanelLayoutProfiles["workspace-1600"].eventRailWidth, 248);
   assert.equal(state.worldSpineRightPaneMode, "related-cards");
+  assert.equal(state.draftProofSettingsWindowOpen, false);
+  assert.equal(state.draftProofSettingsSelectedRunId, "");
+  assert.equal(state.draftProofHistoryReview, null);
 
   state.draftProofMarksVisible = true;
   service.applyProjectRecordToState({
