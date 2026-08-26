@@ -1,6 +1,6 @@
 # Shared Git Workflow Agent
 
-Use whenever **Codex or ChatGPT** is about to create, select, sync, or retire a task branch/worktree; place an approved implementation/design spec onto a task branch; choose the destination of a Git write; or integrate task work. Do not load it for read-only repository inspection or ordinary edits inside an already-assigned task worktree when no Git topology or destination decision is being made.
+Use whenever **Codex or ChatGPT** is about to create, select, sync, or retire a task branch/worktree; place an approved implementation/design spec onto a task branch; choose the destination of a Git write; preserve task-scoped debug evidence; or integrate task work. Do not load it for read-only repository inspection or ordinary edits inside an already-assigned task worktree when no Git topology, destination, or evidence decision is being made.
 
 ## Core policy
 
@@ -28,10 +28,13 @@ baseSha
 designPath
 approvedDesignSha
 agentRoutes
+startedAt
+sandpit
+debugEvidencePath
 status
 ```
 
-The task ID should remain stable from design through implementation, verification, integration, and retirement. If an existing branch or worktree conflicts with the recorded task identity, stop as `BLOCKED`; do not create an alias branch to work around the conflict.
+`startedAt`, `sandpit`, and `debugEvidencePath` may be absent when no runtime evidence is relevant. The task ID should remain stable from design through implementation, verification, integration, and retirement. If an existing branch or worktree conflicts with the recorded task identity, stop as `BLOCKED`; do not create an alias branch to work around the conflict.
 
 ## Design/spec placement
 
@@ -39,6 +42,18 @@ The task ID should remain stable from design through implementation, verificatio
 - Record the approved design commit in the task handoff. Codex should begin from the assigned task worktree and read that design there; do not ask Codex to pull/sync `main` just to discover or verify the spec.
 - If an approved design already exists on `main`, it may be referenced by SHA without updating a dirty local `main` checkout. The task branch should still become the implementation workspace.
 - Task-specific design/docs normally reach `main` when the task is integrated. A documentation-only change intended to land independently may use a `docs/...` branch instead.
+
+## Task-scoped debug evidence
+
+Runtime logs are useful debugging evidence but are not normal production source. Do **not** stage every `.log`, test snapshot, archive, or runtime artifact merely because its timestamp overlaps a task.
+
+- When manual testing or implementation exposes a runtime/UI defect that may need ChatGPT or later Codex diagnosis, preserve a **bounded task evidence bundle before relevant logs rotate, are deleted, or are overwritten**.
+- Correlate evidence primarily by the assigned task worktree/sandpit/task identity. Use timestamps only as a secondary bound; a time window alone can capture unrelated sessions.
+- Preserve only the evidence needed to reproduce or diagnose the observed behaviour: relevant log excerpts, timestamps/run IDs, errors/warnings, nearby state transitions, reproduction steps, and the implementation commit or checkpoint SHA.
+- Redact credentials, tokens, unrelated personal/project content, and unrelated task output. Do not commit whole log archives when a concise excerpt is sufficient.
+- Until deterministic evidence tooling exists, a bounded Markdown/text bundle may be committed on the **task branch only** under `task-evidence/<task-id>/`. Record its path in the task handoff or completion report so ChatGPT can fetch it directly from GitHub.
+- Task evidence is debugging material, not automatically durable product documentation. Do not merge it into `main` unless it has lasting value and is explicitly promoted; otherwise integration/retirement should omit or remove it while durable learnings become tests, code comments, or appropriate documentation.
+- If no runtime issue occurred and no later diagnosis is expected, do not create evidence merely for ceremony.
 
 ## Lifecycle
 
@@ -49,6 +64,7 @@ plan/approve
 -> start task
 -> commit authoritative spec
 -> implement in canonical worktree
+-> preserve bounded debug evidence when needed
 -> supervisor verification
 -> user acceptance / finalise
 -> integrate to main
@@ -66,6 +82,6 @@ plan/approve
 
 ## Deterministic tooling contract
 
-The repository currently has deterministic Git-state and verification support through `tools/repo-supervisor/`, but task-scoped branch/worktree creation is still pending. Do not invent a command that does not yet exist.
+The repository currently has deterministic Git-state and verification support through `tools/repo-supervisor/`, but task-scoped branch/worktree creation and debug-evidence capture are still pending. Do not invent a command that does not yet exist.
 
-The intended task-workflow manager will eventually resolve/fetch the base, create or reuse the canonical branch/worktree, persist local task identity under ignored `.tools/` state, and emit a compact `READY` or `BLOCKED` handoff. The language model should consume that handoff instead of rediscovering Git topology.
+The intended task-workflow manager will eventually resolve/fetch the base, create or reuse the canonical branch/worktree, persist local task identity under ignored `.tools/` state, emit a compact `READY` or `BLOCKED` handoff, and capture bounded task-correlated debug evidence when requested. The language model should consume those deterministic handoffs/evidence bundles instead of rediscovering Git topology or scanning broad runtime logs.
