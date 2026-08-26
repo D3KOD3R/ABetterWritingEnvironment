@@ -2,6 +2,8 @@
 
 Use whenever the user says `finalise work`. Close the current session from repository evidence, not chat memory. Do not claim unfinished work is complete.
 
+When closeout involves task branch/worktree identity, push destination, integration, or retirement, follow `agents/GitWorkflowAgent.md`. `finalise work` may commit and push the current task branch under the procedure below; it does not by itself authorize merging into `main` or deleting the task branch/worktree.
+
 ## Procedure
 
 1. Start with deterministic repository-supervisor handoff or compact report, then inspect Git status and the intended task diff. Separate intentional source/test/docs changes from runtime artifacts such as `SaveTestFile/`, caches, logs, generated project files, and local desktop state.

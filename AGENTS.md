@@ -18,6 +18,7 @@ Read only the narrowest agent file for the responsibility being **modified**. Ad
 
 | Responsibility being modified | Read |
 | --- | --- |
+| Git task identity, branch/worktree lifecycle, cross-branch implementation-spec placement, integration, or retirement | `agents/GitWorkflowAgent.md` |
 | Author-facing feature addition or behaviour change, `Feature working`, or `bench` | `agents/FeatureWorkAgent.md` |
 | Editor shell, host boundary, feature slice, editor state, or adapter | `agents/EditorAgent.md` |
 | Save/load/autosave/import/export or project-cache semantics | `agents/PersistenceAgent.md` |
@@ -34,6 +35,8 @@ Examples: read-only World Spine navigation loads `WorldbuildingAgent.md`; implem
 
 Do not load `TestSupervisorAgent.md` merely to use or run the existing supervisor, consume a supervisor handoff/report, inspect existing tests, identify existing coverage for ordinary feature work, or run focused tests.
 
+`agents/GitWorkflowAgent.md` is explicitly shared by Codex and ChatGPT for connected Git writes that establish or change task branch/worktree identity, place implementation specs across branches, integrate work, or retire task branches/worktrees. Ordinary edits inside an already-assigned task worktree do not require it.
+
 ## Special workflows
 
 - `fix issues`: read `voiceissues/VoiceIssuesAgent.md` before the active issue list and follow it.
@@ -41,4 +44,4 @@ Do not load `TestSupervisorAgent.md` merely to use or run the existing superviso
 - `retrace steps on task ...`: read `agentContextRetrace.md` and follow its recovery procedure before continuing.
 - `Feature working` and `bench`: read `agents/FeatureWorkAgent.md` before acting.
 
-Agent files state what Codex must or must not do. Architecture documents explain how a subsystem works. Product documents explain what a feature is meant to accomplish. Keep each rule in its owning location wherever practical.
+Agent files state what repository assistants must or must not do. Architecture documents explain how a subsystem works. Product documents explain what a feature is meant to accomplish. Keep each rule in its owning location wherever practical.
