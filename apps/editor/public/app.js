@@ -503,9 +503,15 @@ import {
   applyWorldSpineLocationAssignmentToSceneRecord,
   applyWorldSpineLocationAssignmentToStructureDrafts,
   applyWorldSpineLocationAssignmentToWorldPlaceLinks,
+  applyWorldSpineUnplacementToSceneEventTags,
+  applyWorldSpineUnplacementToSceneRecord,
+  applyWorldSpineUnplacementToStructureDrafts,
   createWorldSpineLocationRowAssignment,
+  createWorldSpineUnplacedLocationRowAssignment,
   hasWorldSpineLocationAssignment,
+  hasWorldSpineUnplacedLocationRowAssignment,
   upsertWorldSpineLocationAssignmentInSceneStore,
+  upsertWorldSpineUnplacementInSceneStore,
 } from "./features/world-spine/world-spine-location-row-service.js";
 import {
   applySceneWorldSpineMetadataToDraft,
@@ -523,6 +529,7 @@ import {
   WORLDBUILDING_CATALOGUE_IMAGE_MAX_BYTES,
   addParallelWorldSpine,
   applyWorldSpineLocationRowNameToWorld,
+  applyWorldSpineLocationRowUnplacementToWorld,
   applyWorldSpineLocationImageToWorld,
   applyWorldbuildingCategoryLocationRoleToWorld,
   applyWorldbuildingCatalogueItemImageToWorld,
@@ -823,6 +830,7 @@ const state = {
   worldSpineManuscriptPaneWidth: DEFAULT_WORLD_SPINE_MANUSCRIPT_PANE_WIDTH,
   worldSpinePanelLayoutProfiles: {},
   worldSpineRightPaneMode: normalizeWorldSpineRightPaneMode(),
+  worldSpineUnplacedDockCollapsed: false,
   worldSpineRelatedCardExpandedKey: "",
   worldSpineSublocationComposer: null,
   worldSpineLocationFilter: createDefaultWorldSpineLocationFilterState(),
@@ -3005,6 +3013,16 @@ function wireEvents() {
 
     if (action === "save-world-spine-location-row") {
       saveWorldSpineLocationRowFromForm();
+      return;
+    }
+
+    if (action === "delete-world-spine-location-row") {
+      deleteWorldSpineLocationRowFromForm();
+      return;
+    }
+
+    if (action === "toggle-world-spine-unplaced-dock") {
+      toggleWorldSpineUnplacedDock();
       return;
     }
 
@@ -10601,6 +10619,7 @@ function renderWorldPanel() {
     sublocationComposer: state.worldSpineSublocationComposer,
     locationFilter: state.worldSpineLocationFilter,
     locationFilterOpen: state.worldSpineLocationFilterOpen,
+    unplacedDockCollapsed: state.worldSpineUnplacedDockCollapsed,
   });
   window.requestAnimationFrame(() => {
     syncWorldSpinePanelLayout({ reason: "world-panel-render" });
@@ -14552,6 +14571,7 @@ function loadLegacyProjectState(projectId = null) {
       readStoredJson(EDITOR_WORLD_SPINE_PANEL_LAYOUT_PROFILES_KEY),
     ),
     worldSpineRightPaneMode: normalizeWorldSpineRightPaneMode(),
+    worldSpineUnplacedDockCollapsed: false,
     worldSpineLocationFilter: createDefaultWorldSpineLocationFilterState(),
     consoleDockCollapsed: readStoredJson(EDITOR_RIGHT_DOCK_COLLAPSED_KEY) === true,
     sidePanelsHidden: normalizeSidePanelsHiddenState(readStoredJson(EDITOR_SIDE_PANELS_HIDDEN_KEY)),
@@ -14733,6 +14753,7 @@ function createDefaultProjectSettingsSnapshot(currentWordCount = 0, now = new Da
     worldSpineManuscriptPaneWidth: DEFAULT_WORLD_SPINE_MANUSCRIPT_PANE_WIDTH,
     worldSpinePanelLayoutProfiles: {},
     worldSpineRightPaneMode: normalizeWorldSpineRightPaneMode(),
+    worldSpineUnplacedDockCollapsed: false,
     worldSpineLocationFilter: createDefaultWorldSpineLocationFilterState(),
     consoleDockCollapsed: false,
     sidePanelsHidden: false,
@@ -14812,6 +14833,9 @@ function normalizeProjectSettingsSnapshot(candidate, projectId = "", currentWord
     worldSpineRightPaneMode: normalizeWorldSpineRightPaneMode(
       normalizedCandidate.worldSpineRightPaneMode ?? defaults.worldSpineRightPaneMode,
     ),
+    worldSpineUnplacedDockCollapsed: typeof normalizedCandidate.worldSpineUnplacedDockCollapsed === "boolean"
+      ? normalizedCandidate.worldSpineUnplacedDockCollapsed
+      : defaults.worldSpineUnplacedDockCollapsed,
     worldSpineLocationFilter: normalizeWorldSpineLocationFilterState(
       normalizedCandidate.worldSpineLocationFilter ?? defaults.worldSpineLocationFilter,
     ),
@@ -14871,6 +14895,7 @@ function buildProjectSettingsCandidate(candidate) {
     worldSpineManuscriptPaneWidth: projectSettings.worldSpineManuscriptPaneWidth ?? candidate?.worldSpineManuscriptPaneWidth,
     worldSpinePanelLayoutProfiles: projectSettings.worldSpinePanelLayoutProfiles ?? candidate?.worldSpinePanelLayoutProfiles,
     worldSpineRightPaneMode: projectSettings.worldSpineRightPaneMode ?? candidate?.worldSpineRightPaneMode,
+    worldSpineUnplacedDockCollapsed: projectSettings.worldSpineUnplacedDockCollapsed ?? candidate?.worldSpineUnplacedDockCollapsed,
     worldSpineLocationFilter: projectSettings.worldSpineLocationFilter ?? candidate?.worldSpineLocationFilter,
     consoleDockCollapsed: projectSettings.consoleDockCollapsed ?? candidate?.consoleDockCollapsed,
     sidePanelsHidden: projectSettings.sidePanelsHidden ?? candidate?.sidePanelsHidden,
@@ -14921,6 +14946,7 @@ function createProjectSettingsSnapshotFromState({
       worldSpineManuscriptPaneWidth: state.worldSpineManuscriptPaneWidth,
       worldSpinePanelLayoutProfiles: cloneValue(state.worldSpinePanelLayoutProfiles),
       worldSpineRightPaneMode: state.worldSpineRightPaneMode,
+      worldSpineUnplacedDockCollapsed: state.worldSpineUnplacedDockCollapsed,
       worldSpineLocationFilter: cloneValue(state.worldSpineLocationFilter),
       consoleDockCollapsed: state.consoleDockCollapsed,
       sidePanelsHidden: state.sidePanelsHidden,
@@ -19931,7 +19957,101 @@ function saveWorldSpineLocationRowFromForm() {
   renderWorldPanel();
 }
 
-function applyWorldSpineLocationToSceneRows(sceneIds = [], location = "", context = {}, assignment = null) {
+// Intent: delete only the projected row by unplacing its members in one durable World Spine transaction.
+function deleteWorldSpineLocationRowFromForm() {
+  const context = normalizeWorldSpineMenuContext(state.worldSpineContextMenu) ?? {};
+  const location = String(context.locationLabel ?? "").trim();
+  const hasMembers = Boolean(context.primaryNodeIds.length || context.sceneIds.length || context.worldNodeIds.length);
+  if (!location || location.toLowerCase() === "unplaced location" || !hasMembers) {
+    hideWorldSpineContextMenu();
+    return false;
+  }
+
+  const confirmed = window.confirm(
+    `Delete location row "${location}"?\n\nEvents and manuscript scenes in this row will not be deleted.\nThey will move to Unplaced location until you assign them to another location.`,
+  );
+  if (!confirmed) {
+    return false;
+  }
+
+  const historyBefore = captureWorldSpineHistorySnapshot();
+  const unplacedAssignment = createWorldSpineUnplacedLocationRowAssignment(context);
+  const changedSceneIds = applyWorldSpineLocationToSceneRows(
+    context.sceneIds,
+    unplacedAssignment.location,
+    context,
+    unplacedAssignment,
+    { unplace: true },
+  );
+  const worldResult = context.worldNodeIds.length
+    ? applyWorldSpineLocationRowUnplacementToWorld(state.workspace?.world ?? {}, {
+        spineId: context.spineId,
+        worldNodeIds: context.worldNodeIds,
+        now: new Date(),
+      })
+    : { world: state.workspace?.world ?? {}, changed: false };
+  const rowNodeIds = context.primaryNodeIds.length
+    ? context.primaryNodeIds
+    : context.sceneIds.map((sceneId) => `scene:${sceneId}`);
+  const placeLinkResult = applyWorldSpineLocationAssignmentToWorldPlaceLinks(worldResult.world, {
+    nodeIds: rowNodeIds,
+    sceneIds: context.sceneIds,
+    assignment: unplacedAssignment,
+  });
+  const changed = Boolean(changedSceneIds.length || worldResult.changed || placeLinkResult.changed);
+  if (!changed) {
+    state.worldSpineContextMenu = null;
+    state.worldbuildingStudioStatus = `Location row "${location}" is already unplaced.`;
+    renderTaskContextMenu();
+    renderWorldPanel();
+    return false;
+  }
+
+  state.workspace.world = placeLinkResult.world;
+  if (changedSceneIds.length) {
+    writeStoredJsonRaw(EDITOR_DRAFTS_KEY, state.sceneDrafts);
+    writeStoredJsonRaw(EDITOR_STRUCTURE_KEY, state.structureDrafts);
+    refreshScenes();
+  }
+
+  state.worldSpineContextMenu = null;
+  state.worldbuildingStudioStatus = `Location row "${location}" deleted. Its events moved to Unplaced location.`;
+  uiEventDispatcherLog.info("user-action", "world-spine.location-row.deleted", "Deleted World Spine location row by unplacing its members.", {
+    location,
+    changedSceneIds,
+    changedWorldNodeIds: context.worldNodeIds,
+    removedPlaceEntityLinkIds: placeLinkResult.removedEntityLinkIds,
+    removedPlaceEntityIds: placeLinkResult.removedEntityIds,
+  });
+  persistCurrentProjectRecord({
+    changedSceneIds,
+    domain: changedSceneIds.length && (worldResult.changed || placeLinkResult.changed) ? "world-spine" : changedSceneIds.length ? "manuscript" : "world",
+    dirtyReason: "world-spine-location-row-deleted",
+    source: "deleteWorldSpineLocationRowFromForm",
+    flushProjectFileAutosave: true,
+  });
+  pushWorldSpineHistoryChange(historyBefore, {
+    label: "Deleted World Spine location row",
+    dirtyReason: "world-spine-location-row-deleted",
+    source: "deleteWorldSpineLocationRowFromForm",
+  });
+  renderTaskContextMenu();
+  if (changedSceneIds.length) {
+    render();
+    return true;
+  }
+  renderDreamScapingPanel();
+  renderWorldPanel();
+  return true;
+}
+
+function applyWorldSpineLocationToSceneRows(
+  sceneIds = [],
+  location = "",
+  context = {},
+  assignment = null,
+  { unplace = false } = {},
+) {
   const changedSceneIds = [];
   const changedEventTagIds = [];
   const rowAssignment = assignment ?? createWorldSpineLocationRowAssignment(location, context);
@@ -19953,18 +20073,20 @@ function applyWorldSpineLocationToSceneRows(sceneIds = [], location = "", contex
       pickerOptionSets: getWorldSpinePickerOptionSetsForState(),
     });
     const eventTagResult = state.workspace?.project
-      ? applyWorldSpineLocationAssignmentToSceneEventTags(
+      ? (unplace ? applyWorldSpineUnplacementToSceneEventTags : applyWorldSpineLocationAssignmentToSceneEventTags)(
           state.workspace.project.eventTags,
           scene,
           rowAssignment,
         )
       : { eventTags: [], changedEventTagIds: [] };
-    const structureResult = applyWorldSpineLocationAssignmentToStructureDrafts(state.structureDrafts, sceneId, rowAssignment);
+    const structureResult = (unplace
+      ? applyWorldSpineUnplacementToStructureDrafts
+      : applyWorldSpineLocationAssignmentToStructureDrafts)(state.structureDrafts, sceneId, rowAssignment);
     const sceneStoreRecord = getWorldSpineLocationSceneStoreRecord(sceneId);
     const alreadyAssigned = (
-      hasWorldSpineLocationAssignment(existingDraft, rowAssignment) &&
-      hasWorldSpineLocationAssignment(scene, rowAssignment) &&
-      Boolean(sceneStoreRecord && hasWorldSpineLocationAssignment(sceneStoreRecord, rowAssignment)) &&
+      (unplace ? hasWorldSpineUnplacedLocationRowAssignment : hasWorldSpineLocationAssignment)(existingDraft, rowAssignment) &&
+      (unplace ? hasWorldSpineUnplacedLocationRowAssignment : hasWorldSpineLocationAssignment)(scene, rowAssignment) &&
+      Boolean(sceneStoreRecord && (unplace ? hasWorldSpineUnplacedLocationRowAssignment : hasWorldSpineLocationAssignment)(sceneStoreRecord, rowAssignment)) &&
       !structureResult.changed &&
       !eventTagResult.changedEventTagIds.length
     );
@@ -19972,18 +20094,20 @@ function applyWorldSpineLocationToSceneRows(sceneIds = [], location = "", contex
       return;
     }
 
-    const patchedDraft = applySceneWorldSpineMetadataToDraft(scene, existingDraft, {
-      ...metadataModel.metadata,
-      location: rowAssignment.location,
-      ...rowAssignment,
-    });
+    const patchedDraft = unplace
+      ? applyWorldSpineUnplacementToSceneRecord(existingDraft, rowAssignment)
+      : applySceneWorldSpineMetadataToDraft(scene, existingDraft, {
+          ...metadataModel.metadata,
+          location: rowAssignment.location,
+          ...rowAssignment,
+        });
     state.sceneDrafts = {
       ...state.sceneDrafts,
       [sceneId]: patchedDraft,
     };
     state.scenes = (Array.isArray(state.scenes) ? state.scenes : []).map((candidate) =>
       candidate?.sceneId === sceneId
-        ? applyWorldSpineLocationAssignmentToSceneRecord(candidate, rowAssignment)
+        ? (unplace ? applyWorldSpineUnplacementToSceneRecord : applyWorldSpineLocationAssignmentToSceneRecord)(candidate, rowAssignment)
         : candidate
     );
     if (structureResult.changed) {
@@ -19998,7 +20122,9 @@ function applyWorldSpineLocationToSceneRows(sceneIds = [], location = "", contex
         changedEventTagIds.push(...eventTagResult.changedEventTagIds);
       }
     }
-    state.loadedProjectSceneStore = upsertWorldSpineLocationAssignmentInSceneStore(state.loadedProjectSceneStore, {
+    state.loadedProjectSceneStore = (unplace
+      ? upsertWorldSpineUnplacementInSceneStore
+      : upsertWorldSpineLocationAssignmentInSceneStore)(state.loadedProjectSceneStore, {
       projectId: state.workspace?.project?.id ?? state.activeProjectId,
       sceneId,
       sceneRecord: patchedDraft,
@@ -20340,6 +20466,19 @@ function setWorldSpineRightPaneMode(mode = "") {
   });
   uiEventDispatcherLog.info("user-action", "world-spine.right-pane-mode.changed", "Changed World Spine right pane mode.", {
     mode: nextMode,
+  });
+  renderWorldPanel();
+}
+
+// Intent: persist dock presentation without creating a canonical World Spine history entry.
+function toggleWorldSpineUnplacedDock() {
+  state.worldSpineUnplacedDockCollapsed = !state.worldSpineUnplacedDockCollapsed;
+  persistCurrentProjectRecord({
+    domain: "app-settings",
+    dirtyReason: state.worldSpineUnplacedDockCollapsed
+      ? "world-spine-unplaced-dock-collapsed"
+      : "world-spine-unplaced-dock-expanded",
+    source: "toggleWorldSpineUnplacedDock",
   });
   renderWorldPanel();
 }

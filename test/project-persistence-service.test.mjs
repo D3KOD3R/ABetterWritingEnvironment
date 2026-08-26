@@ -42,6 +42,7 @@ export async function runProjectPersistenceServiceTest() {
     editorPrefs: {
       projectFileAutosaveEnabled: true,
     },
+    worldSpineUnplacedDockCollapsed: false,
     activePane: "manuscript",
     workspace: {
       project: {
@@ -149,6 +150,7 @@ export async function runProjectPersistenceServiceTest() {
         projectSettings: {
           ...(activeRecord.projectSettings ?? {}),
           activePane: state.activePane,
+          worldSpineUnplacedDockCollapsed: state.worldSpineUnplacedDockCollapsed,
           projectFilePath: state.projectFilePath,
           writingTargetState: runtimeWritingTargetState,
         },
@@ -353,6 +355,19 @@ export async function runProjectPersistenceServiceTest() {
   assert.equal(state.projectPersistenceDirtyDomains?.["app-settings"]?.reason, "workspace-pane-selected");
   projectPersistenceService.clearProjectAutosaveState();
   state.activePane = "manuscript";
+
+  // The unplaced-events dock collapse state is canonical project UI state.
+  state.worldSpineUnplacedDockCollapsed = true;
+  browserCacheWrites.length = 0;
+  projectPersistenceService.commitCanonicalProjectMutation({
+    domain: "app-settings",
+    dirtyReason: "world-spine-unplaced-dock-collapsed",
+    source: "test-world-spine-unplaced-dock-collapse",
+  });
+  assert.equal(state.projectLibrary[0].projectSettings.worldSpineUnplacedDockCollapsed, true);
+  assert.equal(browserCacheWrites.at(-1)?.projects?.[0]?.projectSettings?.worldSpineUnplacedDockCollapsed, true);
+  assert.equal(state.projectPersistenceDirtyDomains?.["app-settings"]?.reason, "world-spine-unplaced-dock-collapsed");
+  projectPersistenceService.clearProjectAutosaveState();
 
   // Location-row style mutations can force the already canonical project mutation to hit the project file immediately.
   operationLog.length = 0;

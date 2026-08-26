@@ -158,6 +158,7 @@ export function createProjectActivationStateService({
     if (typeof projectSettings.worldSpineRightPaneMode === "string") {
       state.worldSpineRightPaneMode = projectSettings.worldSpineRightPaneMode;
     }
+    state.worldSpineUnplacedDockCollapsed = projectSettings.worldSpineUnplacedDockCollapsed === true;
     state.worldSpineLocationFilter = clone(projectSettings.worldSpineLocationFilter ?? {});
     state.consoleDockCollapsed = projectSettings.consoleDockCollapsed;
     state.sidePanelsHidden = projectSettings.sidePanelsHidden === true;

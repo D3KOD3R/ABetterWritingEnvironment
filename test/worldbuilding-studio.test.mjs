@@ -5,6 +5,7 @@ import {
   addParallelWorldSpine,
   applyWorldSpineLocationImageToWorld,
   applyWorldSpineLocationRowNameToWorld,
+  applyWorldSpineLocationRowUnplacementToWorld,
   applyWorldbuildingCategoryLocationRoleToWorld,
   applyWorldbuildingCatalogueItemImageToWorld,
   applyWorldbuildingItemToWorld,
@@ -1000,6 +1001,47 @@ export function runWorldbuildingStudioTest() {
   assert.equal(namedWorldNodeRow.world.spines[0].nodes[0].metadata.locationRowLabel, "Europa");
   assert.equal(namedWorldNodeRow.world.spines[0].nodes[0].metadata.locationRowKey, "europa");
   assert.equal(namedWorldNodeRow.world.spines[0].nodes[1].location, "Old Place");
+
+  const unplacedWorldNodeRow = applyWorldSpineLocationRowUnplacementToWorld({
+    entities: [{ id: "entity-earth", name: "Earth", categoryId: "planet", image: { name: "earth.png" } }],
+    edges: [{ id: "edge-world-row", fromNodeId: "node-europa-1", toNodeId: "node-other", kind: "implicates" }],
+    spines: [{
+      id: "spine-2",
+      label: "Parallel",
+      nodes: [
+        {
+          id: "node-europa-1",
+          label: "Europa test",
+          location: "Europa Station",
+          childLocation: "Dock Seven",
+          locationPlacement: {
+            location: "Europa Station",
+            childLocation: "Dock Seven",
+            locationRowLabel: "Europa",
+            locationRowKey: "europa",
+          },
+          metadata: { location: "Europa Station", orbitalBand: "Low orbit" },
+        },
+        { id: "node-other", label: "Other", location: "Old Place" },
+      ],
+    }],
+  }, {
+    spineId: "spine-2",
+    worldNodeIds: ["node-europa-1"],
+  });
+  assert.equal(unplacedWorldNodeRow.changed, true);
+  assert.equal(unplacedWorldNodeRow.world.spines[0].nodes[0].location, "Europa Station");
+  assert.equal(unplacedWorldNodeRow.world.spines[0].nodes[0].childLocation, "Dock Seven");
+  assert.equal(unplacedWorldNodeRow.world.spines[0].nodes[0].locationRowLabel, "Unplaced location");
+  assert.equal(unplacedWorldNodeRow.world.spines[0].nodes[0].locationRowKey, "unplaced-location");
+  assert.equal(unplacedWorldNodeRow.world.spines[0].nodes[0].locationPlacement.location, "Europa Station");
+  assert.equal(unplacedWorldNodeRow.world.spines[0].nodes[0].locationPlacement.childLocation, "Dock Seven");
+  assert.equal(unplacedWorldNodeRow.world.spines[0].nodes[0].locationPlacement.locationRowKey, "unplaced-location");
+  assert.equal(unplacedWorldNodeRow.world.spines[0].nodes[0].metadata.location, "Europa Station");
+  assert.equal(unplacedWorldNodeRow.world.spines[0].nodes[0].metadata.orbitalBand, "Low orbit");
+  assert.equal(unplacedWorldNodeRow.world.entities[0].image.name, "earth.png");
+  assert.equal(unplacedWorldNodeRow.world.edges[0].id, "edge-world-row");
+  assert.equal(unplacedWorldNodeRow.world.spines[0].nodes[1].location, "Old Place");
 
   const thirdTimeline = addParallelWorldSpine(dualTimeline.world, {
     now: new Date("2026-05-14T09:46:00.000Z"),

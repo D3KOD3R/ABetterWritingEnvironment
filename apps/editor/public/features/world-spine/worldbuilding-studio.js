@@ -2497,6 +2497,55 @@ export function applyWorldSpineLocationRowNameToWorld(world = {}, {
   };
 }
 
+// Intent: unplace only the rendered row identity while retaining world-event chronology, anchors, and setting detail.
+export function applyWorldSpineLocationRowUnplacementToWorld(world = {}, {
+  spineId = "",
+  worldNodeIds = [],
+  now = new Date(),
+} = {}) {
+  const requestedSpineId = normalizeString(spineId) || "spine-0001";
+  const targetWorldNodeIds = new Set(normalizeStringList(worldNodeIds));
+  const nextWorld = clonePlainObject(world);
+  const storedSpines = normalizeWorldSpines(nextWorld.spines);
+  const spines = storedSpines.length ? storedSpines : [createDefaultWorldSpine()];
+  let foundSpine = false;
+  let changed = false;
+
+  const nextSpines = spines.map((spine) => {
+    if (spine.id !== requestedSpineId) {
+      return spine;
+    }
+
+    foundSpine = true;
+    const nodes = Array.isArray(spine.nodes) ? spine.nodes : [];
+    const nextNodes = nodes.map((node) => {
+      if (!targetWorldNodeIds.has(normalizeString(node?.id))) {
+        return node;
+      }
+
+      const nextNode = applyWorldSpineUnplacementToNode(node);
+      changed = changed || nextNode !== node;
+      return nextNode;
+    });
+    return changed ? { ...spine, nodes: nextNodes } : spine;
+  });
+
+  nextWorld.spines = nextSpines;
+  nextWorld.worldbuildingCategories = normalizeCustomWorldbuildingCategories(nextWorld.worldbuildingCategories);
+  nextWorld.entities = normalizeWorldbuildingEntities(nextWorld.entities, nextWorld.worldbuildingCategories);
+  nextWorld.eventDrafts = normalizeWorldbuildingEventDrafts(nextWorld.eventDrafts ?? nextWorld.timelineEventDrafts);
+  if (changed) {
+    nextWorld.updatedAt = normalizeDateISOString(now);
+  }
+  nextWorld.stats = recalculateWorldbuildingStats(nextWorld);
+
+  return {
+    world: nextWorld,
+    changed,
+    reason: !foundSpine ? "missing-spine" : !targetWorldNodeIds.size ? "node-ids-required" : changed ? "unplaced" : "unchanged",
+  };
+}
+
 function applyWorldSpineLocationToSpine(spine = {}, location = "") {
   const metadata = spine?.metadata && typeof spine.metadata === "object" && !Array.isArray(spine.metadata)
     ? spine.metadata
@@ -2548,6 +2597,55 @@ function applyWorldSpineLocationToNode(node = {}, location = "") {
       locationRowLabel: location,
       locationRowKey: locationKey,
       locationScope: normalizeString(metadata.locationScope) || normalizeString(node.locationScope) || "planetary",
+    },
+  };
+}
+
+function applyWorldSpineUnplacementToNode(node = {}) {
+  const locationRowLabel = "Unplaced location";
+  const locationRowKey = slugify(locationRowLabel);
+  const metadata = node?.metadata && typeof node.metadata === "object" && !Array.isArray(node.metadata)
+    ? node.metadata
+    : {};
+  const locationPlacement = node?.locationPlacement && typeof node.locationPlacement === "object" && !Array.isArray(node.locationPlacement)
+    ? node.locationPlacement
+    : null;
+  const locationScope = normalizeString(
+    node.locationScope ?? locationPlacement?.locationScope ?? metadata.locationScope,
+  ) || "planetary";
+  if (
+    normalizeString(node.locationRowLabel) === locationRowLabel &&
+    normalizeString(node.locationRowKey) === locationRowKey &&
+    normalizeString(metadata.locationRowLabel) === locationRowLabel &&
+    normalizeString(metadata.locationRowKey) === locationRowKey &&
+    (!locationPlacement || (
+      normalizeString(locationPlacement.locationRowLabel) === locationRowLabel &&
+      normalizeString(locationPlacement.locationRowKey) === locationRowKey
+    ))
+  ) {
+    return node;
+  }
+
+  return {
+    ...node,
+    locationRowLabel,
+    locationRowKey,
+    locationScope,
+    ...(locationPlacement
+      ? {
+          locationPlacement: {
+            ...locationPlacement,
+            locationRowLabel,
+            locationRowKey,
+            locationScope,
+          },
+        }
+      : {}),
+    metadata: {
+      ...metadata,
+      locationRowLabel,
+      locationRowKey,
+      locationScope,
     },
   };
 }
