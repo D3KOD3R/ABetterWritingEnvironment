@@ -9,6 +9,7 @@ This repository is a local-first, open-source authoring environment: a writer's 
 - Preserve existing contracts unless a migration is intentional. Avoid speculative shared-schema renames; when evidence is insufficient, do not invent unsupported behaviour.
 - Add concise intent comments before new modules and major logical blocks; do not use comments as line-by-line narration.
 - Keep routine narration terse. Use targeted searches, diffs, symbols, and bounded reads. Do not broadly read `features.md`, `apps/editor/public/app.js`, architecture roadmaps, logs, or project data unless a specific task requires a bounded section.
+- For tasks with a matching `docs/implementation/active/` spec, read its execution contract first and expand into deeper diagnostic sections only when needed. Do not read `docs/implementation/archive/` during ordinary implementation; archived specs are opt-in historical evidence.
 - Use deterministic Git and the repository supervisor as authority for changed-file state, test selection, pass/fail, and verification freshness. Escalate evidence in this order: supervisor handoff → compact report → failure excerpt → relevant diff → relevant source/test region → full log or broad source only as a last resort.
 - Keep author-facing behaviour location-aware and durable where it affects structured project data. Keep UI rendering and model/provider mechanics behind the appropriate service, schema, or adapter boundaries.
 
