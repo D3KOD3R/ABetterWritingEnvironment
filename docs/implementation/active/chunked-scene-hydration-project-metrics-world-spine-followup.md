@@ -1,7 +1,7 @@
 # World Spine Acceptance Follow-up
 
 Status: Active acceptance-fix spec  
-Revision: 3  
+Revision: 4  
 Date: 2026-08-29  
 Branch: `feature/world-spine/unplaced-events-dock`  
 Implementation baseline: `2cd5fc92e55556056821cd38ce54c9732b7aee31` (`fix: preserve lazy project metadata and metrics`)
@@ -10,7 +10,7 @@ Implementation baseline: `2cd5fc92e55556056821cd38ce54c9732b7aee31` (`fix: prese
 
 The hydration/project-metrics implementation in `2cd5fc9` is already implemented, tested, pushed, and code-reviewed. **Do not re-investigate or redesign hydration, project metrics, writing goals, or the completed Delete-eligibility fix unless a new focused regression test proves they are causal.**
 
-Manual browser verification found three remaining acceptance failures. Fix these in order, with one focused failing regression per failure before changing implementation.
+Manual browser verification has identified four remaining acceptance failures. Fix these with one focused failing regression per failure before changing implementation. Keep reads bounded to the named functions below.
 
 ### Failure 1 — sequential World Spine location assignments do not accumulate
 
@@ -52,7 +52,7 @@ Initial reads only:
   - `getCurrentProjectIndexRecord()`
   - `createProjectRecordFromRuntimeState()`
 - `apps/editor/public/adapters/storage/project-persistence-service.js`
-  - canonical project mutation/save function and the code that replaces the in-memory project-library record after persistence
+  - canonical project mutation/save function and in-memory project-library replacement after persistence
 - `apps/editor/public/adapters/storage/project-service.js`
   - `buildStableProjectIndex()` / save path only
 - `apps/editor/public/adapters/storage/project-metrics.js`
@@ -60,9 +60,9 @@ Initial reads only:
 - `apps/editor/public/adapters/storage/project-repository.js`
   - `saveProjectLibrarySnapshot()` only if the failure survives the preceding boundary
 
-Primary hypothesis to prove or reject: save #2 is being built from a stale `state.projectLibrary[*].projectIndex` or otherwise merges against a pre-save index, so successive metadata-only mutations do not accumulate.
+Primary hypothesis to prove or reject: save #2 is built from a stale `state.projectLibrary[*].projectIndex` or otherwise merges against a pre-save index, so successive metadata-only mutations do not accumulate.
 
-Required regression: perform at least three sequential location metadata saves for different scene IDs **without reloading between saves**, then reload and verify every scene retains its assigned row in both the persisted project index/metadata projection and reconstructed World Spine model.
+Required regression: perform at least three sequential location metadata saves for different scene IDs **without reloading between saves**, then reload and verify every scene retains its assigned row in persisted project-index metadata and the reconstructed World Spine model.
 
 ### Failure 2 — unplaced events still render in the normal World Spine canvas
 
@@ -86,7 +86,7 @@ Initial reads only:
   - `renderWorldSpineUnplacedDockHTML()`
 - focused `test/world-spine-panel.test.mjs` coverage only
 
-Required regression: prove an unplaced primary node is absent from `canvasPrimaryNodes` / normal-canvas markup and appears exactly once in dock markup. Also cover child/reference/connectors if they can otherwise leak into the normal projection.
+Required regression: prove an unplaced primary node is absent from `canvasPrimaryNodes` / normal-canvas markup and appears exactly once in dock markup. Cover child/reference/connectors if they can otherwise leak into the normal projection.
 
 ### Failure 3 — attach/replace location image, then Save location, can remove the row
 
@@ -127,6 +127,41 @@ image update remains
 
 Do not recreate row membership from the Location catalogue entity. Normal rows remain projections of canonical scene/world placement metadata.
 
+### Failure 4 — vertical location-row drag has no row-aware drop indicator
+
+Browser reproduction:
+
+1. Drag a scene/event card that is currently on one location row, for example `Earth`.
+2. Move the pointer vertically toward another row, for example `Europa`.
+3. The event ghost moves with the pointer, but the cyan insertion/drop indicator remains at the source-row height or otherwise only indicates horizontal before/after placement.
+4. The user therefore cannot visually confirm which location row will receive the drop.
+
+Required behavior:
+
+- horizontal before/after reorder feedback continues to work;
+- when the pointer resolves to a different location row, the active drop preview must visually extend/move to that row;
+- the preview must make the target row unambiguous before pointer-up;
+- the preview position must be derived from the same location-row target that will be passed to persistence, not from an independent approximate calculation;
+- dragging from `Earth` down to `Europa` must visibly indicate `Europa` before drop;
+- crossing back to `Earth` or another row must update the indicator immediately;
+- cancelling/ending the drag must remove both horizontal and row-target preview state.
+
+Initial reads only:
+
+- `apps/editor/public/features/world-spine/world-spine-panel.js`
+  - `createWorldSpineInteractionController()`
+  - `resolveNodeBlockLocationRowDropTarget(event)`
+  - `resolveNodeBlockDropTarget(event)`
+  - `updateNodeBlockDropPreview(event)`
+  - `clearNodeBlockDropPreview()`
+  - `moveNodeBlockDragPreview(event)` only if needed to understand coordinates
+- corresponding drop-preview CSS selectors in `apps/editor/public/styles.css` only after the JS target model is understood
+- focused `test/world-spine-panel.test.mjs` interaction/controller coverage only
+
+Current code already has separate concepts for binder reorder target and location-row drop target. The likely UI gap is that `updateNodeBlockDropPreview()` appears to render only the reorder before/after classes, while `resolveNodeBlockLocationRowDropTarget(event)` is consulted for the eventual drop. Prove this with a focused test rather than broad-reading the renderer.
+
+Required regression: simulate a scene-card drag from row A into row B and prove the preview state/markup identifies row B before pointer-up, while the final resolved drop target uses the same row B identity. Also verify moving the pointer back to row A updates/clears the row-B preview.
+
 ### Image-library scope boundary
 
 Current implementation supports one `image` field per catalogue entity; attaching a second image replaces that field. Multi-image support is **not required to fix Failure 3**.
@@ -152,6 +187,7 @@ Future UI semantics: `Add image`, `Set/Replace primary image`, `Remove image`; W
 - do not read archived implementation specs;
 - do not inspect Git history unless current source contradicts this execution contract;
 - do not implement multi-image galleries as part of the row-loss bug unless proven necessary;
+- do not redesign drag/drop architecture if extending the existing preview state is sufficient;
 - do not run broad tests first.
 
 ### Verification order
@@ -163,7 +199,7 @@ For each failure:
 3. rerun that focused test;
 4. continue to the next failure.
 
-After all three pass:
+After all four pass:
 
 ```text
 npm run repo -- test --changed
@@ -181,6 +217,9 @@ Broaden only if the repository supervisor explicitly escalates.
 - existing populated row -> attach/replace image -> Save location does not remove the row;
 - image update survives refresh;
 - row members survive image attach/save and refresh;
+- dragging vertically between named rows gives clear row-aware preview feedback before drop;
+- moving the drag pointer between rows updates the preview to the currently resolved row;
+- ending/cancelling the drag removes preview state;
 - Delete remains reachable for populated scene-only/world-only rows and still unplaces rather than deletes contents;
 - project word count/writing goals remain unchanged by these fixes.
 
@@ -196,7 +235,7 @@ Do not spend implementation context rediscovering these unless a new failing tes
 - `changedSceneIds` can be forwarded through binder reorder persistence;
 - focused tests and supervisor FULL verification passed at implementation time.
 
-The baseline still failed manual acceptance because sequential saves, dock projection rendering, and image/form interaction were not fully covered by those tests.
+The baseline still failed manual acceptance because sequential saves, dock projection rendering, image/form interaction, and vertical row-target drag feedback were not fully covered by those tests.
 
 ## Durable architecture rules
 
@@ -206,9 +245,14 @@ The baseline still failed manual acceptance because sequential saves, dock proje
 - normal World Spine location rows remain projections, not canonical row objects;
 - `Unplaced location` remains a special placement state and viewport dock projection;
 - deleting a populated row unplaces its contents and preserves manuscript/catalogue data;
-- catalogue image mutation must be independent from location-row membership.
+- catalogue image mutation must be independent from location-row membership;
+- drag preview and final drop must resolve the same target-row identity.
 
 ## Revision history
+
+### Revision 4 — 2026-08-29
+
+Added the fourth manual acceptance failure: the vertical scene/event drag resolves a new location row for drop but does not provide matching row-aware visual feedback. The execution contract now names only the existing interaction-controller functions involved in drag preview and location-row target resolution, so Codex should not need to rediscover the World Spine renderer.
 
 ### Revision 3 — 2026-08-29
 
