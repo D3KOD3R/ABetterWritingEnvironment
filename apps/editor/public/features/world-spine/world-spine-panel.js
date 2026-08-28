@@ -3624,12 +3624,10 @@ export function isWorldSpineLocationRowDeleteEligible(menu = {}) {
   if (normalizeString(menu?.menuType) !== "location-form") {
     return false;
   }
-  const hasMembers = Boolean(
-    normalizeStringList(menu?.primaryNodeIds ?? menu?.rowNodeIds).length ||
-    normalizeStringList(menu?.sceneIds ?? menu?.rowSceneIds).length ||
-    normalizeStringList(menu?.worldNodeIds ?? menu?.rowWorldNodeIds).length
+
+  return !isDefaultLocationIdentity(
+    menu?.locationLabel ?? menu?.location
   );
-  return hasMembers && !isDefaultLocationIdentity(menu?.locationLabel ?? menu?.location);
 }
 
 // Intent: render unplaced primary events on a fixed viewport surface while preserving global timeline X coordinates.
