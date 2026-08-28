@@ -993,8 +993,8 @@ export async function runDesktopApplicationTest() {
   assert.match(writingGoalsStateServiceScript, /const dailyWords = currentWordCount - dailyBaselineWordCount;/);
   assert.match(writingGoalsStateServiceScript, /leftLabel: formatDisplayNumber\(signedSessionWords\),/);
   assert.match(writingGoalsStateServiceScript, /activeProjectRecord\?\.projectIndex\?\.scenes/);
-  assert.match(writingGoalsStateServiceScript, /const indexedWordCountValue = Number\(indexedScene\.wordCount\);/);
-  assert.match(writingGoalsStateServiceScript, /const shouldTrustDraftWordCount = draftWordCount > 0 \|\| sceneId === state\.selectedSceneId \|\| indexedWordCount <= 0;/);
+  assert.match(writingGoalsStateServiceScript, /buildLiveSceneWordCountOverrides/);
+  assert.match(writingGoalsStateServiceScript, /getProjectWordCount\(activeProjectRecord\?\.projectIndex, liveSceneWordCounts\)/);
   assert.match(appScript.body, /persistCurrentProjectRecord\(\{\s*changedSceneIds: \[sceneId\],[\s\S]*?\}\);/);
   assert.match(writingGoalsStateServiceScript, /progress: sessionTargetWords > 0 \? Math\.min\(1, Math\.max\(0, dailyWords\) \/ sessionTargetWords\) : 0,/);
   assert.match(appScript.body, /syncWritingTargetWindowLiveState\(\);[\s\S]*?queueWritingTargetSnapshot\(/);
@@ -1005,7 +1005,9 @@ export async function runDesktopApplicationTest() {
   assert.match(writingGoalsStateServiceScript, /projectRecord\?\.projectSettings\?\.writingTargetState \?\? store\[projectId\]/);
   assert.match(writingGoalsStateServiceScript, /function syncWritingTargetCanonicalState\(record\)/);
   assert.match(appScript.body, /writingTargetDraftBaseline/);
-  assert.match(appScript.body, /function getProjectRecordWordCountForSettings\(recordLike\)/);
+  assert.match(appScript.body, /getProjectRecordWordCountForSettings,/);
+  assert.match(appScript.body, /from "\.\/adapters\/storage\/project-metrics\.js";/);
+  assert.doesNotMatch(appScript.body, /function getProjectRecordWordCountForSettings\(recordLike\)/);
   assert.match(appScript.body, /projectActivationController\.applyProjectRecord\(record\)/);
 
   const sceneEditorScript = createDesktopResponse("/features/scene-editor.js");

@@ -11,6 +11,7 @@ import {
   createWorldSpineLocationFilterViewportModel,
   findWorldSpineNode,
   isWorldSpineAssignableEventNode,
+  isWorldSpineLocationRowDeleteEligible,
   normalizeWorldSpineRightPaneMode,
   normalizeWorldSpineTimelineZoom,
   renderWorldSpineDetailCardHTML,
@@ -33,6 +34,7 @@ import {
   applyWorldSpineUnplacementToStructureDrafts,
   createWorldSpineUnplacedLocationRowAssignment,
   createWorldSpineLocationRowAssignment,
+  createWorldSpineSceneDropPersistenceOptions,
   upsertWorldSpineUnplacementInSceneStore,
   upsertWorldSpineLocationAssignmentInSceneStore,
 } from "../apps/editor/public/features/world-spine/world-spine-location-row-service.js";
@@ -1319,6 +1321,43 @@ export function runWorldSpinePanelTest() {
     height: 600,
   });
   assert.match(populatedLocationRowFormHtml, /data-action="delete-world-spine-location-row"/);
+  const sceneOnlyLocationRow = {
+    menuType: "location-form",
+    location: "Earth",
+    locationLabel: "Earth",
+    sceneIds: ["scene-earth"],
+  };
+  assert.equal(isWorldSpineLocationRowDeleteEligible(sceneOnlyLocationRow), true);
+  assert.match(renderWorldSpineWhitespaceContextMenuHTML(sceneOnlyLocationRow, {
+    width: 800,
+    height: 600,
+  }), /data-action="delete-world-spine-location-row"/);
+  const worldOnlyLocationRow = {
+    menuType: "location-form",
+    location: "Oasis",
+    locationLabel: "Oasis",
+    worldNodeIds: ["world-event-oasis"],
+  };
+  assert.equal(isWorldSpineLocationRowDeleteEligible(worldOnlyLocationRow), true);
+  assert.match(renderWorldSpineWhitespaceContextMenuHTML(worldOnlyLocationRow, {
+    width: 800,
+    height: 600,
+  }), /data-action="delete-world-spine-location-row"/);
+  assert.equal(isWorldSpineLocationRowDeleteEligible({
+    ...sceneOnlyLocationRow,
+    location: "Unplaced location",
+    locationLabel: "Unplaced location",
+  }), false);
+  assert.deepEqual(createWorldSpineSceneDropPersistenceOptions({
+    changedSceneIds: ["scene-earth"],
+    changedPlaceLinks: true,
+  }), {
+    changedSceneIds: ["scene-earth"],
+    domain: "world-spine",
+    dirtyReason: "world-spine-scene-node-reordered-and-location-updated",
+    source: "worldSpineController.onSceneNodeReorder",
+    flushProjectFileAutosave: true,
+  });
   const parallelTimelineFormHtml = renderWorldSpineWhitespaceContextMenuHTML({
     ...whitespaceContext,
     menuType: "timeline-form",
@@ -1673,7 +1712,8 @@ export function runWorldSpinePanelTest() {
   assert.match(appSource, /locationLabel: zone\.dataset\.worldSpineDropLocationLabel/);
   assert.match(appSource, /applyWorldSpineInsertionLocationToEventDraftItem/);
   assert.match(appSource, /moveBinderScene\(sourceSceneId/);
-  assert.match(appSource, /flushProjectFileAutosave: Boolean\(changedSceneIds\.length \|\| changedPlaceLinks\)/);
+  assert.match(appSource, /createWorldSpineSceneDropPersistenceOptions/);
+  assert.match(appSource, /changedSceneIds: options\.changedSceneIds/);
   assert.match(appSource, /source: "saveWorldSpineLocationRowFromForm"[\s\S]*flushProjectFileAutosave: true/);
   assert.match(appSource, /source: "handleWorldSpineTimelineDrop"[\s\S]*flushProjectFileAutosave: true/);
   assert.match(appSource, /deleteWorldSpineImplication/);

@@ -6,6 +6,8 @@ import { createPreferencesRepository } from "../apps/editor/public/adapters/stor
 import { migrateProjectData, PROJECT_SCHEMA_VERSION } from "../apps/editor/public/adapters/storage/project-migrations.js";
 import { createProjectRepository } from "../apps/editor/public/adapters/storage/project-repository.js";
 import { createProjectService } from "../apps/editor/public/adapters/storage/project-service.js";
+import { buildSceneRecords } from "../apps/editor/public/editor-model.js";
+import { buildWorldSpineTimelineModel } from "../apps/editor/public/features/world-spine/world-spine-panel.js";
 
 export async function runProjectServiceStorageTest() {
   const memoryWindow = createMemoryWindow();
@@ -376,6 +378,69 @@ export async function runProjectServiceStorageTest() {
   assert.equal(storedMetadataOnlyChangedScene.location, "Mars");
   assert.equal(storedMetadataOnlyChangedScene.locationRowKey, "mars");
   assert.equal(storedMetadataOnlyChangedScene.worldSpineMetadata.location, "Mars");
+  const metadataOnlyChangedProject = projectService.openProject().projectRecord;
+  assert.equal(
+    metadataOnlyChangedProject.projectIndex.scenes.find((scene) => scene.id === "scene-2")?.wordCount,
+    4,
+  );
+
+  // Intent: a browser reload keeps non-active scene placement projectable without eagerly hydrating its body.
+  const browserReloadRepository = createProjectRepository({
+    storageAdapter,
+    libraryStorageKey: "test-project-library-v1",
+    activeProjectIdStorageKey: "test-project-active-v1",
+  });
+  const browserReloadService = createProjectService({
+    projectRepository: browserReloadRepository,
+    preferencesRepository: createPreferencesRepository({ storageAdapter }),
+    now: () => "2026-05-14T00:00:00.000Z",
+  });
+  const browserReloadLibrary = browserReloadService.loadProjectLibrarySnapshot();
+  const browserReloadProject = browserReloadLibrary.projects[0];
+  assert.deepEqual(Object.keys(browserReloadProject.sceneDrafts), ["scene-1"]);
+  const reloadedNonActiveSceneMetadata = browserReloadLibrary.sceneStore?.["project-test"]?.["scene-2"];
+  assert.equal(reloadedNonActiveSceneMetadata?.location, "Mars");
+  assert.equal(reloadedNonActiveSceneMetadata?.locationRowLabel, "Mars");
+  assert.equal(reloadedNonActiveSceneMetadata?.locationRowKey, "mars");
+  assert.equal(reloadedNonActiveSceneMetadata?.worldSpineMetadata?.locationRowKey, "mars");
+  assert.equal(Object.hasOwn(reloadedNonActiveSceneMetadata ?? {}, "editorText"), false);
+  assert.equal(Object.hasOwn(reloadedNonActiveSceneMetadata ?? {}, "blocks"), false);
+  const reloadedLogicalScenes = buildSceneRecords(
+    browserReloadProject.workspace,
+    {
+      ...(browserReloadLibrary.sceneStore?.["project-test"] ?? {}),
+      ...browserReloadProject.sceneDrafts,
+    },
+    browserReloadProject.structureDrafts,
+  );
+  const reloadedWorldSpine = buildWorldSpineTimelineModel({
+    workspace: browserReloadProject.workspace,
+    scenes: reloadedLogicalScenes,
+  });
+  assert.equal(
+    reloadedWorldSpine.timeline.locationRows.some((row) => row.locationKey === "mars"),
+    true,
+  );
+  assert.equal(
+    reloadedWorldSpine.timeline.primaryNodes.find((node) => node.sceneId === "scene-2")?.locationRowKey,
+    "mars",
+  );
+  const indexedManifestSnapshot = storageAdapter.readJson("test-project-library-v1");
+  const legacyManifestSnapshot = structuredClone(indexedManifestSnapshot);
+  legacyManifestSnapshot.projects[0].projectIndex.scenes.forEach((scene) => {
+    delete scene.metadata;
+  });
+  storageAdapter.writeJson("test-project-library-v1", legacyManifestSnapshot);
+  const legacyReloadRepository = createProjectRepository({
+    storageAdapter,
+    libraryStorageKey: "test-project-library-v1",
+    activeProjectIdStorageKey: "test-project-active-v1",
+  });
+  const legacyReloadLibrary = legacyReloadRepository.loadProjectLibrarySnapshot();
+  assert.equal(legacyReloadLibrary.sceneStore["project-test"]["scene-2"].locationRowKey, "mars");
+  assert.equal(Object.hasOwn(legacyReloadLibrary.sceneStore["project-test"]["scene-2"], "editorText"), false);
+  assert.deepEqual(Object.keys(legacyReloadLibrary.projects[0].sceneDrafts), ["scene-1"]);
+  storageAdapter.writeJson("test-project-library-v1", indexedManifestSnapshot);
 
   // Intent: project-file scene stores are authoritative for unopened scenes during export.
   const exportedAuthoritativeFileSnapshot = projectService.exportProjectLibrarySnapshot({
@@ -405,6 +470,23 @@ export async function runProjectServiceStorageTest() {
     exportedAuthoritativeFileSnapshot.sceneStore["project-test"]["scene-2"].editorText,
     "File authority scene two.",
   );
+  const exportedEmptyAuthoritativeFileSnapshot = projectService.exportProjectLibrarySnapshot({
+    librarySnapshot: {
+      activeProjectId: "project-test",
+      projects: [{ ...opened.projectRecord, sceneDrafts: {} }],
+      sceneStore: {
+        "project-test": {
+          "scene-2": {
+            ...projectRepository.loadScene("project-test", "scene-2"),
+            editorText: "",
+            blocks: [],
+          },
+        },
+      },
+    },
+  });
+  assert.equal(exportedEmptyAuthoritativeFileSnapshot.sceneStore["project-test"]["scene-2"].editorText, "");
+  assert.deepEqual(exportedEmptyAuthoritativeFileSnapshot.sceneStore["project-test"]["scene-2"].blocks, []);
 
   const rewrittenSceneRecord = projectService.saveScene({
     projectRecord: opened.projectRecord,

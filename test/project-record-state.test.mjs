@@ -1,11 +1,50 @@
 // Intent: verify durable project-record construction stays separate from live editor shell state.
 import assert from "node:assert/strict";
 
+import {
+  buildWorkspaceStatsFromProjectIndex,
+  getChapterWordCount,
+  getProjectRecordWordCountForSettings,
+  getProjectWordCount,
+} from "../apps/editor/public/adapters/storage/project-metrics.js";
 import { normalizeDraftProofingState } from "../apps/editor/public/features/draft-proofing/draft-proofing-service.js";
 import { normalizeProjectSelectionDefaults } from "../apps/editor/public/state/project-library-state.js";
 import { createProjectRecordStateService } from "../apps/editor/public/state/project-record-state.js";
 
 export function runProjectRecordStateTest() {
+  const hydrationSafeIndex = {
+    scenes: [
+      { id: "scene-1", chapterId: "chapter-1", lineCount: 2, wordCount: 100 },
+      { id: "scene-2", chapterId: "chapter-1", lineCount: 3, wordCount: 200 },
+    ],
+    chapters: [
+      { id: "chapter-1", sceneIds: ["scene-1", "scene-2"], lineCount: 5, wordCount: 300 },
+    ],
+  };
+  assert.equal(getProjectWordCount(hydrationSafeIndex), 300);
+  assert.equal(getProjectWordCount(hydrationSafeIndex, { "scene-1": 100 }), 300);
+  assert.equal(getProjectWordCount(hydrationSafeIndex, { "scene-1": 105 }), 305);
+  assert.equal(getProjectWordCount(hydrationSafeIndex, { "scene-1": 95 }), 295);
+  assert.equal(getChapterWordCount(hydrationSafeIndex, "chapter-1", { "scene-1": 105 }), 305);
+  assert.equal(getProjectRecordWordCountForSettings({
+    projectIndex: hydrationSafeIndex,
+    sceneDrafts: {
+      "scene-2": { sceneId: "scene-2", location: "Mars", locationRowKey: "mars" },
+    },
+  }), 300);
+  assert.equal(getProjectRecordWordCountForSettings({
+    projectIndex: hydrationSafeIndex,
+    sceneDrafts: {
+      "scene-1": { sceneId: "scene-1", editorText: Array.from({ length: 100 }, () => "word").join(" ") },
+    },
+  }), 300);
+  assert.deepEqual(buildWorkspaceStatsFromProjectIndex(hydrationSafeIndex), {
+    chapterCount: 1,
+    sceneCount: 2,
+    lineCount: 5,
+    wordCount: 300,
+  });
+
   const service = createProjectRecordStateService({
     createStructureDrafts: () => ({ sceneOrder: [] }),
     createTemplateDrafts: () => [],

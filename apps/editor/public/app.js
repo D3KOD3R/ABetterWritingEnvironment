@@ -283,6 +283,13 @@ import {
 import { createProjectRepository } from "./adapters/storage/project-repository.js";
 import { createPreferencesRepository } from "./adapters/storage/preferences-repository.js";
 import { createProjectService } from "./adapters/storage/project-service.js";
+import {
+  adjustChapterWordCountForLiveScene,
+  buildWorkspaceStatsFromProjectIndex,
+  getProjectRecordWordCountForSettings,
+  getProjectWordCount,
+  mergeProjectIndexWithLiveSceneOverrides,
+} from "./adapters/storage/project-metrics.js";
 import { PROJECT_SCHEMA_VERSION } from "./adapters/storage/project-migrations.js";
 import { createProjectPersistenceService } from "./adapters/storage/project-persistence-service.js";
 import { createProjectSourceService } from "./adapters/storage/project-source-service.js";
@@ -452,6 +459,7 @@ import {
   createWorldSpineInteractionController,
   findWorldSpineNode,
   isWorldSpineAssignableEventNode,
+  isWorldSpineLocationRowDeleteEligible,
   normalizeWorldSpineRightPaneMode,
   renderWorldSpinePanelHTML,
   renderWorldSpineWhitespaceContextMenuHTML,
@@ -507,6 +515,7 @@ import {
   applyWorldSpineUnplacementToSceneRecord,
   applyWorldSpineUnplacementToStructureDrafts,
   createWorldSpineLocationRowAssignment,
+  createWorldSpineSceneDropPersistenceOptions,
   createWorldSpineUnplacedLocationRowAssignment,
   hasWorldSpineLocationAssignment,
   hasWorldSpineUnplacedLocationRowAssignment,
@@ -996,6 +1005,10 @@ const worldSpineController = createWorldSpineInteractionController({
       refreshScenes();
     }
 
+    const hasLocationChange = Boolean(changedSceneIds.length || changedPlaceLinks);
+    const locationPersistenceOptions = hasLocationChange
+      ? createWorldSpineSceneDropPersistenceOptions({ changedSceneIds, changedPlaceLinks })
+      : {};
     const moved = targetScene
       ? moveBinderScene(sourceSceneId, {
           ...dropTarget,
@@ -1003,10 +1016,9 @@ const worldSpineController = createWorldSpineInteractionController({
           chapterTitle: targetScene.chapterTitle,
         }, {
           recordHistory: false,
-          flushProjectFileAutosave: Boolean(changedSceneIds.length || changedPlaceLinks),
+          ...locationPersistenceOptions,
         })
       : false;
-    const hasLocationChange = Boolean(changedSceneIds.length || changedPlaceLinks);
     if (moved || hasLocationChange) {
       state.worldSpineScrollTargetNodeId = `scene:${sourceSceneId}`;
       pushWorldSpineHistoryChange(historyBefore, {
@@ -1026,15 +1038,7 @@ const worldSpineController = createWorldSpineInteractionController({
       });
     }
     if (!moved && hasLocationChange) {
-      persistCurrentProjectRecord({
-        changedSceneIds,
-        domain: changedSceneIds.length && changedPlaceLinks ? "world-spine" : changedSceneIds.length ? "manuscript" : "world",
-        dirtyReason: changedSceneIds.length
-          ? "world-spine-scene-location-updated"
-          : "world-spine-scene-location-place-links-updated",
-        source: "worldSpineController.onSceneNodeReorder",
-        flushProjectFileAutosave: true,
-      });
+      persistCurrentProjectRecord(locationPersistenceOptions);
       render();
     }
     return moved || hasLocationChange;
@@ -1438,10 +1442,7 @@ const projectPersistenceService = createProjectPersistenceService({
     const indexedScenes = Array.isArray(activeLibraryRecord?.projectIndex?.scenes)
       ? activeLibraryRecord.projectIndex.scenes
       : [];
-    const indexedWordTotal = indexedScenes.reduce((total, scene) => {
-      const wordCount = Number(scene?.wordCount);
-      return total + (Number.isFinite(wordCount) && wordCount >= 0 ? Math.max(0, Math.round(wordCount)) : 0);
-    }, 0);
+    const indexedWordTotal = getProjectWordCount(activeLibraryRecord?.projectIndex);
     logWritingTargetDebugEvent("info", "persist.project-record", "Persisted active project record.", {
       projectId: projectRecord.id,
       persistCache,
@@ -7575,15 +7576,12 @@ function syncSceneEditorWordCountReadouts(textarea = null) {
 
   const scene = getScene(sceneId);
   const liveSceneWordCount = countWords(String(activeTextarea.value ?? ""));
-  const persistedSceneWordCount = getProjectIndexSceneWordCount(activeProjectIndex, sceneId);
   const chapterId = String(scene?.chapterId ?? "");
-  const persistedChapterWordCount = getProjectIndexChapterWordCount(activeProjectIndex, chapterId);
   const sceneWordCount = liveSceneWordCount;
   const chapterWordCount = adjustChapterWordCountForLiveScene({
-    activeProjectIndex,
+    projectIndex: activeProjectIndex,
     chapterId,
-    persistedChapterWordCount,
-    persistedSceneWordCount,
+    sceneId,
     liveSceneWordCount,
   });
   const selectionWordCount = getSceneEditorSelectionWordCount(activeTextarea);
@@ -7602,53 +7600,6 @@ function syncSceneEditorWordCountReadouts(textarea = null) {
   if (selectionWordCountNode instanceof HTMLElement) {
     selectionWordCountNode.textContent = formatSceneEditorSelectionWordCount(selectionWordCount);
   }
-}
-
-function getProjectIndexSceneWordCount(projectIndex, sceneId) {
-  const scenes = Array.isArray(projectIndex?.scenes) ? projectIndex.scenes : [];
-  const scene = scenes.find((candidate) => candidate?.id === sceneId);
-  const wordCount = Number(scene?.wordCount);
-  if (Number.isFinite(wordCount) && wordCount >= 0) {
-    return Math.max(0, Math.round(wordCount));
-  }
-
-  return null;
-}
-
-function getProjectIndexChapterWordCount(projectIndex, chapterId) {
-  const chapters = Array.isArray(projectIndex?.chapters) ? projectIndex.chapters : [];
-  const chapter = chapters.find((candidate) => candidate?.id === chapterId);
-  const wordCount = Number(chapter?.wordCount);
-  if (Number.isFinite(wordCount) && wordCount >= 0) {
-    return Math.max(0, Math.round(wordCount));
-  }
-
-  const scenes = Array.isArray(projectIndex?.scenes) ? projectIndex.scenes : [];
-  if (!chapterId) {
-    return 0;
-  }
-
-  return scenes
-    .filter((candidate) => candidate?.chapterId === chapterId)
-    .reduce((total, candidate) => total + Math.max(0, Math.round(Number(candidate?.wordCount) || 0)), 0);
-}
-
-function adjustChapterWordCountForLiveScene({
-  activeProjectIndex,
-  chapterId,
-  persistedChapterWordCount,
-  persistedSceneWordCount,
-  liveSceneWordCount,
-}) {
-  if (typeof chapterId !== "string" || !chapterId.trim()) {
-    return Math.max(0, Math.round(Number(persistedChapterWordCount) || 0));
-  }
-
-  const baseCount = Number.isFinite(persistedChapterWordCount)
-    ? Math.max(0, Math.round(persistedChapterWordCount))
-    : getProjectIndexChapterWordCount(activeProjectIndex, chapterId);
-  const sceneDelta = Math.max(0, Math.round(Number(liveSceneWordCount) || 0)) - Math.max(0, Math.round(Number(persistedSceneWordCount) || 0));
-  return Math.max(0, baseCount + sceneDelta);
 }
 
 function getSceneEditorSelectionWordCount(textarea) {
@@ -14701,43 +14652,6 @@ async function reconnectProjectFileDestinationOnBoot(desktopSettings = null) {
   await projectPersistenceService.restoreLastOpenedProject(desktopSettings);
 }
 
-function getWorkspaceManuscriptWordCount(workspace) {
-  const lines = Array.isArray(workspace?.project?.lines) ? workspace.project.lines : [];
-  return lines.reduce((total, line) => total + countWords(line?.text ?? ""), 0);
-}
-
-function getProjectRecordWordCountForSettings(recordLike) {
-  const workspaceWordCount = getWorkspaceManuscriptWordCount(recordLike?.workspace);
-  if (workspaceWordCount > 0) {
-    return workspaceWordCount;
-  }
-
-  const sceneDrafts = recordLike?.sceneDrafts && typeof recordLike.sceneDrafts === "object" && !Array.isArray(recordLike.sceneDrafts)
-    ? recordLike.sceneDrafts
-    : {};
-  let draftWordCount = 0;
-  for (const draft of Object.values(sceneDrafts)) {
-    if (!draft || typeof draft !== "object") {
-      continue;
-    }
-    draftWordCount += countWords(resolveSceneDraftEditorText(draft));
-  }
-  if (draftWordCount > 0) {
-    return draftWordCount;
-  }
-
-  const indexScenes = Array.isArray(recordLike?.projectIndex?.scenes)
-    ? recordLike.projectIndex.scenes
-    : [];
-  return indexScenes.reduce((total, scene) => {
-    const wordCount = Number(scene?.wordCount);
-    if (!Number.isFinite(wordCount) || wordCount < 0) {
-      return total;
-    }
-    return total + Math.max(0, Math.round(wordCount));
-  }, 0);
-}
-
 function createDefaultProjectSettingsSnapshot(currentWordCount = 0, now = new Date()) {
   return {
     editorPrefs: createDefaultEditorPrefs(),
@@ -16819,85 +16733,15 @@ function createProjectLibrarySnapshotForFile() {
   return projectPersistenceService.buildProjectSnapshotForSaveFile();
 }
 
-function collectWorkspaceSceneWordCounts(projectRecord) {
-  const counts = new Map();
-  const lines = Array.isArray(projectRecord?.workspace?.project?.lines)
-    ? projectRecord.workspace.project.lines
-    : [];
-  for (const line of lines) {
-    const sceneId = typeof line?.sceneId === "string" ? line.sceneId.trim() : "";
-    if (!sceneId) {
-      continue;
-    }
-    const nextCount = (counts.get(sceneId) ?? 0) + countWords(line?.text);
-    counts.set(sceneId, nextCount);
-  }
-  return counts;
-}
-
 function buildProjectIndexForRecord(projectRecord, persistedProjectIndex = null) {
   const computedIndex = projectService.getProjectIndex({
     projectRecord,
   });
-  const persistedScenes = Array.isArray(persistedProjectIndex?.scenes)
-    ? persistedProjectIndex.scenes
-    : [];
-  if (!persistedScenes.length) {
-    return computedIndex;
-  }
-
-  const persistedSceneWordCounts = new Map();
-  for (const scene of persistedScenes) {
-    const sceneId = typeof scene?.id === "string" ? scene.id.trim() : "";
-    const wordCount = Number(scene?.wordCount);
-    if (!sceneId || !Number.isFinite(wordCount) || wordCount < 0) {
-      continue;
-    }
-    persistedSceneWordCounts.set(sceneId, Math.max(0, Math.round(wordCount)));
-  }
-  if (!persistedSceneWordCounts.size) {
-    return computedIndex;
-  }
-
-  const workspaceSceneWordCounts = collectWorkspaceSceneWordCounts(projectRecord);
-  const sceneDrafts = projectRecord?.sceneDrafts && typeof projectRecord.sceneDrafts === "object" && !Array.isArray(projectRecord.sceneDrafts)
-    ? projectRecord.sceneDrafts
-    : {};
-  const mergedScenes = computedIndex.scenes.map((scene) => {
-    const sceneId = typeof scene?.id === "string" ? scene.id.trim() : "";
-    if (!sceneId) {
-      return scene;
-    }
-    const hasLoadedDraft = sceneDrafts[sceneId] && typeof sceneDrafts[sceneId] === "object";
-    const workspaceWordCount = workspaceSceneWordCounts.get(sceneId) ?? 0;
-    if (hasLoadedDraft || workspaceWordCount > 0) {
-      return scene;
-    }
-    if (!persistedSceneWordCounts.has(sceneId)) {
-      return scene;
-    }
-
-    return {
-      ...scene,
-      wordCount: persistedSceneWordCounts.get(sceneId),
-    };
+  return mergeProjectIndexWithLiveSceneOverrides({
+    computedIndex,
+    persistedProjectIndex,
+    projectRecord,
   });
-
-  return {
-    ...computedIndex,
-    scenes: mergedScenes,
-  };
-}
-
-function buildWorkspaceStatsFromProjectIndex(projectIndex, currentStats = {}) {
-  const chapters = Array.isArray(projectIndex?.chapters) ? projectIndex.chapters : [];
-  const scenes = Array.isArray(projectIndex?.scenes) ? projectIndex.scenes : [];
-  return {
-    ...(currentStats && typeof currentStats === "object" && !Array.isArray(currentStats) ? currentStats : {}),
-    chapterCount: chapters.length,
-    sceneCount: scenes.length,
-    lineCount: scenes.reduce((total, scene) => total + Math.max(0, Math.round(Number(scene?.lineCount) || 0)), 0),
-  };
 }
 
 async function saveProjectLibraryToBrowserHandle(handle, snapshot = createProjectLibrarySnapshotForFile()) {
@@ -19961,8 +19805,7 @@ function saveWorldSpineLocationRowFromForm() {
 function deleteWorldSpineLocationRowFromForm() {
   const context = normalizeWorldSpineMenuContext(state.worldSpineContextMenu) ?? {};
   const location = String(context.locationLabel ?? "").trim();
-  const hasMembers = Boolean(context.primaryNodeIds.length || context.sceneIds.length || context.worldNodeIds.length);
-  if (!location || location.toLowerCase() === "unplaced location" || !hasMembers) {
+  if (!location || !isWorldSpineLocationRowDeleteEligible(context)) {
     hideWorldSpineContextMenu();
     return false;
   }
@@ -24867,6 +24710,10 @@ function moveBinderScene(sceneId, dropTarget, options = {}) {
     pushBinderSceneMoveHistory(beforeSceneGroups, nextSceneGroups, sceneId);
   }
   persistCurrentProjectRecord({
+    changedSceneIds: options.changedSceneIds,
+    domain: options.domain,
+    dirtyReason: options.dirtyReason,
+    source: options.source,
     flushProjectFileAutosave: options.flushProjectFileAutosave === true,
   });
 
@@ -24946,6 +24793,10 @@ function moveDraftBinderScene(sceneId, dropTarget, options = {}) {
   syncStructureDraftsFromOrderedScenes(orderedScenes);
   refreshScenes();
   persistCurrentProjectRecord({
+    changedSceneIds: options.changedSceneIds,
+    domain: options.domain,
+    dirtyReason: options.dirtyReason,
+    source: options.source,
     flushProjectFileAutosave: options.flushProjectFileAutosave === true,
   });
 

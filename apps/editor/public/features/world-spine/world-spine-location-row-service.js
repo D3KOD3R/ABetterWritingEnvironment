@@ -24,6 +24,27 @@ export function createWorldSpineUnplacedLocationRowAssignment(context = {}) {
   };
 }
 
+// Intent: carry scene-row mutations through binder reorder persistence without losing their explicit chunk IDs.
+export function createWorldSpineSceneDropPersistenceOptions({
+  changedSceneIds = [],
+  changedPlaceLinks = false,
+} = {}) {
+  const normalizedSceneIds = normalizeStringList(changedSceneIds);
+  const hasSceneChanges = normalizedSceneIds.length > 0;
+  const hasWorldChanges = changedPlaceLinks === true;
+  return {
+    changedSceneIds: normalizedSceneIds,
+    domain: hasSceneChanges && hasWorldChanges ? "world-spine" : hasSceneChanges ? "manuscript" : "world",
+    dirtyReason: hasSceneChanges && hasWorldChanges
+      ? "world-spine-scene-node-reordered-and-location-updated"
+      : hasSceneChanges
+        ? "world-spine-scene-location-updated"
+        : "world-spine-scene-location-place-links-updated",
+    source: "worldSpineController.onSceneNodeReorder",
+    flushProjectFileAutosave: hasSceneChanges || hasWorldChanges,
+  };
+}
+
 export function applyWorldSpineUnplacementToSceneRecord(scene = {}, assignment = {}) {
   const normalizedAssignment = normalizeWorldSpineUnplacedLocationAssignment(assignment, scene);
   const existingMetadata = isPlainObject(scene?.worldSpineMetadata) ? scene.worldSpineMetadata : {};

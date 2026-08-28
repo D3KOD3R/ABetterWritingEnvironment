@@ -743,11 +743,7 @@ export function renderWorldSpineParallelTimelineFormHTML(menu, { width = 0, heig
   }
 
   const isLocationRowForm = normalizeString(menu.menuType) === "location-form";
-  const canDeleteLocationRow = Boolean(
-    isLocationRowForm &&
-    normalizeStringList(menu.primaryNodeIds ?? menu.rowNodeIds).length &&
-    !isDefaultLocationIdentity(menu.locationLabel ?? menu.location),
-  );
+  const canDeleteLocationRow = isWorldSpineLocationRowDeleteEligible(menu);
   const viewportWidth = Math.max(WORLD_SPINE_PARALLEL_TIMELINE_FORM_WIDTH + 16, Number(width) || 0);
   const viewportHeight = Math.max(WORLD_SPINE_PARALLEL_TIMELINE_FORM_HEIGHT + 16, Number(height) || 0);
   const left = clamp(
@@ -3621,6 +3617,19 @@ function renderTimelineTicks(ticks = []) {
       <em>${escapeHtml(tick.secondaryLabel)}</em>
     </span>
   `).join("");
+}
+
+// Intent: expose Delete for every populated projected-row membership shape accepted by the delete transaction.
+export function isWorldSpineLocationRowDeleteEligible(menu = {}) {
+  if (normalizeString(menu?.menuType) !== "location-form") {
+    return false;
+  }
+  const hasMembers = Boolean(
+    normalizeStringList(menu?.primaryNodeIds ?? menu?.rowNodeIds).length ||
+    normalizeStringList(menu?.sceneIds ?? menu?.rowSceneIds).length ||
+    normalizeStringList(menu?.worldNodeIds ?? menu?.rowWorldNodeIds).length
+  );
+  return hasMembers && !isDefaultLocationIdentity(menu?.locationLabel ?? menu?.location);
 }
 
 // Intent: render unplaced primary events on a fixed viewport surface while preserving global timeline X coordinates.
