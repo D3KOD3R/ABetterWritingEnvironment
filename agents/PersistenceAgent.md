@@ -9,6 +9,7 @@ Use only when changing project save, load, autosave, import/export, project-file
 - Loading a project JSON must replace or clear stale browser cache before activation. Never merge manuscript bodies, metrics, writing-target history, revisions, or project records from a previous cache into the loaded payload.
 - Browser cache is disposable compatibility state and may retain only the active project snapshot. Detect and report failed cache writes; do not call in-memory state a successful persisted save.
 - Use contextual API names such as `saveProjectSnapshot`, `loadProjectSnapshotFromFile`, and `restoreLastOpenedProject`, not vague `save`, `load`, or `sync` names.
+- At the enforcement point, comment non-obvious persistence authority, forbidden fallbacks, containment, ordering/concurrency, and compatibility assumptions; name the invariant or failure being prevented rather than narrating the operation.
 - Every persistence behaviour change needs automated tests or a documented manual verification checklist. Use the supervisor's affected route before broader verification.
 
 Do not load this agent merely because a feature calls an existing persistence API.
