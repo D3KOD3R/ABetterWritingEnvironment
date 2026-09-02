@@ -442,6 +442,104 @@ export async function runProjectServiceStorageTest() {
   assert.deepEqual(Object.keys(legacyReloadLibrary.projects[0].sceneDrafts), ["scene-1"]);
   storageAdapter.writeJson("test-project-library-v1", indexedManifestSnapshot);
 
+  // Intent: successive metadata-only row assignments must accumulate before a single browser reload.
+  const sequentialWindow = createMemoryWindow();
+  const sequentialStorageAdapter = createBrowserStorageAdapter({ windowRef: sequentialWindow });
+  const sequentialRepository = createProjectRepository({
+    storageAdapter: sequentialStorageAdapter,
+    libraryStorageKey: "sequential-project-library-v1",
+    activeProjectIdStorageKey: "sequential-project-active-v1",
+  });
+  const sequentialService = createProjectService({
+    projectRepository: sequentialRepository,
+    preferencesRepository: createPreferencesRepository({ storageAdapter: sequentialStorageAdapter }),
+    now: () => "2026-05-14T00:00:00.000Z",
+  });
+  const sequentialSeed = createProjectRecord();
+  sequentialSeed.workspace.project.lines.push({
+    ...structuredClone(sequentialSeed.workspace.project.lines[1]),
+    blockId: "block-3",
+    lineNumber: 3,
+    text: "Scene three opening line.",
+    sceneId: "scene-3",
+    sceneTitle: "Scene Three",
+  });
+  sequentialSeed.structureDrafts.scenes.push({
+    ...structuredClone(sequentialSeed.structureDrafts.scenes[1]),
+    sceneId: "scene-3",
+    sceneTitle: "Scene Three",
+    order: 3,
+  });
+  let sequentialSave = sequentialService.createProject({
+    projectRecord: sequentialSeed,
+    persist: true,
+  });
+  for (const [sceneId, location] of [
+    ["scene-1", "Earth"],
+    ["scene-2", "Earth"],
+    ["scene-3", "Mars"],
+  ]) {
+    const currentRecord = sequentialSave.librarySnapshot.projects[0];
+    sequentialSave = sequentialService.saveProject({
+      projectRecord: {
+        ...structuredClone(currentRecord),
+        sceneDrafts: {
+          [sceneId]: {
+            sceneId,
+            chapterId: "chapter-1",
+            chapterTitle: "Chapter One",
+            sceneTitle: sceneId === "scene-3" ? "Scene Three" : `Scene ${sceneId.endsWith("1") ? "One" : "Two"}`,
+            location,
+            locationRowLabel: location,
+            locationRowKey: location.toLowerCase(),
+            locationScope: "planetary",
+            worldSpineMetadata: {
+              location,
+              locationRowLabel: location,
+              locationRowKey: location.toLowerCase(),
+              locationScope: "planetary",
+            },
+          },
+        },
+      },
+      librarySnapshot: sequentialSave.librarySnapshot,
+      persist: true,
+      changedSceneIds: [sceneId],
+    });
+  }
+  const sequentialReloadRepository = createProjectRepository({
+    storageAdapter: sequentialStorageAdapter,
+    libraryStorageKey: "sequential-project-library-v1",
+    activeProjectIdStorageKey: "sequential-project-active-v1",
+  });
+  const sequentialReloadLibrary = sequentialReloadRepository.loadProjectLibrarySnapshot();
+  const sequentialReloadProject = sequentialReloadLibrary.projects[0];
+  assert.deepEqual(
+    sequentialReloadProject.projectIndex.scenes.map((scene) => [scene.id, scene.metadata?.locationRowKey]),
+    [["scene-1", "earth"], ["scene-2", "earth"], ["scene-3", "mars"]],
+  );
+  assert.deepEqual(
+    ["scene-1", "scene-2", "scene-3"].map((sceneId) =>
+      sequentialReloadLibrary.sceneStore["project-test"][sceneId].locationRowKey),
+    ["earth", "earth", "mars"],
+  );
+  const sequentialReloadScenes = buildSceneRecords(
+    sequentialReloadProject.workspace,
+    {
+      ...sequentialReloadLibrary.sceneStore["project-test"],
+      ...sequentialReloadProject.sceneDrafts,
+    },
+    sequentialReloadProject.structureDrafts,
+  );
+  const sequentialReloadWorldSpine = buildWorldSpineTimelineModel({
+    workspace: sequentialReloadProject.workspace,
+    scenes: sequentialReloadScenes,
+  });
+  assert.deepEqual(
+    sequentialReloadWorldSpine.timeline.primaryNodes.map((node) => [node.sceneId, node.locationRowKey]),
+    [["scene-1", "earth"], ["scene-2", "earth"], ["scene-3", "mars"]],
+  );
+
   // Intent: project-file scene stores are authoritative for unopened scenes during export.
   const exportedAuthoritativeFileSnapshot = projectService.exportProjectLibrarySnapshot({
     librarySnapshot: {

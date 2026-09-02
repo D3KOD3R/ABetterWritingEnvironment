@@ -1343,6 +1343,16 @@ export function runWorldSpinePanelTest() {
     width: 800,
     height: 600,
   }), /data-action="delete-world-spine-location-row"/);
+  const emptyNamedLocationRow = {
+    menuType: "location-form",
+    location: "Europa",
+    locationLabel: "Europa",
+  };
+  assert.equal(isWorldSpineLocationRowDeleteEligible(emptyNamedLocationRow), true);
+  assert.match(renderWorldSpineWhitespaceContextMenuHTML(emptyNamedLocationRow, {
+    width: 800,
+    height: 600,
+  }), /data-action="delete-world-spine-location-row"/);
   assert.equal(isWorldSpineLocationRowDeleteEligible({
     ...sceneOnlyLocationRow,
     location: "Unplaced location",

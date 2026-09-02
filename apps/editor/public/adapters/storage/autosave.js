@@ -13,6 +13,7 @@ export function createProjectFileAutosaveController({
   renderStatus,
 }) {
   let lastQueueSkipReason = "";
+  let immediateFlushPending = false;
   const DEFAULT_DIRTY_DOMAIN = "project";
 
   const normalizeDirtyDomain = (value) => {
@@ -102,6 +103,7 @@ export function createProjectFileAutosaveController({
     state.projectFileAutosaveRevision = 0;
     state.projectPersistenceDirtyDomains = {};
     lastQueueSkipReason = "";
+    immediateFlushPending = false;
     logDebug("autosave.state-cleared", "Autosave dirty state cleared.");
   };
 
@@ -288,24 +290,34 @@ export function createProjectFileAutosaveController({
 
   // Intent: write only if the dirty target still matches the active project file destination.
   const flush = async () => {
+    const dirty = state.projectFileAutosaveDirty === true;
+    const blocked = Boolean(state.projectFileAutosaveBlocked);
+    const suppressed = state.projectFileAutosaveSuppressionDepth > 0;
+    const enabled = isEnabled() === true;
+    const destinationAvailable = hasDestination() === true;
+    const busy = isBusy() === true;
+    if (dirty && !blocked && enabled && destinationAvailable && (suppressed || busy)) {
+      immediateFlushPending = true;
+    }
     if (
-      !state.projectFileAutosaveDirty ||
-      state.projectFileAutosaveBlocked ||
-      state.projectFileAutosaveSuppressionDepth > 0 ||
-      !isEnabled() ||
-      !hasDestination() ||
-      isBusy()
+      !dirty ||
+      blocked ||
+      suppressed ||
+      !enabled ||
+      !destinationAvailable ||
+      busy
     ) {
       logQueueSkip("flush-precondition-failed", {
-        dirty: state.projectFileAutosaveDirty === true,
-        blocked: Boolean(state.projectFileAutosaveBlocked),
+        dirty,
+        blocked,
         suppressionDepth: state.projectFileAutosaveSuppressionDepth,
-        enabled: isEnabled() === true,
-        hasDestination: hasDestination() === true,
-        busy: isBusy() === true,
+        enabled,
+        hasDestination: destinationAvailable,
+        busy,
       });
       return;
     }
+    immediateFlushPending = false;
 
     const target = state.projectFileAutosaveTarget;
     const currentTarget = getTarget();
@@ -366,10 +378,18 @@ export function createProjectFileAutosaveController({
     }
 
     if (saveSucceeded && state.projectFileAutosaveDirty) {
-      logInfo("autosave.rescheduled", "Autosave detected new edits during write; scheduling another run.", {
+      const shouldFlushImmediately = immediateFlushPending;
+      logInfo("autosave.rescheduled", shouldFlushImmediately
+        ? "Autosave detected an explicit flush request during write; starting the accumulated save now."
+        : "Autosave detected new edits during write; scheduling another run.", {
         revision: state.projectFileAutosaveRevision,
+        immediate: shouldFlushImmediately,
       });
-      queue();
+      if (shouldFlushImmediately) {
+        await flush();
+      } else {
+        queue();
+      }
     }
   };
 

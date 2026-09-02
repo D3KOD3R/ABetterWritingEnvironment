@@ -236,6 +236,64 @@ export async function runProjectFileStorageAdaptersTest() {
   assert.equal(state.projectFileAutosaveDirty, false);
   assert.equal(state.projectFileAutosaveRevision, 0);
 
+  // Intent: explicit row-assignment flushes that arrive during an in-flight save must persist the accumulated state immediately.
+  const sequentialState = createAutosaveState();
+  const sequentialTimer = createFakeTimer();
+  const livePlacements = {};
+  let persistedPlacements = {};
+  let sequentialSaveCount = 0;
+  let sequentialSaveBusy = false;
+  let releaseFirstSequentialSave;
+  let announceFirstSequentialSave;
+  const firstSequentialSaveStarted = new Promise((resolve) => {
+    announceFirstSequentialSave = resolve;
+  });
+  const firstSequentialSaveGate = new Promise((resolve) => {
+    releaseFirstSequentialSave = resolve;
+  });
+  const sequentialController = createProjectFileAutosaveController({
+    state: sequentialState,
+    delayMs: 250,
+    windowRef: sequentialTimer.windowRef,
+    getTarget: () => ({ projectId: "project-rows", filePath: "C:\\Projects\\rows.abe-project.json", fileHandle: null }),
+    hasDestination: () => true,
+    isBusy: () => sequentialSaveBusy,
+    isEnabled: () => true,
+    save: async () => {
+      sequentialSaveCount += 1;
+      const saveNumber = sequentialSaveCount;
+      const snapshot = structuredClone(livePlacements);
+      sequentialSaveBusy = true;
+      if (saveNumber === 1) {
+        announceFirstSequentialSave();
+        await firstSequentialSaveGate;
+      }
+      persistedPlacements = snapshot;
+      sequentialSaveBusy = false;
+    },
+    setStatus: () => {},
+    renderStatus: () => {},
+  });
+  livePlacements["scene-a"] = "earth";
+  sequentialController.markDirty({ domain: "manuscript", reason: "scene-a-row", source: "test" });
+  const firstSequentialFlush = sequentialController.flush();
+  await firstSequentialSaveStarted;
+  livePlacements["scene-b"] = "earth";
+  sequentialController.markDirty({ domain: "manuscript", reason: "scene-b-row", source: "test" });
+  await sequentialController.flush();
+  livePlacements["scene-c"] = "mars";
+  sequentialController.markDirty({ domain: "manuscript", reason: "scene-c-row", source: "test" });
+  await sequentialController.flush();
+  releaseFirstSequentialSave();
+  await firstSequentialFlush;
+  assert.equal(sequentialSaveCount, 2);
+  assert.deepEqual(persistedPlacements, {
+    "scene-a": "earth",
+    "scene-b": "earth",
+    "scene-c": "mars",
+  });
+  assert.equal(sequentialState.projectFileAutosaveDirty, false);
+
   // Cache-only fallback must leave the project file dirty and visibly out of sync.
   controller.markDirty({
     domain: "passage-notes",

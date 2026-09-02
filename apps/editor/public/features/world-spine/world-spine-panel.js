@@ -3619,15 +3619,17 @@ function renderTimelineTicks(ticks = []) {
   `).join("");
 }
 
-// Intent: expose Delete for every populated projected-row membership shape accepted by the delete transaction.
+// Intent: expose Delete for named real rows, including empty lanes, while protecting the unnamed prompt and default row.
 export function isWorldSpineLocationRowDeleteEligible(menu = {}) {
   if (normalizeString(menu?.menuType) !== "location-form") {
     return false;
   }
 
-  return !isDefaultLocationIdentity(
-    menu?.locationLabel ?? menu?.location
-  );
+  const hasFormLocation = Object.prototype.hasOwnProperty.call(menu, "location");
+  const location = hasFormLocation
+    ? normalizeString(menu.location)
+    : normalizeLocationLabel(menu.locationLabel);
+  return Boolean(location) && !isDefaultLocationIdentity(location);
 }
 
 // Intent: render unplaced primary events on a fixed viewport surface while preserving global timeline X coordinates.
