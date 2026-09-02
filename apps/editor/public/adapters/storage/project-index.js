@@ -11,6 +11,36 @@ function cloneValue(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+export const PROJECT_INDEX_SCENE_METADATA_KEYS = Object.freeze([
+  "location", "storyLocation", "place", "setting", "locality",
+  "sublocation", "subLocation", "specificLocation", "localPlace", "ship", "vehicle",
+  "orbitalBand", "orbit", "orbitalPosition", "position",
+  "locationRowLabel", "timelineRowLabel", "assignedLocationRow",
+  "locationRowKey", "timelineRowKey", "assignedLocationRowKey",
+  "locationScope", "timelineLocationScope",
+  "date", "storyDate", "timelineDate", "chronologyDate",
+  "time", "storyTime", "timelineTime", "chronologyTime",
+  "people", "peoplePresent", "characters", "charactersPresent", "cast",
+  "criticalEvents", "criticalEvent", "importantEvents", "majorEvents",
+  "locationChanges", "locationChange", "settingChanges", "placeChanges",
+  "worldSpineMetadata", "worldMetadata", "timelineMetadata", "storyMetadata",
+  "customMetadata", "metadata",
+]);
+
+// Intent: keep non-body scene metadata in the complete project index for lazy global projections after reload.
+export function collectProjectIndexSceneMetadata(source = {}) {
+  if (!source || typeof source !== "object" || Array.isArray(source)) {
+    return {};
+  }
+  const metadata = {};
+  for (const key of PROJECT_INDEX_SCENE_METADATA_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(source, key)) {
+      metadata[key] = cloneValue(source[key]);
+    }
+  }
+  return metadata;
+}
+
 function toNumber(value, fallback = Number.POSITIVE_INFINITY) {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : fallback;
@@ -259,6 +289,10 @@ function collectSceneRecords(projectRecord) {
       ? scene.chapterTitle.trim()
       : existing.chapterTitle;
     existing.synopsis = typeof scene?.sceneSynopsis === "string" ? scene.sceneSynopsis : existing.synopsis;
+    existing.metadata = {
+      ...(existing.metadata && typeof existing.metadata === "object" ? existing.metadata : {}),
+      ...collectProjectIndexSceneMetadata(scene),
+    };
     existing.sortOrder = Math.min(existing.sortOrder, Number.isFinite(toNumber(scene?.order)) ? toNumber(scene?.order) : 100000 + index);
     lineScenes.set(sceneId, existing);
   }
@@ -287,6 +321,10 @@ function collectSceneRecords(projectRecord) {
       ? draft.sceneSynopsis
       : existing.synopsis;
     existing.wordCount = resolveSceneDraftWordCount(draft);
+    existing.metadata = {
+      ...(existing.metadata && typeof existing.metadata === "object" ? existing.metadata : {}),
+      ...collectProjectIndexSceneMetadata(draft),
+    };
     lineScenes.set(sceneId, existing);
   }
 
@@ -302,6 +340,7 @@ function collectSceneRecords(projectRecord) {
 export function buildProjectIndexFromProjectRecord(projectRecord, {
   schemaVersion = 1,
   sceneWordCountsById = {},
+  sceneMetadataById = {},
 } = {}) {
   const sceneRecords = collectSceneRecords(projectRecord);
   const assetRegistry = Array.isArray(projectRecord?.projectSettings?.assetRegistry)
@@ -329,6 +368,7 @@ export function buildProjectIndexFromProjectRecord(projectRecord, {
       ? Math.round(overrideWordCount)
       : Math.max(0, Math.round(Number(scene.wordCount) || 0));
     const noteCounts = getScenePassageNoteCounts(noteCountsBySceneId, scene.id);
+    const persistedMetadata = collectProjectIndexSceneMetadata(sceneMetadataById?.[scene.id]);
 
     return {
       id: scene.id,
@@ -339,6 +379,10 @@ export function buildProjectIndexFromProjectRecord(projectRecord, {
       lineCount: scene.lineCount,
       wordCount: resolvedWordCount,
       synopsis: scene.synopsis || "",
+      metadata: {
+        ...cloneValue(scene.metadata ?? {}),
+        ...persistedMetadata,
+      },
       assetIds: sceneAssets.get(scene.id) ?? [],
       ...noteCounts,
     };

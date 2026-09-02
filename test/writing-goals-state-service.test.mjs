@@ -85,6 +85,24 @@ export function runWritingGoalsStateServiceTest() {
     WRITING_TARGET_METRIC_KEYS: ["wordTarget", "sessionTarget", "forecast", "sessionTracker"],
   });
 
+  // Intent: hydration alone does not change goal baselines, while a live edit contributes only its scene delta.
+  activeProjectRecord.projectIndex.scenes = [
+    { id: "scene-1", chapterId: "chapter-1", wordCount: 2 },
+    { id: "scene-2", chapterId: "chapter-1", wordCount: 3 },
+  ];
+  state.selectedSceneId = "scene-1";
+  state.sceneDrafts = {
+    "scene-1": { sceneId: "scene-1", editorText: "one two" },
+  };
+  assert.equal(service.getCurrentManuscriptWordCount(), 5);
+  state.sceneDrafts["scene-1"].editorText = "one two three";
+  assert.equal(service.getCurrentManuscriptWordCount(), 6);
+  state.selectedSceneId = null;
+  state.sceneDrafts = {};
+  activeProjectRecord.projectIndex.scenes = [
+    { id: "scene-1", wordCount: 70097 },
+  ];
+
   const todayKey = service.getLocalDateKey(now);
   const seededRecord = {
     ...service.createDefaultWritingTargetRecord(70097, now),

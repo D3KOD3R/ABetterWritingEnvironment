@@ -72,6 +72,8 @@ const DEFAULT_WORLD_SPINE_ID = "spine-0001";
 const DEFAULT_LOCATION_LABEL = "Unplaced location";
 const DEFAULT_LOCATION_ROW_PROMPT = "Insert Location Name";
 const DEFAULT_LOCATION_SCOPE = "planetary";
+const UNPLACED_DOCK_EXPANDED_SAFE_AREA = 132;
+const UNPLACED_DOCK_COLLAPSED_SAFE_AREA = 42;
 const DEFAULT_CORE_LOCATION_CATEGORIES = Object.freeze(["planet"]);
 const DEFAULT_SUBLOCATION_CATEGORIES = Object.freeze(["location", "vehicle"]);
 const EVENT_SECTION_CONTEXT_BEFORE_BLOCKS = 2;
@@ -197,6 +199,13 @@ export function buildWorldSpineTimelineModel({
   const nodes = [...orderedPrimaryNodes, ...childNodes, ...referenceNodes];
   const implicationConnections = createTimelineImplicationConnections(world.edges, nodes);
   connections.push(...implicationConnections);
+  const unplacedPrimaryNodes = orderedPrimaryNodes.filter(isTimelineNodeUnplaced);
+  const canvasProjection = createWorldSpineCanvasProjection({
+    nodes,
+    primaryNodes: orderedPrimaryNodes,
+    connections,
+    unplacedPrimaryNodes,
+  });
   const width = Math.max(900, CANVAS_PADDING_X * 2 + Math.max(1, orderedPrimaryNodes.length) * SCENE_GAP);
   const height = timelineMetrics.height;
   const dropZones = createTimelineDropZones(orderedPrimaryNodes, width, timelineTiers, timelineLocationRows);
@@ -226,6 +235,11 @@ export function buildWorldSpineTimelineModel({
       axisY: timelineMetrics.axisY,
       tiers: timelineTiers,
       locationRows: timelineLocationRows,
+      unplacedDock: {
+        primaryNodes: unplacedPrimaryNodes,
+        primaryNodeIds: unplacedPrimaryNodes.map((node) => node.id),
+        count: unplacedPrimaryNodes.length,
+      },
       primaryNodes: orderedPrimaryNodes,
       childNodes,
       referenceNodes,
@@ -233,6 +247,10 @@ export function buildWorldSpineTimelineModel({
       connections,
       ticks,
       dropZones,
+      canvasPrimaryNodes: canvasProjection.primaryNodes,
+      canvasNodes: canvasProjection.nodes,
+      canvasConnections: canvasProjection.connections,
+      canvasTicks: canvasProjection.primaryNodes.map(createPrimaryNodeTimelineTick),
     },
     manuscript,
     eventManuscriptSection,
@@ -253,12 +271,13 @@ export function renderWorldSpinePanelHTML(model, {
   sublocationComposer = null,
   locationFilter = {},
   locationFilterOpen = false,
+  unplacedDockCollapsed = false,
 } = {}) {
   const sourceTimeline = model?.timeline ?? {};
   const sourcePrimaryNodes = Array.isArray(sourceTimeline.primaryNodes) ? sourceTimeline.primaryNodes : [];
   const locationFilterModel = buildWorldSpineLocationFilterModel(sourceTimeline, locationFilter);
   const timeline = projectWorldSpineTimelineForLocationFilterViewport(sourceTimeline, locationFilterModel);
-  const nodes = Array.isArray(timeline.nodes) ? timeline.nodes : [];
+  const nodes = Array.isArray(timeline.canvasNodes) ? timeline.canvasNodes : [];
   const primaryNodes = Array.isArray(timeline.primaryNodes) ? timeline.primaryNodes : [];
   const width = Number.isFinite(timeline.width) ? timeline.width : 900;
   const height = Number.isFinite(timeline.height) ? timeline.height : 520;
@@ -270,6 +289,11 @@ export function renderWorldSpinePanelHTML(model, {
   const normalizedRightPaneMode = normalizeWorldSpineRightPaneMode(rightPaneMode);
   const zoomFrameSize = resolveWorldSpineTimelineZoomFrameSize(width, height, normalizedTimelineZoom);
   const nodesById = new Map(nodes.map((node) => [node.id, node]));
+  const unplacedDock = timeline?.unplacedDock ?? sourceTimeline?.unplacedDock ?? {};
+  const showUnplacedDock = !locationFilterModel.active && Number(unplacedDock.count) > 0;
+  const unplacedDockSafeArea = showUnplacedDock
+    ? (unplacedDockCollapsed ? UNPLACED_DOCK_COLLAPSED_SAFE_AREA : UNPLACED_DOCK_EXPANDED_SAFE_AREA)
+    : 0;
   const filterCanvasClass = [
     locationFilterModel.active ? "is-world-spine-location-filtered" : "",
     timeline.locationFilterViewportFit ? "is-world-spine-location-fit" : "",
@@ -282,7 +306,8 @@ export function renderWorldSpinePanelHTML(model, {
       data-world-spine-location-filter-active="${locationFilterModel.active ? "true" : "false"}"
       data-world-spine-location-filter-open="${locationFilterOpen ? "true" : "false"}"
       data-world-spine-location-filter-fit="${timeline.locationFilterViewportFit ? "true" : "false"}"
-      style="--world-spine-event-rail-width:${eventRailWidth}px; --world-spine-manuscript-pane-width:${manuscriptPaneWidth}px; --world-spine-timeline-zoom:${normalizedTimelineZoom};"
+      data-world-spine-unplaced-dock-visible="${showUnplacedDock ? "true" : "false"}"
+      style="--world-spine-event-rail-width:${eventRailWidth}px; --world-spine-manuscript-pane-width:${manuscriptPaneWidth}px; --world-spine-timeline-zoom:${normalizedTimelineZoom}; --world-spine-unplaced-dock-safe-area:${unplacedDockSafeArea}px; --world-spine-timeline-scroll-left:0px;"
     >
       ${renderEventRail(model)}
       ${renderWorldSpinePanelResizer("event-rail", "Resize event rail")}
@@ -327,7 +352,7 @@ export function renderWorldSpinePanelHTML(model, {
                 style="width:${width}px; height:${height}px;"
               >
               <svg class="world-spine-connections" viewBox="0 0 ${width} ${height}" style="width:${width}px; height:${height}px;" aria-hidden="true" focusable="false">
-                ${renderConnections(timeline.connections, {
+                ${renderConnections(timeline.canvasConnections ?? timeline.connections, {
                   includeImplications: false,
                   locationFilterModel,
                   nodesById,
@@ -347,7 +372,7 @@ export function renderWorldSpinePanelHTML(model, {
                     focusable="false"
                   >
                     ${renderWorldSpineImplicationMarkerDefs()}
-                    ${renderConnections(timeline.connections, {
+                    ${renderConnections(timeline.canvasConnections ?? timeline.connections, {
                       onlyImplications: true,
                       locationFilterModel,
                       nodesById,
@@ -356,11 +381,16 @@ export function renderWorldSpinePanelHTML(model, {
                   ${nodes.map((node) => renderTimelineNode(node, locationFilterModel)).join("")}
                 </div>
                 <div class="world-spine-axis" style="left:${CANVAS_PADDING_X - 40}px; top:${axisY}px; width:${Math.max(240, width - (CANVAS_PADDING_X * 2) + 80)}px;">
-                  ${renderTimelineTicks(timeline.ticks)}
+                  ${renderTimelineTicks(timeline.canvasTicks ?? timeline.ticks)}
                 </div>
               </div>
             </div>
           </div>
+          ${showUnplacedDock ? renderWorldSpineUnplacedDockHTML(unplacedDock, {
+            collapsed: unplacedDockCollapsed,
+            width,
+            zoomFrameWidth: zoomFrameSize.width,
+          }) : ""}
           <div class="world-spine-detail-overlay" data-world-spine-card-overlay></div>
           <div class="world-spine-implication-overlay" data-world-spine-implication-overlay>
             ${renderWorldSpineImplicationComposerHTML(implicationComposer, model)}
@@ -411,6 +441,8 @@ function projectWorldSpineTimelineForLocationFilterViewport(timeline = {}, locat
   const projectedRows = sourceRows.map((row, index) => projectLocationFilterViewportRow(row, index, rowProjection));
   const projectedNodes = projectLocationFilterViewportNodes(timeline.nodes, sourceRows, rowProjection);
   const nodesById = new Map(projectedNodes.map((node) => [node.id, node]));
+  const projectedCanvasNodes = projectLocationFilterViewportNodeList(timeline.canvasNodes, nodesById);
+  const canvasNodesById = new Map(projectedCanvasNodes.map((node) => [node.id, node]));
   const projectedTiers = projectLocationFilterViewportTiers(timeline.tiers, projectedRows);
   const projectedPrimaryNodes = projectLocationFilterViewportNodeList(timeline.primaryNodes, nodesById);
   const width = Number.isFinite(Number(timeline.width)) ? Number(timeline.width) : 900;
@@ -429,6 +461,9 @@ function projectWorldSpineTimelineForLocationFilterViewport(timeline = {}, locat
     referenceNodes: projectLocationFilterViewportNodeList(timeline.referenceNodes, nodesById),
     nodes: projectedNodes,
     connections: projectLocationFilterViewportConnections(timeline.connections, nodesById),
+    canvasPrimaryNodes: projectLocationFilterViewportNodeList(timeline.canvasPrimaryNodes, nodesById),
+    canvasNodes: projectedCanvasNodes,
+    canvasConnections: projectLocationFilterViewportConnections(timeline.canvasConnections, canvasNodesById),
     dropZones: createTimelineDropZones(projectedPrimaryNodes, width, projectedTiers, projectedRows),
     locationFilterViewportFit: true,
     locationFilterViewportRowCount: visibleRowCount,
@@ -708,6 +743,7 @@ export function renderWorldSpineParallelTimelineFormHTML(menu, { width = 0, heig
   }
 
   const isLocationRowForm = normalizeString(menu.menuType) === "location-form";
+  const canDeleteLocationRow = isWorldSpineLocationRowDeleteEligible(menu);
   const viewportWidth = Math.max(WORLD_SPINE_PARALLEL_TIMELINE_FORM_WIDTH + 16, Number(width) || 0);
   const viewportHeight = Math.max(WORLD_SPINE_PARALLEL_TIMELINE_FORM_HEIGHT + 16, Number(height) || 0);
   const left = clamp(
@@ -795,6 +831,13 @@ export function renderWorldSpineParallelTimelineFormHTML(menu, { width = 0, heig
       </label>`}
       ${error ? `<p class="world-spine-timeline-form__error" role="alert">${escapeHtml(error)}</p>` : ""}
       <div class="world-spine-timeline-form__actions">
+        ${canDeleteLocationRow ? `
+          <button
+            type="button"
+            class="tag-button panel-action-button"
+            data-action="delete-world-spine-location-row"
+          >Delete row</button>
+        ` : ""}
         ${isLocationRowForm ? `
           <button
             type="button"
@@ -1530,6 +1573,7 @@ export function createWorldSpineInteractionController({
     }
 
     const frame = scroll.querySelector("[data-world-spine-timeline-zoom-frame]");
+    const unplacedTrackFrame = root?.querySelector("[data-world-spine-unplaced-track-frame]");
     const canvas = scroll.querySelector("[data-world-spine-canvas]");
     const width = Number(canvas?.dataset?.worldSpineCanvasWidth) || Number(canvas?.offsetWidth) || 900;
     const height = Number(canvas?.dataset?.worldSpineCanvasHeight) || Number(canvas?.offsetHeight) || 520;
@@ -1540,6 +1584,9 @@ export function createWorldSpineInteractionController({
     if (frame instanceof HTMLElement) {
       frame.style.width = `${frameSize.width}px`;
       frame.style.height = `${frameSize.height}px`;
+    }
+    if (unplacedTrackFrame instanceof HTMLElement) {
+      unplacedTrackFrame.style.width = `${frameSize.width}px`;
     }
 
     return timelineZoom;
@@ -1586,6 +1633,7 @@ export function createWorldSpineInteractionController({
       nextScrollTop: scroll.scrollTop,
     });
     syncLocationRowHeaderOffset(scroll);
+    syncUnplacedDockTrackOffset(scroll);
     syncChapterAnchorToTimelineViewport();
     syncImplicationConnectionsToEventBlocks();
     updateCardPosition();
@@ -1642,6 +1690,15 @@ export function createWorldSpineInteractionController({
     const zoom = getTimelineZoom();
     const modelScrollLeft = zoom > 0 ? scroll.scrollLeft / zoom : scroll.scrollLeft;
     scroll.style.setProperty("--world-spine-location-row-sticky-x", `${round(modelScrollLeft)}px`);
+  }
+
+  // Intent: keep the fixed dock's chronological card track aligned to the single timeline scrollbar.
+  function syncUnplacedDockTrackOffset(scroll = getTimelineScroll()) {
+    if (!(scroll instanceof HTMLElement)) {
+      return;
+    }
+
+    getRoot()?.style.setProperty("--world-spine-timeline-scroll-left", `${round(scroll.scrollLeft)}px`);
   }
 
   // Intent: align saved implication paths to the actual rendered event-block buttons after browser layout.
@@ -2137,6 +2194,7 @@ export function createWorldSpineInteractionController({
     if (target.matches("[data-world-spine-timeline-scroll]")) {
       onTimelineScroll(target.scrollLeft);
       syncLocationRowHeaderOffset(target);
+      syncUnplacedDockTrackOffset(target);
       syncChapterAnchorToTimelineViewport();
       updateCardPosition();
     }
@@ -2186,6 +2244,7 @@ export function createWorldSpineInteractionController({
       onTimelineScroll(scroll.scrollLeft);
     }
     syncLocationRowHeaderOffset(scroll);
+    syncUnplacedDockTrackOffset(scroll);
     syncChapterAnchorToTimelineViewport();
     updateCardPosition();
   }
@@ -2750,6 +2809,7 @@ export function createWorldSpineInteractionController({
   function syncAfterRender() {
     applyTimelineZoomValue(timelineZoom);
     syncLocationRowHeaderOffset();
+    syncUnplacedDockTrackOffset();
     syncChapterAnchorToTimelineViewport();
     syncImplicationConnectionsToEventBlocks();
 
@@ -3559,6 +3619,72 @@ function renderTimelineTicks(ticks = []) {
   `).join("");
 }
 
+// Intent: expose Delete for named real rows, including empty lanes, while protecting the unnamed prompt and default row.
+export function isWorldSpineLocationRowDeleteEligible(menu = {}) {
+  if (normalizeString(menu?.menuType) !== "location-form") {
+    return false;
+  }
+
+  const hasFormLocation = Object.prototype.hasOwnProperty.call(menu, "location");
+  const location = hasFormLocation
+    ? normalizeString(menu.location)
+    : normalizeLocationLabel(menu.locationLabel);
+  return Boolean(location) && !isDefaultLocationIdentity(location);
+}
+
+// Intent: render unplaced primary events on a fixed viewport surface while preserving global timeline X coordinates.
+function renderWorldSpineUnplacedDockHTML(unplacedDock = {}, {
+  collapsed = false,
+  width = 900,
+  zoomFrameWidth = 900,
+} = {}) {
+  const primaryNodes = Array.isArray(unplacedDock?.primaryNodes) ? unplacedDock.primaryNodes.filter(Boolean) : [];
+  const count = Number.isFinite(Number(unplacedDock?.count)) ? Number(unplacedDock.count) : primaryNodes.length;
+  if (!count) {
+    return "";
+  }
+
+  return `
+    <section
+      class="world-spine-unplaced-dock${collapsed ? " is-collapsed" : ""}"
+      data-world-spine-unplaced-dock
+      data-world-spine-unplaced-dock-collapsed="${collapsed ? "true" : "false"}"
+      data-world-spine-unplaced-count="${escapeHtml(String(count))}"
+      aria-label="Unplaced location events"
+    >
+      <div class="world-spine-unplaced-dock__header">
+        <strong>Unplaced location <span aria-hidden="true">&middot;</span> ${escapeHtml(String(count))}</strong>
+        <button
+          type="button"
+          class="world-spine-unplaced-dock__toggle"
+          data-action="toggle-world-spine-unplaced-dock"
+          aria-expanded="${collapsed ? "false" : "true"}"
+          aria-controls="world-spine-unplaced-dock-track"
+          title="${collapsed ? "Expand" : "Collapse"} unplaced events"
+        >${collapsed ? "Expand" : "Collapse"}</button>
+      </div>
+      ${collapsed ? "" : `
+        <div class="world-spine-unplaced-dock__track-viewport" id="world-spine-unplaced-dock-track">
+          <div
+            class="world-spine-unplaced-dock__track-frame"
+            data-world-spine-unplaced-track-frame
+            style="width:${zoomFrameWidth}px;"
+          >
+            <div
+              class="world-spine-unplaced-dock__track"
+              style="width:${width}px; transform:scale(var(--world-spine-timeline-zoom, 1));"
+            >
+              ${primaryNodes.map((node) => renderTimelineNode({ ...node, y: 0 }, {}, {
+                surface: "unplaced-dock",
+              })).join("")}
+            </div>
+          </div>
+        </div>
+      `}
+    </section>
+  `;
+}
+
 function renderTimelineTierGuides(tiers = [], width = 900, locationFilterModel = {}) {
   const safeTiers = Array.isArray(tiers) ? tiers.filter(Boolean) : [];
   if (safeTiers.length <= 1) {
@@ -3587,7 +3713,7 @@ function renderTimelineTierGuides(tiers = [], width = 900, locationFilterModel =
 
 function renderTimelineLocationRowGuides(locationRows = [], width = 900, locationFilterModel = {}) {
   const rows = Array.isArray(locationRows) ? locationRows.filter(Boolean) : [];
-  if (rows.length <= 1) {
+  if (!rows.length) {
     return "";
   }
 
@@ -3636,7 +3762,7 @@ function renderTimelineLocationRowGuides(locationRows = [], width = 900, locatio
 // Intent: render assigned place artwork as a passive left-side scene reference beneath location row banners.
 function renderTimelineLocationRowArtwork(locationRows = [], locationFilterModel = {}) {
   const rows = Array.isArray(locationRows) ? locationRows.filter(Boolean) : [];
-  if (rows.length <= 1) {
+  if (!rows.length) {
     return "";
   }
 
@@ -3729,7 +3855,7 @@ function serializeWorldSpineDatasetList(values = []) {
   return escapeHtml(JSON.stringify(normalizeStringList(values)));
 }
 
-function renderTimelineNode(node, locationFilterModel = {}) {
+function renderTimelineNode(node, locationFilterModel = {}, { surface = "canvas" } = {}) {
   const rowLocationKey = resolveTimelineNodeRowLocationKey(node);
   const rowLocationLabel = resolveTimelineNodeRowLocationLabel(node);
   const filterClass = resolveWorldSpineLocationFilterClass(locationFilterModel, rowLocationKey);
@@ -3741,6 +3867,7 @@ function renderTimelineNode(node, locationFilterModel = {}) {
     node.hasPassage ? "has-passage" : "",
     node.locationWarning ? "has-location-warning" : "",
     filterClass,
+    surface === "unplaced-dock" ? "world-spine-node--unplaced-dock" : "",
   ].filter(Boolean).join(" ");
 
   return `
@@ -3764,10 +3891,13 @@ function renderTimelineNode(node, locationFilterModel = {}) {
       data-world-spine-sublocation-label="${escapeHtml(node.sublocationLabel || "")}"
       data-world-spine-orbital-band="${escapeHtml(node.orbitalBand || "")}"
       data-world-spine-location-warning-kind="${escapeHtml(node.locationWarning?.kind || "")}"
+      data-world-spine-node-surface="${escapeHtml(surface)}"
       aria-label="${escapeHtml(`${node.title} timeline node`)}"
     >
       <span class="world-spine-node__title">${escapeHtml(node.title)}</span>
-      <span class="world-spine-node__meta">${escapeHtml(compactNodeMeta(node))}</span>
+      <span class="world-spine-node__meta">${escapeHtml(compactNodeMeta(node, {
+        suppressDefaultRowLocation: surface === "unplaced-dock",
+      }))}</span>
       <span class="world-spine-node__icons" aria-label="${escapeHtml(describeNodeBadges(node))}">
         ${renderNodeBadge(node.locationWarning, "!", node.locationWarning?.message || "Location row mismatch", "is-location-warning")}
         ${renderNodeBadge(node.hasPassage, "A", "Anchored passage")}
@@ -5156,6 +5286,11 @@ function createWorldSpineTimelineLocationRows(primaryNodes = [], tiers = [], {
     tierNodes.forEach((node) => {
       const locationRowLabel = resolveTimelineNodeRowLocationLabel(node);
       const locationRowKey = resolveTimelineNodeRowLocationKey(node);
+      node.locationRowLabel = locationRowLabel;
+      node.locationRowKey = locationRowKey;
+      if (isDefaultLocationIdentity(locationRowKey)) {
+        return;
+      }
       if (!rowsForTier.has(locationRowKey)) {
         const locationRowIndex = rows.length + rowsForTier.size;
         rowsForTier.set(locationRowKey, {
@@ -5176,11 +5311,9 @@ function createWorldSpineTimelineLocationRows(primaryNodes = [], tiers = [], {
       }
 
       appendPrimaryNodeToLocationRow(rowsForTier.get(locationRowKey), node);
-      node.locationRowLabel = locationRowLabel;
-      node.locationRowKey = locationRowKey;
     });
 
-    if (!rowsForTier.size) {
+    if (!rowsForTier.size && !tierNodes.length) {
       const locationRowIndex = rows.length;
       const locationLabel = normalizeLocationLabel(tier.locationLabel);
       rows.push({
@@ -5197,6 +5330,7 @@ function createWorldSpineTimelineLocationRows(primaryNodes = [], tiers = [], {
         primaryNodeIds: [],
         sceneIds: [],
         worldNodeIds: [],
+        isEmptyLocationPrompt: true,
       });
     } else {
       rows.push(...rowsForTier.values());
@@ -5218,6 +5352,9 @@ function normalizeWorldSpineTimelineLocationRows(rows = []) {
   const defaultLocationKey = normalizeLocationKey(DEFAULT_LOCATION_LABEL);
   const visibleRows = safeRows.filter((row) => {
     const locationKey = resolveLocationRowKey(row.locationLabel, row.locationKey);
+    if (locationKey === defaultLocationKey && hasWorldSpineLocationRowContent(row)) {
+      return false;
+    }
     if (!locationKey || locationKey === defaultLocationKey || hasWorldSpineLocationRowContent(row)) {
       return true;
     }
@@ -5300,6 +5437,44 @@ function isDefaultLocationIdentity(value = "") {
     key === normalizeLocationKey(DEFAULT_LOCATION_LABEL) ||
     key === normalizeLocationKey(DEFAULT_LOCATION_ROW_PROMPT)
   );
+}
+
+function isTimelineNodeUnplaced(node = {}) {
+  return isDefaultLocationIdentity(resolveTimelineNodeRowLocationKey(node));
+}
+
+// Intent: keep canonical graph records complete while limiting the scrolling canvas to visible real-row records.
+function createWorldSpineCanvasProjection({
+  nodes = [],
+  primaryNodes = [],
+  connections = [],
+  unplacedPrimaryNodes = [],
+} = {}) {
+  const hiddenPrimaryNodeIds = new Set(
+    (Array.isArray(unplacedPrimaryNodes) ? unplacedPrimaryNodes : [])
+      .map((node) => normalizeString(node?.id))
+      .filter(Boolean),
+  );
+  const hiddenNodeIds = new Set(hiddenPrimaryNodeIds);
+  for (const node of Array.isArray(nodes) ? nodes : []) {
+    if (hiddenPrimaryNodeIds.has(normalizeString(node?.parentNodeId))) {
+      hiddenNodeIds.add(normalizeString(node?.id));
+    }
+  }
+
+  const canvasNodes = (Array.isArray(nodes) ? nodes : [])
+    .filter((node) => !hiddenNodeIds.has(normalizeString(node?.id)));
+  const canvasNodeIds = new Set(canvasNodes.map((node) => normalizeString(node?.id)).filter(Boolean));
+  return {
+    primaryNodes: (Array.isArray(primaryNodes) ? primaryNodes : [])
+      .filter((node) => !hiddenPrimaryNodeIds.has(normalizeString(node?.id))),
+    nodes: canvasNodes,
+    connections: (Array.isArray(connections) ? connections : [])
+      .filter((connection) => (
+        canvasNodeIds.has(normalizeString(connection?.fromNodeId)) &&
+        canvasNodeIds.has(normalizeString(connection?.toNodeId))
+      )),
+  };
 }
 
 // Intent: keep the card's event setting separate from the row used to stack timeline lanes.
@@ -5545,17 +5720,10 @@ function resolvePrimaryTimelineRank(node) {
 }
 
 function createTimelineDropZones(primaryNodes = [], width = 900, timelineTiers = [], locationRows = []) {
-  const tiers = Array.isArray(timelineTiers) && timelineTiers.length
-    ? timelineTiers.map(normalizeTimelineTier)
-    : createWorldSpineTimelineTiers([]);
-  const rows = Array.isArray(locationRows) && locationRows.length
-    ? locationRows.filter(Boolean)
-    : tiers.map((tier, index) => ({
-      ...tier,
-      locationRowIndex: index,
-      locationKey: "",
-      locationLabel: "",
-    }));
+  const rows = Array.isArray(locationRows) ? locationRows.filter(Boolean) : [];
+  if (!rows.length) {
+    return [];
+  }
   return rows.flatMap((row) => createTimelineDropZonesForLocationRow(primaryNodes, width, row));
 }
 
@@ -6040,27 +6208,31 @@ function resolveWorldSpineRailChapter(node) {
   };
 }
 
-function compactNodeMeta(node) {
+function compactNodeMeta(node, { suppressDefaultRowLocation = false } = {}) {
   const sceneBeats = normalizeStringList(node.sceneBeats);
   return [
     node.time || node.date,
-    formatTimelineNodeLocationMeta(node),
+    formatTimelineNodeLocationMeta(node, { suppressDefaultRowLocation }),
     node.people.length ? `${node.people.length} people` : "",
     sceneBeats.length ? `${sceneBeats.length} beats` : "",
   ].filter(Boolean).join(" / ") || (node.hasPassage ? "Linked passage" : "World-only");
 }
 
 // Intent: summarize planetary row placement together with optional ship, facility, orbital, or child-location detail.
-function formatTimelineNodeLocationMeta(node = {}) {
+function formatTimelineNodeLocationMeta(node = {}, { suppressDefaultRowLocation = false } = {}) {
   const rowLabel = normalizeString(node.locationRowLabel);
   const eventLocationLabel = normalizeString(node.eventLocationLabel || node.locationLabel || node.location);
   const sublocationLabel = normalizeString(node.childLocationLabel || node.childLocation || node.sublocationLabel || node.sublocation);
   const orbitalBand = normalizeString(node.orbitalBand);
   const details = [];
-  if (rowLabel) {
+  if (rowLabel && !(suppressDefaultRowLocation && isDefaultLocationIdentity(rowLabel))) {
     details.push(rowLabel);
   }
-  if (eventLocationLabel && !details.some((detail) => normalizeLocationKey(detail) === normalizeLocationKey(eventLocationLabel))) {
+  if (
+    eventLocationLabel &&
+    !(suppressDefaultRowLocation && isDefaultLocationIdentity(eventLocationLabel)) &&
+    !details.some((detail) => normalizeLocationKey(detail) === normalizeLocationKey(eventLocationLabel))
+  ) {
     details.push(eventLocationLabel);
   }
   if (sublocationLabel && !details.some((detail) => normalizeLocationKey(detail) === normalizeLocationKey(sublocationLabel))) {

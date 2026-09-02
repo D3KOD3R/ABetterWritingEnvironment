@@ -5,7 +5,8 @@
 // - UI/workflow code must not call `localStorage`, File System Access APIs, or future native shell APIs directly.
 // - browser storage is a `browser-adapter` compatibility layer only.
 // - `desktop-storage` should replace adapters later without changing workflow logic.
-import { buildProjectIndexFromProjectRecord, collectChapterRecords } from "./project-index.js";
+import { buildProjectIndexFromProjectRecord } from "./project-index.js";
+import { mergeProjectIndexWithLiveSceneOverrides } from "./project-metrics.js";
 import { migrateProjectData, PROJECT_SCHEMA_VERSION } from "./project-migrations.js";
 
 function cloneValue(value) {
@@ -67,8 +68,22 @@ function normalizeRuntimeSceneDraft(candidate, fallbackSceneId) {
   };
 }
 
+function sceneDraftCarriesBodyPayload(sceneDraft) {
+  return Boolean(
+    sceneDraft &&
+    typeof sceneDraft === "object" &&
+    !Array.isArray(sceneDraft) &&
+    (
+      typeof sceneDraft.editorText === "string" ||
+      Array.isArray(sceneDraft.blocks)
+    )
+  );
+}
+
 // Intent: let metadata-only runtime DTOs update exported scene chunks without overwriting stored manuscript bodies.
-function mergeRuntimeSceneDraftForExport(storedDraft, runtimeDraft) {
+function mergeRuntimeSceneDraftForExport(storedDraft, runtimeDraft, {
+  bodyPayloadExplicit = false,
+} = {}) {
   const normalizedRuntimeDraft = runtimeDraft && typeof runtimeDraft === "object" && !Array.isArray(runtimeDraft)
     ? cloneValue(runtimeDraft)
     : null;
@@ -80,7 +95,7 @@ function mergeRuntimeSceneDraftForExport(storedDraft, runtimeDraft) {
 
   const storedHasBody = sceneDraftHasSubstantiveBody(storedDraft);
   const runtimeHasBody = sceneDraftHasSubstantiveBody(normalizedRuntimeDraft);
-  if (runtimeHasBody || !storedHasBody) {
+  if (bodyPayloadExplicit || runtimeHasBody || !storedHasBody) {
     return normalizedRuntimeDraft;
   }
 
@@ -116,83 +131,15 @@ function getProjectSceneStore(sceneStore, projectId) {
     : null;
 }
 
-function collectWorkspaceSceneWordCounts(projectRecord) {
-  const counts = new Map();
-  const lines = Array.isArray(projectRecord?.workspace?.project?.lines)
-    ? projectRecord.workspace.project.lines
-    : [];
-  for (const line of lines) {
-    const sceneId = normalizeSceneId(line?.sceneId);
-    if (!sceneId) {
-      continue;
-    }
-    const text = String(line?.text ?? "").trim();
-    if (!text) {
-      continue;
-    }
-    const wordCount = text.split(/\s+/).filter(Boolean).length;
-    counts.set(sceneId, (counts.get(sceneId) ?? 0) + wordCount);
-  }
-  return counts;
-}
-
-function readProjectIndexSceneWordCounts(projectRecord) {
-  const counts = new Map();
-  const scenes = Array.isArray(projectRecord?.projectIndex?.scenes)
-    ? projectRecord.projectIndex.scenes
-    : [];
-  for (const scene of scenes) {
-    const sceneId = normalizeSceneId(scene?.id);
-    const wordCount = Number(scene?.wordCount);
-    if (!sceneId || !Number.isFinite(wordCount) || wordCount < 0) {
-      continue;
-    }
-    counts.set(sceneId, Math.max(0, Math.round(wordCount)));
-  }
-  return counts;
-}
-
 function buildStableProjectIndex(projectRecord) {
   const computedIndex = buildProjectIndexFromProjectRecord(projectRecord, {
     schemaVersion: PROJECT_SCHEMA_VERSION,
   });
-  const persistedWordCounts = readProjectIndexSceneWordCounts(projectRecord);
-  if (!persistedWordCounts.size) {
-    return computedIndex;
-  }
-
-  const sceneDrafts = projectRecord?.sceneDrafts && typeof projectRecord.sceneDrafts === "object" && !Array.isArray(projectRecord.sceneDrafts)
-    ? projectRecord.sceneDrafts
-    : {};
-  const workspaceSceneWordCounts = collectWorkspaceSceneWordCounts(projectRecord);
-  const mergedScenes = computedIndex.scenes.map((scene) => {
-    const sceneId = normalizeSceneId(scene?.id);
-    if (!sceneId) {
-      return scene;
-    }
-    const hasLoadedDraft = sceneDrafts[sceneId] && typeof sceneDrafts[sceneId] === "object";
-    const workspaceWordCount = workspaceSceneWordCounts.get(sceneId) ?? 0;
-    const computedWordCount = Number(scene?.wordCount);
-    const hasComputedWordCount = Number.isFinite(computedWordCount) && computedWordCount > 0;
-    if (hasLoadedDraft || workspaceWordCount > 0 || hasComputedWordCount) {
-      return scene;
-    }
-    if (!persistedWordCounts.has(sceneId)) {
-      return scene;
-    }
-    return {
-      ...scene,
-      wordCount: persistedWordCounts.get(sceneId),
-    };
+  return mergeProjectIndexWithLiveSceneOverrides({
+    computedIndex,
+    persistedProjectIndex: projectRecord?.projectIndex,
+    projectRecord,
   });
-  const mergedChapters = collectChapterRecords(mergedScenes);
-
-  return {
-    ...computedIndex,
-    scenes: mergedScenes,
-    chapters: mergedChapters,
-    sceneOrder: mergedScenes.map((scene) => scene.id),
-  };
 }
 
 function upsertProjectRecord(librarySnapshot, projectRecord, {
@@ -313,12 +260,11 @@ export function createProjectService({
       if (!project?.id) {
         continue;
       }
-      const authoritativeScenes = getProjectSceneStore(snapshot.sceneStore, project.id);
-      const hasAuthoritativeSceneStore = authoritativeScenes !== null;
-      const mergedScenes = authoritativeScenes ?? {};
-      const scenes = hasAuthoritativeSceneStore ? null : projectRepository.loadAllScenes(project.id);
-      if (scenes && typeof scenes === "object" && !Array.isArray(scenes)) {
-        for (const [sceneId, candidate] of Object.entries(scenes)) {
+      const suppliedScenes = getProjectSceneStore(snapshot.sceneStore, project.id) ?? {};
+      const mergedScenes = {};
+      const repositoryScenes = projectRepository.loadAllScenes(project.id);
+      if (repositoryScenes && typeof repositoryScenes === "object" && !Array.isArray(repositoryScenes)) {
+        for (const [sceneId, candidate] of Object.entries(repositoryScenes)) {
           const normalizedSceneId = normalizeSceneId(sceneId);
           if (!normalizedSceneId || Object.prototype.hasOwnProperty.call(mergedScenes, normalizedSceneId)) {
             continue;
@@ -326,6 +272,22 @@ export function createProjectService({
 
           mergedScenes[normalizedSceneId] = cloneValue(candidate);
         }
+      }
+      // Intent: full file-loaded records remain authoritative, while metadata-only browser reload records retain repository bodies.
+      for (const [sceneId, candidate] of Object.entries(suppliedScenes)) {
+        const normalizedSceneId = normalizeSceneId(sceneId);
+        if (!normalizedSceneId) {
+          continue;
+        }
+        const normalizedDraft = normalizeRuntimeSceneDraft(candidate, normalizedSceneId);
+        if (!normalizedDraft) {
+          continue;
+        }
+        mergedScenes[normalizedSceneId] = mergeRuntimeSceneDraftForExport(
+          mergedScenes[normalizedSceneId],
+          normalizedDraft,
+          { bodyPayloadExplicit: sceneDraftCarriesBodyPayload(candidate) },
+        );
       }
       const runtimeDrafts = project.sceneDrafts && typeof project.sceneDrafts === "object" && !Array.isArray(project.sceneDrafts)
         ? project.sceneDrafts
@@ -346,6 +308,7 @@ export function createProjectService({
         mergedScenes[normalizedSceneId] = mergeRuntimeSceneDraftForExport(
           mergedScenes[normalizedSceneId],
           normalizedDraft,
+          { bodyPayloadExplicit: sceneDraftCarriesBodyPayload(candidate) },
         );
       }
 

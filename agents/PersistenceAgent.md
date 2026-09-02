@@ -28,6 +28,7 @@ Read `docs/architecture/project-storage-contract.md` before changing durable beh
 - Project open/switch is a persistence barrier: promised old-project mutations must be drained through the required revision or fail explicitly before runtime replacement.
 - Bind async save completion to project identity + destination generation + revision. Numeric revision equality alone is not enough across project switches.
 - For asset replacement/delete, preserve durability ordering: write new bytes, save new relative reference, then remove/garbage-collect the superseded asset.
+- At the enforcement point, comment non-obvious persistence authority, forbidden fallbacks, containment, ordering/concurrency, and compatibility assumptions; name the invariant or failure being prevented rather than narrating the operation.
 - Durable schema/path changes require normalization/migration and focused tests. File-backed features need round-trip + containment; portable assets need Save As/relocation; concurrency changes need overlap/transition tests.
 - Use the supervisor's affected route before broad verification.
 

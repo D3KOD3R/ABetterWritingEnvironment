@@ -11,6 +11,7 @@ import {
   createWorldSpineLocationFilterViewportModel,
   findWorldSpineNode,
   isWorldSpineAssignableEventNode,
+  isWorldSpineLocationRowDeleteEligible,
   normalizeWorldSpineRightPaneMode,
   normalizeWorldSpineTimelineZoom,
   renderWorldSpineDetailCardHTML,
@@ -28,7 +29,13 @@ import {
   applyWorldSpineLocationAssignmentToSceneRecord,
   applyWorldSpineLocationAssignmentToStructureDrafts,
   applyWorldSpineLocationAssignmentToWorldPlaceLinks,
+  applyWorldSpineUnplacementToSceneEventTags,
+  applyWorldSpineUnplacementToSceneRecord,
+  applyWorldSpineUnplacementToStructureDrafts,
+  createWorldSpineUnplacedLocationRowAssignment,
   createWorldSpineLocationRowAssignment,
+  createWorldSpineSceneDropPersistenceOptions,
+  upsertWorldSpineUnplacementInSceneStore,
   upsertWorldSpineLocationAssignmentInSceneStore,
 } from "../apps/editor/public/features/world-spine/world-spine-location-row-service.js";
 
@@ -411,6 +418,162 @@ export function runWorldSpinePanelTest() {
   assert.deepEqual(placeLinkAssignment.world.entityLinks.map((link) => link.id), ["link-earth", "link-weapon"]);
   assert.deepEqual(placeLinkAssignment.world.spines[0].nodes[0].linkedEntityIds, ["entity-earth", "entity-storm-rail"]);
   assert.deepEqual(placeLinkAssignment.world.spines[0].nodes[0].linkedEntityNames, ["Earth", "Storm Rail"]);
+
+  const unplacedAssignment = createWorldSpineUnplacedLocationRowAssignment({ locationScope: "planetary" });
+  const unplacedSceneRecord = applyWorldSpineUnplacementToSceneRecord({
+    sceneId: "scene-row",
+    location: "Earth",
+    childLocation: "The Icarus",
+    orbitalBand: "Low orbit",
+    worldSpineMetadata: {
+      location: "Earth",
+      childLocation: "The Icarus",
+      sublocation: "The Icarus",
+      orbitalBand: "Low orbit",
+    },
+    blocks: [{ blockId: "block-row", text: "The manuscript survives." }],
+  }, unplacedAssignment);
+  assert.equal(unplacedSceneRecord.location, "Earth");
+  assert.equal(unplacedSceneRecord.locationRowLabel, "Unplaced location");
+  assert.equal(unplacedSceneRecord.locationRowKey, "unplaced-location");
+  assert.equal(unplacedSceneRecord.childLocation, "The Icarus");
+  assert.equal(unplacedSceneRecord.worldSpineMetadata.location, "Earth");
+  assert.equal(unplacedSceneRecord.worldSpineMetadata.sublocation, "The Icarus");
+  assert.equal(unplacedSceneRecord.blocks[0].text, "The manuscript survives.");
+  const unplacedEventTags = applyWorldSpineUnplacementToSceneEventTags([
+    {
+      id: "event-row",
+      blockId: "block-row",
+      location: "Earth",
+      metadata: { childLocation: "The Icarus" },
+    },
+  ], unplacedSceneRecord, unplacedAssignment);
+  assert.deepEqual(unplacedEventTags.changedEventTagIds, ["event-row"]);
+  assert.equal(unplacedEventTags.eventTags[0].location, "Earth");
+  assert.equal(unplacedEventTags.eventTags[0].locationRowKey, "unplaced-location");
+  assert.equal(unplacedEventTags.eventTags[0].metadata.childLocation, "The Icarus");
+  const unplacedStructure = applyWorldSpineUnplacementToStructureDrafts({
+    scenes: [{ sceneId: "scene-row", location: "Earth", editorText: "Retained body" }],
+  }, "scene-row", unplacedAssignment);
+  assert.equal(unplacedStructure.changed, true);
+  assert.equal(unplacedStructure.structureDrafts.scenes[0].location, "Earth");
+  assert.equal(unplacedStructure.structureDrafts.scenes[0].locationRowKey, "unplaced-location");
+  assert.equal(unplacedStructure.structureDrafts.scenes[0].editorText, "Retained body");
+  const unplacedSceneStore = upsertWorldSpineUnplacementInSceneStore({
+    "project-row": {
+      "scene-row": {
+        sceneId: "scene-row",
+        editorText: "Retained body",
+        blocks: [{ blockId: "block-row", text: "Retained body" }],
+      },
+    },
+  }, {
+    projectId: "project-row",
+    sceneId: "scene-row",
+    sceneRecord: unplacedSceneRecord,
+    assignment: unplacedAssignment,
+  });
+  assert.equal(unplacedSceneStore["project-row"]["scene-row"].location, "Earth");
+  assert.equal(unplacedSceneStore["project-row"]["scene-row"].locationRowKey, "unplaced-location");
+  assert.equal(unplacedSceneStore["project-row"]["scene-row"].blocks[0].text, "The manuscript survives.");
+  const unplacedPlaceLinks = applyWorldSpineLocationAssignmentToWorldPlaceLinks({
+    entities: [
+      { id: "entity-earth", name: "Earth", categoryId: "planet", image: { name: "earth.png" } },
+      { id: "entity-icarus", name: "The Icarus", categoryId: "vehicle" },
+      { id: "entity-weapon", name: "Storm Rail", categoryId: "weapon" },
+    ],
+    entityLinks: [
+      { id: "link-earth", entityId: "entity-earth", kind: "timeline-presence", nodeId: "scene:scene-row" },
+      { id: "link-icarus", entityId: "entity-icarus", kind: "timeline-presence", nodeId: "scene:scene-row" },
+      { id: "link-weapon", entityId: "entity-weapon", kind: "timeline-presence", nodeId: "scene:scene-row" },
+    ],
+    edges: [{ id: "edge-retained", fromNodeId: "scene:scene-row", toNodeId: "node-other", kind: "implicates" }],
+  }, {
+    nodeIds: ["scene:scene-row"],
+    assignment: unplacedAssignment,
+  });
+  assert.deepEqual(unplacedPlaceLinks.world.entityLinks.map((link) => link.id), ["link-icarus", "link-weapon"]);
+  assert.equal(unplacedPlaceLinks.world.entities[0].image.name, "earth.png");
+  assert.equal(unplacedPlaceLinks.world.edges[0].id, "edge-retained");
+
+  const unplacedDockModel = buildWorldSpineTimelineModel({
+    workspace: {
+      project: {
+        eventTags: [{
+          id: "event-unplaced-child",
+          label: "Docked child beat",
+          blockId: "block-unplaced",
+        }],
+      },
+      world: {
+        entities: [],
+        spines: [],
+        edges: [{
+          id: "edge-unplaced-to-mars",
+          fromNodeId: "scene:scene-unplaced",
+          toNodeId: "scene:scene-mars",
+          kind: "implicates",
+        }],
+      },
+    },
+    scenes: [
+      {
+        sceneId: "scene-earth",
+        sceneTitle: "Earth first",
+        location: "Earth",
+        worldSpineMetadata: { locationRowLabel: "Earth", locationRowKey: "earth" },
+        blocks: [{ blockId: "block-earth", lineNumber: 1, text: "Earth text." }],
+      },
+      {
+        sceneId: "scene-unplaced",
+        sceneTitle: "Unplaced second",
+        location: "Europa",
+        worldSpineMetadata: {
+          location: "Europa",
+          locationRowLabel: "Unplaced location",
+          locationRowKey: "unplaced-location",
+          childLocation: "The Icarus",
+        },
+        blocks: [{ blockId: "block-unplaced", lineNumber: 2, text: "Unplaced text." }],
+      },
+      {
+        sceneId: "scene-mars",
+        sceneTitle: "Mars third",
+        location: "Mars",
+        worldSpineMetadata: { locationRowLabel: "Mars", locationRowKey: "mars" },
+        blocks: [{ blockId: "block-mars", lineNumber: 3, text: "Mars text." }],
+      },
+    ],
+  });
+  assert.deepEqual(unplacedDockModel.timeline.locationRows.map((row) => row.locationLabel), ["Earth", "Mars"]);
+  assert.equal(unplacedDockModel.timeline.unplacedDock.count, 1);
+  assert.deepEqual(unplacedDockModel.timeline.unplacedDock.primaryNodeIds, ["scene:scene-unplaced"]);
+  assert.equal(unplacedDockModel.timeline.unplacedDock.primaryNodes[0].x, 370);
+  assert.deepEqual(unplacedDockModel.timeline.primaryNodes.map((node) => node.x), [120, 370, 620]);
+  assert.equal(unplacedDockModel.timeline.canvasNodes.some((node) => node.id === "scene:scene-unplaced"), false);
+  assert.equal(unplacedDockModel.timeline.canvasNodes.some((node) => node.parentNodeId === "scene:scene-unplaced"), false);
+  const canvasNodeIds = new Set(unplacedDockModel.timeline.canvasNodes.map((node) => node.id));
+  assert.equal(unplacedDockModel.timeline.canvasConnections.every((connection) => (
+    canvasNodeIds.has(connection.fromNodeId) && canvasNodeIds.has(connection.toNodeId)
+  )), true);
+  assert.equal(unplacedDockModel.timeline.connections.some((connection) => connection.kind === "implication"), true);
+  const unplacedDockHtml = renderWorldSpinePanelHTML(unplacedDockModel, { unplacedDockCollapsed: false });
+  assert.match(unplacedDockHtml, /data-world-spine-unplaced-dock/);
+  assert.match(unplacedDockHtml, /data-world-spine-unplaced-count="1"/);
+  assert.match(unplacedDockHtml, /data-world-spine-node-surface="unplaced-dock"/);
+  assert.equal((unplacedDockHtml.match(/data-world-spine-node-id="scene:scene-unplaced"/g) ?? []).length, 1);
+  assert.match(unplacedDockHtml, /Unplaced location/);
+  const unplacedDockMarkup = unplacedDockHtml.match(/<section[\s\S]*?data-world-spine-unplaced-dock[\s\S]*?<\/section>/)?.[0] ?? "";
+  assert.doesNotMatch(unplacedDockMarkup, /Unplaced location \/ Europa/);
+  const collapsedUnplacedDockHtml = renderWorldSpinePanelHTML(unplacedDockModel, { unplacedDockCollapsed: true });
+  assert.match(collapsedUnplacedDockHtml, /data-world-spine-unplaced-dock-collapsed="true"/);
+  assert.match(collapsedUnplacedDockHtml, /aria-expanded="false"/);
+  assert.doesNotMatch(collapsedUnplacedDockHtml, /data-world-spine-node-surface="unplaced-dock"/);
+  const filteredUnplacedDockHtml = renderWorldSpinePanelHTML(unplacedDockModel, {
+    locationFilter: { selectedLocationKeys: ["earth"] },
+  });
+  assert.match(filteredUnplacedDockHtml, /data-world-spine-unplaced-dock-visible="false"/);
+  assert.doesNotMatch(filteredUnplacedDockHtml, /<section[\s\S]*?data-world-spine-unplaced-dock/);
 
   const sublocationModel = buildWorldSpineTimelineModel({
     workspace: {
@@ -1143,8 +1306,68 @@ export function runWorldSpinePanelTest() {
   assert.match(locationRowFormHtml, /Location row/);
   assert.match(locationRowFormHtml, /data-action="save-world-spine-location-row"/);
   assert.match(locationRowFormHtml, /data-action="attach-world-spine-location-row-image"/);
+  assert.doesNotMatch(locationRowFormHtml, /data-action="delete-world-spine-location-row"/);
   assert.match(locationRowFormHtml, /data-world-spine-location-label=""/);
   assert.doesNotMatch(locationRowFormHtml, /data-world-spine-parallel-timeline-field="participants"/);
+  const populatedLocationRowFormHtml = renderWorldSpineWhitespaceContextMenuHTML({
+    ...whitespaceContext,
+    menuType: "location-form",
+    location: "Earth",
+    locationLabel: "Earth",
+    primaryNodeIds: ["scene:scene-earth"],
+    sceneIds: ["scene-earth"],
+  }, {
+    width: 800,
+    height: 600,
+  });
+  assert.match(populatedLocationRowFormHtml, /data-action="delete-world-spine-location-row"/);
+  const sceneOnlyLocationRow = {
+    menuType: "location-form",
+    location: "Earth",
+    locationLabel: "Earth",
+    sceneIds: ["scene-earth"],
+  };
+  assert.equal(isWorldSpineLocationRowDeleteEligible(sceneOnlyLocationRow), true);
+  assert.match(renderWorldSpineWhitespaceContextMenuHTML(sceneOnlyLocationRow, {
+    width: 800,
+    height: 600,
+  }), /data-action="delete-world-spine-location-row"/);
+  const worldOnlyLocationRow = {
+    menuType: "location-form",
+    location: "Oasis",
+    locationLabel: "Oasis",
+    worldNodeIds: ["world-event-oasis"],
+  };
+  assert.equal(isWorldSpineLocationRowDeleteEligible(worldOnlyLocationRow), true);
+  assert.match(renderWorldSpineWhitespaceContextMenuHTML(worldOnlyLocationRow, {
+    width: 800,
+    height: 600,
+  }), /data-action="delete-world-spine-location-row"/);
+  const emptyNamedLocationRow = {
+    menuType: "location-form",
+    location: "Europa",
+    locationLabel: "Europa",
+  };
+  assert.equal(isWorldSpineLocationRowDeleteEligible(emptyNamedLocationRow), true);
+  assert.match(renderWorldSpineWhitespaceContextMenuHTML(emptyNamedLocationRow, {
+    width: 800,
+    height: 600,
+  }), /data-action="delete-world-spine-location-row"/);
+  assert.equal(isWorldSpineLocationRowDeleteEligible({
+    ...sceneOnlyLocationRow,
+    location: "Unplaced location",
+    locationLabel: "Unplaced location",
+  }), false);
+  assert.deepEqual(createWorldSpineSceneDropPersistenceOptions({
+    changedSceneIds: ["scene-earth"],
+    changedPlaceLinks: true,
+  }), {
+    changedSceneIds: ["scene-earth"],
+    domain: "world-spine",
+    dirtyReason: "world-spine-scene-node-reordered-and-location-updated",
+    source: "worldSpineController.onSceneNodeReorder",
+    flushProjectFileAutosave: true,
+  });
   const parallelTimelineFormHtml = renderWorldSpineWhitespaceContextMenuHTML({
     ...whitespaceContext,
     menuType: "timeline-form",
@@ -1457,6 +1680,12 @@ export function runWorldSpinePanelTest() {
   assert.match(styleSource, /--world-spine-location-row-sticky-x/);
   assert.match(styleSource, /transform: translateX\(var\(--world-spine-location-row-sticky-x/);
   assert.match(styleSource, /is-world-spine-location-fit/);
+  assert.match(styleSource, /world-spine-unplaced-dock/);
+  assert.match(styleSource, /--world-spine-unplaced-dock-safe-area/);
+  assert.match(styleSource, /--world-spine-timeline-scroll-left/);
+  assert.match(styleSource, /\.app-shell\s*\{[^}]*grid-template-rows:\s*auto minmax\(0, 1fr\) auto;/);
+  assert.match(styleSource, /\.spine-panel\s*\{[^}]*height:\s*100%;/);
+  assert.doesNotMatch(styleSource, /\.spine-panel\s*\{[^}]*height:\s*calc\(100vh\s*-\s*168px\)/);
   assert.match(styleSource, /world-spine-context-menu/);
   assert.match(styleSource, /stroke-linecap: round/);
   assert.match(styleSource, /stroke-linejoin: round/);
@@ -1474,6 +1703,10 @@ export function runWorldSpinePanelTest() {
   assert.match(appSource, /\/api\/project-media\/save/);
   assert.match(appSource, /applyWorldSpineLocationImageToWorld/);
   assert.match(appSource, /save-world-spine-location-row/);
+  assert.match(appSource, /delete-world-spine-location-row/);
+  assert.match(appSource, /deleteWorldSpineLocationRowFromForm/);
+  assert.match(appSource, /toggle-world-spine-unplaced-dock/);
+  assert.match(appSource, /worldSpineUnplacedDockCollapsed/);
   assert.match(appSource, /save-world-spine-parallel-timeline/);
   assert.match(appSource, /openParallelTimelineFormFromWorldSpineContextMenu/);
   assert.match(appSource, /openWorldSpineLocationRowFormFromLabel/);
@@ -1489,7 +1722,8 @@ export function runWorldSpinePanelTest() {
   assert.match(appSource, /locationLabel: zone\.dataset\.worldSpineDropLocationLabel/);
   assert.match(appSource, /applyWorldSpineInsertionLocationToEventDraftItem/);
   assert.match(appSource, /moveBinderScene\(sourceSceneId/);
-  assert.match(appSource, /flushProjectFileAutosave: Boolean\(changedSceneIds\.length \|\| changedPlaceLinks\)/);
+  assert.match(appSource, /createWorldSpineSceneDropPersistenceOptions/);
+  assert.match(appSource, /changedSceneIds: options\.changedSceneIds/);
   assert.match(appSource, /source: "saveWorldSpineLocationRowFromForm"[\s\S]*flushProjectFileAutosave: true/);
   assert.match(appSource, /source: "handleWorldSpineTimelineDrop"[\s\S]*flushProjectFileAutosave: true/);
   assert.match(appSource, /deleteWorldSpineImplication/);

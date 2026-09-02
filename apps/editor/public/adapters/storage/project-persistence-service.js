@@ -276,6 +276,7 @@ function buildDomainComparablePayload(projectRecord, {
       worldSpineManuscriptPaneWidth: settings.worldSpineManuscriptPaneWidth ?? null,
       worldSpinePanelLayoutProfiles: settings.worldSpinePanelLayoutProfiles ?? null,
       worldSpineRightPaneMode: settings.worldSpineRightPaneMode ?? null,
+      worldSpineUnplacedDockCollapsed: settings.worldSpineUnplacedDockCollapsed ?? null,
       worldSpineLocationFilter: settings.worldSpineLocationFilter ?? null,
       consoleDockCollapsed: settings.consoleDockCollapsed ?? null,
       sidePanelsHidden: settings.sidePanelsHidden ?? null,

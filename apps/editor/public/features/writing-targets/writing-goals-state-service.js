@@ -1,5 +1,9 @@
 // Intent: isolate writing-goals domain state/metrics/persistence logic behind a dedicated service boundary.
 import { escapeHtml, formatDisplayNumber } from "../../shared/ui-utils.js";
+import {
+  buildLiveSceneWordCountOverrides,
+  getProjectWordCount,
+} from "../../adapters/storage/project-metrics.js";
 
 export function createWritingGoalsStateService(deps = {}) {
   const {
@@ -1132,59 +1136,26 @@ function getCurrentManuscriptWordCount() {
   const indexedScenes = Array.isArray(activeProjectRecord?.projectIndex?.scenes)
     ? activeProjectRecord.projectIndex.scenes
     : [];
-  if (!indexedScenes.length) {
-    const totalWords = state.scenes.reduce((total, scene) => total + countWords(scene.editorText), 0);
-    logWritingTargetMetricCheckpoint("metric.word-count", {
-      source: "scenes",
-      totalWords,
-      sceneCount: state.scenes.length,
-      selectedSceneId: state.selectedSceneId ?? "",
-    });
-    return totalWords;
-  }
-
-  const scenesById = new Map(state.scenes.map((scene) => [scene.sceneId, scene]));
   const sceneDrafts = state.sceneDrafts && typeof state.sceneDrafts === "object" && !Array.isArray(state.sceneDrafts)
     ? state.sceneDrafts
     : {};
-  let totalWords = 0;
-  const indexedSceneIds = new Set();
-  for (const indexedScene of indexedScenes) {
-    const sceneId = typeof indexedScene?.id === "string" ? indexedScene.id.trim() : "";
-    if (!sceneId) {
-      continue;
-    }
-    indexedSceneIds.add(sceneId);
-    const indexedWordCountValue = Number(indexedScene.wordCount);
-    const indexedWordCount = Number.isFinite(indexedWordCountValue) && indexedWordCountValue >= 0
-      ? Math.round(indexedWordCountValue)
-      : 0;
-    // Intent: avoid counting placeholder empty drafts as zero when manifest index already has a known scene total.
-    const draft = sceneDrafts[sceneId];
-    if (draft && typeof draft === "object") {
-      const draftWordCount = countWords(resolveSceneDraftEditorText(draft));
-      const shouldTrustDraftWordCount = draftWordCount > 0 || sceneId === state.selectedSceneId || indexedWordCount <= 0;
-      totalWords += shouldTrustDraftWordCount ? draftWordCount : indexedWordCount;
-      continue;
-    }
-
-    const inMemoryScene = scenesById.get(sceneId) ?? null;
-    const inMemoryWordCount = inMemoryScene ? countWords(inMemoryScene.editorText) : 0;
-    const shouldTrustInMemoryWordCount = inMemoryWordCount > 0 || sceneId === state.selectedSceneId || indexedWordCount <= 0;
-    totalWords += shouldTrustInMemoryWordCount ? inMemoryWordCount : indexedWordCount;
-  }
-
-  for (const scene of state.scenes) {
-    if (!indexedSceneIds.has(scene.sceneId)) {
-      totalWords += countWords(scene.editorText);
-    }
-  }
+  const fallbackSceneDrafts = !indexedScenes.length
+    ? Object.fromEntries((Array.isArray(state.scenes) ? state.scenes : [])
+        .map((scene) => [scene?.sceneId, { editorText: scene?.editorText }])
+        .filter(([sceneId]) => typeof sceneId === "string" && sceneId.trim()))
+    : {};
+  const liveSceneWordCounts = buildLiveSceneWordCountOverrides({
+    ...fallbackSceneDrafts,
+    ...sceneDrafts,
+  });
+  const totalWords = getProjectWordCount(activeProjectRecord?.projectIndex, liveSceneWordCounts);
 
   logWritingTargetMetricCheckpoint("metric.word-count", {
-    source: "indexed-scenes",
+    source: indexedScenes.length ? "project-index-with-live-overrides" : "live-scenes",
     totalWords,
     indexedSceneCount: indexedScenes.length,
     inMemorySceneCount: state.scenes.length,
+    liveOverrideCount: Object.keys(liveSceneWordCounts).length,
     selectedSceneId: state.selectedSceneId ?? "",
   });
   return totalWords;

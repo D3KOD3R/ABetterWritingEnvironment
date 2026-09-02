@@ -283,6 +283,13 @@ import {
 import { createProjectRepository } from "./adapters/storage/project-repository.js";
 import { createPreferencesRepository } from "./adapters/storage/preferences-repository.js";
 import { createProjectService } from "./adapters/storage/project-service.js";
+import {
+  adjustChapterWordCountForLiveScene,
+  buildWorkspaceStatsFromProjectIndex,
+  getProjectRecordWordCountForSettings,
+  getProjectWordCount,
+  mergeProjectIndexWithLiveSceneOverrides,
+} from "./adapters/storage/project-metrics.js";
 import { PROJECT_SCHEMA_VERSION } from "./adapters/storage/project-migrations.js";
 import { createProjectPersistenceService } from "./adapters/storage/project-persistence-service.js";
 import { createProjectSourceService } from "./adapters/storage/project-source-service.js";
@@ -452,6 +459,7 @@ import {
   createWorldSpineInteractionController,
   findWorldSpineNode,
   isWorldSpineAssignableEventNode,
+  isWorldSpineLocationRowDeleteEligible,
   normalizeWorldSpineRightPaneMode,
   renderWorldSpinePanelHTML,
   renderWorldSpineWhitespaceContextMenuHTML,
@@ -503,9 +511,16 @@ import {
   applyWorldSpineLocationAssignmentToSceneRecord,
   applyWorldSpineLocationAssignmentToStructureDrafts,
   applyWorldSpineLocationAssignmentToWorldPlaceLinks,
+  applyWorldSpineUnplacementToSceneEventTags,
+  applyWorldSpineUnplacementToSceneRecord,
+  applyWorldSpineUnplacementToStructureDrafts,
   createWorldSpineLocationRowAssignment,
+  createWorldSpineSceneDropPersistenceOptions,
+  createWorldSpineUnplacedLocationRowAssignment,
   hasWorldSpineLocationAssignment,
+  hasWorldSpineUnplacedLocationRowAssignment,
   upsertWorldSpineLocationAssignmentInSceneStore,
+  upsertWorldSpineUnplacementInSceneStore,
 } from "./features/world-spine/world-spine-location-row-service.js";
 import {
   applySceneWorldSpineMetadataToDraft,
@@ -523,6 +538,7 @@ import {
   WORLDBUILDING_CATALOGUE_IMAGE_MAX_BYTES,
   addParallelWorldSpine,
   applyWorldSpineLocationRowNameToWorld,
+  applyWorldSpineLocationRowUnplacementToWorld,
   applyWorldSpineLocationImageToWorld,
   applyWorldbuildingCategoryLocationRoleToWorld,
   applyWorldbuildingCatalogueItemImageToWorld,
@@ -823,6 +839,7 @@ const state = {
   worldSpineManuscriptPaneWidth: DEFAULT_WORLD_SPINE_MANUSCRIPT_PANE_WIDTH,
   worldSpinePanelLayoutProfiles: {},
   worldSpineRightPaneMode: normalizeWorldSpineRightPaneMode(),
+  worldSpineUnplacedDockCollapsed: false,
   worldSpineRelatedCardExpandedKey: "",
   worldSpineSublocationComposer: null,
   worldSpineLocationFilter: createDefaultWorldSpineLocationFilterState(),
@@ -988,6 +1005,10 @@ const worldSpineController = createWorldSpineInteractionController({
       refreshScenes();
     }
 
+    const hasLocationChange = Boolean(changedSceneIds.length || changedPlaceLinks);
+    const locationPersistenceOptions = hasLocationChange
+      ? createWorldSpineSceneDropPersistenceOptions({ changedSceneIds, changedPlaceLinks })
+      : {};
     const moved = targetScene
       ? moveBinderScene(sourceSceneId, {
           ...dropTarget,
@@ -995,10 +1016,9 @@ const worldSpineController = createWorldSpineInteractionController({
           chapterTitle: targetScene.chapterTitle,
         }, {
           recordHistory: false,
-          flushProjectFileAutosave: Boolean(changedSceneIds.length || changedPlaceLinks),
+          ...locationPersistenceOptions,
         })
       : false;
-    const hasLocationChange = Boolean(changedSceneIds.length || changedPlaceLinks);
     if (moved || hasLocationChange) {
       state.worldSpineScrollTargetNodeId = `scene:${sourceSceneId}`;
       pushWorldSpineHistoryChange(historyBefore, {
@@ -1018,15 +1038,7 @@ const worldSpineController = createWorldSpineInteractionController({
       });
     }
     if (!moved && hasLocationChange) {
-      persistCurrentProjectRecord({
-        changedSceneIds,
-        domain: changedSceneIds.length && changedPlaceLinks ? "world-spine" : changedSceneIds.length ? "manuscript" : "world",
-        dirtyReason: changedSceneIds.length
-          ? "world-spine-scene-location-updated"
-          : "world-spine-scene-location-place-links-updated",
-        source: "worldSpineController.onSceneNodeReorder",
-        flushProjectFileAutosave: true,
-      });
+      persistCurrentProjectRecord(locationPersistenceOptions);
       render();
     }
     return moved || hasLocationChange;
@@ -1430,10 +1442,7 @@ const projectPersistenceService = createProjectPersistenceService({
     const indexedScenes = Array.isArray(activeLibraryRecord?.projectIndex?.scenes)
       ? activeLibraryRecord.projectIndex.scenes
       : [];
-    const indexedWordTotal = indexedScenes.reduce((total, scene) => {
-      const wordCount = Number(scene?.wordCount);
-      return total + (Number.isFinite(wordCount) && wordCount >= 0 ? Math.max(0, Math.round(wordCount)) : 0);
-    }, 0);
+    const indexedWordTotal = getProjectWordCount(activeLibraryRecord?.projectIndex);
     logWritingTargetDebugEvent("info", "persist.project-record", "Persisted active project record.", {
       projectId: projectRecord.id,
       persistCache,
@@ -3006,6 +3015,16 @@ function wireEvents() {
 
     if (action === "save-world-spine-location-row") {
       saveWorldSpineLocationRowFromForm();
+      return;
+    }
+
+    if (action === "delete-world-spine-location-row") {
+      deleteWorldSpineLocationRowFromForm();
+      return;
+    }
+
+    if (action === "toggle-world-spine-unplaced-dock") {
+      toggleWorldSpineUnplacedDock();
       return;
     }
 
@@ -7558,15 +7577,12 @@ function syncSceneEditorWordCountReadouts(textarea = null) {
 
   const scene = getScene(sceneId);
   const liveSceneWordCount = countWords(String(activeTextarea.value ?? ""));
-  const persistedSceneWordCount = getProjectIndexSceneWordCount(activeProjectIndex, sceneId);
   const chapterId = String(scene?.chapterId ?? "");
-  const persistedChapterWordCount = getProjectIndexChapterWordCount(activeProjectIndex, chapterId);
   const sceneWordCount = liveSceneWordCount;
   const chapterWordCount = adjustChapterWordCountForLiveScene({
-    activeProjectIndex,
+    projectIndex: activeProjectIndex,
     chapterId,
-    persistedChapterWordCount,
-    persistedSceneWordCount,
+    sceneId,
     liveSceneWordCount,
   });
   const selectionWordCount = getSceneEditorSelectionWordCount(activeTextarea);
@@ -7585,53 +7601,6 @@ function syncSceneEditorWordCountReadouts(textarea = null) {
   if (selectionWordCountNode instanceof HTMLElement) {
     selectionWordCountNode.textContent = formatSceneEditorSelectionWordCount(selectionWordCount);
   }
-}
-
-function getProjectIndexSceneWordCount(projectIndex, sceneId) {
-  const scenes = Array.isArray(projectIndex?.scenes) ? projectIndex.scenes : [];
-  const scene = scenes.find((candidate) => candidate?.id === sceneId);
-  const wordCount = Number(scene?.wordCount);
-  if (Number.isFinite(wordCount) && wordCount >= 0) {
-    return Math.max(0, Math.round(wordCount));
-  }
-
-  return null;
-}
-
-function getProjectIndexChapterWordCount(projectIndex, chapterId) {
-  const chapters = Array.isArray(projectIndex?.chapters) ? projectIndex.chapters : [];
-  const chapter = chapters.find((candidate) => candidate?.id === chapterId);
-  const wordCount = Number(chapter?.wordCount);
-  if (Number.isFinite(wordCount) && wordCount >= 0) {
-    return Math.max(0, Math.round(wordCount));
-  }
-
-  const scenes = Array.isArray(projectIndex?.scenes) ? projectIndex.scenes : [];
-  if (!chapterId) {
-    return 0;
-  }
-
-  return scenes
-    .filter((candidate) => candidate?.chapterId === chapterId)
-    .reduce((total, candidate) => total + Math.max(0, Math.round(Number(candidate?.wordCount) || 0)), 0);
-}
-
-function adjustChapterWordCountForLiveScene({
-  activeProjectIndex,
-  chapterId,
-  persistedChapterWordCount,
-  persistedSceneWordCount,
-  liveSceneWordCount,
-}) {
-  if (typeof chapterId !== "string" || !chapterId.trim()) {
-    return Math.max(0, Math.round(Number(persistedChapterWordCount) || 0));
-  }
-
-  const baseCount = Number.isFinite(persistedChapterWordCount)
-    ? Math.max(0, Math.round(persistedChapterWordCount))
-    : getProjectIndexChapterWordCount(activeProjectIndex, chapterId);
-  const sceneDelta = Math.max(0, Math.round(Number(liveSceneWordCount) || 0)) - Math.max(0, Math.round(Number(persistedSceneWordCount) || 0));
-  return Math.max(0, baseCount + sceneDelta);
 }
 
 function getSceneEditorSelectionWordCount(textarea) {
@@ -10602,6 +10571,7 @@ function renderWorldPanel() {
     sublocationComposer: state.worldSpineSublocationComposer,
     locationFilter: state.worldSpineLocationFilter,
     locationFilterOpen: state.worldSpineLocationFilterOpen,
+    unplacedDockCollapsed: state.worldSpineUnplacedDockCollapsed,
   });
   window.requestAnimationFrame(() => {
     syncWorldSpinePanelLayout({ reason: "world-panel-render" });
@@ -14553,6 +14523,7 @@ function loadLegacyProjectState(projectId = null) {
       readStoredJson(EDITOR_WORLD_SPINE_PANEL_LAYOUT_PROFILES_KEY),
     ),
     worldSpineRightPaneMode: normalizeWorldSpineRightPaneMode(),
+    worldSpineUnplacedDockCollapsed: false,
     worldSpineLocationFilter: createDefaultWorldSpineLocationFilterState(),
     consoleDockCollapsed: readStoredJson(EDITOR_RIGHT_DOCK_COLLAPSED_KEY) === true,
     sidePanelsHidden: normalizeSidePanelsHiddenState(readStoredJson(EDITOR_SIDE_PANELS_HIDDEN_KEY)),
@@ -14682,43 +14653,6 @@ async function reconnectProjectFileDestinationOnBoot(desktopSettings = null) {
   await projectPersistenceService.restoreLastOpenedProject(desktopSettings);
 }
 
-function getWorkspaceManuscriptWordCount(workspace) {
-  const lines = Array.isArray(workspace?.project?.lines) ? workspace.project.lines : [];
-  return lines.reduce((total, line) => total + countWords(line?.text ?? ""), 0);
-}
-
-function getProjectRecordWordCountForSettings(recordLike) {
-  const workspaceWordCount = getWorkspaceManuscriptWordCount(recordLike?.workspace);
-  if (workspaceWordCount > 0) {
-    return workspaceWordCount;
-  }
-
-  const sceneDrafts = recordLike?.sceneDrafts && typeof recordLike.sceneDrafts === "object" && !Array.isArray(recordLike.sceneDrafts)
-    ? recordLike.sceneDrafts
-    : {};
-  let draftWordCount = 0;
-  for (const draft of Object.values(sceneDrafts)) {
-    if (!draft || typeof draft !== "object") {
-      continue;
-    }
-    draftWordCount += countWords(resolveSceneDraftEditorText(draft));
-  }
-  if (draftWordCount > 0) {
-    return draftWordCount;
-  }
-
-  const indexScenes = Array.isArray(recordLike?.projectIndex?.scenes)
-    ? recordLike.projectIndex.scenes
-    : [];
-  return indexScenes.reduce((total, scene) => {
-    const wordCount = Number(scene?.wordCount);
-    if (!Number.isFinite(wordCount) || wordCount < 0) {
-      return total;
-    }
-    return total + Math.max(0, Math.round(wordCount));
-  }, 0);
-}
-
 function createDefaultProjectSettingsSnapshot(currentWordCount = 0, now = new Date()) {
   return {
     editorPrefs: createDefaultEditorPrefs(),
@@ -14734,6 +14668,7 @@ function createDefaultProjectSettingsSnapshot(currentWordCount = 0, now = new Da
     worldSpineManuscriptPaneWidth: DEFAULT_WORLD_SPINE_MANUSCRIPT_PANE_WIDTH,
     worldSpinePanelLayoutProfiles: {},
     worldSpineRightPaneMode: normalizeWorldSpineRightPaneMode(),
+    worldSpineUnplacedDockCollapsed: false,
     worldSpineLocationFilter: createDefaultWorldSpineLocationFilterState(),
     consoleDockCollapsed: false,
     sidePanelsHidden: false,
@@ -14813,6 +14748,9 @@ function normalizeProjectSettingsSnapshot(candidate, projectId = "", currentWord
     worldSpineRightPaneMode: normalizeWorldSpineRightPaneMode(
       normalizedCandidate.worldSpineRightPaneMode ?? defaults.worldSpineRightPaneMode,
     ),
+    worldSpineUnplacedDockCollapsed: typeof normalizedCandidate.worldSpineUnplacedDockCollapsed === "boolean"
+      ? normalizedCandidate.worldSpineUnplacedDockCollapsed
+      : defaults.worldSpineUnplacedDockCollapsed,
     worldSpineLocationFilter: normalizeWorldSpineLocationFilterState(
       normalizedCandidate.worldSpineLocationFilter ?? defaults.worldSpineLocationFilter,
     ),
@@ -14872,6 +14810,7 @@ function buildProjectSettingsCandidate(candidate) {
     worldSpineManuscriptPaneWidth: projectSettings.worldSpineManuscriptPaneWidth ?? candidate?.worldSpineManuscriptPaneWidth,
     worldSpinePanelLayoutProfiles: projectSettings.worldSpinePanelLayoutProfiles ?? candidate?.worldSpinePanelLayoutProfiles,
     worldSpineRightPaneMode: projectSettings.worldSpineRightPaneMode ?? candidate?.worldSpineRightPaneMode,
+    worldSpineUnplacedDockCollapsed: projectSettings.worldSpineUnplacedDockCollapsed ?? candidate?.worldSpineUnplacedDockCollapsed,
     worldSpineLocationFilter: projectSettings.worldSpineLocationFilter ?? candidate?.worldSpineLocationFilter,
     consoleDockCollapsed: projectSettings.consoleDockCollapsed ?? candidate?.consoleDockCollapsed,
     sidePanelsHidden: projectSettings.sidePanelsHidden ?? candidate?.sidePanelsHidden,
@@ -14922,6 +14861,7 @@ function createProjectSettingsSnapshotFromState({
       worldSpineManuscriptPaneWidth: state.worldSpineManuscriptPaneWidth,
       worldSpinePanelLayoutProfiles: cloneValue(state.worldSpinePanelLayoutProfiles),
       worldSpineRightPaneMode: state.worldSpineRightPaneMode,
+      worldSpineUnplacedDockCollapsed: state.worldSpineUnplacedDockCollapsed,
       worldSpineLocationFilter: cloneValue(state.worldSpineLocationFilter),
       consoleDockCollapsed: state.consoleDockCollapsed,
       sidePanelsHidden: state.sidePanelsHidden,
@@ -16794,85 +16734,15 @@ function createProjectLibrarySnapshotForFile() {
   return projectPersistenceService.buildProjectSnapshotForSaveFile();
 }
 
-function collectWorkspaceSceneWordCounts(projectRecord) {
-  const counts = new Map();
-  const lines = Array.isArray(projectRecord?.workspace?.project?.lines)
-    ? projectRecord.workspace.project.lines
-    : [];
-  for (const line of lines) {
-    const sceneId = typeof line?.sceneId === "string" ? line.sceneId.trim() : "";
-    if (!sceneId) {
-      continue;
-    }
-    const nextCount = (counts.get(sceneId) ?? 0) + countWords(line?.text);
-    counts.set(sceneId, nextCount);
-  }
-  return counts;
-}
-
 function buildProjectIndexForRecord(projectRecord, persistedProjectIndex = null) {
   const computedIndex = projectService.getProjectIndex({
     projectRecord,
   });
-  const persistedScenes = Array.isArray(persistedProjectIndex?.scenes)
-    ? persistedProjectIndex.scenes
-    : [];
-  if (!persistedScenes.length) {
-    return computedIndex;
-  }
-
-  const persistedSceneWordCounts = new Map();
-  for (const scene of persistedScenes) {
-    const sceneId = typeof scene?.id === "string" ? scene.id.trim() : "";
-    const wordCount = Number(scene?.wordCount);
-    if (!sceneId || !Number.isFinite(wordCount) || wordCount < 0) {
-      continue;
-    }
-    persistedSceneWordCounts.set(sceneId, Math.max(0, Math.round(wordCount)));
-  }
-  if (!persistedSceneWordCounts.size) {
-    return computedIndex;
-  }
-
-  const workspaceSceneWordCounts = collectWorkspaceSceneWordCounts(projectRecord);
-  const sceneDrafts = projectRecord?.sceneDrafts && typeof projectRecord.sceneDrafts === "object" && !Array.isArray(projectRecord.sceneDrafts)
-    ? projectRecord.sceneDrafts
-    : {};
-  const mergedScenes = computedIndex.scenes.map((scene) => {
-    const sceneId = typeof scene?.id === "string" ? scene.id.trim() : "";
-    if (!sceneId) {
-      return scene;
-    }
-    const hasLoadedDraft = sceneDrafts[sceneId] && typeof sceneDrafts[sceneId] === "object";
-    const workspaceWordCount = workspaceSceneWordCounts.get(sceneId) ?? 0;
-    if (hasLoadedDraft || workspaceWordCount > 0) {
-      return scene;
-    }
-    if (!persistedSceneWordCounts.has(sceneId)) {
-      return scene;
-    }
-
-    return {
-      ...scene,
-      wordCount: persistedSceneWordCounts.get(sceneId),
-    };
+  return mergeProjectIndexWithLiveSceneOverrides({
+    computedIndex,
+    persistedProjectIndex,
+    projectRecord,
   });
-
-  return {
-    ...computedIndex,
-    scenes: mergedScenes,
-  };
-}
-
-function buildWorkspaceStatsFromProjectIndex(projectIndex, currentStats = {}) {
-  const chapters = Array.isArray(projectIndex?.chapters) ? projectIndex.chapters : [];
-  const scenes = Array.isArray(projectIndex?.scenes) ? projectIndex.scenes : [];
-  return {
-    ...(currentStats && typeof currentStats === "object" && !Array.isArray(currentStats) ? currentStats : {}),
-    chapterCount: chapters.length,
-    sceneCount: scenes.length,
-    lineCount: scenes.reduce((total, scene) => total + Math.max(0, Math.round(Number(scene?.lineCount) || 0)), 0),
-  };
 }
 
 async function saveProjectLibraryToBrowserHandle(handle, snapshot = createProjectLibrarySnapshotForFile()) {
@@ -19932,7 +19802,100 @@ function saveWorldSpineLocationRowFromForm() {
   renderWorldPanel();
 }
 
-function applyWorldSpineLocationToSceneRows(sceneIds = [], location = "", context = {}, assignment = null) {
+// Intent: delete only the projected row by unplacing its members in one durable World Spine transaction.
+function deleteWorldSpineLocationRowFromForm() {
+  const context = normalizeWorldSpineMenuContext(state.worldSpineContextMenu) ?? {};
+  const location = String(context.locationLabel ?? "").trim();
+  if (!location || !isWorldSpineLocationRowDeleteEligible(context)) {
+    hideWorldSpineContextMenu();
+    return false;
+  }
+
+  const confirmed = window.confirm(
+    `Delete location row "${location}"?\n\nEvents and manuscript scenes in this row will not be deleted.\nThey will move to Unplaced location until you assign them to another location.`,
+  );
+  if (!confirmed) {
+    return false;
+  }
+
+  const historyBefore = captureWorldSpineHistorySnapshot();
+  const unplacedAssignment = createWorldSpineUnplacedLocationRowAssignment(context);
+  const changedSceneIds = applyWorldSpineLocationToSceneRows(
+    context.sceneIds,
+    unplacedAssignment.location,
+    context,
+    unplacedAssignment,
+    { unplace: true },
+  );
+  const worldResult = context.worldNodeIds.length
+    ? applyWorldSpineLocationRowUnplacementToWorld(state.workspace?.world ?? {}, {
+        spineId: context.spineId,
+        worldNodeIds: context.worldNodeIds,
+        now: new Date(),
+      })
+    : { world: state.workspace?.world ?? {}, changed: false };
+  const rowNodeIds = context.primaryNodeIds.length
+    ? context.primaryNodeIds
+    : context.sceneIds.map((sceneId) => `scene:${sceneId}`);
+  const placeLinkResult = applyWorldSpineLocationAssignmentToWorldPlaceLinks(worldResult.world, {
+    nodeIds: rowNodeIds,
+    sceneIds: context.sceneIds,
+    assignment: unplacedAssignment,
+  });
+  const changed = Boolean(changedSceneIds.length || worldResult.changed || placeLinkResult.changed);
+  if (!changed) {
+    state.worldSpineContextMenu = null;
+    state.worldbuildingStudioStatus = `Location row "${location}" is already unplaced.`;
+    renderTaskContextMenu();
+    renderWorldPanel();
+    return false;
+  }
+
+  state.workspace.world = placeLinkResult.world;
+  if (changedSceneIds.length) {
+    writeStoredJsonRaw(EDITOR_DRAFTS_KEY, state.sceneDrafts);
+    writeStoredJsonRaw(EDITOR_STRUCTURE_KEY, state.structureDrafts);
+    refreshScenes();
+  }
+
+  state.worldSpineContextMenu = null;
+  state.worldbuildingStudioStatus = `Location row "${location}" deleted. Its events moved to Unplaced location.`;
+  uiEventDispatcherLog.info("user-action", "world-spine.location-row.deleted", "Deleted World Spine location row by unplacing its members.", {
+    location,
+    changedSceneIds,
+    changedWorldNodeIds: context.worldNodeIds,
+    removedPlaceEntityLinkIds: placeLinkResult.removedEntityLinkIds,
+    removedPlaceEntityIds: placeLinkResult.removedEntityIds,
+  });
+  persistCurrentProjectRecord({
+    changedSceneIds,
+    domain: changedSceneIds.length && (worldResult.changed || placeLinkResult.changed) ? "world-spine" : changedSceneIds.length ? "manuscript" : "world",
+    dirtyReason: "world-spine-location-row-deleted",
+    source: "deleteWorldSpineLocationRowFromForm",
+    flushProjectFileAutosave: true,
+  });
+  pushWorldSpineHistoryChange(historyBefore, {
+    label: "Deleted World Spine location row",
+    dirtyReason: "world-spine-location-row-deleted",
+    source: "deleteWorldSpineLocationRowFromForm",
+  });
+  renderTaskContextMenu();
+  if (changedSceneIds.length) {
+    render();
+    return true;
+  }
+  renderDreamScapingPanel();
+  renderWorldPanel();
+  return true;
+}
+
+function applyWorldSpineLocationToSceneRows(
+  sceneIds = [],
+  location = "",
+  context = {},
+  assignment = null,
+  { unplace = false } = {},
+) {
   const changedSceneIds = [];
   const changedEventTagIds = [];
   const rowAssignment = assignment ?? createWorldSpineLocationRowAssignment(location, context);
@@ -19954,18 +19917,20 @@ function applyWorldSpineLocationToSceneRows(sceneIds = [], location = "", contex
       pickerOptionSets: getWorldSpinePickerOptionSetsForState(),
     });
     const eventTagResult = state.workspace?.project
-      ? applyWorldSpineLocationAssignmentToSceneEventTags(
+      ? (unplace ? applyWorldSpineUnplacementToSceneEventTags : applyWorldSpineLocationAssignmentToSceneEventTags)(
           state.workspace.project.eventTags,
           scene,
           rowAssignment,
         )
       : { eventTags: [], changedEventTagIds: [] };
-    const structureResult = applyWorldSpineLocationAssignmentToStructureDrafts(state.structureDrafts, sceneId, rowAssignment);
+    const structureResult = (unplace
+      ? applyWorldSpineUnplacementToStructureDrafts
+      : applyWorldSpineLocationAssignmentToStructureDrafts)(state.structureDrafts, sceneId, rowAssignment);
     const sceneStoreRecord = getWorldSpineLocationSceneStoreRecord(sceneId);
     const alreadyAssigned = (
-      hasWorldSpineLocationAssignment(existingDraft, rowAssignment) &&
-      hasWorldSpineLocationAssignment(scene, rowAssignment) &&
-      Boolean(sceneStoreRecord && hasWorldSpineLocationAssignment(sceneStoreRecord, rowAssignment)) &&
+      (unplace ? hasWorldSpineUnplacedLocationRowAssignment : hasWorldSpineLocationAssignment)(existingDraft, rowAssignment) &&
+      (unplace ? hasWorldSpineUnplacedLocationRowAssignment : hasWorldSpineLocationAssignment)(scene, rowAssignment) &&
+      Boolean(sceneStoreRecord && (unplace ? hasWorldSpineUnplacedLocationRowAssignment : hasWorldSpineLocationAssignment)(sceneStoreRecord, rowAssignment)) &&
       !structureResult.changed &&
       !eventTagResult.changedEventTagIds.length
     );
@@ -19973,18 +19938,20 @@ function applyWorldSpineLocationToSceneRows(sceneIds = [], location = "", contex
       return;
     }
 
-    const patchedDraft = applySceneWorldSpineMetadataToDraft(scene, existingDraft, {
-      ...metadataModel.metadata,
-      location: rowAssignment.location,
-      ...rowAssignment,
-    });
+    const patchedDraft = unplace
+      ? applyWorldSpineUnplacementToSceneRecord(existingDraft, rowAssignment)
+      : applySceneWorldSpineMetadataToDraft(scene, existingDraft, {
+          ...metadataModel.metadata,
+          location: rowAssignment.location,
+          ...rowAssignment,
+        });
     state.sceneDrafts = {
       ...state.sceneDrafts,
       [sceneId]: patchedDraft,
     };
     state.scenes = (Array.isArray(state.scenes) ? state.scenes : []).map((candidate) =>
       candidate?.sceneId === sceneId
-        ? applyWorldSpineLocationAssignmentToSceneRecord(candidate, rowAssignment)
+        ? (unplace ? applyWorldSpineUnplacementToSceneRecord : applyWorldSpineLocationAssignmentToSceneRecord)(candidate, rowAssignment)
         : candidate
     );
     if (structureResult.changed) {
@@ -19999,7 +19966,9 @@ function applyWorldSpineLocationToSceneRows(sceneIds = [], location = "", contex
         changedEventTagIds.push(...eventTagResult.changedEventTagIds);
       }
     }
-    state.loadedProjectSceneStore = upsertWorldSpineLocationAssignmentInSceneStore(state.loadedProjectSceneStore, {
+    state.loadedProjectSceneStore = (unplace
+      ? upsertWorldSpineUnplacementInSceneStore
+      : upsertWorldSpineLocationAssignmentInSceneStore)(state.loadedProjectSceneStore, {
       projectId: state.workspace?.project?.id ?? state.activeProjectId,
       sceneId,
       sceneRecord: patchedDraft,
@@ -20341,6 +20310,19 @@ function setWorldSpineRightPaneMode(mode = "") {
   });
   uiEventDispatcherLog.info("user-action", "world-spine.right-pane-mode.changed", "Changed World Spine right pane mode.", {
     mode: nextMode,
+  });
+  renderWorldPanel();
+}
+
+// Intent: persist dock presentation without creating a canonical World Spine history entry.
+function toggleWorldSpineUnplacedDock() {
+  state.worldSpineUnplacedDockCollapsed = !state.worldSpineUnplacedDockCollapsed;
+  persistCurrentProjectRecord({
+    domain: "app-settings",
+    dirtyReason: state.worldSpineUnplacedDockCollapsed
+      ? "world-spine-unplaced-dock-collapsed"
+      : "world-spine-unplaced-dock-expanded",
+    source: "toggleWorldSpineUnplacedDock",
   });
   renderWorldPanel();
 }
@@ -24729,6 +24711,10 @@ function moveBinderScene(sceneId, dropTarget, options = {}) {
     pushBinderSceneMoveHistory(beforeSceneGroups, nextSceneGroups, sceneId);
   }
   persistCurrentProjectRecord({
+    changedSceneIds: options.changedSceneIds,
+    domain: options.domain,
+    dirtyReason: options.dirtyReason,
+    source: options.source,
     flushProjectFileAutosave: options.flushProjectFileAutosave === true,
   });
 
@@ -24808,6 +24794,10 @@ function moveDraftBinderScene(sceneId, dropTarget, options = {}) {
   syncStructureDraftsFromOrderedScenes(orderedScenes);
   refreshScenes();
   persistCurrentProjectRecord({
+    changedSceneIds: options.changedSceneIds,
+    domain: options.domain,
+    dirtyReason: options.dirtyReason,
+    source: options.source,
     flushProjectFileAutosave: options.flushProjectFileAutosave === true,
   });
 

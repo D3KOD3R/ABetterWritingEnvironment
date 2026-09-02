@@ -14,6 +14,54 @@ export function createWorldSpineLocationRowAssignment(location = "", context = {
   };
 }
 
+// Intent: make the default row identity explicit without erasing useful event-local setting metadata.
+export function createWorldSpineUnplacedLocationRowAssignment(context = {}) {
+  return {
+    location: DEFAULT_LOCATION_LABEL,
+    locationRowLabel: DEFAULT_LOCATION_LABEL,
+    locationRowKey: createWorldSpineLocationKey(DEFAULT_LOCATION_LABEL),
+    locationScope: normalizeString(context?.locationScope) || DEFAULT_LOCATION_SCOPE,
+  };
+}
+
+// Intent: carry scene-row mutations through binder reorder persistence without losing their explicit chunk IDs.
+export function createWorldSpineSceneDropPersistenceOptions({
+  changedSceneIds = [],
+  changedPlaceLinks = false,
+} = {}) {
+  const normalizedSceneIds = normalizeStringList(changedSceneIds);
+  const hasSceneChanges = normalizedSceneIds.length > 0;
+  const hasWorldChanges = changedPlaceLinks === true;
+  return {
+    changedSceneIds: normalizedSceneIds,
+    domain: hasSceneChanges && hasWorldChanges ? "world-spine" : hasSceneChanges ? "manuscript" : "world",
+    dirtyReason: hasSceneChanges && hasWorldChanges
+      ? "world-spine-scene-node-reordered-and-location-updated"
+      : hasSceneChanges
+        ? "world-spine-scene-location-updated"
+        : "world-spine-scene-location-place-links-updated",
+    source: "worldSpineController.onSceneNodeReorder",
+    flushProjectFileAutosave: hasSceneChanges || hasWorldChanges,
+  };
+}
+
+export function applyWorldSpineUnplacementToSceneRecord(scene = {}, assignment = {}) {
+  const normalizedAssignment = normalizeWorldSpineUnplacedLocationAssignment(assignment, scene);
+  const existingMetadata = isPlainObject(scene?.worldSpineMetadata) ? scene.worldSpineMetadata : {};
+  return {
+    ...scene,
+    locationRowLabel: normalizedAssignment.locationRowLabel,
+    locationRowKey: normalizedAssignment.locationRowKey,
+    locationScope: normalizedAssignment.locationScope,
+    worldSpineMetadata: {
+      ...existingMetadata,
+      locationRowLabel: normalizedAssignment.locationRowLabel,
+      locationRowKey: normalizedAssignment.locationRowKey,
+      locationScope: normalizedAssignment.locationScope,
+    },
+  };
+}
+
 export function applyWorldSpineLocationAssignmentToSceneRecord(scene = {}, assignment = {}) {
   const normalizedAssignment = normalizeWorldSpineLocationAssignment(assignment);
   if (!normalizedAssignment.location) {
@@ -70,6 +118,39 @@ export function applyWorldSpineLocationAssignmentToStructureDrafts(structureDraf
   };
 }
 
+export function applyWorldSpineUnplacementToStructureDrafts(structureDrafts = {}, sceneId = "", assignment = {}) {
+  const normalizedSceneId = normalizeString(sceneId);
+  const scenes = Array.isArray(structureDrafts?.scenes) ? structureDrafts.scenes : [];
+  if (!normalizedSceneId || !scenes.length) {
+    return {
+      structureDrafts,
+      changed: false,
+    };
+  }
+
+  let changed = false;
+  const nextScenes = scenes.map((scene) => {
+    if (normalizeString(scene?.sceneId) !== normalizedSceneId) {
+      return scene;
+    }
+    if (hasWorldSpineUnplacedLocationRowAssignment(scene, assignment)) {
+      return scene;
+    }
+    changed = true;
+    return applyWorldSpineUnplacementToSceneRecord(scene, assignment);
+  });
+
+  return {
+    structureDrafts: changed
+      ? {
+          ...structureDrafts,
+          scenes: nextScenes,
+        }
+      : structureDrafts,
+    changed,
+  };
+}
+
 export function applyWorldSpineLocationAssignmentToSceneEventTags(eventTags = [], scene = {}, assignment = {}) {
   const sourceEventTags = Array.isArray(eventTags) ? eventTags : [];
   const sceneId = normalizeString(scene?.sceneId);
@@ -106,6 +187,53 @@ export function applyWorldSpineLocationAssignmentToSceneEventTags(eventTags = []
       metadata: {
         ...metadata,
         location: normalizedAssignment.location,
+        locationRowLabel: normalizedAssignment.locationRowLabel,
+        locationRowKey: normalizedAssignment.locationRowKey,
+        locationScope: normalizedAssignment.locationScope,
+      },
+    };
+  });
+
+  return {
+    eventTags: nextEventTags,
+    changedEventTagIds: changedEventTagIds.filter(Boolean),
+  };
+}
+
+export function applyWorldSpineUnplacementToSceneEventTags(eventTags = [], scene = {}, assignment = {}) {
+  const sourceEventTags = Array.isArray(eventTags) ? eventTags : [];
+  const sceneId = normalizeString(scene?.sceneId);
+  const sceneBlockIds = new Set(
+    (Array.isArray(scene?.blocks) ? scene.blocks : [])
+      .map((block) => normalizeString(block?.blockId))
+      .filter(Boolean),
+  );
+  if (!sceneId && !sceneBlockIds.size) {
+    return {
+      eventTags: sourceEventTags,
+      changedEventTagIds: [],
+    };
+  }
+
+  const changedEventTagIds = [];
+  const nextEventTags = sourceEventTags.map((eventTag) => {
+    if (!isEventTagLinkedToScene(eventTag, sceneId, sceneBlockIds)) {
+      return eventTag;
+    }
+    if (hasWorldSpineUnplacedLocationRowAssignment(eventTag, assignment)) {
+      return eventTag;
+    }
+
+    changedEventTagIds.push(normalizeString(eventTag?.id));
+    const metadata = isPlainObject(eventTag?.metadata) ? eventTag.metadata : {};
+    const normalizedAssignment = normalizeWorldSpineUnplacedLocationAssignment(assignment, eventTag);
+    return {
+      ...eventTag,
+      locationRowLabel: normalizedAssignment.locationRowLabel,
+      locationRowKey: normalizedAssignment.locationRowKey,
+      locationScope: normalizedAssignment.locationScope,
+      metadata: {
+        ...metadata,
         locationRowLabel: normalizedAssignment.locationRowLabel,
         locationRowKey: normalizedAssignment.locationRowKey,
         locationScope: normalizedAssignment.locationScope,
@@ -250,6 +378,50 @@ export function upsertWorldSpineLocationAssignmentInSceneStore(sceneStore = {}, 
   };
 }
 
+export function upsertWorldSpineUnplacementInSceneStore(sceneStore = {}, {
+  projectId = "",
+  sceneId = "",
+  sceneRecord = {},
+  assignment = {},
+} = {}) {
+  const normalizedProjectId = normalizeString(projectId);
+  const normalizedSceneId = normalizeString(sceneId);
+  if (!normalizedProjectId || !normalizedSceneId) {
+    return sceneStore && typeof sceneStore === "object" && !Array.isArray(sceneStore)
+      ? sceneStore
+      : {};
+  }
+
+  const sourceStore = sceneStore && typeof sceneStore === "object" && !Array.isArray(sceneStore)
+    ? sceneStore
+    : {};
+  const projectStore = isPlainObject(sourceStore[normalizedProjectId]) ? sourceStore[normalizedProjectId] : {};
+  const existingSceneRecord = isPlainObject(projectStore[normalizedSceneId]) ? projectStore[normalizedSceneId] : {};
+  const mergedSceneRecord = {
+    ...existingSceneRecord,
+    ...sceneRecord,
+    sceneId: normalizedSceneId,
+  };
+
+  if (!sceneRecordHasSubstantiveBody(sceneRecord) && sceneRecordHasSubstantiveBody(existingSceneRecord)) {
+    mergedSceneRecord.editorText = typeof existingSceneRecord.editorText === "string"
+      ? existingSceneRecord.editorText
+      : mergedSceneRecord.editorText;
+    mergedSceneRecord.blocks = Array.isArray(existingSceneRecord.blocks)
+      ? existingSceneRecord.blocks.map((block) => (isPlainObject(block) ? { ...block } : block))
+      : mergedSceneRecord.blocks;
+  }
+
+  const nextSceneRecord = applyWorldSpineUnplacementToSceneRecord(mergedSceneRecord, assignment);
+  return {
+    ...sourceStore,
+    [normalizedProjectId]: {
+      ...projectStore,
+      [normalizedSceneId]: nextSceneRecord,
+    },
+  };
+}
+
 function sceneRecordHasSubstantiveBody(sceneRecord = {}) {
   if (!isPlainObject(sceneRecord)) {
     return false;
@@ -274,6 +446,17 @@ export function hasWorldSpineLocationAssignment(record = {}, assignment = {}) {
   );
 }
 
+export function hasWorldSpineUnplacedLocationRowAssignment(record = {}, assignment = {}) {
+  const normalizedAssignment = normalizeWorldSpineUnplacedLocationAssignment(assignment, record);
+  const metadata = isPlainObject(record?.metadata) ? record.metadata : {};
+  const worldSpineMetadata = isPlainObject(record?.worldSpineMetadata) ? record.worldSpineMetadata : {};
+  return (
+    normalizeString(record?.locationRowLabel ?? worldSpineMetadata.locationRowLabel ?? metadata.locationRowLabel) === normalizedAssignment.locationRowLabel &&
+    normalizeString(record?.locationRowKey ?? worldSpineMetadata.locationRowKey ?? metadata.locationRowKey) === normalizedAssignment.locationRowKey &&
+    normalizeString(record?.locationScope ?? worldSpineMetadata.locationScope ?? metadata.locationScope) === normalizedAssignment.locationScope
+  );
+}
+
 function normalizeWorldSpineLocationAssignment(assignment = {}) {
   const location = normalizeString(assignment?.location ?? assignment?.locationRowLabel);
   const locationRowLabel = normalizeString(assignment?.locationRowLabel) || location;
@@ -283,6 +466,19 @@ function normalizeWorldSpineLocationAssignment(assignment = {}) {
     locationRowLabel,
     locationRowKey,
     locationScope: normalizeString(assignment?.locationScope) || DEFAULT_LOCATION_SCOPE,
+  };
+}
+
+function normalizeWorldSpineUnplacedLocationAssignment(assignment = {}, record = {}) {
+  const metadata = isPlainObject(record?.metadata) ? record.metadata : {};
+  const worldSpineMetadata = isPlainObject(record?.worldSpineMetadata) ? record.worldSpineMetadata : {};
+  return {
+    location: DEFAULT_LOCATION_LABEL,
+    locationRowLabel: DEFAULT_LOCATION_LABEL,
+    locationRowKey: createWorldSpineLocationKey(DEFAULT_LOCATION_LABEL),
+    locationScope: normalizeString(
+      assignment?.locationScope ?? record?.locationScope ?? worldSpineMetadata.locationScope ?? metadata.locationScope,
+    ) || DEFAULT_LOCATION_SCOPE,
   };
 }
 

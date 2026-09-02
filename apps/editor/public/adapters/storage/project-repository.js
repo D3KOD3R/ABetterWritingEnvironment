@@ -9,7 +9,9 @@
 import {
   applyPassageNoteCountsToProjectIndex,
   buildProjectIndexFromProjectRecord,
+  collectProjectIndexSceneMetadata,
 } from "./project-index.js";
+import { buildWorkspaceStatsFromProjectIndex } from "./project-metrics.js";
 import { migrateProjectData, PROJECT_SCHEMA_VERSION } from "./project-migrations.js";
 
 function cloneValue(value) {
@@ -42,74 +44,6 @@ function composeEditorText(blocks = []) {
     .map((block) => String(block?.text ?? ""))
     .filter((text) => text.length > 0)
     .join("\n\n");
-}
-
-const SCENE_DRAFT_METADATA_KEYS = Object.freeze([
-  "location",
-  "storyLocation",
-  "place",
-  "setting",
-  "locality",
-  "sublocation",
-  "subLocation",
-  "specificLocation",
-  "localPlace",
-  "ship",
-  "vehicle",
-  "orbitalBand",
-  "orbit",
-  "orbitalPosition",
-  "position",
-  "locationRowLabel",
-  "timelineRowLabel",
-  "assignedLocationRow",
-  "locationRowKey",
-  "timelineRowKey",
-  "assignedLocationRowKey",
-  "locationScope",
-  "timelineLocationScope",
-  "date",
-  "storyDate",
-  "timelineDate",
-  "chronologyDate",
-  "time",
-  "storyTime",
-  "timelineTime",
-  "chronologyTime",
-  "people",
-  "peoplePresent",
-  "characters",
-  "charactersPresent",
-  "cast",
-  "criticalEvents",
-  "criticalEvent",
-  "importantEvents",
-  "majorEvents",
-  "locationChanges",
-  "locationChange",
-  "settingChanges",
-  "placeChanges",
-  "worldSpineMetadata",
-  "worldMetadata",
-  "timelineMetadata",
-  "storyMetadata",
-  "customMetadata",
-  "metadata",
-]);
-
-// Intent: preserve structured scene DTO metadata while keeping scene body chunking deterministic.
-function copySceneDraftMetadata(source = {}) {
-  if (!source || typeof source !== "object" || Array.isArray(source)) {
-    return {};
-  }
-
-  const metadata = {};
-  for (const key of SCENE_DRAFT_METADATA_KEYS) {
-    if (Object.prototype.hasOwnProperty.call(source, key)) {
-      metadata[key] = cloneValue(source[key]);
-    }
-  }
-  return metadata;
 }
 
 function normalizeSceneDraft(candidate, fallback = {}) {
@@ -150,7 +84,7 @@ function normalizeSceneDraft(candidate, fallback = {}) {
     chapterTitle: typeof base.chapterTitle === "string" ? base.chapterTitle : (fallback.chapterTitle ?? "Untitled Chapter"),
     sceneTitle: typeof base.sceneTitle === "string" ? base.sceneTitle : (fallback.sceneTitle ?? "Untitled Scene"),
     sceneSynopsis: typeof base.sceneSynopsis === "string" ? base.sceneSynopsis : (fallback.sceneSynopsis ?? ""),
-    ...copySceneDraftMetadata(base),
+    ...collectProjectIndexSceneMetadata(base),
     editorText,
     blocks,
     // Intent: preserve author-applied formatting metadata until canonical manuscript marks replace this compatibility field.
@@ -191,7 +125,7 @@ function mergeSceneMetadataIntoStoredScene(existingScene, candidateScene, sceneI
     if (typeof candidateScene.sceneSynopsis === "string") {
       merged.sceneSynopsis = candidateScene.sceneSynopsis;
     }
-    Object.assign(merged, copySceneDraftMetadata(candidateScene));
+    Object.assign(merged, collectProjectIndexSceneMetadata(candidateScene));
   }
 
   return normalizeSceneDraft(merged, {
@@ -431,30 +365,21 @@ function buildManifestRecord(projectRecord, {
   };
   record.schemaVersion = schemaVersion;
   const sceneWordCountsById = {};
+  const sceneMetadataById = {};
   for (const [sceneId, sceneDraft] of sceneMap.entries()) {
     sceneWordCountsById[sceneId] = getSceneDraftWordCount(sceneDraft);
+    sceneMetadataById[sceneId] = collectProjectIndexSceneMetadata(sceneDraft);
   }
   record.projectIndex = buildProjectIndexFromProjectRecord(record, {
     schemaVersion,
     sceneWordCountsById,
+    sceneMetadataById,
   });
   if (workspaceProject) {
     workspaceProject.stats = buildWorkspaceStatsFromProjectIndex(record.projectIndex, workspaceProject.stats);
   }
 
   return record;
-}
-
-// Intent: keep persisted workspace stats aligned with the chunked scene index used by project-file saves.
-function buildWorkspaceStatsFromProjectIndex(projectIndex, currentStats = {}) {
-  const chapters = Array.isArray(projectIndex?.chapters) ? projectIndex.chapters : [];
-  const scenes = Array.isArray(projectIndex?.scenes) ? projectIndex.scenes : [];
-  return {
-    ...(currentStats && typeof currentStats === "object" && !Array.isArray(currentStats) ? currentStats : {}),
-    chapterCount: chapters.length,
-    sceneCount: scenes.length,
-    lineCount: scenes.reduce((total, scene) => total + Math.max(0, Math.round(Number(scene?.lineCount) || 0)), 0),
-  };
 }
 
 function getSceneStorageKey(libraryStorageKey, projectId, sceneId) {
@@ -574,6 +499,50 @@ function hydrateProjectRecord(manifestRecord, {
   }
 
   return record;
+}
+
+// Intent: expose complete non-body scene metadata to global projections while active scene bodies remain lazy.
+function buildProjectSceneMetadataStore(projects = [], { loadScene = null } = {}) {
+  const sceneStore = {};
+  for (const project of Array.isArray(projects) ? projects : []) {
+    const projectId = normalizeProjectId(project?.id);
+    if (!projectId) {
+      continue;
+    }
+    const projectScenes = {};
+    for (const scene of Array.isArray(project?.projectIndex?.scenes) ? project.projectIndex.scenes : []) {
+      const sceneId = normalizeSceneId(scene?.id);
+      if (!sceneId) {
+        continue;
+      }
+      const hasIndexedMetadata = Object.prototype.hasOwnProperty.call(scene ?? {}, "metadata")
+        && scene?.metadata
+        && typeof scene.metadata === "object"
+        && !Array.isArray(scene.metadata);
+      const indexedMetadata = hasIndexedMetadata
+        ? cloneValue(scene.metadata)
+        : {};
+      // Intent: older manifests can recover placement metadata from their chunks once without retaining scene bodies.
+      const legacyChunkMetadata = !hasIndexedMetadata && typeof loadScene === "function"
+        ? collectProjectIndexSceneMetadata(
+            project?.sceneDrafts?.[sceneId] ?? loadScene(projectId, sceneId) ?? {},
+          )
+        : {};
+      projectScenes[sceneId] = {
+        sceneId,
+        chapterId: typeof scene?.chapterId === "string" ? scene.chapterId : "",
+        chapterTitle: typeof scene?.chapterTitle === "string" ? scene.chapterTitle : "Untitled Chapter",
+        sceneTitle: typeof scene?.title === "string" ? scene.title : "Untitled Scene",
+        sceneSynopsis: typeof scene?.synopsis === "string" ? scene.synopsis : "",
+        ...indexedMetadata,
+        ...legacyChunkMetadata,
+      };
+    }
+    if (Object.keys(projectScenes).length) {
+      sceneStore[projectId] = projectScenes;
+    }
+  }
+  return sceneStore;
 }
 
 function mergeSceneStore(candidateSceneStore = {}, projectId, sceneMap) {
@@ -697,11 +666,12 @@ export function createProjectRepository({
 
   const loadProjectLibrarySnapshot = () => {
     const manifestSnapshot = loadStoredManifestSnapshot();
+    const projects = (manifestSnapshot.projects ?? []).map((project) => hydrateProjectRecord(project, { loadScene }));
     return {
       schemaVersion,
       activeProjectId: manifestSnapshot.activeProjectId,
-      projects: (manifestSnapshot.projects ?? []).map((project) => hydrateProjectRecord(project, { loadScene })),
-      sceneStore: {},
+      projects,
+      sceneStore: buildProjectSceneMetadataStore(projects, { loadScene }),
     };
   };
 
@@ -770,16 +740,35 @@ export function createProjectRepository({
         && !Array.isArray(existingManifestRecord.projectStorage.sceneFiles)
         ? existingManifestRecord.projectStorage.sceneFiles
         : {};
-      const sceneMap = collectSceneDraftsFromProjectRecord(project);
+      const projectSceneMap = collectSceneDraftsFromProjectRecord(project);
+      const sceneMap = new Map(projectSceneMap);
       mergeSceneStore(migrated.sceneStore, projectId, sceneMap);
-      sceneMapsByProjectId.set(projectId, sceneMap);
       const previousSceneIds = loadSceneOrderFromManifest(existingManifestRecord);
 
-      const sceneOrder = getSceneOrder(project, sceneMap);
-      const sceneFiles = buildSceneFilesMap(projectId, sceneOrder, existingSceneFiles);
       const changedSceneIds = Array.isArray(changedSceneIdsByProject[projectId])
         ? new Set(changedSceneIdsByProject[projectId].map((sceneId) => normalizeSceneId(sceneId)).filter(Boolean))
         : null;
+      // Intent: an explicitly changed runtime draft is authoritative over the metadata-only sceneStore projection
+      // returned by lazy browser hydration, while a project-file sceneStore may still supply its unopened body.
+      if (changedSceneIds) {
+        for (const changedSceneId of changedSceneIds) {
+          const changedProjectScene = projectSceneMap.get(changedSceneId);
+          if (!changedProjectScene) {
+            continue;
+          }
+          const sceneStoreScene = sceneMap.get(changedSceneId);
+          sceneMap.set(
+            changedSceneId,
+            sceneStoreScene && sceneDraftHasSubstantiveBody(sceneStoreScene) && !sceneDraftHasSubstantiveBody(changedProjectScene)
+              ? mergeSceneMetadataIntoStoredScene(sceneStoreScene, changedProjectScene, changedSceneId)
+              : cloneValue(changedProjectScene),
+          );
+        }
+      }
+      sceneMapsByProjectId.set(projectId, sceneMap);
+
+      const sceneOrder = getSceneOrder(project, sceneMap);
+      const sceneFiles = buildSceneFilesMap(projectId, sceneOrder, existingSceneFiles);
       if (shouldUseExistingSceneBodies) {
         for (const existingSceneId of previousSceneIds) {
           const storedScene = loadScene(projectId, existingSceneId);
@@ -878,14 +867,15 @@ export function createProjectRepository({
       saveActiveProjectId(manifestSnapshot.activeProjectId);
     }
 
+    const hydratedProjects = manifestSnapshot.projects.map((project) => hydrateProjectRecord(project, {
+      loadScene,
+      sceneMap: sceneMapsByProjectId.get(project.id) ?? null,
+    }));
     return {
       schemaVersion,
       activeProjectId: manifestSnapshot.activeProjectId,
-      projects: manifestSnapshot.projects.map((project) => hydrateProjectRecord(project, {
-        loadScene,
-        sceneMap: sceneMapsByProjectId.get(project.id) ?? null,
-      })),
-      sceneStore: {},
+      projects: hydratedProjects,
+      sceneStore: buildProjectSceneMetadataStore(hydratedProjects, { loadScene }),
       storagePersisted: storageWritesAvailable === true,
     };
   };
