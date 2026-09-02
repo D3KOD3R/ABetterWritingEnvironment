@@ -56,10 +56,10 @@ export function getVoiceRecordingMediaName(recordingId, mediaMimeType) {
   return `${sanitizeFileNameSegment(recordingId || "voice-take")}.${getVoiceRecordingExtension(mediaMimeType)}`;
 }
 
-export function buildVoiceRecordingMediaPath(projectId, recordingId, mediaMimeType) {
-  const safeProjectId = sanitizeFileNameSegment(projectId || "project");
+// Intent: allocate a portable package-relative audio reference without embedding project or machine locations.
+export function buildVoiceRecordingMediaPath(_projectId, recordingId, mediaMimeType) {
   const mediaName = getVoiceRecordingMediaName(recordingId, mediaMimeType);
-  return `project-media/${safeProjectId}/${mediaName}`;
+  return `assets/audio/${mediaName}`;
 }
 
 export function getSupportedNarrationRecordingMimeType({

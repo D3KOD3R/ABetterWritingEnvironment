@@ -30,7 +30,7 @@ export async function runNarrationRecordingFinalizationServiceTest() {
     startedAtMs: 1000,
     transcript: " read   line ",
     mediaMimeType: "audio/webm",
-    mediaPath: "project-media/project-1/take-1.webm",
+    mediaPath: "assets/audio/take-1.webm",
     chunks: [new Blob(["audio"])],
     trackerStatus: "Finalizing narration take...",
   }, {
@@ -44,7 +44,7 @@ export async function runNarrationRecordingFinalizationServiceTest() {
   assert.equal(result.sessionOptions.recordingId, "take-1");
   assert.equal(result.selection, selection);
   assert.equal(events.includes("cleanup"), true);
-  assert.equal(events.includes("save:project-media/project-1/take-1.webm:5"), true);
+  assert.equal(events.includes("save:assets/audio/take-1.webm:5"), true);
   assert.equal(events.includes("log:voice-recording:Failed to stop a narration recording cleanly."), true);
 
   const followed = await service.finalizeRuntime({
@@ -65,7 +65,7 @@ export async function runNarrationRecordingFinalizationServiceTest() {
     startedAtMs: 1000,
     transcript: "line two",
     mediaMimeType: "audio/webm",
-    mediaPath: "project-media/project-1/take-1b.webm",
+    mediaPath: "assets/audio/take-1b.webm",
     chunks: [new Blob(["audio"])],
   });
   assert.equal(followed.selection.blockId, "block-2");
@@ -86,7 +86,7 @@ export async function runNarrationRecordingFinalizationServiceTest() {
     startedAtMs: 1000,
     transcript: "line",
     mediaMimeType: "audio/webm",
-    mediaPath: "project-media/project-1/take-1c.webm",
+    mediaPath: "assets/audio/take-1c.webm",
     chunks: [new Blob(["audio"])],
   });
   assert.equal(lowConfidenceFollow.selection.blockId, "block-1");
@@ -109,7 +109,7 @@ export async function runNarrationRecordingFinalizationServiceTest() {
     startedAtMs: 1000,
     transcript: "",
     mediaMimeType: "audio/webm",
-    mediaPath: "project-media/project-1/take-2.webm",
+    mediaPath: "assets/audio/take-2.webm",
     chunks: [new Blob(["audio"])],
   });
   assert.equal(failed.finalRecord.status, "failed");

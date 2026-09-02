@@ -1,7 +1,7 @@
 // Intent: expose the desktop HTTP surface that serves the editor, workspace data, settings, and local services.
 import { readFileSync } from "node:fs";
 import { appendFile, mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
-import { dirname, extname, join, relative, resolve as resolvePath } from "node:path";
+import { dirname, extname, isAbsolute, join, relative, resolve as resolvePath, sep as pathSeparator } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { createDesktopSettingsSnapshot, updateDesktopSettingsSnapshot } from "./settings.ts";
@@ -512,12 +512,12 @@ export async function createDesktopResponseForRequest(
 
   if (method === "POST" && request.pathname === "/api/project-media/save") {
     const body = parseJsonBody(request.body);
-    const filePath = normalizeFilePath(body.filePath);
+    const mediaPath = await resolveProjectMediaRequestPath(body);
     const contentBase64 = typeof body.contentBase64 === "string" ? body.contentBase64.trim() : "";
-    if (!filePath) {
+    if (!mediaPath.filePath) {
       return jsonResponse(400, {
         ok: false,
-        message: "A media file path is required.",
+        message: mediaPath.error,
       }, apiCorsHeaders());
     }
 
@@ -530,7 +530,7 @@ export async function createDesktopResponseForRequest(
 
     try {
       const binary = Buffer.from(contentBase64, "base64");
-      const resolvedPath = await writeBinaryFile(filePath, binary);
+      const resolvedPath = await writeBinaryFile(mediaPath.filePath, binary);
       logDesktopInfo("project-media", "Saved a project media file.", {
         filePath: resolvedPath,
         byteLength: binary.byteLength,
@@ -542,7 +542,7 @@ export async function createDesktopResponseForRequest(
     } catch (error) {
       logDesktopError("project-media", "Failed to save a project media file.", {
         error,
-        filePath,
+        filePath: mediaPath.filePath,
       });
       return jsonResponse(500, {
         ok: false,
@@ -553,16 +553,16 @@ export async function createDesktopResponseForRequest(
 
   if (method === "POST" && request.pathname === "/api/project-media/load") {
     const body = parseJsonBody(request.body);
-    const filePath = normalizeFilePath(body.filePath);
-    if (!filePath) {
+    const mediaPath = await resolveProjectMediaRequestPath(body);
+    if (!mediaPath.filePath) {
       return jsonResponse(400, {
         ok: false,
-        message: "A media file path is required.",
+        message: mediaPath.error,
       }, apiCorsHeaders());
     }
 
     try {
-      const resolvedPath = resolvePath(filePath);
+      const resolvedPath = mediaPath.filePath;
       const content = await readFile(resolvedPath);
       logDesktopInfo("project-media", "Loaded a project media file.", {
         filePath: resolvedPath,
@@ -577,7 +577,7 @@ export async function createDesktopResponseForRequest(
     } catch (error) {
       logDesktopError("project-media", "Failed to load a project media file.", {
         error,
-        filePath,
+        filePath: mediaPath.filePath,
       });
       return jsonResponse(500, {
         ok: false,
@@ -630,16 +630,16 @@ export async function createDesktopResponseForRequest(
   // Intent: let editor workflows remove obsolete local media while keeping missing files idempotent.
   if (method === "POST" && request.pathname === "/api/project-media/delete") {
     const body = parseJsonBody(request.body);
-    const filePath = normalizeFilePath(body.filePath);
-    if (!filePath) {
+    const mediaPath = await resolveProjectMediaRequestPath(body);
+    if (!mediaPath.filePath) {
       return jsonResponse(400, {
         ok: false,
-        message: "A media file path is required.",
+        message: mediaPath.error,
       }, apiCorsHeaders());
     }
 
     try {
-      const result = await deleteBinaryFile(filePath);
+      const result = await deleteBinaryFile(mediaPath.filePath);
       logDesktopInfo("project-media", result.removed
         ? "Deleted a project media file."
         : "Project media file was already absent during delete.", {
@@ -654,7 +654,7 @@ export async function createDesktopResponseForRequest(
     } catch (error) {
       logDesktopError("project-media", "Failed to delete a project media file.", {
         error,
-        filePath,
+        filePath: mediaPath.filePath,
       });
       return jsonResponse(500, {
         ok: false,
@@ -1402,21 +1402,86 @@ function createUniqueMetadataFolderRelativePath(basePath: string, folderId: stri
 }
 
 function resolveProjectRelativeStoragePath(projectRoot: string, relativeStoragePath: unknown): string {
-  const normalizedPath = String(relativeStoragePath ?? "")
-    .replace(/\\/g, "/")
-    .replace(/^\/+/, "")
-    .trim();
-  if (!normalizedPath || normalizedPath.split("/").some((segment) => segment === ".." || segment === "")) {
+  const normalizedRoot = normalizeFilePath(projectRoot);
+  const normalizedPath = String(relativeStoragePath ?? "").trim().replace(/\\/g, "/");
+  if (
+    !normalizedRoot
+    || !isAbsolute(normalizedRoot)
+    || !normalizedPath
+    || normalizedPath.startsWith("/")
+    || /^[A-Za-z]:/.test(normalizedPath)
+    || normalizedPath.split("/").some((segment) => segment === ".." || segment === "." || segment === "")
+  ) {
     return "";
   }
 
-  const resolvedPath = resolvePath(projectRoot, normalizedPath);
-  const relativePath = relative(projectRoot, resolvedPath);
-  if (!relativePath || relativePath.startsWith("..") || relativePath.includes(":")) {
+  const resolvedRoot = resolvePath(normalizedRoot);
+  const resolvedPath = resolvePath(resolvedRoot, normalizedPath);
+  const relativePath = relative(resolvedRoot, resolvedPath);
+  if (
+    !relativePath
+    || relativePath === ".."
+    || relativePath.startsWith(`..${pathSeparator}`)
+    || isAbsolute(relativePath)
+    || relativePath.includes(":")
+  ) {
     return "";
   }
 
   return resolvedPath;
+}
+
+// Intent: bind project-relative media requests to a verified package while preserving absolute legacy callers until their migration slice.
+async function resolveProjectMediaRequestPath(body: Record<string, any>): Promise<{ filePath: string; error: string }> {
+  const hasProjectContext = Object.prototype.hasOwnProperty.call(body, "activeProjectRoot")
+    || Object.prototype.hasOwnProperty.call(body, "projectRelativePath");
+  if (!hasProjectContext) {
+    const legacyFilePath = normalizeFilePath(body.filePath);
+    if (!legacyFilePath || !isAbsolute(legacyFilePath)) {
+      return {
+        filePath: "",
+        error: "An active folder-backed project root is required for relative project media paths.",
+      };
+    }
+    return { filePath: resolvePath(legacyFilePath), error: "" };
+  }
+
+  const activeProjectRoot = normalizeFilePath(body.activeProjectRoot);
+  if (!activeProjectRoot || !isAbsolute(activeProjectRoot)) {
+    return {
+      filePath: "",
+      error: "An absolute active folder-backed project root is required for project media.",
+    };
+  }
+
+  const resolvedRoot = resolvePath(activeProjectRoot);
+  try {
+    const [rootStats, manifestStats] = await Promise.all([
+      stat(resolvedRoot),
+      stat(join(resolvedRoot, "project.json")),
+    ]);
+    if (!rootStats.isDirectory() || !manifestStats.isFile()) {
+      return {
+        filePath: "",
+        error: "The active project root must be an existing folder-backed project package.",
+      };
+    }
+  } catch {
+    return {
+      filePath: "",
+      error: "The active project root must be an existing folder-backed project package.",
+    };
+  }
+
+  const resolvedPath = resolveProjectRelativeStoragePath(resolvedRoot, body.projectRelativePath);
+  if (!resolvedPath) {
+    return {
+      filePath: "",
+      error: "The project media path must be a contained project-relative path.",
+    };
+  }
+
+  return { filePath: resolvedPath, error: "" };
 }
 
 // Intent: store metadata folders as inspectable project-package files while preserving the legacy project record field.

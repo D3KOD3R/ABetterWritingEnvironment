@@ -36,7 +36,7 @@ export function runNarrationTakeServiceTest() {
   assert.equal(sanitizeFileNameSegment(" scene: one / two "), "scene-one-two");
   assert.equal(createNarrationRecordingId(selection, { nowMs: 36 }), "take-10-scene-1-block-2");
   assert.equal(getVoiceRecordingMediaName("take:one", "audio/ogg;codecs=opus"), "take-one.ogg");
-  assert.equal(buildVoiceRecordingMediaPath("project:one", "take:one", "audio/webm"), "project-media/project-one/take-one.webm");
+  assert.equal(buildVoiceRecordingMediaPath("project:one", "take:one", "audio/webm"), "assets/audio/take-one.webm");
   assert.equal(formatNarrationRecordingElapsedLabel(3661000), "1:01:01");
   assert.equal(normalizeNarrationTakeTranscript(" one\n two   three "), "one two three");
 
@@ -102,7 +102,7 @@ export function runNarrationTakeServiceTest() {
   assert.equal(record.id, "take-1");
   assert.equal(record.projectId, "project-1");
   assert.equal(record.mediaName, "take-1.m4a");
-  assert.equal(record.mediaPath, "project-media/project-1/take-1.m4a");
+  assert.equal(record.mediaPath, "assets/audio/take-1.m4a");
   assert.equal(record.startOffset, 3);
   assert.equal(record.endOffset, 14);
   assert.equal(record.verseText, "First line.");
@@ -144,7 +144,7 @@ export function runNarrationTakeServiceTest() {
   });
   assert.equal(finalization.transcript, "final transcript");
   assert.equal(finalization.durationMs, 1500);
-  assert.equal(finalization.mediaPath, "project-media/project-1/take-2.webm");
+  assert.equal(finalization.mediaPath, "assets/audio/take-2.webm");
 
   const failedRecord = createFinalNarrationRecordingRecord(finalization, {
     status: "failed",
@@ -158,7 +158,7 @@ export function runNarrationTakeServiceTest() {
     timerId: 99,
   });
   assert.equal(runtime.recordingId, "take-10-scene-1-block-2");
-  assert.equal(runtime.mediaPath, "project-media/project-1/take-10-scene-1-block-2.webm");
+  assert.equal(runtime.mediaPath, "assets/audio/take-10-scene-1-block-2.webm");
   assert.equal(runtime.trackerStatus, "Requesting microphone access...");
   assert.equal(runtime.liveTranscript, "");
   assert.equal(runtime.cleanupTranscript, "");
@@ -177,7 +177,7 @@ export function runNarrationTakeServiceTest() {
     cleanupTranscript: "",
     elapsedLabel: "0:00",
     recordingId: "take-10-scene-1-block-2",
-    mediaPath: "project-media/project-1/take-10-scene-1-block-2.webm",
+    mediaPath: "assets/audio/take-10-scene-1-block-2.webm",
     speechProviderId: "",
     speechProviderLabel: "",
     speechProviderKind: "",

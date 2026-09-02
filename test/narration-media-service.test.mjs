@@ -10,6 +10,7 @@ import {
 } from "../apps/editor/public/features/narration/narration-media-service.js";
 
 export async function runNarrationMediaServiceTest() {
+  const activeProjectRoot = "C:\\Projects\\Novel.abe-project";
   const sourceBlob = new Blob(["voice bytes"], { type: "audio/webm" });
   const contentBase64 = await blobToBase64(sourceBlob);
   assert.equal(contentBase64, "dm9pY2UgYnl0ZXM=");
@@ -20,6 +21,7 @@ export async function runNarrationMediaServiceTest() {
 
   const calls = [];
   const service = createNarrationMediaService({
+    getActiveProjectRoot: () => activeProjectRoot,
     fetchJson: async (pathname, options) => {
       calls.push({ pathname, options });
       if (pathname.endsWith("/save")) {
@@ -44,7 +46,8 @@ export async function runNarrationMediaServiceTest() {
   });
   assert.equal(calls[0].pathname, "/api/project-media/save");
   assert.equal(calls[0].options.method, "POST");
-  assert.equal(calls[0].options.body.filePath, "recordings/take.webm");
+  assert.equal(calls[0].options.body.activeProjectRoot, activeProjectRoot);
+  assert.equal(calls[0].options.body.projectRelativePath, "recordings/take.webm");
   assert.equal(calls[0].options.body.contentBase64, contentBase64);
 
   const loaded = await service.loadMediaBlob({
@@ -55,6 +58,8 @@ export async function runNarrationMediaServiceTest() {
   assert.equal(loaded.filePath, "recordings/take.webm");
   assert.equal(await loaded.blob.text(), "voice bytes");
   assert.equal(calls[1].pathname, "/api/project-media/load");
+  assert.equal(calls[1].options.body.activeProjectRoot, activeProjectRoot);
+  assert.equal(calls[1].options.body.projectRelativePath, "recordings/take.webm");
 
   const deleted = await service.deleteMediaFile({
     filePath: " recordings/take.webm ",
@@ -64,11 +69,25 @@ export async function runNarrationMediaServiceTest() {
   assert.equal(deleted.removed, true);
   assert.equal(calls[2].pathname, "/api/project-media/delete");
   assert.equal(calls[2].options.method, "POST");
-  assert.equal(calls[2].options.body.filePath, "recordings/take.webm");
+  assert.equal(calls[2].options.body.activeProjectRoot, activeProjectRoot);
+  assert.equal(calls[2].options.body.projectRelativePath, "recordings/take.webm");
+
+  await assert.rejects(
+    () => service.saveMediaBlob({ filePath: "../escape.webm", blob: sourceBlob }),
+    /project-relative/,
+  );
+  await assert.rejects(
+    () => createNarrationMediaService({
+      fetchJson: async () => ({ ok: true, value: {} }),
+      getActiveProjectRoot: () => "",
+    }).saveMediaBlob({ filePath: "assets/audio/take.webm", blob: sourceBlob }),
+    /folder-backed package/,
+  );
 
   await assert.rejects(
     () => loadMediaBlob({ filePath: "recordings/missing.webm" }, {
       fetchJson: async () => ({ ok: true, value: { contentBase64: "" } }),
+      getActiveProjectRoot: () => activeProjectRoot,
     }),
     /empty/,
   );

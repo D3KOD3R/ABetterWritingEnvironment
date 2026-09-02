@@ -1510,6 +1510,7 @@ const anchoredRecordService = createAnchoredRecordService({
 });
 const narrationMediaService = createNarrationMediaService({
   fetchJson: fetchJsonFromDesktopApi,
+  getActiveProjectRoot: () => state.projectFilePath,
 });
 const narrationRecordingTranscriptAlignmentService = createNarrationRecordingTranscriptAlignmentService({
   wordTimingProvider: createWhisperCppWordTimingProvider({

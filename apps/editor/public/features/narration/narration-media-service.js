@@ -2,6 +2,7 @@
 
 export function createNarrationMediaService({
   fetchJson,
+  getActiveProjectRoot,
   saveEndpoint = "/api/project-media/save",
   loadEndpoint = "/api/project-media/load",
   deleteEndpoint = "/api/project-media/delete",
@@ -9,11 +10,14 @@ export function createNarrationMediaService({
   if (typeof fetchJson !== "function") {
     throw new TypeError("createNarrationMediaService requires a fetchJson function.");
   }
+  if (typeof getActiveProjectRoot !== "function") {
+    throw new TypeError("createNarrationMediaService requires getActiveProjectRoot.");
+  }
 
   return {
-    saveMediaBlob: (request) => saveMediaBlob(request, { fetchJson, saveEndpoint }),
-    loadMediaBlob: (request) => loadMediaBlob(request, { fetchJson, loadEndpoint }),
-    deleteMediaFile: (request) => deleteMediaFile(request, { fetchJson, deleteEndpoint }),
+    saveMediaBlob: (request) => saveMediaBlob(request, { fetchJson, getActiveProjectRoot, saveEndpoint }),
+    loadMediaBlob: (request) => loadMediaBlob(request, { fetchJson, getActiveProjectRoot, loadEndpoint }),
+    deleteMediaFile: (request) => deleteMediaFile(request, { fetchJson, getActiveProjectRoot, deleteEndpoint }),
   };
 }
 
@@ -22,12 +26,11 @@ export async function saveMediaBlob({
   blob = null,
 } = {}, {
   fetchJson,
+  getActiveProjectRoot,
   saveEndpoint = "/api/project-media/save",
 } = {}) {
-  const normalizedPath = String(filePath ?? "").trim();
-  if (!normalizedPath) {
-    throw new Error("A media file path is required.");
-  }
+  const normalizedPath = requireProjectRelativeMediaPath(filePath);
+  const activeProjectRoot = requireActiveProjectRoot(getActiveProjectRoot);
   if (!(blob instanceof Blob)) {
     throw new Error("A media blob is required.");
   }
@@ -36,7 +39,8 @@ export async function saveMediaBlob({
   const response = await fetchJson(saveEndpoint, {
     method: "POST",
     body: {
-      filePath: normalizedPath,
+      activeProjectRoot,
+      projectRelativePath: normalizedPath,
       contentBase64,
     },
   });
@@ -56,17 +60,17 @@ export async function loadMediaBlob({
   mediaMimeType = "",
 } = {}, {
   fetchJson,
+  getActiveProjectRoot,
   loadEndpoint = "/api/project-media/load",
 } = {}) {
-  const normalizedPath = String(filePath ?? "").trim();
-  if (!normalizedPath) {
-    throw new Error("A media file path is required.");
-  }
+  const normalizedPath = requireProjectRelativeMediaPath(filePath);
+  const activeProjectRoot = requireActiveProjectRoot(getActiveProjectRoot);
 
   const response = await fetchJson(loadEndpoint, {
     method: "POST",
     body: {
-      filePath: normalizedPath,
+      activeProjectRoot,
+      projectRelativePath: normalizedPath,
     },
   });
 
@@ -91,17 +95,17 @@ export async function deleteMediaFile({
   filePath = "",
 } = {}, {
   fetchJson,
+  getActiveProjectRoot,
   deleteEndpoint = "/api/project-media/delete",
 } = {}) {
-  const normalizedPath = String(filePath ?? "").trim();
-  if (!normalizedPath) {
-    throw new Error("A media file path is required.");
-  }
+  const normalizedPath = requireProjectRelativeMediaPath(filePath);
+  const activeProjectRoot = requireActiveProjectRoot(getActiveProjectRoot);
 
   const response = await fetchJson(deleteEndpoint, {
     method: "POST",
     body: {
-      filePath: normalizedPath,
+      activeProjectRoot,
+      projectRelativePath: normalizedPath,
     },
   });
 
@@ -118,6 +122,31 @@ export async function deleteMediaFile({
     filePath: normalizedPath,
     removed: responseValue?.removed !== false,
   };
+}
+
+// Intent: keep durable narration references normalized and project-relative before they cross the desktop boundary.
+function requireProjectRelativeMediaPath(filePath) {
+  const normalizedPath = String(filePath ?? "").trim().replace(/\\/g, "/");
+  const segments = normalizedPath.split("/");
+  if (
+    !normalizedPath
+    || normalizedPath.startsWith("/")
+    || /^[A-Za-z]:/.test(normalizedPath)
+    || segments.some((segment) => !segment || segment === "." || segment === "..")
+  ) {
+    throw new Error("A normalized project-relative media path is required.");
+  }
+  return normalizedPath;
+}
+
+function requireActiveProjectRoot(getActiveProjectRoot) {
+  const activeProjectRoot = typeof getActiveProjectRoot === "function"
+    ? String(getActiveProjectRoot() ?? "").trim()
+    : "";
+  if (!activeProjectRoot) {
+    throw new Error("Save this project to a folder-backed package before creating or using project media.");
+  }
+  return activeProjectRoot;
 }
 
 export async function blobToBase64(blob) {

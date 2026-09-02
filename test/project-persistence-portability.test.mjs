@@ -10,6 +10,7 @@ import {
   readFileSync,
   readlinkSync,
   rmSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -131,25 +132,28 @@ export async function runProjectPersistencePortabilityTest() {
     assert.equal(evidence.manifestUnderProjectRoot, true, JSON.stringify(evidence, null, 2));
     assert.equal(evidence.sceneSidecarUnderProjectRoot, true, JSON.stringify(evidence, null, 2));
     assert.equal(evidence.narrationSaved, true, JSON.stringify(evidence, null, 2));
+    assert.match(evidence.producedMediaLogicalPath, /^assets\/audio\/[^/]+$/);
+    assert.equal(evidence.logicalReferenceIsRelative, true, JSON.stringify(evidence, null, 2));
+    assert.equal(evidence.durableReferenceRemainedLogical, true, JSON.stringify(evidence, null, 2));
     assert.equal(evidence.mediaFileExists, true, JSON.stringify(evidence, null, 2));
+    assert.equal(evidence.actualMediaUnderProjectRoot, true, JSON.stringify(evidence, null, 2));
+    assert.equal(evidence.actualMediaUnderRuntimeCwd, false, JSON.stringify(evidence, null, 2));
     assert.equal(evidence.actualMediaUnderWorktree, false, JSON.stringify(evidence, null, 2));
+    assert.equal(evidence.saveLoadByteRoundTrip, true, JSON.stringify(evidence, null, 2));
+    assert.equal(evidence.loadedMediaPhysicalPathMatchesSave, true, JSON.stringify(evidence, null, 2));
+    assert.equal(evidence.traversalEscapeRejected, true, JSON.stringify(evidence, null, 2));
+    assert.equal(evidence.absoluteEscapeRejected, true, JSON.stringify(evidence, null, 2));
+    assert.equal(evidence.loadEscapesRejected, true, JSON.stringify(evidence, null, 2));
+    assert.equal(evidence.deleteEscapesRejected, true, JSON.stringify(evidence, null, 2));
+    assert.equal(evidence.missingProjectRootRejected, true, JSON.stringify(evidence, null, 2));
+    assert.equal(evidence.legacySingleFileRootRejected, true, JSON.stringify(evidence, null, 2));
+    assert.equal(evidence.defaultLibraryRootRejected, true, JSON.stringify(evidence, null, 2));
+    assert.equal(evidence.noRejectedMediaFileCreated, true, JSON.stringify(evidence, null, 2));
 
     const afterFootprint = snapshotBoundedWorktreeFootprint();
     assert.deepEqual(afterFootprint, beforeFootprint, "The isolated portability scenario changed the bounded worktree artifact footprint.");
 
-    assert.equal(
-      evidence.actualMediaUnderProjectRoot,
-      true,
-      [
-        "Project-owned narration escaped the selected project package.",
-        `selected project folder: ${evidence.hostReturnedProjectRoot}`,
-        `produced logical path: ${evidence.producedMediaLogicalPath}`,
-        `desired logical path: ${evidence.desiredMediaLogicalPath}`,
-        `desired physical path: ${evidence.desiredMediaPhysicalPath}`,
-        `actual physical path: ${evidence.actualMediaPhysicalPath}`,
-        `actual under runtime cwd: ${evidence.actualMediaUnderRuntimeCwd}`,
-      ].join("\n"),
-    );
+    assert.equal(evidence.actualMediaPhysicalPath, evidence.desiredMediaPhysicalPath, JSON.stringify(evidence, null, 2));
   } finally {
     rmSync(externalProjectRoot, { recursive: true, force: true });
     rmSync(runtimeCwd, { recursive: true, force: true });
@@ -292,12 +296,17 @@ async function runPortabilityScenarioChild() {
   const reloadedSnapshot = mutationLoad.value;
 
   let actualMediaPhysicalPath = "";
+  let loadedMediaPhysicalPath = "";
   const mediaService = createNarrationMediaService({
+    getActiveProjectRoot: () => hostReturnedProjectRoot,
     fetchJson: async (pathname, options = {}) => {
       const result = await sendDesktopJson(pathname, options.body);
       const ok = result.response.statusCode >= 200 && result.response.statusCode < 300;
       if (ok && pathname === "/api/project-media/save") {
         actualMediaPhysicalPath = result.value.filePath;
+      }
+      if (ok && pathname === "/api/project-media/load") {
+        loadedMediaPhysicalPath = result.value.filePath;
       }
       return ok
         ? { ok: true, value: result.value }
@@ -319,7 +328,8 @@ async function runPortabilityScenarioChild() {
     recordingId: "take-portability-proof",
     nowMs: 1_788_307_200_000,
   });
-  runtime.chunks.push(new Blob([new Uint8Array([0x41, 0x42, 0x45, 0x01])], {
+  const deterministicMediaBytes = new Uint8Array([0x41, 0x42, 0x45, 0x01]);
+  runtime.chunks.push(new Blob([deterministicMediaBytes], {
     type: "audio/webm",
   }));
 
@@ -331,6 +341,64 @@ async function runPortabilityScenarioChild() {
     blobConstructor: Blob,
   });
   const narrationResult = await finalizationService.finalizeRuntime(runtime);
+  const loadedNarration = await mediaService.loadMediaBlob({
+    filePath: narrationResult.finalRecord.mediaPath,
+    mediaMimeType: narrationResult.finalRecord.mediaMimeType,
+  });
+  const loadedMediaBytes = new Uint8Array(await loadedNarration.blob.arrayBuffer());
+
+  // Intent: prove the strict desktop project-media path cannot escape or borrow non-package roots.
+  const contentBase64 = Buffer.from(deterministicMediaBytes).toString("base64");
+  const traversalEscapePath = path.resolve(hostReturnedProjectRoot, "..", "escape.webm");
+  const absoluteEscapePath = path.join(runtimeCwd, "absolute-escape.webm");
+  const missingRootCwdPath = path.join(runtimeCwd, ...runtime.mediaPath.split("/"));
+  const legacyProjectFilePath = path.join(externalProjectRoot, "legacy.abe-project.json");
+  writeFileSync(legacyProjectFilePath, JSON.stringify(syntheticSnapshot), "utf8");
+  const traversalEscape = await sendDesktopJson("/api/project-media/save", {
+    activeProjectRoot: hostReturnedProjectRoot,
+    projectRelativePath: "../escape.webm",
+    contentBase64,
+  });
+  const absoluteEscape = await sendDesktopJson("/api/project-media/save", {
+    activeProjectRoot: hostReturnedProjectRoot,
+    projectRelativePath: absoluteEscapePath,
+    contentBase64,
+  });
+  const traversalLoad = await sendDesktopJson("/api/project-media/load", {
+    activeProjectRoot: hostReturnedProjectRoot,
+    projectRelativePath: "../escape.webm",
+  });
+  const absoluteLoad = await sendDesktopJson("/api/project-media/load", {
+    activeProjectRoot: hostReturnedProjectRoot,
+    projectRelativePath: absoluteEscapePath,
+  });
+  const traversalDelete = await sendDesktopJson("/api/project-media/delete", {
+    activeProjectRoot: hostReturnedProjectRoot,
+    projectRelativePath: "../escape.webm",
+  });
+  const absoluteDelete = await sendDesktopJson("/api/project-media/delete", {
+    activeProjectRoot: hostReturnedProjectRoot,
+    projectRelativePath: absoluteEscapePath,
+  });
+  const missingProjectRoot = await sendDesktopJson("/api/project-media/save", {
+    activeProjectRoot: "",
+    projectRelativePath: runtime.mediaPath,
+    contentBase64,
+  });
+  const relativePathWithoutContext = await sendDesktopJson("/api/project-media/save", {
+    filePath: runtime.mediaPath,
+    contentBase64,
+  });
+  const legacySingleFileRoot = await sendDesktopJson("/api/project-media/save", {
+    activeProjectRoot: legacyProjectFilePath,
+    projectRelativePath: runtime.mediaPath,
+    contentBase64,
+  });
+  const defaultLibraryRoot = await sendDesktopJson("/api/project-media/save", {
+    activeProjectRoot: externalProjectRoot,
+    projectRelativePath: runtime.mediaPath,
+    contentBase64,
+  });
 
   const manifestPath = path.join(hostReturnedProjectRoot, "project.json");
   const sceneSidecarPath = path.join(
@@ -368,6 +436,10 @@ async function runPortabilityScenarioChild() {
     sceneSidecarUnderProjectRoot: existsSync(sceneSidecarPath) && isContainedPath(hostReturnedProjectRoot, sceneSidecarPath),
     narrationSaved: narrationResult.finalRecord?.status === "saved",
     producedMediaLogicalPath: runtime.mediaPath,
+    logicalReferenceIsRelative: !path.isAbsolute(runtime.mediaPath)
+      && !runtime.mediaPath.startsWith("/")
+      && !/^[A-Za-z]:/.test(runtime.mediaPath),
+    durableReferenceRemainedLogical: narrationResult.finalRecord?.mediaPath === runtime.mediaPath,
     desiredMediaLogicalPath,
     desiredMediaPhysicalPath,
     actualMediaPhysicalPath,
@@ -375,6 +447,20 @@ async function runPortabilityScenarioChild() {
     actualMediaUnderProjectRoot: Boolean(actualMediaPhysicalPath) && isContainedPath(hostReturnedProjectRoot, actualMediaPhysicalPath),
     actualMediaUnderRuntimeCwd: Boolean(actualMediaPhysicalPath) && isContainedPath(runtimeCwd, actualMediaPhysicalPath),
     actualMediaUnderWorktree: Boolean(actualMediaPhysicalPath) && isContainedPath(worktreeRoot, actualMediaPhysicalPath),
+    loadedMediaPhysicalPath,
+    loadedMediaPhysicalPathMatchesSave: loadedMediaPhysicalPath === actualMediaPhysicalPath,
+    saveLoadByteRoundTrip: Buffer.from(loadedMediaBytes).equals(Buffer.from(deterministicMediaBytes)),
+    traversalEscapeRejected: traversalEscape.response.statusCode === 400,
+    absoluteEscapeRejected: absoluteEscape.response.statusCode === 400,
+    loadEscapesRejected: traversalLoad.response.statusCode === 400 && absoluteLoad.response.statusCode === 400,
+    deleteEscapesRejected: traversalDelete.response.statusCode === 400 && absoluteDelete.response.statusCode === 400,
+    missingProjectRootRejected: missingProjectRoot.response.statusCode === 400
+      && relativePathWithoutContext.response.statusCode === 400,
+    legacySingleFileRootRejected: legacySingleFileRoot.response.statusCode === 400,
+    defaultLibraryRootRejected: defaultLibraryRoot.response.statusCode === 400,
+    noRejectedMediaFileCreated: !existsSync(traversalEscapePath)
+      && !existsSync(absoluteEscapePath)
+      && !existsSync(missingRootCwdPath),
   };
 
   process.stdout.write(`${EVIDENCE_PREFIX}${JSON.stringify(evidence)}\n`);
