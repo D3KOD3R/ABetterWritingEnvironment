@@ -25,6 +25,68 @@ Do not duplicate coverage that already exists:
 
 The missing contract is end-to-end **path ownership**: a normal project-owned path producer must not hand the desktop host a cwd-relative destination when an external project is active.
 
+## Pre-investigation findings: do not rediscover these unless code has changed
+
+The following call-chain work has already been traced from current `main` and should be treated as starting evidence for the harness.
+
+### Existing durable project root is already available after desktop save
+
+The desktop package writer returns the resolved folder-backed `projectRoot` from `/api/project-file/save`. `writeProjectLibraryToDesktopPath(...)` passes that returned path back to `ProjectPersistenceService`. `saveProjectSnapshotToFilePath(...)` then calls `setActiveProjectFileDestination(savedPath, ...)`, which assigns the returned package root to `state.projectFilePath` and persists it as the durable destination.
+
+Therefore, for the first media-routing fix, do **not** assume a completely new project-root concept is required. The current runtime already has a durable active package destination after desktop save/load. A later architectural cleanup may rename or wrap this as an explicit storage context, but the baseline harness should first prove how the existing destination is or is not being consumed.
+
+### Exact narration leak chain
+
+Current normal narration finalization is wired as follows:
+
+`createNarrationRecordingRuntime / buildNarrationRecordingFinalizationContext`
+→ `buildVoiceRecordingMediaPath(...)`
+→ relative `project-media/<project>/<take>.<ext>`
+→ `createNarrationRecordingFinalizationService(...).finalizeRuntime(...)`
+→ `narrationMediaService.saveMediaBlob(...)`
+→ `/api/project-media/save`
+→ desktop `writeBinaryFile(filePath, content)`
+→ `resolvePath(filePath)`
+→ relative path resolves beneath `process.cwd()`.
+
+`app.js` wires the real production chain by passing `narrationMediaService.saveMediaBlob` into `createNarrationRecordingFinalizationService`, while only passing a project ID (`getProjectId`) to the finalization side. No active package root is currently supplied to the narration path producer.
+
+This means the harness does **not** need a microphone, MediaRecorder device, browser UI, ASR, or the full editor shell to prove the defect. The narrowest production-real scenario is enough:
+
+1. obtain a narration runtime/finalization path from the real narration path-producing code;
+2. instantiate the real narration media service;
+3. bridge its fetch call to the real desktop `createDesktopResponseForRequest(...)` route;
+4. finalize a deterministic fake Blob/chunk;
+5. observe the resolved file under the child process `runtimeCwd`.
+
+Do not manually inject `project-media/...` if the real take/runtime builder can produce it; the test should prove the actual producer contract.
+
+### Worldbuilding images are a positive control and an implementation pattern
+
+Narration is not the only feature using `/api/project-media/save`, but Worldbuilding image storage already follows the desired ownership model much more closely.
+
+`app.js` calls `buildWorldbuildingCatalogueImageMediaPath(...)` with `state.projectFilePath` (and the workspace project root fallback). That planner creates a project-relative path under `assets/images/worldbuilding/...` and resolves it against the active project/package root when one is available. Existing `worldbuilding-studio` tests assert rooted image-media paths.
+
+Use this as:
+
+- a **positive control** showing that project-root-aware media planning already exists in the codebase;
+- a likely model for a future shared project-owned asset resolver;
+- evidence that the first narration fix should probably reuse/centralize an existing concept rather than invent an unrelated second storage policy.
+
+Do **not** refactor Worldbuilding during the red-baseline slice merely for stylistic consistency.
+
+### Minimal synthetic package snapshot is supported
+
+The desktop package writer is intentionally tolerant: it normalizes a snapshot into `{ schemaVersion, activeProjectId, projects, sceneStore }`, scaffolds the package directories, derives scene chunks from `sceneDrafts`/workspace lines when present, writes `project.json`, and returns the package root. A large real manuscript fixture is not required for the harness.
+
+Use a one-project, one-scene synthetic snapshot with a small deterministic mutation. Keep the payload small enough that failure output never needs to dump full snapshots.
+
+### Desktop settings are a separate follow-up debt
+
+`apps/desktop/src/settings.ts` currently stores application/user settings at `apps/desktop/.desktop-state.json`, relative to the source module location, not the selected project. That is worktree runtime state and should eventually move to an application/user-data location. However, it is separate from the first narration/project-media ownership defect.
+
+The first harness scenario should avoid calling settings mutation routes unless needed. It should still include `.desktop-state.json` in the bounded worktree-delta guard so an unexpected mutation is visible.
+
 ## Known baseline risks to expose, not patch first
 
 Treat these as hypotheses for the harness to prove with focused evidence:
@@ -49,7 +111,7 @@ and place any non-test scenario helper somewhere that will not be auto-discovere
 
 `test/helpers/persistence-portability-scenario.mjs`
 
-Launch the child with the Node flags needed by this repository (preserve `process.execArgv` when appropriate) so TypeScript desktop modules remain importable.
+Launch the child with the Node flags needed by this repository (`--experimental-strip-types` is used by the repository test/desktop scripts; preserve compatible `process.execArgv` where appropriate) so TypeScript desktop modules remain importable.
 
 ## Three-root test topology
 
@@ -74,10 +136,25 @@ The first slice should combine the following into one deterministic scenario:
 1. Save a small project package beneath `externalProjectRoot` using the existing desktop/project-file boundary.
 2. Make a representative scene/manuscript or small metadata mutation and perform another durable write (or the closest existing autosave-equivalent API that can be exercised without redesigning production code).
 3. Reload the package and verify the mutation survives.
-4. Produce a fake narration recording path through the **normal narration path-producing code** (`buildVoiceRecordingMediaPath`, recording finalization context, or the narrowest equivalent production path). Do not hand-build a correct absolute media path in the test; the existing desktop test already covers that case.
-5. Send a few deterministic fake media bytes through the existing desktop media bridge using that normal produced path. Do not use a microphone, MediaRecorder device, ASR model, or real audio asset.
+4. Produce a fake narration recording path through the **normal narration path-producing code** (`createNarrationRecordingRuntime`, `buildVoiceRecordingMediaPath`, recording finalization context, or the narrowest equivalent production path). Do not hand-build a correct absolute media path in the test; the existing desktop test already covers that case.
+5. Send a few deterministic fake media bytes through the real narration media service and existing desktop media bridge using that normal produced path. Do not use a microphone, MediaRecorder device, ASR model, or real audio asset.
 6. Resolve every produced durable artifact path and classify it against `externalProjectRoot`, `runtimeCwd`, and the Git worktree.
 7. Clean all three temp roots in `finally`, including after an expected failure.
+
+### Suggested narrow child-process composition
+
+Prefer a child scenario composed from the smallest real production boundaries rather than booting the full UI:
+
+- import `createDesktopResponseForRequest` from `apps/desktop/src/http-app.ts` **after** log env vars are set by the parent process;
+- import `createNarrationMediaService`;
+- import `createNarrationRecordingFinalizationService`;
+- import the narration take/runtime path producer (`createNarrationRecordingRuntime` or the narrowest equivalent);
+- create a tiny `fetchJson` adapter that converts the desktop response `{ statusCode, body }` into the `{ ok, value, error }` shape expected by `createNarrationMediaService`;
+- create deterministic narration selection/runtime state and a Blob containing a few bytes;
+- let `finalizeRuntime(...)` call the real media service and desktop route;
+- return compact JSON evidence to the parent test: produced logical media path, resolved physical media path, project package root, round-trip status, and ownership classification.
+
+The child scenario should normally exit successfully after reporting evidence. Let the parent `project-persistence-portability.test.mjs` own the desired containment assertion so the failure message is controlled, compact, and easy for the supervisor/Codex to report.
 
 ## Required invariants
 
@@ -155,15 +232,16 @@ Do not dump full project snapshots or large logs.
 
 Do not implement this sequence in the first red-baseline task. Once the baseline exists, use it to drive small production slices:
 
-1. establish one authoritative active-project storage context/root rather than treating `process.cwd()` as storage policy;
-2. keep existing folder package save/load routed through that authority;
-3. route narration/media asset paths through project-owned asset roots and enforce containment at the desktop filesystem boundary where appropriate;
-4. harden package-relative stored paths so legacy/malformed stored scene/asset paths cannot escape the selected project root;
-5. remove explicit project-load fallback that silently substitutes bundled project data after a user-selected source fails;
-6. separate user/application settings from project-owned durable state, including panel/layout preferences, with migration compatibility as needed;
-7. move desktop user settings/runtime state out of the source worktree to an application/user-data location;
-8. replace the live repo Serva Vitae bootstrap dependency with an external last-opened/new-project flow or a deliberately tiny read-only demo fixture;
-9. only after the harness and affected tests are green, migrate/create the real external Serva Vitae project and remove obsolete live-project/runtime artifacts from the repository in a separate cleanup.
+1. first evaluate whether the already-maintained `state.projectFilePath` durable package destination is sufficient to serve as the active project root for project-owned asset resolution;
+2. extract or reuse one project-owned asset/root resolver rather than creating a narration-only path policy; use the existing Worldbuilding image planner as a concrete reference implementation;
+3. route narration/media asset paths through that project-owned root and enforce containment at the desktop filesystem boundary where appropriate;
+4. if the current destination semantics prove too overloaded, then introduce an explicit active-project storage context/root and migrate existing package/media callers to it;
+5. harden package-relative stored paths so legacy/malformed stored scene/asset paths cannot escape the selected project root;
+6. remove explicit project-load fallback that silently substitutes bundled project data after a user-selected source fails;
+7. separate user/application settings from project-owned durable state, including panel/layout preferences, with migration compatibility as needed;
+8. move desktop user settings/runtime state out of the source worktree to an application/user-data location;
+9. replace the live repo Serva Vitae bootstrap dependency with an external last-opened/new-project flow or a deliberately tiny read-only demo fixture;
+10. only after the harness and affected tests are green, migrate/create the real external Serva Vitae project and remove obsolete live-project/runtime artifacts from the repository in a separate cleanup.
 
 ## Storage ownership target
 
@@ -204,6 +282,10 @@ Because the new test may intentionally be red during the baseline slice, also ru
 npm --silent run repo -- test --name desktop-application --base main --json
 npm --silent run repo -- test --name project-file-storage-adapters --base main --json
 npm --silent run repo -- test --name project-service-storage --base main --json
+npm --silent run repo -- test --name narration-take-service --base main --json
+npm --silent run repo -- test --name narration-media-service --base main --json
+npm --silent run repo -- test --name narration-recording-finalization-service --base main --json
+npm --silent run repo -- test --name worldbuilding-studio --base main --json
 npm --silent run repo -- test --name runtime-portability-guardrails --base main --json
 ```
 
