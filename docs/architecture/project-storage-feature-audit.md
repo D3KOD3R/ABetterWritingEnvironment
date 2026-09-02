@@ -4,143 +4,146 @@
 
 This is a dated baseline audit of current `main` storage ownership before the persistence-portability refactor. It complements `project-storage-contract.md`; the contract is authoritative, while this file records what the current implementation does and what must migrate.
 
-The audit asks three questions for every durable authoring area:
-
-1. Does the feature enter the canonical project record/save pipeline?
-2. If it creates files, are those files bounded to the explicitly selected project package and represented portably?
-3. Is project-owned state separated from user/application/session/runtime state?
+The current product decision is that **project-specific preferences may remain inside the project package for now** because there is no authentication/profile layer yet. The audit therefore distinguishes authored semantic project data from project-scoped preferences, while still excluding machine/application and transient runtime state from the portable project package.
 
 Status meanings:
 
-- **Bounded** — current structured state is part of the project record/package and its ownership classification is broadly correct.
-- **Partial** — project data persists, but path portability, asset lifecycle, dirty-domain ownership, or settings separation is incomplete.
-- **Wrong boundary** — current implementation stores project data outside the project authority, or stores user/runtime/machine state inside portable project content.
+- **Bounded** — current structured state is part of the selected project package and its ownership is broadly correct.
+- **Partial** — the data persists but portability, asset lifecycle, dirty-domain separation, or explicit serializer ownership is incomplete.
+- **Wrong boundary** — project data is written outside the selected project authority, or machine/runtime state is implicitly serialized as project data.
+- **Project preference** — valid to travel with the project for the current product stage, but should be logically separated from authored semantic content.
 
 ## Feature ownership matrix
 
 | Area | Intended owner | Current persistence path | Status | Main follow-up |
 | --- | --- | --- | --- | --- |
-| Manuscript scene text/content | Project | `sceneDrafts` / scene store -> package scene sidecars | Bounded | Apply one shared project-relative containment validator to scene paths and add relocation/round-trip coverage. |
-| Binder/structure drafts | Project | `structureDrafts` in canonical project record | Bounded | Round-trip coverage; keep UI collapse state separate. |
-| Manuscript marks/decorations that change authored content | Project | workspace/project scene state via manuscript mutation | Bounded | Keep transient hover/selection/projection state outside project data. |
-| World Spine spines/timelines | Project | `workspace.world.spines` in canonical project record | Bounded | Add full World Spine round-trip test. |
-| World Spine nodes/events | Project | `workspace.world.nodes` / event records | Bounded | Round-trip IDs/order/anchors/location placement. |
-| World Spine locations / location placements / sublocations | Project | structured world/node placement + scene metadata | Bounded | Round-trip location placement and scene linkage. |
-| World Spine implication links | Project | `workspace.world.edges`, `kind: implicates` | Bounded | Round-trip create/edit/delete and endpoint IDs. |
-| World Spine entity links / catalogue assignments | Project | `workspace.world.entityLinks` / entity records | Bounded | Round-trip stable links and manuscript anchors. |
-| Worldbuilding templates/entities/catalogue items | Project | `workspace.world` + `world` mutation domain | Bounded | Keep provider/UI state outside durable world DTO. |
-| Worldbuilding catalogue images | Project asset | `assets/images/worldbuilding/...`; record can contain `projectRelativePath` plus runtime/absolute `mediaPath` | Partial | Make relative reference authoritative, remove required absolute path, add Save As/relocation and managed-delete tests. |
-| World Spine location-row images | Project asset | Same catalogue image path machinery | Partial | Same relative-reference/asset-lifecycle work. |
-| Scene World Spine metadata | Project | scene drafts/project event data via manuscript mutation | Bounded | Include representative metadata in project round-trip test. |
-| World Spine history (undo/redo) | Session/runtime plus canonical mutations | Runtime history snapshots include world/project data and viewport/layout state | Partial | Split canonical undo payload from viewport/layout state; do not persist layout because history was applied. |
-| World Spine panel widths/layout profiles | User/app | Serialized inside `projectSettings`, also local browser prefs | Wrong boundary | Move to user settings store; optionally key by project identity without placing it in project package. |
-| World Spine right-pane mode | User/app | `projectSettings` / `app-settings` | Wrong boundary | Move to user settings. |
-| World Spine location filter | User/app/view state | `projectSettings` / `app-settings` | Wrong boundary | Move to user/session preference; it changes presentation, not world content. |
-| World Spine timeline/manuscript scroll and transient selection | Session/runtime | Mostly runtime; some selection/scroll defaults are serialized generically | Partial | Ensure viewport state never enters portable project content unless explicitly promoted. |
-| Manuscript tasks | Project | `manuscriptTasks` + `manuscript-tasks` domain | Bounded | Keep browser copy as disposable cache only; round-trip test. |
-| Inspiration / research / passage notes | Project | `passageNotes` + `passage-notes` domain | Bounded | Round-trip anchors/body/title; browser cache remains disposable. |
-| Metadata folders and metadata-folder notes | Project | `metadataSubgroups` + `metadata-folders`; desktop materializes package metadata files | Bounded | Keep shared path containment and test nested folder/note round-trip. |
-| Custom metadata definitions/taxonomy | Project | Stored in `projectSettings`, mutated using `app-settings` | Wrong boundary | Move to explicit project metadata/taxonomy field/domain; migrate existing project files. |
-| Custom metadata icons | Project asset when durable | Currently small inline data URLs | Partial | Inline compatibility is acceptable; if file-backed, route through project asset resolver and relative references. |
-| Draft proofing state/history | Project | `draftProofing` + `draft-proofing` domain | Bounded | Round-trip coverage; keep proofing window/layout state user/session-only. |
-| Revision sessions/history | Project | `revisions` in project record; future sidecar layout documented | Bounded/Partial | Current structured state travels; future revision files must use shared project resolver and relocation tests. |
-| Writing target/goals/history | Project | `projectSettings.writingTargetState` + `writing-goals`, with browser cache | Bounded | Keep canonical goal/history state in project. |
-| Writing target dashboard view/month/date selection | User/app or session | Serialized alongside writing target state | Wrong boundary | Split view mode/current viewed date/month from project goal data. |
-| Project spellcheck dictionary/exceptions | Project | `projectSettings.spellcheck` | Bounded/Partial | Keep as project lexicon, but give mutations an explicit project-owned domain instead of generic whole-project persistence. |
-| Global/editor spellcheck/grammar panel layout | User/app | Editor prefs / `app-settings` and browser prefs | Wrong if kept in project | Move portable-project copies out while retaining user prefs. |
-| Narration recording metadata | Project | `workspace.voice.recordings` is captured by whole-workspace project snapshot | Partial | Keep durable recording metadata, but move to explicit durable DTO rather than relying on whole-workspace cloning. |
-| Narration audio files | Project asset | Normal path producer creates cwd-relative `project-media/<project>/...` | Wrong boundary | First red-baseline harness target; migrate to package-relative `assets/audio/...`. |
-| Narration transcript/alignment metadata needed by recording | Project | Currently travels through workspace recording/alignment structures | Partial | Explicitly classify durable transcript/alignment result vs transient jobs/session/provider state. |
-| Live narration session / ASR provider/session state | Session/runtime | Whole workspace can be cloned into project record | Wrong boundary | Exclude live provider/session/job state from portable project serializer. |
-| Voice provider descriptors/render jobs | Runtime/job state unless durable output | Whole workspace can be cloned into project record | Wrong/Partial | Persist only deliberate author-owned bindings/output metadata; exclude provider/runtime job machinery. |
-| Voice speaker bindings/profiles | Project or user depending semantics | Currently under workspace voice and therefore cloned | Needs classification | Project-specific character/voice assignment travels; machine/provider profile configuration should not automatically travel. |
-| Analysis provider / last job | Runtime | `workspace.analysis` is cloned with workspace | Wrong boundary | Exclude provider/job runtime state from portable project data. |
-| Accepted analysis-derived issues/events/world changes | Project | Once applied, canonical project/world structures | Bounded | Persist accepted result, not provider execution state. |
-| Pending analysis suggestion queue | Product decision: project review queue or session | Whole workspace cloning can make it durable implicitly | Needs classification | Decide deliberately; do not gain durability merely because it lives under `workspace`. |
-| Local AI model/execution preferences | User/app/machine | `localAiPrefs`, workspace/settings, project settings | Wrong boundary if serialized in project | Keep user/model configuration outside portable project data. |
-| Desktop `modelRoot` / `assetRoot` / default `projectRoot` | User/app/machine | `workspace.settings` can be cloned into project record; desktop also has `.desktop-state.json` | Wrong boundary | Remove from portable serializer and move desktop settings file to OS/app user-data location. |
-| Active project filesystem path | Host/runtime | `projectSettings.projectFilePath` currently serialized | Wrong boundary | Load/save action establishes active root; do not serialize old absolute location as project content. |
-| Import/source path | Provenance only | `projectSourcePath`, source archive/import report | Partial | Keep optional provenance clearly external/non-required; never make project reopening depend on it. |
-| Active pane | User/app | `projectSettings.activePane` | Wrong boundary under current target model | Move to user preference; can be keyed per project outside project package if desired. |
-| Binder/console widths, panel visibility, collapsed chapters | User/app | Mixed into `projectSettings` and browser local storage | Wrong boundary | Move to user settings; collapsed/navigation UI state is not manuscript content. |
-| Cursor/selection offsets and scroll positions | Session/runtime | `workspace.selectionDefaults` is written into durable workspace snapshot | Wrong boundary | Remove from portable project content; store as local/session recovery if needed. |
-| Inline unfinished passage-note draft | Recovery/session or project recovery cache | Bundled inside selection defaults | Needs classification | Preserve unsaved author recovery if desired, but use explicit recovery semantics rather than ordinary portable project state. |
-| Keyboard shortcuts | User/app | Editor prefs + `app-settings`; can be included in project settings | Wrong boundary if portable | User settings only. |
-| Delete-confirmation preferences | User/app | Browser preference only | Bounded to correct non-project class | Eventually move with user settings authority, not project. |
-| Spotify/client/playback UI state | User/app/session | Separate UI/runtime path | Non-project | Ensure whole-workspace serializer does not accidentally promote it if workspace shape expands. |
-| Developer logs | Development | cwd fallback unless env override | Wrong boundary today | External log config/harness work already planned. |
+| Manuscript scene text/content | Semantic project | `sceneDrafts` / scene store -> package scene sidecars | Bounded | Shared project-relative containment validator and round-trip/relocation coverage. |
+| Binder/structure drafts | Semantic project | `structureDrafts` in canonical project record | Bounded | Round-trip coverage. |
+| Manuscript marks/decorations that alter authored content | Semantic project | workspace/project scene state | Bounded | Keep transient hover/projection state runtime-only. |
+| World Spine spines/timelines | Semantic project | `workspace.world.spines` | Bounded | Full synthetic World Spine round-trip. |
+| World Spine nodes/events | Semantic project | `workspace.world.nodes` / event records | Bounded | Round-trip IDs/order/anchors/location placement. |
+| World Spine locations / sublocations / placement | Semantic project | world/node placement + scene metadata | Bounded | Round-trip location relationships. |
+| World Spine implication links | Semantic project | `workspace.world.edges`, `kind: implicates` | Bounded | Round-trip create/edit/delete/endpoints. |
+| World Spine entity links / catalogue assignments | Semantic project | `workspace.world.entityLinks` / entities | Bounded | Round-trip stable links/manuscript anchors. |
+| Worldbuilding templates/entities/catalogue/model classes | Semantic project | `workspace.world` + `world` mutation domain | Bounded | Explicit serializer allowlist later. |
+| Worldbuilding catalogue images | Project asset | `assets/images/worldbuilding/...` + relative/absolute fields | Partial | Make project-relative reference authoritative; Save As/relocation/delete tests. |
+| World Spine location-row images | Project asset | same image machinery | Partial | Same relative-reference/asset-lifecycle work. |
+| Scene World Spine metadata | Semantic project | scene drafts/project event data | Bounded | Include representative metadata in round-trip. |
+| World Spine history canonical undo content | Runtime history over semantic project mutations | runtime history snapshots | Partial | Separate canonical undo payload from viewport/layout snapshots. |
+| World Spine panel widths/layout profiles | Project preference | `projectSettings` + browser prefs | Project preference | Keep in package for now, but give explicit project-preference namespace/domain. |
+| World Spine right-pane mode | Project preference | `projectSettings` / `app-settings` | Project preference | Reclassify away from machine `app-settings`. |
+| World Spine location filter | Project preference/view | `projectSettings` / `app-settings` | Project preference | May travel with project; separate from semantic `world`. |
+| World Spine timeline/manuscript scroll, hover, selection | Session/runtime | mostly runtime; some generic selection defaults serialized | Partial/Wrong | Exclude transient viewport state unless explicitly promoted to project recovery/preference. |
+| Manuscript tasks | Semantic project | `manuscriptTasks` + `manuscript-tasks` | Bounded | Browser copy remains disposable cache; round-trip. |
+| Inspiration / research / passage notes | Semantic project | `passageNotes` + `passage-notes` | Bounded | Round-trip anchors/body/title. |
+| Metadata folders and notes | Semantic project | `metadataSubgroups` + `metadata-folders`; package sidecars | Bounded | Shared containment and nested round-trip. |
+| Custom metadata definitions/taxonomy/model classes | Semantic project schema | currently inside `projectSettings`, dirty domain `app-settings` | Wrong classification | Move to explicit semantic metadata/taxonomy field/domain; keep inside project package. |
+| Custom metadata icons | Project asset when durable | inline data URL today | Partial | File-backed icons must use project asset resolver and relative refs. |
+| Draft proofing state/history | Semantic project | `draftProofing` + `draft-proofing` | Bounded | Round-trip coverage. |
+| Draft-proof window/layout | Project preference or runtime | UI state | Needs classification | Persist per-project only if intentional. |
+| Revision sessions/history | Semantic project | `revisions` in project record | Bounded/Partial | Future revision files need shared resolver/relocation. |
+| Writing target goals/history | Semantic project | `projectSettings.writingTargetState` + `writing-goals` | Bounded | Keep canonical state project-owned. |
+| Writing target dashboard view/month/date | Project preference | serialized with writing target settings | Project preference | Valid to travel for now; separate from semantic goal state. |
+| Project spellcheck dictionary/exceptions | Semantic project | `projectSettings.spellcheck` | Bounded/Partial | Give explicit semantic domain. |
+| Grammar/spellcheck panel layout | Project preference or app default | editor prefs / `app-settings` | Needs classification | Per-project layout may travel; global defaults remain app settings. |
+| Narration recording metadata | Semantic project | `workspace.voice.recordings` through whole-workspace snapshot | Partial | Make explicit durable DTO instead of accidental workspace cloning. |
+| Narration audio files | Project asset | cwd-relative `project-media/<project>/...` | Wrong boundary | First red-baseline target; migrate to package-relative `assets/audio/...`. |
+| Narration transcript/alignment result | Semantic project when required by take | workspace recording/alignment structures | Partial | Separate durable result from transient job/session state. |
+| Live narration recorder / ASR session/jobs | Session/runtime | can hitchhike via whole-workspace clone | Wrong boundary | Exclude from portable serializer. |
+| Voice character/speaker assignment | Semantic project when project-specific | workspace voice | Needs classification | Project-specific bindings travel. |
+| Voice provider profile/runtime config | App/machine/runtime | workspace voice | Wrong if serialized | Keep machine/provider config outside portable project. |
+| Voice render jobs | Runtime/job unless accepted durable output | workspace voice | Wrong/Partial | Persist only deliberate project output metadata. |
+| Analysis provider / last job | Runtime | `workspace.analysis` cloned | Wrong boundary | Exclude provider/job runtime state. |
+| Accepted analysis-derived issues/events/world changes | Semantic project | canonical project/world structures | Bounded | Persist accepted result, not execution machinery. |
+| Pending analysis suggestion queue | Product decision | workspace | Needs classification | Explicitly decide project review queue vs session before durability. |
+| Local AI model/execution configuration | App/machine | `localAiPrefs` / workspace settings | Wrong if serialized | Keep provider/model locations out of project. |
+| Desktop `modelRoot` / `assetRoot` / default `projectRoot` | App/machine | workspace settings + `.desktop-state.json` | Wrong if serialized | Exclude from portable serializer; desktop settings eventually move to OS app data. |
+| Active project filesystem path | Host/runtime | `projectSettings.projectFilePath` | Wrong boundary | Load/save establishes root; do not serialize old absolute location. |
+| Import/source path | External provenance | `projectSourcePath`, source archive/import report | Partial | Keep clearly optional and non-required for project function. |
+| Active authoring pane | Project preference | `projectSettings.activePane` | Project preference | Valid to travel with project for now. |
+| Binder/console widths, panel visibility, collapsed sections | Project preference | `projectSettings` + browser cache | Project preference | Keep per-project for now; explicit preference namespace/domain. |
+| Keyboard shortcuts | Usually app preference; may have future project override | editor prefs | Needs classification | Do not force profile architecture now; keep machine/global defaults separate from any project override. |
+| Cursor/selection offsets | Session/runtime/recovery | `workspace.selectionDefaults` durable snapshot | Wrong by default | Exclude or explicitly promote to recovery model. |
+| Inline unfinished passage-note draft | Recovery/session | selection defaults | Needs classification | Explicit recovery semantics, not accidental semantic project state. |
+| Delete-confirmation preferences | App/project preference | browser preference | Non-project semantic | Current location acceptable prototype-wise; no persistence refactor dependency. |
+| Spotify/client/playback state | App/session | separate runtime paths | Non-project | Ensure serializer does not accidentally capture it. |
+| Developer logs | Development | cwd fallback unless env override | Wrong boundary today | External logging work already planned. |
 
-## Key positive finding: World Spine canonical content is already project-owned
+## Positive finding: World Spine canonical content is already project-owned
 
-The canonical world model contains templates, entities, timeline spines, nodes, edges, entity links and sequences. Timeline nodes carry location placement and manuscript anchors. Manual implication links mutate structured `world.edges` records. App workflows then assign the changed world back to `state.workspace.world` and call the canonical project mutation boundary, usually with the `world` domain.
+The canonical world model contains templates/model classes, entities, timeline spines, nodes, implication edges, entity links, sequences, manuscript anchors and location placement. App workflows assign mutations back into `state.workspace.world` and pass them through the canonical project mutation boundary.
 
-Because current project-record construction clones `state.workspace`, `workspace.world` is included in the saved project record, and the desktop package manifest retains that world data. Therefore the current architecture already treats the actual World Spine graph—spines, nodes, implications, locations, entities, catalogue records and links—as project content.
+Because project-record construction currently clones `state.workspace`, the actual World Spine graph is included in the saved project record and therefore travels with the selected package. The refactor should preserve this positive property.
 
-The persistence work should preserve that positive property while stopping unrelated workspace settings/runtime objects from travelling with it.
+## Important distinction: custom metadata is not a project preference
 
-## Largest architectural issue found: whole-workspace serialization
+The custom metadata interface may evolve into author-defined model classes and taxonomy unique to a particular novel/world. Therefore:
 
-Current project-record construction performs a clone of the full live workspace and uses that as durable project state. This is convenient but too permissive for a strict ownership model.
+```text
+custom metadata definitions / field schemas / model classes -> semantic project schema
+metadata folders/notes/values                           -> semantic project data
+metadata panel width/visibility/layout                  -> project preference
+```
 
-Today the workspace can contain, alongside canonical manuscript/world content:
+Keeping all three inside the same project package is acceptable for now, but they must not share one conceptual persistence class. This separation is what will make a future account/profile layer possible without rewriting project schema.
 
-- machine/application settings such as model, asset and project roots;
+## Largest architectural risk: whole-workspace serialization
+
+Current project-record construction clones the full live workspace. That makes World Spine persistence easy, but it also means runtime or machine fields can become durable merely because a future feature places them under `workspace`.
+
+The workspace may contain:
+
+- semantic manuscript/world data;
+- project-scoped preferences;
+- machine settings such as model/asset/project roots;
 - analysis provider and job state;
-- pending suggestion queues;
-- narration provider/session/alignment-job state;
-- voice provider/profile/render-job state;
-- selection defaults and scroll offsets.
-
-A future feature added anywhere under `workspace` can therefore become durable accidentally without a persistence design decision.
+- narration provider/session/alignment jobs;
+- voice provider/render jobs;
+- selection/scroll/runtime values.
 
 ### Required direction
 
-Converge toward an explicit portable-project serialization DTO/allowlist. Saving a project should deliberately select project-owned fields rather than serialize the whole runtime workspace by default.
-
-Conceptually:
+Converge toward an explicit portable-project serializer/allowlist:
 
 ```text
-Live workspace/runtime
-  manuscript/project canonical data  -> portable project
-  world canonical data               -> portable project
-  accepted durable author records    -> portable project
-  project-specific asset refs        -> portable project (relative refs)
+Live runtime
+  semantic project state        -> project package
+  project-scoped preferences    -> project package, separate namespace/domain
+  project-relative asset refs   -> project package
 
-  machine settings                   X user/app store
-  UI layout/filter state             X user/app store
-  cursor/scroll/transient selection  X session/recovery state
-  provider/session/job machinery     X runtime/job store
+  machine/app config            X portable project
+  provider/runtime jobs         X portable project
+  transient session state       X portable project unless deliberately promoted
 ```
 
-This serializer boundary will make future feature reviews much safer: adding a field to runtime state will no longer automatically make it portable project data.
+The key guardrail is not "all preferences must leave the project". It is **durability must be intentional and classified**.
 
-## Test matrix to grow after the first red baseline
+## Test matrix after the first red baseline
 
-The first Codex task remains the narrow narration red baseline. After that, grow the harness/lower-level tests to cover:
-
-1. **World Spine graph round-trip** — create synthetic spines, nodes, locations, sublocations, implication edge, entity/catalogue item, entity link and scene-linked metadata; save/reload; assert IDs/relationships survive.
-2. **Manuscript feature round-trip** — scene edit plus task, inspiration note, research note, metadata definition, metadata folder/note, draft-proofing record, revision record, writing goal and project dictionary entry.
-3. **Project-vs-user-settings isolation** — change binder/console widths, World Spine widths/layout/filter/right-pane mode, active pane, keyboard shortcut and panel visibility; portable project content must not change.
-4. **Machine-path absence** — portable project content must not require or serialize current `modelRoot`, `assetRoot`, default `projectRoot`, runtime `projectFilePath`, worktree path or cwd.
-5. **Runtime-state absence** — provider descriptors, live analysis/audio/voice jobs, cursor/scroll/hover/transient recorder state do not become portable project data unless explicitly classified.
-6. **Catalogue image relocation** — Root A -> Root B uses project-relative image reference and remains functional without A.
-7. **Narration audio relocation** — same for `assets/audio/...` after the initial routing fix.
-8. **Save As self-containment** — Project B contains all referenced project-owned assets and works after Project A is unavailable.
-9. **Package containment** — malicious/legacy scene/metadata/asset paths cannot traverse outside project root.
-10. **No-destination behavior** — a project-owned asset operation without a durable selected project root fails explicitly and creates no cwd file.
-11. **Custom metadata ownership migration** — taxonomy survives round-trip while user side-panel visibility/layout does not travel with it.
-12. **Writing-goal split** — canonical goals/history travel; dashboard month/view selection does not.
+1. **World Spine semantic round-trip** — spines, nodes, locations, sublocations, implication edge, entity/catalogue item, entity link, scene-linked metadata.
+2. **Manuscript semantic round-trip** — scene edit, task, inspiration, research, custom metadata definition, metadata folder/note, draft proofing, revision, writing goal, project dictionary.
+3. **Project-preference round-trip** — change binder/console widths, World Spine widths/layout/filter/right-pane mode, active pane and representative project-specific visibility; reopen and verify they survive inside the project package.
+4. **Semantic/preference separation** — preference changes must not mutate World Spine/manuscript semantic payloads or be misclassified as semantic feature mutations.
+5. **Machine-path absence** — project package must not depend on/serialize current `modelRoot`, `assetRoot`, default `projectRoot`, runtime absolute `projectFilePath`, worktree or cwd as required project state.
+6. **Runtime-state absence** — provider descriptors, live jobs, transient recorder/selection/scroll state stay out unless explicitly promoted.
+7. **Catalogue image relocation** — Root A -> Root B resolves relative image reference under B.
+8. **Narration audio relocation** — same for `assets/audio/...` after routing fix.
+9. **Save As self-containment** — Project B contains semantic data, project preferences and all required assets; it works after A is unavailable.
+10. **Package containment** — malicious/legacy scene/metadata/asset paths cannot escape project root.
+11. **No-destination behaviour** — project-owned asset operation without selected durable root fails and creates no cwd file.
+12. **Custom metadata classification** — taxonomy/model definitions survive as semantic project schema while metadata UI layout remains project preference.
 
 ## Migration priorities after narration baseline
 
 1. Introduce/reuse one project-relative path resolver and hard desktop containment checks.
-2. Fix narration audio to project-relative `assets/audio/...`.
-3. Make project-relative asset references authoritative for worldbuilding images and remove functional dependence on stored absolute `mediaPath`.
+2. Fix narration audio to package-relative `assets/audio/...`.
+3. Make relative asset references authoritative for Worldbuilding/World Spine images.
 4. Introduce an explicit portable project serializer/allowlist instead of cloning the whole workspace.
-5. Split project-owned taxonomy/settings (custom metadata, writing goals, project dictionary) from user/app UI settings.
-6. Move World Spine/manuscript panel/layout/filter/navigation preferences out of project content.
-7. Remove machine paths and active project filesystem location from portable project content.
-8. Classify analysis/narration/voice runtime/job state and persist only deliberately durable author-owned records.
-9. Add Save As asset-copy, relocation, managed-delete/orphan cleanup and package transaction hardening.
+5. Introduce explicit semantic-project vs project-preference namespaces/domains.
+6. Reclassify custom metadata definitions as semantic project schema rather than `app-settings`.
+7. Keep per-project layout/navigation preferences in the package for now, but stop mixing them with machine/application settings.
+8. Remove machine paths and active project filesystem location from portable project content.
+9. Classify analysis/narration/voice runtime/job state and persist only deliberately durable records.
+10. Add Save As asset-copy, relocation, managed-delete/orphan cleanup and package transaction hardening.
 
-The storage contract remains authoritative; this audit should be updated or retired as each migration item is completed.
+The storage contract remains authoritative; this audit should be updated or retired as migration items are completed.
