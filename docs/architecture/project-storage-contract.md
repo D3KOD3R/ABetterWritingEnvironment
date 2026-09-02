@@ -2,120 +2,74 @@
 
 ## Purpose
 
-This contract defines where author data, project-scoped preferences, project-owned files, machine/application configuration, and runtime state may live. It governs Save, autosave, Save As, reopen, relocation, replacement, deletion, and future feature persistence.
+This contract defines the persistence authority for author data, project-scoped preferences, project-owned files, application/machine configuration, recovery/cache state and runtime state. It governs Save, autosave, Save As, project switching, reopen, relocation, replacement, deletion and future feature persistence.
 
-The persistence-portability harness proves these rules. Feature work must continue to obey them after the first persistence refactor is complete.
+The persistence-portability harness proves these rules. New feature work must keep obeying them after the first refactor is complete.
 
-## Architectural decision for the current product stage
+## Product-stage decision: project-scoped preferences
 
-The application does not yet have an authentication/profile/access layer. For now, **preferences that meaningfully belong to a particular project may be stored inside that selected project package**. This is intentional and is not considered a portability violation.
+The application does not yet have an authentication/profile/access layer. For now, preferences that meaningfully belong to a particular project may be stored inside that selected project package and travel with it.
 
-Do not confuse project-scoped preferences with authored project schema/content:
+Keep the logical classes distinct even if compatibility currently stores some of them together:
 
-- custom metadata definitions, World Spine model classes, catalogue schemas, project dictionaries, tasks, notes, research, world data and similar author-created structures are **project-owned semantic data**;
-- panel widths, World Spine layout/filter/right-pane choices, active pane, collapsed navigation state and similar choices may be **project-scoped preferences**;
-- machine paths, model/runtime locations, provider secrets/configuration and the active absolute project path are **application/machine state** and do not belong in the project package;
-- cursor/hover/in-flight operations and other transient interaction state remain **session/runtime state** unless deliberately promoted to recovery/project preference state.
+- **semantic project data** — manuscript, World Spine, catalogue/model classes, custom metadata definitions, tasks, notes/research, revisions, writing goals/history, project dictionary, durable recording metadata;
+- **project-scoped preferences** — project layout widths/profiles, World Spine view/filter/right-pane choice, active pane, collapsed project/navigation state and similar project presentation choices;
+- **application/machine state** — model/runtime/library locations, provider/client configuration, default project-library location, last-opened pointer and active absolute package path;
+- **session/runtime/recovery state** — cursor/hover/drag state, in-flight jobs/recording sessions and explicitly designed recovery caches.
 
-The physical package may initially keep project content and project preferences in the same manifest for compatibility, but code and dirty domains should distinguish them so future profile/auth support can move preferences without migrating authored content.
+Custom metadata definitions and future author-created model classes are semantic project schema, not preferences.
+
+## Root vocabulary
+
+Do not use one ambiguous `projectRoot` concept for different jobs.
+
+### Active project package root
+
+The **active project package root** is the one durable filesystem package explicitly opened, saved or created for the active project. On desktop it is the root containing `project.json`, manuscript sidecars, metadata and assets.
+
+Only this root may anchor project-owned file writes.
+
+### Default project-library root
+
+The **default project-library root** is an application/machine preference describing where projects may be created or suggested. It is not the active project's package root and must never be used as a fallback asset destination for an already-open project.
+
+### Legacy single-file destination
+
+A legacy/browser `*.abe-project.json` path is a compatibility transport. It is not automatically a folder-package root. Feature code must not strip `.json`, invent a sibling directory and silently start a second package there.
+
+If a file-backed feature needs package assets while the current durable authority is only a legacy single file, the persistence layer must explicitly migrate/Save As to a package destination first, or use an explicitly supported compatibility representation.
+
+### Project-relative reference
+
+Project-owned file references stored in project data are normalized package-relative logical paths such as:
+
+```text
+assets/audio/take-123.webm
+assets/images/worldbuilding/location/europa.png
+metadata/custom/.../record.json
+```
+
+The host derives an absolute runtime path from the active package root plus the relative reference.
 
 ## Core invariants
 
-1. **The source repository/worktree is never project storage.** Branch, worktree, launch directory and `process.cwd()` must not determine where author data or project-scoped preferences are written.
-2. **Every durable project write has an explicit active project destination.** If no durable destination exists, require Save As/location selection or fail explicitly. Never silently fall back to cwd.
-3. **A project package is self-contained and relocatable.** Moving/copying the whole package must not require rewriting project-owned references.
-4. **Persisted project-owned file references are normalized project-relative logical paths.** Runtime absolute paths may be derived transiently for I/O but are not canonical portable project data.
-5. **Project bounds are enforced at the filesystem/desktop adapter boundary.** Feature callers are not trusted to provide safe paths.
-6. **Feature/UI code does not invent storage roots or raw filesystem/media-route policy.** Structured project state flows through `ProjectPersistenceService`; project-owned files flow through the project storage/asset boundary.
-7. **Save success means durable, verifiable state.** In-memory mutation or an intermediate file write is not sufficient.
-8. **Save As produces another complete project package.** It carries all required project-owned content/assets and current project-scoped preferences.
-9. **Machine/application state does not hitchhike inside project data.** A copied project must not depend on the old computer's model root, default project root, worktree, cwd, provider runtime state or absolute active-project path.
-10. **Durability is explicit.** Adding a field to runtime `workspace` must not automatically make it project content or a project preference.
+1. **The repository/worktree is never project storage.** Branch, worktree, launch directory and `process.cwd()` must not determine project writes.
+2. **Project files have one explicit active authority.** Project-owned assets cannot fall back to cwd, a repository path, a default project-library root or an invented sibling package.
+3. **A project package is self-contained and relocatable.** Moving/copying the complete package must not require rewriting project-owned references.
+4. **Project-owned references are package-relative.** Runtime absolute paths may be derived transiently but are not canonical portable locators.
+5. **Containment is enforced at the filesystem/desktop boundary.** Feature callers are not trusted to provide safe paths.
+6. **Feature/UI code does not invent storage policy.** Structured project state goes through `ProjectPersistenceService`; file assets go through the project storage/asset boundary.
+7. **Save success means durable, verified state.** In-memory state or browser cache alone is not a successful package write.
+8. **Save As is transactional with respect to authority.** The new destination becomes active only after the new package has been written and verified.
+9. **Save As produces a complete package.** Required semantic data, project preferences and owned assets must be usable without the old package.
+10. **Machine/runtime state does not hitchhike.** A copied project must not depend on the old computer's model root, default project root, worktree, cwd, provider job state or old absolute project path.
+11. **Durability is explicit.** Adding a field to runtime `workspace` must not automatically make it durable.
+12. **Concurrent durability requests are not lost.** A newer canonical mutation cannot be cleared or overwritten by an older in-flight save.
+13. **Project transitions are save barriers.** Switching/opening another project must not abandon dirty revisions belonging to the previous project.
 
-## Ownership classes
+## Package authority
 
-### 1. Project-owned semantic state
-
-This is the author's actual project model and must travel with the project.
-
-Examples:
-
-- manuscript/scene content and structure;
-- World Spine/worldbuilding entities, catalogue items, timelines, nodes, locations, implication edges, links, templates and model classes;
-- manuscript tasks, passage notes, inspiration and research;
-- custom metadata definitions/taxonomy and metadata-folder/note records;
-- project writing goals/history;
-- project spellcheck dictionary/exceptions;
-- revision/history records that must travel with the project;
-- narration/recording metadata required to understand durable project audio;
-- accepted analysis results that have become canonical manuscript/world/project data;
-- project-specific import metadata required after restart.
-
-This data belongs to the selected project package and participates in canonical save/load/migration.
-
-### 2. Project-owned files/assets
-
-Examples:
-
-- narration recordings and durable audio takes;
-- catalogue/World Spine images;
-- custom metadata icons when file-backed;
-- imported images/audio/reference attachments promised to travel with the project;
-- durable transcripts and generated project sidecars;
-- future project-specific renders/attachments.
-
-These are allocated beneath the active project root by the project storage/asset boundary. Feature modules request a logical category/name or project-relative destination; they do not compose machine absolute paths.
-
-### 3. Project-scoped preferences
-
-For the current application stage these may live in the project package and travel with it.
-
-Examples:
-
-- binder/console widths and project layout profiles;
-- World Spine event-rail/manuscript-pane widths and layout profile;
-- World Spine right-pane mode and location-filter preference;
-- active authoring pane;
-- collapsed project/navigation sections;
-- project-specific panel visibility or presentation choices;
-- writing-goal dashboard view/date/month selection if we want reopening the project to restore that view.
-
-These are **not authored semantic content**. Prefer a distinct namespace such as `projectPreferences` or a distinct dirty domain even if compatibility currently stores them under `projectSettings`.
-
-A future authenticated/profile system may move some or all of these preferences into user-profile storage. That future move must not require changing the project's authored semantic schema.
-
-### 4. Application/machine settings
-
-These remain outside portable project content.
-
-Examples:
-
-- model/library/runtime executable locations;
-- default project-library/project-root location;
-- last-opened project pointer;
-- provider/client configuration and credentials;
-- desktop host configuration;
-- global application defaults that are not intentionally project-specific.
-
-The desktop implementation may use an application-data settings store. It must not use the source worktree as the long-term settings location.
-
-### 5. Session/runtime/recovery state
-
-Cursor/selection, hover state, popovers, active drag state, in-flight recorder/ASR jobs, transient provider/job state, temporary projections and caches are runtime state by default.
-
-If a product requirement deliberately wants reopen/recovery behaviour, promote only the required subset into an explicit project-recovery or project-preference model. Do not gain durability merely because a field happens to exist under `workspace`.
-
-### 6. Development/test state
-
-Developer logs, supervisor reports, worktree caches and automated test artifacts follow development-storage policy, not project storage policy.
-
-## Package authority and compatibility
-
-Desktop already uses a folder-backed package with `project.json` plus sidecars/directories such as manuscript scenes, metadata, assets, transcripts and caches. That selected package root is the desktop durable project authority.
-
-Legacy/browser `.abe-project.json` remains a compatibility transport until deliberately migrated. New feature code must not assume one monolithic file or depend directly on desktop filesystem paths. Adapters/persistence own the representation difference.
-
-Illustrative package shape:
+Desktop's target form is a folder-backed package:
 
 ```text
 <Project Root>/
@@ -127,41 +81,26 @@ Illustrative package shape:
     audio/
     images/
   transcripts/
-  revisions/              # when revision sidecars are implemented
-  cache/                  # only regenerable project-local cache
+  revisions/        # when file-backed revision sidecars exist
+  cache/            # regenerable package-local cache only
 ```
 
-`project.json` may contain both semantic project data and a clearly separated `projectPreferences` section until/unless preferences receive their own sidecar. The layout may evolve through migrations; ownership and containment rules do not.
+`project.json` may contain semantic data and a clearly separated `projectPreferences` section. The exact layout may evolve through migrations; ownership and containment rules do not.
 
-## Portable reference rules
+## Recovery/cache semantics
 
-Canonical project-owned file references should look like:
+Browser/local project cache may preserve work before a package destination exists or after a recoverable file-write failure. That is useful recovery behaviour, but it is **not** project package authority.
 
-```text
-assets/audio/take-123.webm
-assets/images/worldbuilding/project-1/location/europa.png
-metadata/project/.../note.json
-```
+Therefore:
 
-Persist `/`-separated paths for cross-platform portability. Convert separators only inside the host adapter.
-
-Do not make portable project behaviour depend on values such as:
-
-```text
-C:\Users\Name\Project\assets\audio\take.webm
-/Users/name/Project/assets/audio/take.webm
-project-media/project-1/take.webm   # when interpreted relative to cwd
-```
-
-A runtime may temporarily carry a resolved absolute path or local media URL, but it must be derivable from the currently opened project root plus the canonical relative reference.
-
-External source/provenance paths are allowed only when explicitly marked as external references/import provenance and not required for the copied package to function. If a feature promises to retain an imported file, copy it into the package.
-
-The **active package location itself is host/runtime state**, not portable project content. Current `projectSettings.projectFilePath` persistence is migration debt: load/save actions should establish the active destination; a package should not need to serialize its own old absolute location to remain valid.
+- cache-only preservation must be reported as cache/recovery, not external-file success;
+- a cache may not provide a filesystem root for project-owned binary assets;
+- file-backed asset creation without an active package root must require Save As/migration or fail explicitly;
+- explicit file load must replace/ignore stale project caches rather than merging unrelated manuscript bodies, goals, revisions or metadata into the loaded file.
 
 ## Explicit portable-project serializer
 
-Converge away from serializing the entire live workspace by default.
+Converge away from cloning the whole live workspace as the persisted DTO.
 
 The durable serializer should deliberately include:
 
@@ -174,183 +113,182 @@ project-relative asset references
 and deliberately exclude:
 
 ```text
-machine/application paths
+application/machine paths
 provider/runtime job machinery
 transient selection/hover/drag/session state
 worktree/cwd-derived values
+active absolute package location
 ```
 
-This allowlist boundary is important for future features: adding a runtime field must not automatically make it durable.
+This allowlist is a future-feature guardrail: runtime state does not gain durability just because a new field was added under `workspace`.
 
-## Canonical structured-state mutation rule
+## Structured mutation rule
 
-A feature that changes durable project state must:
+A durable feature mutation must:
 
-1. classify the mutation as **semantic project data** or **project-scoped preference**;
-2. update canonical runtime/domain state through the owning service;
-3. enter `ProjectPersistenceService.commitCanonicalProjectMutation` through the existing wrapper with an explicit persistence domain, dirty reason and source;
-4. ensure the project-record builder deliberately includes the durable field;
-5. add normalization/migration for schema changes;
-6. add a save -> reload round-trip test.
+1. classify itself as semantic project data or project-scoped preference;
+2. update canonical domain/runtime state through the owning service;
+3. enter the canonical project mutation boundary with a named domain, reason and source;
+4. be deliberately included by the persisted project serializer;
+5. have normalization/migration when schema changes;
+6. have save -> reload round-trip coverage.
 
-Do not add an ad hoc localStorage key, desktop JSON file, direct filesystem write or feature-specific sidecar merely because a feature needs persistence.
+Do not add feature-specific localStorage keys, direct filesystem writes or ad hoc sidecar roots as substitutes for canonical persistence.
 
-Project semantic data must not be disguised as `app-settings`. Project-scoped preferences should use an explicit preference domain/namespace rather than sharing a catch-all with machine/application settings.
-
-## Project-owned asset write protocol
+## Project-owned asset protocol
 
 When creating/replacing an asset:
 
-1. require a durable active project destination;
-2. allocate a safe project-relative destination through the project storage/asset boundary;
-3. resolve and validate that path beneath the active project root at the adapter/desktop boundary;
-4. write the new bytes first, preferably through temp/atomic replacement appropriate to the host;
-5. verify the file write where practical;
-6. update canonical project state with the relative reference;
-7. commit/autosave the project state;
-8. after the new reference is durably saved, remove or queue cleanup of the superseded asset.
+1. require a confirmed active package root;
+2. allocate a normalized project-relative destination through the project asset boundary;
+3. resolve and verify containment beneath the active package root at the host boundary;
+4. write the new bytes, preferably with temporary/atomic replacement where appropriate;
+5. verify the write where practical;
+6. update canonical project state with the project-relative reference;
+7. durably save that reference;
+8. only after the reference is durable, remove or queue cleanup of a superseded asset.
 
-If step 7 fails after a new file was written, that file is an orphan candidate; the durable record must continue to reference the previous valid state.
+If project-state persistence fails after new bytes were written, treat the new file as an orphan candidate; do not destroy the previous valid referenced asset.
 
-### Delete protocol
+### Delete ordering
 
 Prefer:
 
-1. remove/replace the reference in canonical project state;
-2. durably save the updated state;
-3. delete the unreferenced managed file or let bounded project garbage collection remove it.
+1. remove the reference from canonical project state;
+2. durably save the new state;
+3. delete/garbage-collect the now-unreferenced managed file.
 
-Do not delete the only durable copy first and then hope project-state persistence succeeds.
+## Save and autosave concurrency
 
-## Save / autosave / Save As semantics
+The World Spine branch demonstrated a real failure where explicit flush requests arrived during an in-flight save. The persistence coordinator must own serialization/coalescing.
 
-### Save
+For save N:
 
-Save writes semantic project data, project-scoped preferences and project-owned asset references to the already selected package root. It must not silently retarget assets or create a second storage root.
+1. capture the project identity, active destination identity/generation and save revision;
+2. allow save N to write its captured snapshot;
+3. retain later mutations as dirty;
+4. retain any explicit durability request made while save N is busy;
+5. after save N succeeds, immediately persist the accumulated newer canonical state when required;
+6. clear dirty state only for the exact project/destination generation and revision actually made durable.
 
-### Autosave
+A revision number alone is not sufficient if project switches/reset can reuse revision values.
 
-Autosave uses the exact same active project authority and project-relative path rules as manual Save. Autosave is not allowed a special cwd/local fallback for project-owned data or project preferences.
+### Project-transition drain
 
-### Save As
+A project open/switch/replace operation that promises to preserve the active project must wait until the old project's required durability work has either:
 
-Save As creates a **complete new package root** and makes it the active durable destination only after the new package is valid.
+- completed successfully through the required revision; or
+- failed explicitly and the transition policy has reported/handled that failure.
 
-For project-owned files already referenced by the project, Save As must copy/materialize those files into corresponding relative locations in the new package. Semantic data and project-scoped preferences travel into Project B. Machine/application settings and host absolute paths do not.
+Calling `flush()` while a save is busy and receiving an immediate return is not a sufficient preservation barrier if a follow-up write is still pending.
 
-A correct Save As test proves:
+Stale completions from Project A must never clear dirty state, change destination, or schedule writes for Project B.
 
-1. Project A contains representative semantic state, project preferences and audio/image/metadata sidecars;
-2. Save As creates Project B;
-3. Project B contains the corresponding project-owned files beneath B;
-4. close Project B;
-5. make Project A unavailable;
-6. reopen Project B;
-7. semantic state, project preferences and required assets still work and resolve beneath B;
-8. no required machine/path reference still points to A.
+## Save As semantics
+
+Save As creates a complete new package and changes active authority only **after** the new package has been written and verified.
+
+A correct Save As sequence is conceptually:
+
+```text
+old active root stays authoritative
+  -> build snapshot
+  -> create/write Project B package
+  -> materialize referenced owned assets into B
+  -> verify B
+  -> atomically adopt B as active authority
+```
+
+If Save As fails, the previous active project destination remains authoritative. A browser/cache fallback may preserve data, but it must not pretend the failed new filesystem target became active.
+
+Save As tests must prove Project B still works after Project A is unavailable.
 
 ## Relocation portability
 
-Independent of Save As, moving/copying one complete package must work without rewriting project-owned references:
+Independently of Save As:
 
-1. save at Root A;
-2. create representative semantic state, preferences and assets;
-3. close;
-4. move/copy the complete package to Root B;
-5. reopen from B;
-6. semantic data and project-scoped preferences survive;
-7. all project-owned references resolve under B;
-8. no required reference still depends on A.
+1. save a complete package at Root A;
+2. close it;
+3. move/copy the complete package to Root B;
+4. reopen B;
+5. semantic data and project preferences survive;
+6. all owned files resolve beneath B;
+7. no required reference depends on A.
 
-Containment at creation time alone does not prove relocation portability.
+## Project-bound path validation
 
-## Package save integrity and path validation
+Expose one reusable project-relative validator/resolver for scenes, metadata, revisions, transcripts and assets.
 
-Project-package writers must treat stored relative paths as untrusted input. Every scene, metadata, revision, transcript and asset path passes one reusable containment resolver before I/O.
-
-At minimum that resolver must:
+At minimum it must:
 
 - normalize separators;
-- reject empty segments and `..` traversal;
+- reject `..` traversal and empty/invalid segments;
 - reject absolute/drive/UNC input when a relative path is required;
-- require a truly durable/absolute host project root on desktop;
+- require a genuinely absolute desktop package root (a slash-containing relative string is not enough);
 - resolve against that root;
-- verify the target remains beneath the root with platform-safe path comparison;
-- apply equivalent checks to save, load, serve and delete.
+- verify the result remains beneath the root with platform-safe comparison;
+- apply equivalent checks to write, read, serve and delete.
 
-Converge toward transaction-safe behaviour: write temporary/new content before publishing references, use atomic replacement where supported, make the manifest/package index the final commit point when practical, verify written state before reporting success, and prefer recoverable orphan files over corruption of the last durable project state.
+Do not infer whether a host path is a file or package root solely from a `.json` suffix. The storage context must carry that semantic explicitly.
 
-## Current feature mapping and migration debt
+## Current known migration debt
 
-### World Spine / worldbuilding
+### World Spine / Worldbuilding
 
-Spines, nodes, implication edges, locations/sublocations, entities, entity links, catalogue items, templates/model classes and scene-linked World Spine metadata are semantic project data and already broadly flow through `workspace.world` / canonical project mutations. Preserve that ownership.
+World Spine spines, nodes, locations/sublocations, implication edges, entities, links, catalogue/model structures and scene-linked metadata are semantic project data and already broadly enter canonical persistence.
 
-World Spine layout widths, layout profiles, right-pane mode and location filter may remain project-scoped preferences for now. They should be separated logically from semantic `world` data and should not be treated as machine/application settings.
+World Spine layout/filter/right-pane state may remain project-scoped preference data for now.
 
-Catalogue images already compute a `projectRelativePath`, but current records may also retain an absolute/runtime `mediaPath`. Make the relative reference authoritative and derive runtime access from the newly opened root.
+Worldbuilding image planning contains useful project-relative path concepts but is **not yet authoritative storage**:
 
-### Manuscript tasks, notes, research and metadata
+- records can retain runtime/absolute `mediaPath` alongside `projectRelativePath`;
+- when no package root resolves, the planner can fall back to cwd-relative `project-media/...`;
+- it may use a default `workspace.settings.projectRoot` fallback that is not necessarily the active package;
+- it infers package roots from `.json` path spelling, which can disagree with the desktop package writer's actual returned directory.
 
-Tasks, passage notes, inspiration, research, metadata folders/notes and draft-proofing records are semantic project data.
+The project-relative reference should become authoritative and all physical resolution should use an explicit active package context.
 
-Custom metadata definitions are especially important: they define project-specific taxonomy/model classes and therefore belong to the semantic project schema, not to a preference bucket. Future file-backed metadata icons use the project asset contract.
+### Manuscript / metadata
 
-### Writing goals and spellcheck
+Tasks, passage notes, inspiration, research, metadata folders/notes, draft proofing, revisions, writing goals/history and project dictionary are semantic project data.
 
-Canonical writing goals/history and project dictionary/exceptions are semantic project data. Dashboard view/month/date selection may remain project-scoped preference state for now.
+Custom metadata definitions/model classes are semantic project schema. Do not leave them conceptually classified as generic `app-settings`.
 
-### Narration / voice
+### Narration
 
-Narration recording metadata needed to understand durable takes is project semantic data. Recording bytes are project-owned assets and must move to package-relative `assets/audio/...` storage.
-
-Live recorder/ASR/provider jobs are runtime state. Project-specific character-to-voice bindings may be semantic project data; machine/provider profile configuration requires explicit classification and must not be persisted accidentally by whole-workspace cloning.
-
-### Analysis / local AI
-
-Accepted analysis changes become semantic project data when applied to manuscript/world/project structures. Provider descriptors, model/runtime configuration and job execution state are application/runtime state unless a specific review queue is deliberately designed as project data.
-
-### Project-scoped preferences
-
-For now it is valid for project package persistence to retain project-specific layout/navigation preferences. The refactor should improve namespacing/domains rather than move them out solely to create a not-yet-existing user-profile system.
+Durable recording metadata belongs to the project. Recording bytes are project-owned assets. Current cwd-relative `project-media/<project>/...` narration paths must move to package-relative `assets/audio/...`.
 
 ### Machine/host state
 
-`modelRoot`, `assetRoot`, default `projectRoot`, provider/client configuration, worktree paths and the active absolute `projectFilePath` remain outside portable project content. Desktop settings should eventually move from the source tree to an OS/application-data location, but this is independent of project preference ownership.
+`modelRoot`, `assetRoot`, default project root, provider configuration, worktree paths and active absolute `projectFilePath` stay outside portable project data. Desktop app settings should eventually move from the source tree to OS/application-data storage.
 
-## New feature persistence checklist
+### Desktop package writer
 
-Before implementing any author-facing durable feature, answer:
+Current scene-file mappings can reuse stored relative scene paths and resolve them against the project root without the same strict containment guard used by safer metadata paths. Stored sidecar paths must be treated as untrusted.
 
-1. **Who owns it?** Semantic project, project preference, app/machine, session/recovery, cache, or developer/test?
-2. **Must it travel with a copied project?** Semantic state/assets and current project preferences normally do; external dependencies must be explicit.
-3. **Structured state or file asset?** Structured project state uses canonical project mutation; assets use project storage/asset APIs.
-4. **Canonical file reference?** Project-owned references are package-relative, never cwd/machine absolute.
-5. **Dirty domain?** Use a semantic feature domain or project-preference domain; do not hide project taxonomy/content in `app-settings`.
-6. **Save behaviour?** Does normal Save durably preserve it?
-7. **Autosave behaviour?** Same destination and ownership rules as Save?
-8. **Save As behaviour?** Is the complete required state/asset set copied into the new package?
-9. **Relocation behaviour?** Can the complete package move without rewriting stored refs?
-10. **Replace/delete behaviour?** What is the safe reference/file cleanup ordering?
-11. **Migration?** What backward-compatible normalization/path migration is required?
-12. **Runtime exclusion?** Which nearby provider/job/UI fields must explicitly *not* become durable?
-13. **Tests?** At minimum round-trip; file-backed features add containment, Save As and/or relocation coverage.
+Current new-path/folder semantics also depend on whether a `.json` target already exists, so package naming/type needs to become deterministic.
 
-A feature is not persistence-complete merely because its UI survives in memory or one filesystem call succeeded.
+### Explicit project source load
 
-## Automated guardrails to add as the refactor matures
+User-directed invalid/missing project load currently can fall back to bundled Serva Vitae data. Explicit Open Project must load the selected project or fail visibly; demo/bootstrap fallback belongs to a separate startup/demo path.
 
-After the red baseline, add focused guards such as:
+## New feature checklist
 
-- shared project-relative resolver tests for traversal/absolute escape;
-- a guard preventing feature modules from directly calling `/api/project-media/*` or filesystem APIs outside approved storage adapters;
-- a no-destination test proving asset creation fails without cwd writes;
-- Save As self-containment tests with representative audio/image assets;
-- Root A -> Root B relocation tests;
-- a project-preferences round-trip test proving project-specific layout/preferences survive within the package without mutating semantic World Spine/manuscript data;
-- a machine/runtime exclusion test proving model roots, worktree/cwd paths and provider jobs do not enter the portable package;
-- bounded orphan cleanup tests for replace/delete;
-- package-save tests proving stored sidecar paths cannot escape project bounds;
-- a test that relative `some/folder` values cannot masquerade as durable desktop project roots.
+Before implementing durable author-facing state, answer:
 
-Keep lower-level tests focused; the portability harness remains the end-to-end ownership contract.
+1. Who owns it: semantic project, project preference, app/machine, session/recovery, cache, developer/test?
+2. Must it travel with a copied project?
+3. Structured state or file asset?
+4. What is its canonical project-relative reference if file-backed?
+5. Which persistence domain owns it?
+6. What does Save do?
+7. What does autosave do under overlapping writes?
+8. What happens during project switch while a write is active?
+9. What does Save As do, including asset copying?
+10. Can the package relocate without rewriting references?
+11. What is the safe replace/delete order?
+12. What migration is required?
+13. Which nearby runtime/machine fields are explicitly excluded?
+14. What round-trip/containment/concurrency tests prove it?
+
+A feature is not persistence-complete merely because its UI survives in memory or a filesystem call succeeded.
