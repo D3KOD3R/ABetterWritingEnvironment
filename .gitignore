@@ -4,3 +4,4 @@ node_modules/
 .tools/
 .tmp/
 apps/desktop/.desktop-state.json
+logs/developer-runtime-session-*.txt

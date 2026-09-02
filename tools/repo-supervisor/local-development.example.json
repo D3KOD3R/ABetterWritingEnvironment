@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "developmentLogging": {
+    "externalLogRoot": "C:\\path\\outside\\the-repository\\ABE_Dev_Logs",
+    "worktreeLogLayout": "<externalLogRoot>/<repository>/<worktree>/<test>/<runId>",
+    "repoLocalReportRoot": ".tools/reports"
+  }
+}
