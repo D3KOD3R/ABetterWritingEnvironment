@@ -10,7 +10,7 @@ The first implementation slice remains a **red baseline harness**. Do not begin 
 
 Before implementation:
 
-1. confirm the worktree is a clean checkout of `feature/persistence-portability-harness`;
+1. fetch the latest remote branch and confirm the worktree is a clean checkout of `feature/persistence-portability-harness`;
 2. read `AGENTS.md`;
 3. read this directive in full;
 4. read `docs/architecture/project-storage-contract.md` — authoritative ownership/root/save rules;
@@ -22,6 +22,8 @@ Before implementation:
 10. do not broadly read Serva Vitae snapshots, `SaveTestFile`, logs or generated project artifacts unless a focused failure requires them.
 
 Do not touch, clean, reset or migrate the original dirty World Spine worktree. It remains legacy/project evidence until the portability work is green and the real project has been migrated safely.
+
+The first baseline is intentionally based on the persistence branch rather than by merging `feature/world-spine/unplaced-events-dock`. Commit `c1f9186` on that branch is design/regression evidence for later concurrency work. Do not merge or cherry-pick it into the first narration baseline merely to obtain that fix.
 
 ## Current ownership decision
 
@@ -189,22 +191,45 @@ B dirty state/destination must remain untouched
 
 Do not claim this is fixed by revision-number comparison alone; target identity/destination generation must participate.
 
-## Process isolation requirement
+## Process isolation and test registration
 
-Repository tests run sequentially in a shared Node process, while desktop logger/runtime destinations are captured at module import time. The filesystem portability scenario must run in an **isolated child Node process**.
+Repository test discovery only registers top-level `test/*.test.mjs` modules. The supervisor has a specific route for those files, while an otherwise new helper path under `test/helpers/` is conservatively classified as unknown and can escalate verification to the full suite.
 
-Do not call `process.chdir()` in the shared parent test runner.
-
-Suggested files:
+Therefore the **first baseline should add only one repository test file**:
 
 ```text
 test/project-persistence-portability.test.mjs
-test/helpers/persistence-portability-scenario.mjs
 ```
 
-The helper must not match `*.test.mjs`.
+Do not add `test/helpers/persistence-portability-scenario.mjs` for this first slice and do not modify supervisor routing merely to accommodate a helper.
 
-Launch the child with compatible repository Node flags, including `--experimental-strip-types` where required.
+The one test module should export exactly one `run…Test` function for normal registry execution. It may also act as its own child-process scenario when launched directly with a dedicated CLI flag such as:
+
+```text
+--portability-scenario-child
+```
+
+Recommended shape:
+
+```text
+normal registry import
+  -> export/run parent test only
+
+child process executes same absolute .test.mjs file with child flag
+  -> run child scenario
+  -> emit one compact JSON evidence object
+  -> exit 0 when the production workflow completed, even if ownership is wrong
+```
+
+The parent owns the desired portability assertion. An ownership defect should therefore be a precise parent assertion failure, not an opaque child-process crash.
+
+Repository tests run sequentially in a shared Node process, while desktop logger/runtime destinations are captured at module import time. The filesystem portability scenario itself must therefore run in an **isolated child Node process**.
+
+Do not call `process.chdir()` in the shared parent test runner. Spawn the child with its `cwd` option set to the sentinel runtime directory.
+
+Launch the child with repository-compatible Node flags, including `--experimental-strip-types`, because the real desktop boundary imports TypeScript modules.
+
+The child must dynamically import desktop/narration production modules only after its environment is established. Module URL resolution may come from `import.meta.url`; do not derive source paths from child cwd.
 
 ## Three-root topology
 
@@ -216,48 +241,72 @@ runtimeCwd            # sentinel cwd; project-owned data must not appear here
 externalLogRoot       # all diagnostics/runtime logs
 ```
 
-Start the child with `cwd = runtimeCwd` and set `ABE_LOG_PATH` / `ABE_DEVELOPER_RUNTIME_LOG_DIR` beneath `externalLogRoot` **before importing desktop modules**.
+Start the child with:
+
+```text
+cwd = runtimeCwd
+ABE_LOG_PATH = externalLogRoot/desktop.log
+ABE_DEVELOPER_RUNTIME_LOG_DIR = externalLogRoot/runtime
+```
+
+Those values must exist in the child environment **before importing `apps/desktop/src/http-app.ts` or its logger**.
 
 Do not use a `.abe-project.json`-spelled directory for the first baseline; use an unambiguous temp package folder so the first failure isolates narration cwd ownership rather than Save As naming ambiguity.
+
+Do not call bootstrap endpoints (`/api/workspace`, `/api/project-library`) or mutate `/api/settings` in the child. Importing the host is acceptable; the first scenario should stay on explicit project-file/media request paths only.
 
 ## First harness slice — red baseline only
 
 Implement one focused test: `test/project-persistence-portability.test.mjs`.
 
-Use a tiny synthetic project: one project, one scene, deterministic data. Do not use real Serva Vitae or mutable `SaveTestFile` fixtures.
+Use a tiny synthetic project: one project, one scene and deterministic authored data. Do not use real Serva Vitae or mutable `SaveTestFile` fixtures.
 
-The scenario should:
+Use a representative semantic mutation that does not depend on the full editor UI—for example a small project-owned note/scene metadata change—and prove it survives a real package save/reload.
 
-1. save a small package beneath `externalProjectRoot` through the real desktop/project-file boundary;
-2. make one deterministic semantic mutation and save/reload it;
-3. verify the mutation survives;
-4. generate a fake narration take/path through the normal production narration path producer;
-5. pass deterministic fake bytes through the real narration media service and desktop media route;
-6. classify the produced logical/physical media path against `externalProjectRoot`, `runtimeCwd` and the Git worktree;
-7. clean temp roots in `finally`.
+The child scenario should:
+
+1. save the synthetic package beneath `externalProjectRoot` through `createDesktopResponseForRequest` and `/api/project-file/save`;
+2. parse the **host-returned package root** and use that returned value as evidence of the active package destination—do not infer the root from filename spelling;
+3. reload through `/api/project-file/load` and verify project identity/package readability;
+4. make one deterministic semantic mutation, save again and reload to verify the mutation survives;
+5. create a narration runtime/take through the real narration take/path producer without passing a custom `mediaPath`;
+6. finalize deterministic fake chunks through `createNarrationRecordingFinalizationService` wired to `createNarrationMediaService`;
+7. have that media service cross the real `/api/project-media/save` desktop request boundary through a tiny fetch-shape adapter;
+8. capture the produced narration logical path and the desktop host's returned physical file path;
+9. classify the physical media path against the host-returned project root, `runtimeCwd` and the Git worktree;
+10. emit compact JSON evidence to the parent;
+11. clean all OS-temp roots in the parent `finally`, even when the expected assertion is red.
 
 No microphone, MediaRecorder device, ASR model, real audio asset or full editor UI is needed.
 
-### Suggested child composition
+### Production boundaries to use
 
 Use the smallest real production boundaries:
 
 - `createDesktopResponseForRequest` from `apps/desktop/src/http-app.ts`;
-- `createNarrationMediaService`;
+- `createNarrationRecordingRuntime` or equivalent normal narration take producer;
 - `createNarrationRecordingFinalizationService`;
-- real narration take/runtime path producer;
-- tiny adapter converting desktop HTTP response shape to the media service fetch-result shape;
-- deterministic Blob/fake chunks.
+- `createNarrationMediaService`;
+- deterministic `Blob`/fake chunk bytes.
 
-The child should exit normally and emit compact evidence. Let the parent own the desired containment assertion.
+The tiny fetch adapter may translate `DesktopHttpResponse` into the `{ ok, value, error }` shape expected by the narration media service, but it must not alter or pre-resolve the `filePath` provided by narration.
+
+The parent should distinguish three failure classes:
+
+1. **scenario/setup failure** — child exits non-zero, emits malformed evidence or package round-trip fails;
+2. **unexpected repo mutation** — bounded worktree artifact footprint changes;
+3. **expected portability red** — production scenario succeeds, but narration physical path is under `runtimeCwd` rather than the selected package root.
+
+Only class 3 is the intended first-slice red result.
 
 ## First-slice evidence
 
 ### Persistence correctness
 
-Require:
+Require before the ownership assertion:
 
 - package save succeeds;
+- host-returned package root is a directory beneath `externalProjectRoot`;
 - reload succeeds;
 - project identity survives;
 - representative semantic mutation survives;
@@ -267,8 +316,8 @@ Require:
 
 Require/observe:
 
-- manifest and sidecars resolve beneath `externalProjectRoot`;
-- normal narration media should ultimately belong beneath `externalProjectRoot`;
+- manifest and sidecars resolve beneath the host-returned package root;
+- normal narration media should ultimately belong beneath that same package root;
 - current expected red evidence is that narration instead resolves beneath `runtimeCwd/project-media/...`.
 
 Use `path.resolve` + `path.relative` or an equivalent platform-safe containment helper, not string-prefix tests.
@@ -289,6 +338,34 @@ Watch for unexpected deltas involving:
 
 Do not mutate or normalize existing tracked `SaveTestFile` fixtures as part of this harness.
 
+Supervisor report files under the repository's approved ignored report location are development artifacts, not project leakage.
+
+## Verification for the first slice
+
+Do not use a new unclassified repository helper path that forces full verification.
+
+Run the new test explicitly through the supervisor:
+
+```text
+npm run repo -- test --name project-persistence-portability --base main
+```
+
+Its final ownership assertion is currently expected to fail red.
+
+Also run relevant **pre-existing** tests explicitly and require them to stay green:
+
+```text
+narration-take-service
+narration-recording-finalization-service
+narration-media-service
+desktop-application
+runtime-portability-guardrails
+```
+
+Use `npm run repo -- test --name <test-id> --base main` for those named checks. If a pre-existing test fails, distinguish an actual regression from an already-reproducible clean-branch baseline failure before proceeding.
+
+Do not run or repair mutable primary-worktree fixtures. Verification occurs in the clean persistence worktree.
+
 ## Red-baseline rule
 
 The first Codex slice is expected/allowed to finish with the new portability assertion red if it demonstrates a genuine desired invariant while relevant pre-existing tests remain green.
@@ -301,18 +378,21 @@ desktop host resolves relative path under runtimeCwd
 project-owned media containment assertion fails
 ```
 
-If it unexpectedly passes, do not manufacture a failure. Report exact paths and move to the next normal path producer only after review.
+If it unexpectedly passes, do not manufacture a failure. Report exact paths and stop for review.
 
 Do not make the baseline green by:
 
 - broadening `.gitignore`;
 - accepting cwd storage;
 - supplying a hand-built correct absolute media path;
+- pre-resolving the narration path in the test adapter;
 - using the default project-library root as a substitute;
 - fixing production routing in the same baseline task;
+- changing Save As/Worldbuilding/concurrency behaviour in this task;
+- merging/cherry-picking the World Spine branch;
 - cleaning the original World Spine worktree or moving real Serva Vitae data.
 
-Stop after capturing the baseline and report the smallest production boundary to change next.
+A red-baseline commit is intentionally **not merge-ready**. Its purpose is to pin the existing bug with deterministic evidence. Stop after capturing it and report the smallest production boundary to change next.
 
 ## Post-baseline sequence
 
@@ -326,16 +406,17 @@ Drive this in small reviewed slices rather than one broad refactor:
 6. make legacy single-file -> folder-package transition an explicit persistence Save As/migration action;
 7. make Save As adopt the new destination only after write + verification succeeds;
 8. add Save As asset-copy/self-containment and Root A -> Root B relocation tests;
-9. add project save concurrency tests using the `c1f9186` invariant, then add project-transition drain/stale-completion tests;
-10. add World Spine semantic round-trip coverage: spines, nodes, locations/sublocations, implication edges, entity/catalogue links and scene placement metadata;
-11. add manuscript semantic round-trip coverage: task, inspiration/research note, custom metadata definition/model class, metadata folder/note, revision, writing goal/history and dictionary entry;
-12. introduce an explicit portable-project serializer/allowlist instead of whole-workspace cloning;
-13. keep project-scoped preferences in the package for now but separate their namespace/domain from semantic data;
-14. exclude machine paths, active absolute project location and provider/runtime jobs;
-15. remove explicit Open Project fallback to bundled Serva Vitae;
-16. harden asset replacement/delete/orphan cleanup and package transaction semantics;
-17. later move desktop application settings/log defaults out of the source worktree;
-18. only after all relevant harness gates are green, migrate the real Serva Vitae package to `ABE_Projects`, close/reopen/verify it, and then clean obsolete repo project artifacts.
+9. reconcile the persistence work with the latest applicable World Spine/source branch before changing shared autosave concurrency code;
+10. add project save concurrency tests using the `c1f9186` invariant, then add project-transition drain/stale-completion tests;
+11. add World Spine semantic round-trip coverage: spines, nodes, locations/sublocations, implication edges, entity/catalogue links and scene placement metadata;
+12. add manuscript semantic round-trip coverage: task, inspiration/research note, custom metadata definition/model class, metadata folder/note, revision, writing goal/history and dictionary entry;
+13. introduce an explicit portable-project serializer/allowlist instead of whole-workspace cloning;
+14. keep project-scoped preferences in the package for now but separate their namespace/domain from semantic data;
+15. exclude machine paths, active absolute project location and provider/runtime jobs;
+16. remove explicit Open Project fallback to bundled Serva Vitae;
+17. harden asset replacement/delete/orphan cleanup and package transaction semantics;
+18. later move desktop application settings/log defaults out of the source worktree;
+19. only after all relevant harness gates are green, migrate the real Serva Vitae package to `ABE_Projects`, close/reopen/verify it, and then clean obsolete repo project artifacts.
 
 ## Later acceptance gate before real-project cleanup
 
@@ -350,8 +431,10 @@ A representative external test project should prove:
 - narration audio and Worldbuilding images stay inside the package;
 - overlapping saves do not lose later mutations;
 - project switch cannot lose/clear the old/new project's dirty state incorrectly;
-- Save As is self-contained;
+- Save As is self-contained and only adopts a verified destination;
 - Root A -> Root B relocation works;
+- stored scene/asset paths cannot escape the package;
+- an explicit invalid Open Project fails instead of loading bundled Serva Vitae;
 - no required machine/absolute-old-root reference remains;
 - worktree stays unchanged.
 
@@ -361,14 +444,15 @@ Only then migrate and verify the real Serva Vitae project before removing repo-l
 
 After the red baseline, report only what is needed for the next review:
 
-- files changed;
-- child scenario composition;
-- package save/reload result;
+- pushed commit SHA;
+- file(s) changed;
+- parent/child scenario composition;
+- package save/reload result and host-returned package root;
 - narration logical path;
-- resolved physical path;
+- desktop-returned physical path;
 - expected vs actual ownership;
-- worktree delta result;
-- relevant pre-existing test result;
+- bounded worktree delta result;
+- named pre-existing test results;
 - new test result;
 - smallest recommended production boundary for the next slice;
 - final `git status --short`.
