@@ -1,25 +1,34 @@
 # Persistence Agent
 
-Use when changing project save, load, autosave, import/export, project-file/package semantics, browser-cache semantics, or when an author-facing feature introduces new durable project-owned state/files.
+Use when changing project save/load/autosave/import/export, project package/file semantics, browser-cache semantics, Save As/project switching, or when a feature introduces new durable project state/preferences/files.
 
-Read `docs/architecture/project-storage-contract.md` before changing project-owned storage/path behaviour.
+Read `docs/architecture/project-storage-contract.md` before changing durable behaviour. For concurrency work also read `docs/architecture/project-save-concurrency-findings.md`.
 
 ## Required boundaries
 
-- Route structured project persistence through `ProjectPersistenceService`; UI and feature modules must not write project data directly to browser storage, filesystem APIs, file handles, desktop project-media routes, or ad hoc JSON.
-- Treat the selected project destination as the durable authority. On desktop this is the folder-backed project package (`project.json` plus project-owned sidecars/assets). Legacy/browser `.abe-project.json` is a compatibility transport, not a reason for new features to assume one monolithic file.
-- Never use `process.cwd()`, the repository/worktree, or a developer absolute path as a fallback project storage root. If a project-owned file needs a durable destination and none exists, require Save As/selection or fail the durable write explicitly.
-- Persist project-owned file references as normalized project-relative logical paths. Runtime absolute paths may be derived transiently by adapters but must not be the canonical serialized locator for project-owned assets.
-- Enforce project-root containment at the filesystem/desktop adapter boundary for save, load, serve and delete; do not trust feature-produced paths. Reject traversal/absolute escape paths when a project-relative path is required.
-- Loading an explicit project must replace or clear stale browser project cache before activation. Never merge manuscript bodies, metrics, writing-target history, revisions, or project records from a previous cache into the loaded payload.
-- Browser cache is disposable compatibility state and may retain only the active project snapshot. Detect and report failed cache writes; do not call in-memory state a successful persisted save.
-- Classify durable structured state explicitly as **semantic project data** or **project-scoped preference**. For the current product stage, project-scoped layout/navigation preferences may remain inside the selected project package. Keep them logically separate from authored semantic content so a future profile/auth layer can move preferences without migrating the project schema.
-- Do not classify project taxonomy/content such as custom metadata definitions, custom model classes, World Spine entities/nodes/implications, tasks, notes, research or project dictionaries as preferences merely because their UI is configurable.
-- Keep **machine/application state** outside portable project content: model/runtime paths, provider configuration, default project roots, worktree/cwd values and the active absolute project path are not project data or project preferences.
-- Keep transient provider/job/session state non-durable unless a product requirement explicitly promotes a bounded subset to project recovery/preference state. Do not let whole-workspace cloning determine durability by accident.
-- For project-owned asset replacement/deletion, preserve durability ordering: write the new asset, save the new project-relative reference, then remove/garbage-collect the superseded asset. Do not delete the only durable file before the project-state update succeeds.
-- Use contextual API names such as `saveProjectSnapshot`, `loadProjectSnapshotFromFile`, `resolveProjectAssetPath`, and `restoreLastOpenedProject`, not vague `save`, `load`, or `sync` names.
-- Durable schema/path changes require normalization/migration and focused tests. File-backed features need round-trip plus containment tests; portable asset references should also be covered by relocation tests. Project preferences need round-trip plus semantic-isolation tests.
-- Use the supervisor's affected route before broader verification.
+- Route structured project persistence through `ProjectPersistenceService`; UI/feature modules must not write project data directly to localStorage, filesystem APIs, file handles, desktop project-media routes or ad hoc JSON.
+- Treat the **explicit active project package root** as the only filesystem authority for project-owned files.
+- Do not confuse that root with the application's **default project-library root**. A default/suggested root is never a fallback asset destination for an already-open project.
+- Legacy/browser `*.abe-project.json` is compatibility transport, not automatically a folder package. Feature code must not strip `.json` and invent a sibling asset directory. Package migration/Save As belongs to persistence.
+- Never use `process.cwd()`, repository/worktree paths, default library roots, relative `project-media/...`, or developer paths as fallback project storage.
+- Cache-only/browser recovery may preserve structured work when no package exists, but it is not package authority and must not provide a root for new project-owned binary assets.
+- Persist project-owned file references as normalized project-relative logical paths. Runtime absolute paths may be derived transiently only from the active package context.
+- Enforce project-root containment at the desktop/filesystem boundary for write, read, serve and delete. Reject traversal, absolute escape and fake-relative desktop roots.
+- Do not infer file-vs-package semantics solely from a `.json` suffix; carry package-root semantics explicitly.
+- Explicit project load must replace/ignore stale project caches before activation. Never borrow old scene bodies, goals, revisions, metadata or project records simply because IDs match.
+- Explicit Open Project loads the selected project or fails visibly. Do not substitute a bundled/demo project after a user-directed load failure.
+- Classify durable structured state as **semantic project data** or **project-scoped preference**. Project-specific layout/navigation preferences may remain in the project package for the current product stage.
+- Custom metadata definitions/model classes, World Spine entities/nodes/implications, tasks, notes/research, revisions, writing goals/history and project dictionary are semantic project data, not generic app settings.
+- Keep machine/application state outside portable project content: model/runtime paths, provider config, default project root, worktree/cwd values, last-opened pointer and active absolute package path.
+- Keep transient provider/job/session state non-durable unless deliberately promoted to an explicit recovery/project-preference model.
+- Converge away from whole-workspace cloning. New runtime fields do not gain durability automatically; the portable serializer should be an allowlist.
+- Save As must create/verify the new package before adopting it as active authority. A failed Save As leaves the old package authoritative.
+- Save As must materialize all required owned assets so the new package works without the old package.
+- Overlapping durability requests must accumulate. An older in-flight save may not clear newer dirty state.
+- Project open/switch is a persistence barrier: promised old-project mutations must be drained through the required revision or fail explicitly before runtime replacement.
+- Bind async save completion to project identity + destination generation + revision. Numeric revision equality alone is not enough across project switches.
+- For asset replacement/delete, preserve durability ordering: write new bytes, save new relative reference, then remove/garbage-collect the superseded asset.
+- Durable schema/path changes require normalization/migration and focused tests. File-backed features need round-trip + containment; portable assets need Save As/relocation; concurrency changes need overlap/transition tests.
+- Use the supervisor's affected route before broad verification.
 
-Do not load this agent merely because a feature reads/calls an existing persistence API without changing durable behaviour. Do load it when a new feature creates durable project state, a project-scoped preference, or a project-owned file, because storage ownership is part of that feature's persistence semantics.
+Do not load this agent merely because a feature reads an existing persistence API without changing durable semantics. Do load it whenever a feature creates new durable project state, a project-scoped preference, a project-owned file, or a new path/save policy.
