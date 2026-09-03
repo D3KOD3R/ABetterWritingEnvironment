@@ -6,6 +6,7 @@
 // - Create source wrappers (`ProjectPersistenceService`, `AutosaveCoordinator`, `ProjectLoadGate`, `ProjectSaveGate`, `DesktopFileSystemAdapter`).
 // - Keep log context focused on IDs, file paths, and operation state; avoid dumping full manuscript text.
 import { createProjectFileAutosaveController } from "./autosave.js";
+import { canonicalizeJsonPersistenceValue } from "./json-persistence-boundary.js";
 import { resolveProjectFileDisplayState } from "./project-file-display.js";
 import {
   browseProjectPackageDirectories,
@@ -110,7 +111,7 @@ export function buildPortableExternalProjectSnapshot(snapshot = {}) {
       }
       return portableProject;
     });
-  return portableSnapshot;
+  return canonicalizeJsonPersistenceValue(portableSnapshot);
 }
 
 const WORKSPACE_PANE_IDS = Object.freeze(["manuscript", "world", "narration"]);

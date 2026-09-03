@@ -1,4 +1,5 @@
 // Intent: compare project semantics independently of the chunked folder package's storage shape.
+import { canonicalizeJsonPersistenceValue } from "./json-persistence-boundary.js";
 
 function cloneValue(value) {
   if (typeof globalThis.structuredClone === "function") {
@@ -251,14 +252,16 @@ function normalizeProjectRecord(projectRecord, sceneOrder) {
 }
 
 export function buildProjectSemanticVerificationSnapshot(snapshot = {}) {
-  const projects = Array.isArray(snapshot?.projects) ? snapshot.projects.filter(Boolean) : [];
-  const activeProjectId = normalizeSceneId(snapshot?.activeProjectId) || normalizeSceneId(projects[0]?.id);
+  // Package verification compares the JSON domain: undefined object properties are absent while array slots become null.
+  const jsonSnapshot = canonicalizeJsonPersistenceValue(snapshot);
+  const projects = Array.isArray(jsonSnapshot?.projects) ? jsonSnapshot.projects.filter(Boolean) : [];
+  const activeProjectId = normalizeSceneId(jsonSnapshot?.activeProjectId) || normalizeSceneId(projects[0]?.id);
   return {
-    schemaVersion: Number(snapshot?.schemaVersion) || 2,
+    schemaVersion: Number(jsonSnapshot?.schemaVersion) || 2,
     activeProjectId,
     projects: projects.map((projectRecord) => {
       const projectId = normalizeSceneId(projectRecord?.id);
-      const scenes = collectProjectScenes(snapshot, projectRecord, projectId);
+      const scenes = collectProjectScenes(jsonSnapshot, projectRecord, projectId);
       const sceneOrder = getSceneOrder(projectRecord, scenes);
       return {
         project: normalizeProjectRecord(projectRecord, sceneOrder),

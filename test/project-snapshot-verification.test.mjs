@@ -1,9 +1,11 @@
 // Intent: keep package verification strict for authored structure while tolerating writer-generated structural rows.
 import assert from "node:assert/strict";
+import { buildPortableExternalProjectSnapshot } from "../apps/editor/public/adapters/storage/project-persistence-service.js";
 import {
   assertProjectSnapshotsSemanticallyEquivalent,
   buildProjectSemanticVerificationSnapshot,
 } from "../apps/editor/public/adapters/storage/project-snapshot-verification.js";
+import { normalizeProjectSelectionDefaults } from "../apps/editor/public/state/project-library-state.js";
 
 function createSnapshot({ includeStructure = false } = {}) {
   const projectId = "project-verification";
@@ -112,6 +114,65 @@ export async function runProjectSnapshotVerificationTest() {
   assert.equal(Object.hasOwn(projected.projects[0].project.structureDrafts, "scenes"), false);
   assert.deepEqual(projected.projects[0].project.structureDrafts.actLabels, ["Arrival"]);
   assert.equal(projected.projects[0].structuralScenes[0].chapterTitle, "Chapter One");
+
+  // Intent: New Project normalization owns optional undefined keys that JSON legitimately omits at the package boundary.
+  const jsonBoundaryExpected = createSnapshot();
+  const expectedWorkspace = jsonBoundaryExpected.projects[0].workspace;
+  expectedWorkspace.selectionDefaults = normalizeProjectSelectionDefaults(
+    { lineId: "block-1" },
+    expectedWorkspace.project,
+  );
+  expectedWorkspace.jsonBoundaryProbe = {
+    nested: {
+      omitted: undefined,
+      explicitNull: null,
+      emptyText: "",
+      zero: 0,
+      disabled: false,
+    },
+    arrayValues: [undefined, null, "", 0, false],
+  };
+  const jsonRoundTripActual = JSON.parse(JSON.stringify(jsonBoundaryExpected));
+  assert.doesNotThrow(() => assertProjectSnapshotsSemanticallyEquivalent(
+    jsonBoundaryExpected,
+    jsonRoundTripActual,
+  ));
+
+  const portableJsonBoundarySnapshot = buildPortableExternalProjectSnapshot(jsonBoundaryExpected);
+  assert.equal(Object.hasOwn(
+    portableJsonBoundarySnapshot.projects[0].workspace.selectionDefaults,
+    "entityId",
+  ), false);
+  assert.equal(Object.hasOwn(
+    portableJsonBoundarySnapshot.projects[0].workspace.jsonBoundaryProbe.nested,
+    "omitted",
+  ), false);
+  assert.deepEqual(
+    portableJsonBoundarySnapshot.projects[0].workspace.jsonBoundaryProbe.nested,
+    { explicitNull: null, emptyText: "", zero: 0, disabled: false },
+  );
+  assert.deepEqual(
+    portableJsonBoundarySnapshot.projects[0].workspace.jsonBoundaryProbe.arrayValues,
+    [null, null, "", 0, false],
+  );
+
+  const selectedEntityExpected = createSnapshot();
+  selectedEntityExpected.projects[0].workspace.selectionDefaults = normalizeProjectSelectionDefaults(
+    { lineId: "block-1", entityId: "world-entity-123" },
+    selectedEntityExpected.projects[0].workspace.project,
+  );
+  const removedSelectedEntity = JSON.parse(JSON.stringify(selectedEntityExpected));
+  delete removedSelectedEntity.projects[0].workspace.selectionDefaults.entityId;
+  assert.throws(
+    () => assertProjectSnapshotsSemanticallyEquivalent(selectedEntityExpected, removedSelectedEntity),
+    /not semantically equivalent/,
+  );
+  const changedSelectedEntity = JSON.parse(JSON.stringify(selectedEntityExpected));
+  changedSelectedEntity.projects[0].workspace.selectionDefaults.entityId = "world-entity-456";
+  assert.throws(
+    () => assertProjectSnapshotsSemanticallyEquivalent(selectedEntityExpected, changedSelectedEntity),
+    /not semantically equivalent/,
+  );
 
   // Intent: generated fields added beside a custom overlay must not acquire authored semantics during readback.
   const partialOverlayExpected = createSnapshot();
