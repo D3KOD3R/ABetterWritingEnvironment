@@ -86,15 +86,18 @@ async function openNativeProjectPackageDirectoryPicker() {
   }
 }
 
-// Intent: restore the caret after the existing lifecycle controller rerenders the dialog around validation.
+// Intent: validation may canonicalize a path, but it must not rewrite text while the user is still editing it.
 const dialogObserver = new MutationObserver(() => {
   if (!pendingFocusRestore) return;
   const input = getLocationInput();
-  if (!input || input.disabled || input.value !== pendingFocusRestore.value) return;
+  if (!input || input.disabled) return;
 
-  const { selectionStart, selectionEnd } = pendingFocusRestore;
+  const { value, selectionStart, selectionEnd } = pendingFocusRestore;
   pendingFocusRestore = null;
   suppressNextLocationFocusRefresh = true;
+  if (input.value !== value) {
+    input.value = value;
+  }
   input.focus({ preventScroll: true });
   if (Number.isInteger(selectionStart) && Number.isInteger(selectionEnd)) {
     input.setSelectionRange(selectionStart, selectionEnd);

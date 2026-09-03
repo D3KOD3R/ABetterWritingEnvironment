@@ -33,7 +33,8 @@ export async function runProjectPackageDialogUxTest() {
   assert.match(dialogController, /addEventListener\("focusin"[\s\S]*scheduleLocationRefresh/);
   assert.match(dialogController, /KeyboardEvent\("keydown"[\s\S]*key:\s*"Enter"/);
   assert.match(dialogController, /browse-project-package-path[\s\S]*openNativeProjectPackageDirectoryPicker/);
-  assert.match(dialogController, /MutationObserver[\s\S]*setSelectionRange/);
+  assert.match(dialogController, /MutationObserver[\s\S]*input\.value\s*=\s*value[\s\S]*setSelectionRange/);
+  assert.doesNotMatch(dialogController, /input\.value\s*!==\s*pendingFocusRestore\.value/);
 
   assert.match(dialogRenderer, /Folders update automatically as you edit the location\./);
   assert.doesNotMatch(dialogRenderer, /Press Enter or Browse to validate/);
