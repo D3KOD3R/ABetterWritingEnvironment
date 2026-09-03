@@ -6,6 +6,7 @@ import {
   loadStagedProjectPackageSave,
   sanitizeLoadedProjectPackageValue,
 } from "../apps/editor/public/adapters/storage/project-package.js";
+import { buildPortableProjectSnapshot } from "../apps/editor/public/adapters/storage/project-portable-snapshot.js";
 import { assertProjectSnapshotsSemanticallyEquivalent } from "../apps/editor/public/adapters/storage/project-snapshot-verification.js";
 
 function createSnapshot({ includeRevisionStats = false } = {}) {
@@ -54,6 +55,9 @@ function createSnapshot({ includeRevisionStats = false } = {}) {
           synopsis: "A restart regression fixture.",
         }],
       },
+      sceneDrafts: {
+        [sceneId]: structuredClone(scene),
+      },
       structureDrafts: {
         scenes: [{
           sceneId,
@@ -80,15 +84,41 @@ function createSnapshot({ includeRevisionStats = false } = {}) {
 }
 
 export async function runProjectPackageRevisionStatsRegressionTest() {
-  const expectedSnapshot = createSnapshot();
+  const runtimeSnapshot = createSnapshot({ includeRevisionStats: true });
+  const expectedSnapshot = buildPortableProjectSnapshot(runtimeSnapshot);
   const stalePackageSnapshot = createSnapshot({ includeRevisionStats: true });
+
+  assert.equal(
+    Object.hasOwn(
+      expectedSnapshot.sceneStore["project-restart-regression"]["scene-0001"],
+      "revisionStats",
+    ),
+    false,
+    "The outbound portable sceneStore must not persist derived revision statistics.",
+  );
+  assert.equal(
+    Object.hasOwn(
+      expectedSnapshot.projects[0].sceneDrafts["scene-0001"],
+      "revisionStats",
+    ),
+    false,
+    "The outbound portable sceneDrafts must not persist derived revision statistics.",
+  );
+  assert.equal(
+    Object.hasOwn(
+      runtimeSnapshot.sceneStore["project-restart-regression"]["scene-0001"],
+      "revisionStats",
+    ),
+    true,
+    "Portable serialization must not mutate live runtime scene state.",
+  );
 
   assert.throws(
     () => assertProjectSnapshotsSemanticallyEquivalent(expectedSnapshot, stalePackageSnapshot, {
       operation: "Regression control",
     }),
     /revisionStats/,
-    "The fixture must reproduce the package verification failure before transport sanitization.",
+    "The fixture must reproduce the package verification failure before package-boundary sanitization.",
   );
 
   const directSanitized = sanitizeLoadedProjectPackageValue({
@@ -98,6 +128,13 @@ export async function runProjectPackageRevisionStatsRegressionTest() {
   assert.equal(
     Object.hasOwn(
       directSanitized.snapshot.sceneStore["project-restart-regression"]["scene-0001"],
+      "revisionStats",
+    ),
+    false,
+  );
+  assert.equal(
+    Object.hasOwn(
+      directSanitized.snapshot.projects[0].sceneDrafts["scene-0001"],
       "revisionStats",
     ),
     false,
