@@ -282,25 +282,81 @@ async function runLifecycleChild() {
       /not semantically equivalent/,
     );
   };
+  // Intent: physical success must expose the final root only after staged readback verification.
+  const stageLoadVerifyAndCommit = async ({ pathname, body, expectedSnapshot, operation }) => {
+    const staged = await sendJson(pathname, body);
+    assert.equal(staged.response.statusCode, 200);
+    assert.equal(existsSync(staged.value.finalRootPath), false, `${operation} published before verification.`);
+    assert.equal(existsSync(staged.value.stagingRootPath), true);
+    const browseDuringStage = await sendJson("/api/project-package/browse", {
+      path: path.dirname(staged.value.stagingRootPath),
+    });
+    assert.equal(
+      browseDuringStage.value.directories.some((entry) => entry.path === staged.value.stagingRootPath),
+      false,
+    );
+    const loaded = await sendJson("/api/project-package/load", { rootPath: staged.value.stagingRootPath });
+    assertProjectSnapshotsSemanticallyEquivalent(expectedSnapshot, loaded.value.snapshot, { operation });
+    const committed = await sendJson("/api/project-package/commit", {
+      operationToken: staged.value.operationToken,
+    });
+    assert.equal(committed.response.statusCode, 200);
+    assert.equal(existsSync(staged.value.stagingRootPath), false);
+    assert.equal(existsSync(committed.value.rootPath), true);
+    return { staged, loaded, committed };
+  };
+  const stageAndDiscardAfterFailure = async ({ pathname, body, expectedSnapshot, failure }) => {
+    const staged = await sendJson(pathname, body);
+    assert.equal(staged.response.statusCode, 200);
+    assert.equal(existsSync(staged.value.finalRootPath), false);
+    let failureObserved = false;
+    if (failure === "load") {
+      unlinkSync(path.join(staged.value.stagingRootPath, "project.json"));
+      const loaded = await sendJson("/api/project-package/load", { rootPath: staged.value.stagingRootPath });
+      failureObserved = loaded.response.statusCode === 400;
+    } else {
+      const loaded = await sendJson("/api/project-package/load", { rootPath: staged.value.stagingRootPath });
+      const corruptSnapshot = structuredClone(loaded.value.snapshot);
+      corruptSnapshot.projects[0].title = "Corrupted staged readback";
+      assert.throws(
+        () => assertProjectSnapshotsSemanticallyEquivalent(expectedSnapshot, corruptSnapshot),
+        /not semantically equivalent/,
+      );
+      failureObserved = true;
+    }
+    const discarded = await sendJson("/api/project-package/discard", {
+      operationToken: staged.value.operationToken,
+    });
+    return failureObserved
+      && discarded.response.statusCode === 200
+      && !existsSync(staged.value.stagingRootPath)
+      && !existsSync(staged.value.finalRootPath);
+  };
 
   const browse = await sendJson("/api/project-package/browse", { path: lifecycleRoot });
   const defaultBrowse = await sendJson("/api/project-package/browse", { path: "" });
-  const createBlank = await sendJson("/api/project-package/create", {
-    parentPath: lifecycleRoot,
-    folderName: "Blank Project",
-    snapshot: blankPortableSnapshot,
-  });
-  const loadBlank = await sendJson("/api/project-package/load", { rootPath: createBlank.value.rootPath });
-  assertProjectSnapshotsSemanticallyEquivalent(blankPortableSnapshot, loadBlank.value.snapshot, {
+  const blankPublication = await stageLoadVerifyAndCommit({
+    pathname: "/api/project-package/create",
+    body: {
+      parentPath: lifecycleRoot,
+      folderName: "Blank Project",
+      snapshot: blankPortableSnapshot,
+    },
+    expectedSnapshot: blankPortableSnapshot,
     operation: "Blank New Project package",
   });
-  const create = await sendJson("/api/project-package/create", {
-    parentPath: lifecycleRoot,
-    folderName: "Project A",
-    snapshot: portableSnapshot,
+  const createPublication = await stageLoadVerifyAndCommit({
+    pathname: "/api/project-package/create",
+    body: {
+      parentPath: lifecycleRoot,
+      folderName: "Project A",
+      snapshot: portableSnapshot,
+    },
+    expectedSnapshot: portableSnapshot,
+    operation: "New package",
   });
-  const loadA = await sendJson("/api/project-package/load", { rootPath: create.value.rootPath });
-  assertProjectSnapshotsSemanticallyEquivalent(portableSnapshot, loadA.value.snapshot, { operation: "New package" });
+  const create = createPublication.staged;
+  const loadA = createPublication.loaded;
 
   let activeRoot = projectA;
   const fetchJson = async (pathname, options = {}) => {
@@ -314,13 +370,19 @@ async function runLifecycleChild() {
   const mediaBytes = new Uint8Array([0x41, 0x42, 0x45, 0x42]);
   await mediaService.saveMediaBlob({ filePath: mediaPath, blob: new Blob([mediaBytes], { type: "audio/webm" }) });
 
-  const saveAs = await sendJson("/api/project-package/save-as", {
-    sourceRoot: projectA,
-    destinationParentPath: lifecycleRoot,
-    folderName: "Project B",
-    snapshot: portableSnapshot,
+  const saveAsPublication = await stageLoadVerifyAndCommit({
+    pathname: "/api/project-package/save-as",
+    body: {
+      sourceRoot: projectA,
+      destinationParentPath: lifecycleRoot,
+      folderName: "Project B",
+      snapshot: portableSnapshot,
+    },
+    expectedSnapshot: portableSnapshot,
+    operation: "Save As package",
   });
-  const loadB = await sendJson("/api/project-package/load", { rootPath: saveAs.value.rootPath });
+  const saveAs = saveAsPublication.staged;
+  const loadB = await sendJson("/api/project-package/load", { rootPath: saveAsPublication.committed.value.rootPath });
   assertProjectSnapshotsSemanticallyEquivalent(portableSnapshot, loadB.value.snapshot, { operation: "Save As package" });
 
   const manifestPath = path.join(projectB, "project.json");
@@ -381,6 +443,9 @@ async function runLifecycleChild() {
     folderName: "Novel: Draft.",
     snapshot: portableSnapshot,
   });
+  const sanitizedCommit = await sendJson("/api/project-package/commit", {
+    operationToken: sanitized.value.operationToken,
+  });
   const separatorName = await sendJson("/api/project-package/create", {
     parentPath: lifecycleRoot,
     folderName: "escape/child",
@@ -403,6 +468,105 @@ async function runLifecycleChild() {
     snapshot: portableSnapshot,
   });
   unlinkSync(sourceLink);
+
+  const invalidWriteSnapshot = structuredClone(portableSnapshot);
+  invalidWriteSnapshot.projects[0].projectStorage = {
+    sceneOrder: [sceneId],
+    sceneFiles: { [sceneId]: "../escape.json" },
+  };
+  const stagingEntriesBeforeWriteFailures = readdirSync(lifecycleRoot)
+    .filter((name) => name.startsWith(".abe-project-stage-"));
+  const failedNewWrite = await sendJson("/api/project-package/create", {
+    parentPath: lifecycleRoot,
+    folderName: "New Write Failure",
+    snapshot: invalidWriteSnapshot,
+  });
+  const failedSaveAsWrite = await sendJson("/api/project-package/save-as", {
+    sourceRoot: projectB,
+    destinationParentPath: lifecycleRoot,
+    folderName: "Save As Write Failure",
+    snapshot: invalidWriteSnapshot,
+  });
+  const stagingEntriesAfterWriteFailures = readdirSync(lifecycleRoot)
+    .filter((name) => name.startsWith(".abe-project-stage-"));
+
+  const abortedNewLoad = await stageAndDiscardAfterFailure({
+    pathname: "/api/project-package/create",
+    body: {
+      parentPath: lifecycleRoot,
+      folderName: "New Load Failure",
+      snapshot: portableSnapshot,
+    },
+    expectedSnapshot: portableSnapshot,
+    failure: "load",
+  });
+  const abortedNewVerification = await stageAndDiscardAfterFailure({
+    pathname: "/api/project-package/create",
+    body: {
+      parentPath: lifecycleRoot,
+      folderName: "New Verification Failure",
+      snapshot: portableSnapshot,
+    },
+    expectedSnapshot: portableSnapshot,
+    failure: "verification",
+  });
+  const abortedSaveAsLoad = await stageAndDiscardAfterFailure({
+    pathname: "/api/project-package/save-as",
+    body: {
+      sourceRoot: projectB,
+      destinationParentPath: lifecycleRoot,
+      folderName: "Save As Load Failure",
+      snapshot: portableSnapshot,
+    },
+    expectedSnapshot: portableSnapshot,
+    failure: "load",
+  });
+  const abortedSaveAsVerification = await stageAndDiscardAfterFailure({
+    pathname: "/api/project-package/save-as",
+    body: {
+      sourceRoot: projectB,
+      destinationParentPath: lifecycleRoot,
+      folderName: "Save As Verification Failure",
+      snapshot: portableSnapshot,
+    },
+    expectedSnapshot: portableSnapshot,
+    failure: "verification",
+  });
+
+  // Intent: a destination created by another actor after staging must survive a refused commit untouched.
+  const newConflictRoot = path.join(lifecycleRoot, "New Commit Conflict");
+  const newCommitConflictStage = await sendJson("/api/project-package/create", {
+    parentPath: lifecycleRoot,
+    folderName: "New Commit Conflict",
+    snapshot: portableSnapshot,
+  });
+  mkdirSync(newConflictRoot);
+  writeFileSync(path.join(newConflictRoot, "sentinel.txt"), "external", "utf8");
+  const newCommitConflict = await sendJson("/api/project-package/commit", {
+    operationToken: newCommitConflictStage.value.operationToken,
+  });
+  const newConflictDiscard = await sendJson("/api/project-package/discard", {
+    operationToken: newCommitConflictStage.value.operationToken,
+  });
+  const saveAsConflictRoot = path.join(lifecycleRoot, "Save As Commit Conflict");
+  const saveAsCommitConflictStage = await sendJson("/api/project-package/save-as", {
+    sourceRoot: projectB,
+    destinationParentPath: lifecycleRoot,
+    folderName: "Save As Commit Conflict",
+    snapshot: portableSnapshot,
+  });
+  mkdirSync(saveAsConflictRoot);
+  writeFileSync(path.join(saveAsConflictRoot, "sentinel.txt"), "external", "utf8");
+  const saveAsCommitConflict = await sendJson("/api/project-package/commit", {
+    operationToken: saveAsCommitConflictStage.value.operationToken,
+  });
+  const saveAsConflictDiscard = await sendJson("/api/project-package/discard", {
+    operationToken: saveAsCommitConflictStage.value.operationToken,
+  });
+  const arbitraryDiscardRejected = await sendJson("/api/project-package/discard", {
+    operationToken: "not-a-host-issued-token",
+    rootPath: projectB,
+  });
 
   const activeState = { projectId, projectFilePath: projectB };
   let dialog = createProjectPackageDialogState({
@@ -433,7 +597,18 @@ async function runLifecycleChild() {
     "cache/waveforms",
     "cache/ai-index",
   ];
-  const noWildcardCors = [browse, create, loadA, saveAs, loadB].every(
+  const noWildcardCors = [
+    browse,
+    create,
+    loadA,
+    createPublication.committed,
+    saveAs,
+    loadB,
+    saveAsPublication.committed,
+    newConflictDiscard,
+    saveAsConflictDiscard,
+    arbitraryDiscardRejected,
+  ].every(
     ({ response }) => !Object.keys(response.headers).some((name) => name.toLowerCase() === "access-control-allow-origin"),
   );
   const allArtifactText = [
@@ -447,14 +622,18 @@ async function runLifecycleChild() {
     browseIsSameOriginOnly: browse.response.statusCode === 200 && noWildcardCors,
     defaultBrowseDoesNotUseRuntimeCwd: defaultBrowse.response.statusCode === 200
       && path.resolve(defaultBrowse.value.path) !== path.resolve(process.cwd()),
-    newCreatedExclusiveFolder: create.response.statusCode === 200 && create.value.rootPath === projectA,
-    blankNewProjectNormalizationVerified: createBlank.response.statusCode === 200
-      && createBlank.value.rootPath === blankProjectRoot
-      && loadBlank.response.statusCode === 200,
+    newCreatedExclusiveFolder: create.response.statusCode === 200
+      && create.value.finalRootPath === projectA
+      && createPublication.committed.value.rootPath === projectA,
+    blankNewProjectNormalizationVerified: blankPublication.staged.response.statusCode === 200
+      && blankPublication.staged.value.finalRootPath === blankProjectRoot
+      && blankPublication.loaded.response.statusCode === 200,
     packageScaffoldExists: requiredDirectories.every((relativePath) => existsSync(path.join(unavailableProjectA, ...relativePath.split("/"))))
       && existsSync(path.join(unavailableProjectA, "project.json")),
     newRoundTripVerified: loadA.response.statusCode === 200,
-    saveAsCreatedB: saveAs.response.statusCode === 200 && saveAs.value.rootPath === projectB,
+    saveAsCreatedB: saveAs.response.statusCode === 200
+      && saveAs.value.finalRootPath === projectB
+      && saveAsPublication.committed.value.rootPath === projectB,
     saveAsRoundTripVerified: loadB.response.statusCode === 200,
     projectIdentityPreserved: reopenB.value.snapshot.activeProjectId === projectId
       && reopenB.value.snapshot.projects[0].id === projectId,
@@ -467,12 +646,41 @@ async function runLifecycleChild() {
     nestedDestinationRejected: nested.response.statusCode === 400 && !existsSync(path.join(projectB, "Nested")),
     relativeParentRejected: relativeParent.response.statusCode === 400,
     folderNameSanitizedInsideParent: sanitized.response.statusCode === 200
-      && sanitized.value.rootPath === path.join(lifecycleRoot, "Novel- Draft"),
+      && sanitized.value.finalRootPath === path.join(lifecycleRoot, "Novel- Draft")
+      && sanitizedCommit.value.rootPath === path.join(lifecycleRoot, "Novel- Draft"),
     separatorFolderNameRejected: separatorName.response.statusCode === 400,
     nonPackageSourceRejected: invalidSource.response.statusCode === 400
       && !existsSync(path.join(lifecycleRoot, "Invalid Source Copy")),
     symlinkCopyRejectedAndCleaned: symlinkCopy.response.statusCode === 400
       && !existsSync(path.join(lifecycleRoot, "Symlink Copy")),
+    failedWritesLeaveNoPublishedOrStagedPackage: failedNewWrite.response.statusCode === 400
+      && failedSaveAsWrite.response.statusCode === 400
+      && !existsSync(path.join(lifecycleRoot, "New Write Failure"))
+      && !existsSync(path.join(lifecycleRoot, "Save As Write Failure"))
+      && JSON.stringify(stagingEntriesAfterWriteFailures) === JSON.stringify(stagingEntriesBeforeWriteFailures),
+    failedReadbackAndVerificationLeaveNoDestination: abortedNewLoad
+      && abortedNewVerification
+      && abortedSaveAsLoad
+      && abortedSaveAsVerification,
+    commitConflictNeverOverwritesFinalDestination: newCommitConflict.response.statusCode === 400
+      && saveAsCommitConflict.response.statusCode === 400
+      && newConflictDiscard.response.statusCode === 200
+      && saveAsConflictDiscard.response.statusCode === 200
+      && !existsSync(newCommitConflictStage.value.stagingRootPath)
+      && !existsSync(saveAsCommitConflictStage.value.stagingRootPath)
+      && readFileSync(path.join(newConflictRoot, "sentinel.txt"), "utf8") === "external"
+      && readFileSync(path.join(saveAsConflictRoot, "sentinel.txt"), "utf8") === "external",
+    successfulPublicationRemovesStagingRoots: !existsSync(create.value.stagingRootPath)
+      && !existsSync(saveAs.value.stagingRootPath)
+      && !existsSync(blankPublication.staged.value.stagingRootPath),
+    stagingRootsAreControlledDirectSiblings: [
+      create.value.stagingRootPath,
+      saveAs.value.stagingRootPath,
+      blankPublication.staged.value.stagingRootPath,
+    ].every((stagingRoot) => path.dirname(stagingRoot) === lifecycleRoot
+      && path.basename(stagingRoot).startsWith(".abe-project-stage-")),
+    arbitraryPathDiscardRejected: arbitraryDiscardRejected.response.statusCode === 400
+      && existsSync(projectB),
     cancellationPreservedState,
     projectBContainedByTempRoot: isContainedPath(lifecycleRoot, projectB),
     runtimeCwdHasNoArtifacts: readdirSync(process.cwd()).length === 0,

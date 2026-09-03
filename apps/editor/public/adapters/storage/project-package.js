@@ -19,7 +19,7 @@ export function browseProjectPackageDirectories({ path = "" } = {}, options = {}
   return requestProjectPackage("/api/project-package/browse", { path }, options);
 }
 
-export function createProjectPackage({ parentPath, folderName, snapshot } = {}, options = {}) {
+export function stageNewProjectPackage({ parentPath, folderName, snapshot } = {}, options = {}) {
   return requestProjectPackage("/api/project-package/create", {
     parentPath,
     folderName,
@@ -31,7 +31,7 @@ export function loadProjectPackage({ rootPath } = {}, options = {}) {
   return requestProjectPackage("/api/project-package/load", { rootPath }, options);
 }
 
-export function saveProjectPackageAs({
+export function stageSaveAsProjectPackage({
   sourceRoot = "",
   destinationParentPath,
   folderName,
@@ -43,4 +43,12 @@ export function saveProjectPackageAs({
     folderName,
     snapshot,
   }, options);
+}
+
+export function commitStagedProjectPackage({ operationToken } = {}, options = {}) {
+  return requestProjectPackage("/api/project-package/commit", { operationToken }, options);
+}
+
+export function discardStagedProjectPackage({ operationToken } = {}, options = {}) {
+  return requestProjectPackage("/api/project-package/discard", { operationToken }, options);
 }

@@ -1191,7 +1191,7 @@ export async function runProjectPersistenceServiceTest() {
   await runDesktopPackageTransactionAssertions();
 }
 
-// Intent: prove package destinations remain unchanged until host write, read-back, and semantic verification all succeed.
+// Intent: prove package destinations remain unchanged until host staging, readback, verification, and commit all succeed.
 async function runDesktopPackageTransactionAssertions() {
   const record = createLoadedProjectRecord();
   const sourceRoot = "C:\\Projects\\Project A";
@@ -1219,32 +1219,58 @@ async function runDesktopPackageTransactionAssertions() {
     workspace: record.workspace,
   };
   const operationLog = [];
-  const packageSnapshots = new Map();
+  const stagedPackages = new Map();
+  const publishedPackages = new Map();
   const desktopSnapshots = new Map();
+  const authorityAtCommits = [];
+  let stagedPackageSequence = 0;
   let transportFailure = "";
   let corruptReadBack = false;
+  const stagePackage = (finalRootPath, snapshot) => {
+    stagedPackageSequence += 1;
+    const operationToken = `stage-${stagedPackageSequence}`;
+    const stagingRootPath = `C:\\Projects\\.abe-stage-${stagedPackageSequence}`;
+    stagedPackages.set(operationToken, {
+      finalRootPath,
+      stagingRootPath,
+      snapshot: structuredClone(snapshot),
+    });
+    return { ok: true, operationToken, stagingRootPath, finalRootPath };
+  };
   const fetchJsonFromDesktopApi = async (pathname, options = {}) => {
     const body = options.body ?? {};
-    operationLog.push(`${pathname}:${body.rootPath ?? body.filePath ?? body.folderName ?? ""}`);
+    operationLog.push(`${pathname}:${body.rootPath ?? body.filePath ?? body.operationToken ?? body.folderName ?? ""}`);
     if (transportFailure === pathname) {
       return { ok: false, error: new Error("Simulated package transport failure.") };
     }
     if (pathname === "/api/project-package/create") {
       const rootPath = `C:\\Projects\\${body.folderName}`;
-      packageSnapshots.set(rootPath, structuredClone(body.snapshot));
-      return { ok: true, value: { ok: true, rootPath } };
+      return { ok: true, value: stagePackage(rootPath, body.snapshot) };
     }
     if (pathname === "/api/project-package/save-as") {
-      packageSnapshots.set(destinationRoot, structuredClone(body.snapshot));
-      return { ok: true, value: { ok: true, rootPath: destinationRoot } };
+      return { ok: true, value: stagePackage(destinationRoot, body.snapshot) };
     }
     if (pathname === "/api/project-package/load") {
-      if (!packageSnapshots.has(body.rootPath)) {
+      const stagedPackage = [...stagedPackages.values()].find((entry) => entry.stagingRootPath === body.rootPath);
+      const snapshotCandidate = stagedPackage?.snapshot ?? publishedPackages.get(body.rootPath);
+      if (!snapshotCandidate) {
         return { ok: false, error: new Error("Invalid package.") };
       }
-      const snapshot = structuredClone(packageSnapshots.get(body.rootPath));
+      const snapshot = structuredClone(snapshotCandidate);
       if (corruptReadBack) snapshot.projects[0].title = "Corrupted read-back";
       return { ok: true, value: { ok: true, rootPath: body.rootPath, snapshot } };
+    }
+    if (pathname === "/api/project-package/commit") {
+      const stagedPackage = stagedPackages.get(body.operationToken);
+      if (!stagedPackage) return { ok: false, error: new Error("Unknown staged package.") };
+      authorityAtCommits.push(state.projectFilePath);
+      stagedPackages.delete(body.operationToken);
+      publishedPackages.set(stagedPackage.finalRootPath, structuredClone(stagedPackage.snapshot));
+      return { ok: true, value: { ok: true, rootPath: stagedPackage.finalRootPath } };
+    }
+    if (pathname === "/api/project-package/discard") {
+      stagedPackages.delete(body.operationToken);
+      return { ok: true, value: { ok: true, discarded: true } };
     }
     if (pathname === "/api/project-file/save") {
       desktopSnapshots.set(body.filePath, structuredClone(body.snapshot));
@@ -1320,6 +1346,21 @@ async function runDesktopPackageTransactionAssertions() {
   );
   assert.equal(state.projectFilePath, sourceRoot);
   assert.equal(state.activeProjectId, record.id);
+  assert.equal(publishedPackages.has(destinationRoot), false);
+  assert.equal(stagedPackages.size, 0);
+
+  transportFailure = "/api/project-package/load";
+  await assert.rejects(
+    () => service.createDesktopProjectPackage({
+      parentPath: "C:\\Projects",
+      folderName: "Project B",
+      buildCandidateSnapshot: () => candidateSnapshot,
+    }),
+    /transport failure/,
+  );
+  assert.equal(state.projectFilePath, sourceRoot);
+  assert.equal(publishedPackages.has(destinationRoot), false);
+  assert.equal(stagedPackages.size, 0);
 
   transportFailure = "";
   corruptReadBack = true;
@@ -1333,8 +1374,24 @@ async function runDesktopPackageTransactionAssertions() {
   );
   assert.equal(state.projectFilePath, sourceRoot);
   assert.equal(state.activeProjectId, record.id);
+  assert.equal(publishedPackages.has(destinationRoot), false);
+  assert.equal(stagedPackages.size, 0);
 
   corruptReadBack = false;
+  transportFailure = "/api/project-package/commit";
+  await assert.rejects(
+    () => service.createDesktopProjectPackage({
+      parentPath: "C:\\Projects",
+      folderName: "Project B",
+      buildCandidateSnapshot: () => candidateSnapshot,
+    }),
+    /transport failure/,
+  );
+  assert.equal(state.projectFilePath, sourceRoot);
+  assert.equal(state.activeProjectId, record.id);
+  assert.equal(publishedPackages.has(destinationRoot), false);
+  assert.equal(stagedPackages.size, 0);
+
   transportFailure = "/api/project-package/save-as";
   await assert.rejects(
     () => service.saveProjectSnapshotAsPackage({
@@ -1345,6 +1402,20 @@ async function runDesktopPackageTransactionAssertions() {
   );
   assert.equal(state.projectFilePath, sourceRoot);
   assert.equal(state.activeProjectId, record.id);
+  assert.equal(publishedPackages.has(destinationRoot), false);
+  assert.equal(stagedPackages.size, 0);
+
+  transportFailure = "/api/project-package/load";
+  await assert.rejects(
+    () => service.saveProjectSnapshotAsPackage({
+      destinationParentPath: "C:\\Projects",
+      folderName: "Project B",
+    }),
+    /transport failure/,
+  );
+  assert.equal(state.projectFilePath, sourceRoot);
+  assert.equal(publishedPackages.has(destinationRoot), false);
+  assert.equal(stagedPackages.size, 0);
 
   transportFailure = "";
   corruptReadBack = true;
@@ -1357,8 +1428,24 @@ async function runDesktopPackageTransactionAssertions() {
   );
   assert.equal(state.projectFilePath, sourceRoot);
   assert.equal(state.activeProjectId, record.id);
+  assert.equal(publishedPackages.has(destinationRoot), false);
+  assert.equal(stagedPackages.size, 0);
 
   corruptReadBack = false;
+  transportFailure = "/api/project-package/commit";
+  await assert.rejects(
+    () => service.saveProjectSnapshotAsPackage({
+      destinationParentPath: "C:\\Projects",
+      folderName: "Project B",
+    }),
+    /transport failure/,
+  );
+  assert.equal(state.projectFilePath, sourceRoot);
+  assert.equal(state.activeProjectId, record.id);
+  assert.equal(publishedPackages.has(destinationRoot), false);
+  assert.equal(stagedPackages.size, 0);
+
+  transportFailure = "";
   operationLog.length = 0;
   await service.saveProjectSnapshot({ reason: "post-failure-normal-save" });
   assert.equal(
@@ -1373,17 +1460,24 @@ async function runDesktopPackageTransactionAssertions() {
     folderName: "Project B",
   });
   const saveIndex = operationLog.findIndex((entry) => entry.startsWith("/api/project-package/save-as:"));
-  const loadIndex = operationLog.findIndex((entry) => entry === `/api/project-package/load:${destinationRoot}`);
+  const loadIndex = operationLog.findIndex((entry) => entry.startsWith("/api/project-package/load:C:\\Projects\\.abe-stage-"));
   const verificationIndex = operationLog.findIndex((entry) => entry === "project.package.verified");
+  const commitIndex = operationLog.findIndex((entry) => entry.startsWith("/api/project-package/commit:stage-"));
   const settingsIndex = operationLog.findIndex((entry) => entry === "/api/settings:");
   assert.equal(
-    saveIndex >= 0 && loadIndex > saveIndex && verificationIndex > loadIndex && settingsIndex > verificationIndex,
+    saveIndex >= 0
+      && loadIndex > saveIndex
+      && verificationIndex > loadIndex
+      && commitIndex > verificationIndex
+      && settingsIndex > commitIndex,
     true,
   );
   assert.equal(state.projectFilePath, destinationRoot);
   assert.equal(state.activeProjectId, record.id);
-  assert.equal(packageSnapshots.get(destinationRoot).projects[0].projectSettings.projectFilePath, undefined);
+  assert.equal(publishedPackages.get(destinationRoot).projects[0].projectSettings.projectFilePath, undefined);
+  assert.equal(stagedPackages.size, 0);
   assert.equal(state.projectFileStorageMode, "desktop-package");
+  assert.equal(authorityAtCommits.at(-1), sourceRoot);
 
   operationLog.length = 0;
   await service.saveProjectSnapshot({ reason: "package-normal-save" });
@@ -1398,18 +1492,22 @@ async function runDesktopPackageTransactionAssertions() {
     buildCandidateSnapshot: () => candidateSnapshot,
   });
   const createIndex = operationLog.findIndex((entry) => entry === "/api/project-package/create:Project C");
-  const createLoadIndex = operationLog.findIndex((entry) => entry === `/api/project-package/load:${createRoot}`);
+  const createLoadIndex = operationLog.findIndex((entry) => entry.startsWith("/api/project-package/load:C:\\Projects\\.abe-stage-"));
   const createVerificationIndex = operationLog.findIndex((entry) => entry === "project.package.verified");
+  const createCommitIndex = operationLog.findIndex((entry) => entry.startsWith("/api/project-package/commit:stage-"));
   const activationIndex = operationLog.findIndex((entry) => entry === `activate-record:${record.id}`);
   assert.equal(
     createIndex >= 0
       && createLoadIndex > createIndex
       && createVerificationIndex > createLoadIndex
-      && activationIndex > createVerificationIndex,
+      && createCommitIndex > createVerificationIndex
+      && activationIndex > createCommitIndex,
     true,
   );
   assert.equal(state.projectFilePath, createRoot);
   assert.equal(state.activeProjectId, record.id);
+  assert.equal(stagedPackages.size, 0);
+  assert.equal(authorityAtCommits.at(-1), destinationRoot);
 
   transportFailure = "/api/project-package/load";
   await assert.rejects(

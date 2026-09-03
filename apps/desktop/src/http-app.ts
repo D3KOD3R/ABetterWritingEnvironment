@@ -1,6 +1,7 @@
 // Intent: expose the desktop HTTP surface that serves the editor, workspace data, settings, and local services.
 import { readFileSync } from "node:fs";
-import { appendFile, copyFile, lstat, mkdir, readFile, readdir, rm, stat, unlink, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { appendFile, copyFile, lstat, mkdir, readFile, readdir, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, extname, isAbsolute, join, relative, resolve as resolvePath, sep as pathSeparator } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -503,8 +504,12 @@ export async function createDesktopResponseForRequest(
       return jsonResponse(400, { ok: false, message: "A project snapshot is required." });
     }
     try {
-      const rootPath = await createProjectPackageAtParent(body.parentPath, body.folderName, body.snapshot);
-      return jsonResponse(200, { ok: true, rootPath });
+      const staged = await stageProjectPackagePublication({
+        destinationParentPath: body.parentPath,
+        folderName: body.folderName,
+        snapshot: body.snapshot,
+      });
+      return jsonResponse(200, { ok: true, ...staged });
     } catch (error) {
       return jsonResponse(400, {
         ok: false,
@@ -534,17 +539,43 @@ export async function createDesktopResponseForRequest(
       return jsonResponse(400, { ok: false, message: "A project snapshot is required." });
     }
     try {
-      const rootPath = await saveProjectPackageToNewRoot({
+      const staged = await stageProjectPackagePublication({
         sourceRoot: body.sourceRoot,
         destinationParentPath: body.destinationParentPath,
         folderName: body.folderName,
         snapshot: body.snapshot,
       });
-      return jsonResponse(200, { ok: true, rootPath });
+      return jsonResponse(200, { ok: true, ...staged });
     } catch (error) {
       return jsonResponse(400, {
         ok: false,
         message: error instanceof Error ? error.message : "Unable to save the project package.",
+      });
+    }
+  }
+
+  if (method === "POST" && request.pathname === "/api/project-package/commit") {
+    const body = parseJsonBody(request.body);
+    try {
+      const rootPath = await commitStagedProjectPackagePublication(body.operationToken);
+      return jsonResponse(200, { ok: true, rootPath });
+    } catch (error) {
+      return jsonResponse(400, {
+        ok: false,
+        message: error instanceof Error ? error.message : "Unable to publish the staged project package.",
+      });
+    }
+  }
+
+  if (method === "POST" && request.pathname === "/api/project-package/discard") {
+    const body = parseJsonBody(request.body);
+    try {
+      await discardStagedProjectPackagePublication(body.operationToken);
+      return jsonResponse(200, { ok: true, discarded: true });
+    } catch (error) {
+      return jsonResponse(400, {
+        ok: false,
+        message: error instanceof Error ? error.message : "Unable to discard the staged project package.",
       });
     }
   }
@@ -1985,6 +2016,18 @@ function buildProjectManifestRecord(
 }
 
 const MANAGED_PROJECT_TREE_NAMES = Object.freeze(["assets", "transcripts", "revisions"]);
+const PROJECT_PACKAGE_STAGING_PREFIX = ".abe-project-stage-";
+
+interface StagedProjectPackagePublication {
+  operationToken: string;
+  parentPath: string;
+  stagingRootPath: string;
+  finalRootPath: string;
+  stagingDevice: number;
+  stagingInode: number;
+}
+
+const stagedProjectPackagePublications = new Map<string, StagedProjectPackagePublication>();
 
 function normalizeAbsoluteDesktopPath(candidate: unknown, label: string): string {
   const normalized = normalizeFilePath(candidate);
@@ -2062,7 +2105,11 @@ async function browseProjectPackageDirectories(candidatePath: unknown) {
   const childEntries = await readdir(rootPath, { withFileTypes: true });
   const directories = [];
   for (const entry of childEntries.sort((left, right) => left.name.localeCompare(right.name))) {
-    if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
+    if (
+      !entry.isDirectory()
+      || entry.isSymbolicLink()
+      || entry.name.startsWith(PROJECT_PACKAGE_STAGING_PREFIX)
+    ) continue;
     const childPath = join(rootPath, entry.name);
     directories.push({
       name: entry.name,
@@ -2079,27 +2126,74 @@ async function browseProjectPackageDirectories(candidatePath: unknown) {
   };
 }
 
-async function createExclusiveProjectRoot(parentPath: unknown, folderName: unknown): Promise<string> {
-  const resolvedParent = await requireExistingDirectory(parentPath, "Project parent folder");
+async function resolveUnpublishedProjectRoot(parentPath: string, folderName: unknown): Promise<string> {
   const safeFolderName = sanitizeProjectPackageFolderName(folderName);
-  const projectRoot = resolvePath(resolvedParent, safeFolderName);
-  if (!isPathContainedBy(resolvedParent, projectRoot) || dirname(projectRoot) !== resolvedParent) {
+  const projectRoot = resolvePath(parentPath, safeFolderName);
+  if (!isPathContainedBy(parentPath, projectRoot) || dirname(projectRoot) !== parentPath) {
     throw new Error("Project destination must be a direct child of the selected parent folder.");
   }
   if (await pathExists(projectRoot)) {
     throw new Error(`Project destination already exists at ${projectRoot}.`);
   }
-  await mkdir(projectRoot, { recursive: false });
   return projectRoot;
 }
 
-async function removeCreatedProjectRoot(projectRoot: string, parentPath: string) {
-  // Intent: cleanup is allowed only for the exact direct child created by the failed operation.
-  const resolvedRoot = resolvePath(projectRoot);
-  const resolvedParent = resolvePath(parentPath);
-  if (dirname(resolvedRoot) !== resolvedParent || !isPathContainedBy(resolvedParent, resolvedRoot)) {
-    throw new Error("Refused to clean up an unverified project destination.");
+// Intent: allocate publication authority independently from the requested author-visible folder name.
+async function createStagedProjectPackagePublication(
+  parentPath: string,
+  finalRootPath: string,
+): Promise<StagedProjectPackagePublication> {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const operationToken = randomUUID();
+    const stagingRootPath = resolvePath(parentPath, `${PROJECT_PACKAGE_STAGING_PREFIX}${randomUUID()}`);
+    if (dirname(stagingRootPath) !== parentPath || !isPathContainedBy(parentPath, stagingRootPath)) {
+      throw new Error("Project staging root escaped the selected parent folder.");
+    }
+    try {
+      await mkdir(stagingRootPath, { recursive: false });
+      const stagingStats = await lstat(stagingRootPath);
+      const stagedPublication = {
+        operationToken,
+        parentPath,
+        stagingRootPath,
+        finalRootPath,
+        stagingDevice: stagingStats.dev,
+        stagingInode: stagingStats.ino,
+      };
+      stagedProjectPackagePublications.set(operationToken, stagedPublication);
+      return stagedPublication;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException)?.code !== "EEXIST") throw error;
+    }
   }
+  throw new Error("Unable to allocate a unique project staging root.");
+}
+
+async function requireOwnedStagingRoot(stagedPublication: StagedProjectPackagePublication): Promise<string> {
+  const resolvedRoot = resolvePath(stagedPublication.stagingRootPath);
+  const resolvedParent = await requireExistingDirectory(stagedPublication.parentPath, "Project staging parent");
+  if (
+    dirname(resolvedRoot) !== resolvedParent
+    || !isPathContainedBy(resolvedParent, resolvedRoot)
+    || !resolvedRoot.startsWith(resolvePath(resolvedParent, PROJECT_PACKAGE_STAGING_PREFIX))
+  ) {
+    throw new Error("Project staging root is outside its host-owned boundary.");
+  }
+  const rootStats = await lstat(resolvedRoot);
+  if (
+    rootStats.isSymbolicLink()
+    || !rootStats.isDirectory()
+    || rootStats.dev !== stagedPublication.stagingDevice
+    || rootStats.ino !== stagedPublication.stagingInode
+  ) {
+    throw new Error("Project staging root no longer matches the directory created by this operation.");
+  }
+  return resolvedRoot;
+}
+
+async function removeStagedProjectPackageRoot(stagedPublication: StagedProjectPackagePublication) {
+  // Intent: deletion authority is bound to the host-created directory identity, never a caller-supplied path.
+  const resolvedRoot = await requireOwnedStagingRoot(stagedPublication);
   await rm(resolvedRoot, { recursive: true, force: true });
 }
 
@@ -2141,18 +2235,8 @@ async function copyManagedProjectTrees(sourceRoot: string, destinationRoot: stri
   }
 }
 
-async function createProjectPackageAtParent(parentPath: unknown, folderName: unknown, snapshot: unknown) {
-  const resolvedParent = await requireExistingDirectory(parentPath, "Project parent folder");
-  const projectRoot = await createExclusiveProjectRoot(resolvedParent, folderName);
-  try {
-    return await writeProjectPackageAtRoot(projectRoot, snapshot);
-  } catch (error) {
-    await removeCreatedProjectRoot(projectRoot, resolvedParent);
-    throw error;
-  }
-}
-
-async function saveProjectPackageToNewRoot({
+// Intent: New and Save As share one staged writer so neither can publish before editor verification.
+async function stageProjectPackagePublication({
   sourceRoot,
   destinationParentPath,
   folderName,
@@ -2164,6 +2248,7 @@ async function saveProjectPackageToNewRoot({
   snapshot: unknown;
 }) {
   const resolvedParent = await requireExistingDirectory(destinationParentPath, "Project destination parent");
+  const finalRootPath = await resolveUnpublishedProjectRoot(resolvedParent, folderName);
   const normalizedSource = normalizeFilePath(sourceRoot);
   let resolvedSource = "";
   if (normalizedSource) {
@@ -2176,28 +2261,60 @@ async function saveProjectPackageToNewRoot({
       throw new Error("Source project folder must contain project.json.");
     }
   }
-  const safeFolderName = sanitizeProjectPackageFolderName(folderName);
-  const prospectiveProjectRoot = resolvePath(resolvedParent, safeFolderName);
   if (resolvedSource && (
-    prospectiveProjectRoot === resolvedSource
-    || isPathContainedBy(resolvedSource, prospectiveProjectRoot)
+    finalRootPath === resolvedSource
+    || isPathContainedBy(resolvedSource, finalRootPath)
   )) {
     throw new Error("Save As destination must not equal or be nested inside the source project.");
   }
-  const projectRoot = await createExclusiveProjectRoot(resolvedParent, safeFolderName);
+  const stagedPublication = await createStagedProjectPackagePublication(resolvedParent, finalRootPath);
 
   try {
     if (resolvedSource) {
       const sourceStats = await stat(resolvedSource);
       if (sourceStats.isDirectory()) {
-        await copyManagedProjectTrees(resolvedSource, projectRoot);
+        await copyManagedProjectTrees(resolvedSource, stagedPublication.stagingRootPath);
       }
     }
-    return await writeProjectPackageAtRoot(projectRoot, snapshot);
+    await writeProjectPackageAtRoot(stagedPublication.stagingRootPath, snapshot);
+    return {
+      operationToken: stagedPublication.operationToken,
+      stagingRootPath: stagedPublication.stagingRootPath,
+      finalRootPath: stagedPublication.finalRootPath,
+    };
   } catch (error) {
-    await removeCreatedProjectRoot(projectRoot, resolvedParent);
+    stagedProjectPackagePublications.delete(stagedPublication.operationToken);
+    await removeStagedProjectPackageRoot(stagedPublication);
     throw error;
   }
+}
+
+async function commitStagedProjectPackagePublication(operationTokenValue: unknown): Promise<string> {
+  const operationToken = typeof operationTokenValue === "string" ? operationTokenValue.trim() : "";
+  const stagedPublication = stagedProjectPackagePublications.get(operationToken);
+  if (!stagedPublication) {
+    throw new Error("Project package staging operation is invalid or expired.");
+  }
+  await requireOwnedStagingRoot(stagedPublication);
+  await requireExistingProjectPackageRoot(stagedPublication.stagingRootPath);
+  if (await pathExists(stagedPublication.finalRootPath)) {
+    throw new Error(`Project destination already exists at ${stagedPublication.finalRootPath}.`);
+  }
+
+  // Intent: the final author-visible destination appears only after editor verification and is never overwritten.
+  await rename(stagedPublication.stagingRootPath, stagedPublication.finalRootPath);
+  stagedProjectPackagePublications.delete(operationToken);
+  return stagedPublication.finalRootPath;
+}
+
+async function discardStagedProjectPackagePublication(operationTokenValue: unknown): Promise<void> {
+  const operationToken = typeof operationTokenValue === "string" ? operationTokenValue.trim() : "";
+  const stagedPublication = stagedProjectPackagePublications.get(operationToken);
+  if (!stagedPublication) {
+    throw new Error("Project package staging operation is invalid or expired.");
+  }
+  await removeStagedProjectPackageRoot(stagedPublication);
+  stagedProjectPackagePublications.delete(operationToken);
 }
 
 async function ensureProjectPackageScaffold(projectRoot: string) {

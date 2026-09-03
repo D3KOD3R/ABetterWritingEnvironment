@@ -124,12 +124,13 @@ Folder names initially derive from project titles but do not become project iden
 2. On confirmation, preserve/drain the current project.
 3. Build a blank candidate through `createBlankWorkspaceSnapshot(...)` and `createProjectLibraryRecordFromWorkspace(...)` without activating it.
 4. Build an external candidate snapshot without changing current authority.
-5. Ask the host to create the exact new package root, scaffold it, and write the snapshot.
-6. Reload that package without activation.
+5. Ask the host to allocate an opaque operation and create a unique direct-sibling staging root, then scaffold and write the snapshot there.
+6. Reload the staged package without activation.
 7. Semantically verify expected versus loaded package.
-8. Hydrate/activate the candidate, adopt the host-returned root, prime autosave, and persist the last-opened pointer.
+8. Commit the host-owned operation by renaming the staging root to the still-unoccupied requested root.
+9. Hydrate/activate the candidate, adopt the committed root, prime autosave, and persist the last-opened pointer.
 
-Cancellation or any pre-adoption failure leaves the old project, destination, autosave target, and narration/media authority unchanged. A successful new desktop project begins with a valid package and never normally enters `Waiting for path`.
+Cancellation or any pre-commit failure discards only the exact host-created staging root and leaves the requested final root absent. Any pre-adoption failure leaves the old project, destination, autosave target, and narration/media authority unchanged. A successful new desktop project begins with a valid package and never normally enters `Waiting for path`.
 
 ### Open Project
 
@@ -150,12 +151,13 @@ Write the established active package authority. If a compatibility/cache-only pr
 1. Capture source authority A.
 2. Preserve/drain current durability work.
 3. Build current structured state and sanitize it for external persistence.
-4. Ask the host to create destination B, copy managed owned files, scaffold, and write current structured state.
-5. Load B without activation.
-6. Semantically verify B.
-7. Only after verification, adopt B, update runtime/cache location, and prime autosave.
+4. Ask the host to stage destination B in a unique direct sibling, copy managed owned files, scaffold, and write current structured state.
+5. Load staged B without activation.
+6. Semantically verify staged B.
+7. Commit staged B to the still-unoccupied requested destination.
+8. Only after commit, adopt B, update runtime/cache location, and prime autosave.
 
-Failure before adoption keeps `state.projectFilePath`, narration authority, autosave target, and subsequent normal Save on A. Save As preserves the project ID.
+Failure before commit discards only the host-owned staging root and does not publish B. Failure before adoption keeps `state.projectFilePath`, narration authority, autosave target, and subsequent normal Save on A. Save As preserves the project ID.
 
 ## Portable external snapshot boundary
 
@@ -235,10 +237,10 @@ Input: `parentPath`, `folderName`, `snapshot`.
 
 - Parent must be an existing absolute directory.
 - Sanitize invalid filename characters while preserving useful case/spaces; reject separators.
-- Destination must not exist.
-- Create the root atomically with non-recursive root creation.
-- If a later write fails, recursive cleanup is permitted only for the exact root created by this operation.
-- Return the exact host-generated root.
+- The final destination must not exist.
+- Create a unique application-named staging root as a direct sibling and bind it to an opaque host-owned operation token.
+- If staging or writing fails, recursive cleanup is permitted only for the exact staging-directory identity created by this operation.
+- Return the token plus staging and requested final roots; do not publish the final root.
 
 #### `POST /api/project-package/load`
 
@@ -257,6 +259,16 @@ revisions/
 ```
 
 Copy regular files/directories recursively, preserve relative locations, reject symlinks, and maintain destination containment. Do not copy `project.json`, `manuscript/`, `metadata/`, or `cache/`; regenerate structured state from the canonical snapshot. Cache-only/legacy sources may Save As without source assets.
+
+Like create, Save As writes only to a host-owned sibling staging root and returns its opaque operation token. Both operations use the same staging primitive.
+
+#### `POST /api/project-package/commit`
+
+Input: host-issued `operationToken`. Revalidate the staging directory identity and package, fail if the requested final root now exists, then rename staging to final. Never overwrite an existing destination.
+
+#### `POST /api/project-package/discard`
+
+Input: host-issued `operationToken`. Remove only the exact registered staging-directory identity. Caller-supplied filesystem paths grant no deletion authority.
 
 Do not add wildcard CORS headers to browse, create, or Save As responses.
 
@@ -331,7 +343,8 @@ Any additional failure or changed signature is a regression. Run `git diff --che
 - File-menu project location is read-only.
 - Open validates a folder package and leaves current state untouched on failure.
 - Save writes established authority or invokes Save As when none exists.
-- Save As keeps A authoritative until B passes semantic verification; failure leaves all later storage/media on A.
+- New and Save As final roots remain absent until a verified staging package is committed; failure discards only host-owned staging.
+- Save As keeps A authoritative until B is committed after semantic verification; failure leaves all later storage/media on A.
 - Save As copies only managed owned trees; B remains usable after A is unavailable.
 - Project ID survives Save As and folder-backed reopen.
 - External `project.json` contains no old absolute root.

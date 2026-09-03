@@ -9,9 +9,11 @@ import { createProjectFileAutosaveController } from "./autosave.js";
 import { resolveProjectFileDisplayState } from "./project-file-display.js";
 import {
   browseProjectPackageDirectories,
-  createProjectPackage as createProjectPackageOnDesktop,
+  commitStagedProjectPackage as commitStagedProjectPackageOnDesktop,
+  discardStagedProjectPackage as discardStagedProjectPackageOnDesktop,
   loadProjectPackage as loadProjectPackageFromDesktop,
-  saveProjectPackageAs as saveProjectPackageAsOnDesktop,
+  stageNewProjectPackage as stageNewProjectPackageOnDesktop,
+  stageSaveAsProjectPackage as stageSaveAsProjectPackageOnDesktop,
 } from "./project-package.js";
 import { assertProjectSnapshotsSemanticallyEquivalent } from "./project-snapshot-verification.js";
 import {
@@ -1694,7 +1696,52 @@ export function createProjectPersistenceService({
     return browseProjectPackageDirectories({ path }, { fetchJsonFromDesktopApi });
   }
 
-  // Intent: construct and verify a new package before any candidate project becomes active.
+  // Intent: share filesystem publication ordering so neither New nor Save As exposes an unverified final package.
+  async function stageVerifyAndCommitProjectPackage({ portableSnapshot, operation, stagePackage }) {
+    const staged = await stagePackage();
+    try {
+      if (
+        typeof staged?.operationToken !== "string"
+        || typeof staged?.stagingRootPath !== "string"
+        || typeof staged?.finalRootPath !== "string"
+      ) {
+        throw new Error("Desktop host returned an invalid project package staging operation.");
+      }
+      const loaded = await loadProjectPackageFromDesktop({
+        rootPath: staged.stagingRootPath,
+      }, { fetchJsonFromDesktopApi });
+      assertProjectSnapshotsSemanticallyEquivalent(portableSnapshot, loaded.snapshot, {
+        operation: `${operation} package`,
+      });
+      projectPersistenceLog.info("validation", "project.package.verified", `Verified the staged ${operation} package before publication.`, {
+        rootPath: loaded.rootPath,
+        operation,
+      });
+      const committed = await commitStagedProjectPackageOnDesktop({
+        operationToken: staged.operationToken,
+      }, { fetchJsonFromDesktopApi });
+      return {
+        rootPath: committed.rootPath,
+        snapshot: loaded.snapshot,
+      };
+    } catch (error) {
+      if (typeof staged?.operationToken === "string" && staged.operationToken) {
+        try {
+          await discardStagedProjectPackageOnDesktop({
+            operationToken: staged.operationToken,
+          }, { fetchJsonFromDesktopApi });
+        } catch (discardError) {
+          projectPersistenceLog.warn("filesystem", "project.package.discard-failed", "Failed to discard a staged project package after publication was aborted.", {
+            operation,
+            error: toErrorMessage(discardError),
+          });
+        }
+      }
+      throw error;
+    }
+  }
+
+  // Intent: construct, verify, and publish a new package before any candidate project becomes active.
   async function createDesktopProjectPackage({
     parentPath,
     folderName,
@@ -1710,34 +1757,28 @@ export function createProjectPersistenceService({
     state.projectFileStatus = "Creating project package...";
     renderHeader();
     try {
-      const created = await createProjectPackageOnDesktop({
-        parentPath,
-        folderName,
-        snapshot: portableSnapshot,
-      }, { fetchJsonFromDesktopApi });
-      const loaded = await loadProjectPackageFromDesktop({
-        rootPath: created.rootPath,
-      }, { fetchJsonFromDesktopApi });
-      assertProjectSnapshotsSemanticallyEquivalent(portableSnapshot, loaded.snapshot, {
-        operation: "New Project package",
+      const published = await stageVerifyAndCommitProjectPackage({
+        portableSnapshot,
+        operation: "New Project",
+        stagePackage: () => stageNewProjectPackageOnDesktop({
+          parentPath,
+          folderName,
+          snapshot: portableSnapshot,
+        }, { fetchJsonFromDesktopApi }),
       });
-      projectPersistenceLog.info("validation", "project.package.verified", "Verified the new project package before activation.", {
-        rootPath: loaded.rootPath,
-        operation: "create",
-      });
-      await hydrateProjectLibraryFromLoadedSnapshot(loaded.snapshot, {
-        filePath: loaded.rootPath,
+      await hydrateProjectLibraryFromLoadedSnapshot(published.snapshot, {
+        filePath: published.rootPath,
         sourceLabel: "desktop project package",
         reason: "create-project-package",
         mode: "desktop-package",
         preserveProjectIdentity: true,
       });
-      state.projectFileStatus = `Created project package at ${loaded.rootPath}`;
+      state.projectFileStatus = `Created project package at ${published.rootPath}`;
       renderHeader();
       return {
         status: "created",
-        rootPath: loaded.rootPath,
-        snapshot: loaded.snapshot,
+        rootPath: published.rootPath,
+        snapshot: published.snapshot,
       };
     } catch (error) {
       state.projectFileStatus = `Project creation failed: ${toErrorMessage(error)}`;
@@ -2428,7 +2469,7 @@ export function createProjectPersistenceService({
     }
   }
 
-  // Intent: keep A authoritative until B has been written, reloaded, and semantically verified.
+  // Intent: keep A authoritative until staged B has been written, reloaded, verified, and published.
   async function saveProjectSnapshotAsPackage({ destinationParentPath, folderName } = {}) {
     const reason = "save-project-as-package";
     const sourceRoot = hasProjectFilePath(state.projectFilePath)
@@ -2442,24 +2483,18 @@ export function createProjectPersistenceService({
     state.projectFileStatus = "Saving project package as...";
     renderHeader();
     try {
-      const saved = await saveProjectPackageAsOnDesktop({
-        sourceRoot,
-        destinationParentPath,
-        folderName,
-        snapshot: portableSnapshot,
-      }, { fetchJsonFromDesktopApi });
-      const loaded = await loadProjectPackageFromDesktop({
-        rootPath: saved.rootPath,
-      }, { fetchJsonFromDesktopApi });
-      assertProjectSnapshotsSemanticallyEquivalent(portableSnapshot, loaded.snapshot, {
-        operation: "Save As package",
-      });
-      projectPersistenceLog.info("validation", "project.package.verified", "Verified the Save As package before destination adoption.", {
-        rootPath: loaded.rootPath,
-        operation: "save-as",
+      const published = await stageVerifyAndCommitProjectPackage({
+        portableSnapshot,
+        operation: "Save As",
+        stagePackage: () => stageSaveAsProjectPackageOnDesktop({
+          sourceRoot,
+          destinationParentPath,
+          folderName,
+          snapshot: portableSnapshot,
+        }, { fetchJsonFromDesktopApi }),
       });
 
-      await setActiveProjectFileDestination(loaded.rootPath, null, {
+      await setActiveProjectFileDestination(published.rootPath, null, {
         skipProjectFileAutosave: true,
         persistDesktopProjectFilePath: true,
         clearBrowserFileHandle: true,
@@ -2469,13 +2504,13 @@ export function createProjectPersistenceService({
       clearProjectAutosaveState();
       clearEditorWorkingDirtyState("project-save-as-package-succeeded");
       primeProjectAutosaveTarget();
-      state.projectFileStatus = `Saved project package to ${loaded.rootPath}`;
+      state.projectFileStatus = `Saved project package to ${published.rootPath}`;
       renderHeader();
       return {
         status: "saved",
         mode: "desktop-package",
-        rootPath: loaded.rootPath,
-        snapshot: loaded.snapshot,
+        rootPath: published.rootPath,
+        snapshot: published.snapshot,
         projectFilePersisted: true,
         fallbackPersisted: false,
       };
