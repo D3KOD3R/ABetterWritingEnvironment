@@ -342,6 +342,99 @@ async function runLifecycleChild() {
   const create = createPublication.staged;
   const loadA = createPublication.loaded;
 
+  // Intent: current scene declarations, not obsolete disk sidecars or projectStorage scaffolding, own membership and order.
+  const authorityRoot = path.join(lifecycleRoot, "Scene Authority");
+  const authorityProjectId = "project-scene-authority";
+  const createAuthorityScene = (sceneId, title, text, lineNumber) => ({
+    sceneId,
+    chapterId: "chapter-authority",
+    chapterTitle: "Authority Chapter",
+    sceneTitle: title,
+    sceneSynopsis: `${title} synopsis`,
+    editorText: text,
+    blocks: [{
+      blockId: `block-${sceneId}`,
+      paragraphId: `paragraph-${sceneId}`,
+      lineNumber,
+      kind: "narration",
+      speakerLabel: "",
+      text,
+      issueIds: [],
+      eventTagIds: [],
+      isDraft: false,
+    }],
+  });
+  const authoritySceneA = createAuthorityScene("scene-a", "Scene A", "Alpha", 1);
+  const authoritySceneB = createAuthorityScene("scene-b", "Scene B", "Beta", 2);
+  const authoritySnapshot = {
+    schemaVersion: 2,
+    activeProjectId: authorityProjectId,
+    projects: [{
+      id: authorityProjectId,
+      schemaVersion: 2,
+      title: "Scene Authority",
+      projectIndex: {
+        sceneOrder: ["scene-a", "scene-b"],
+        scenes: [
+          { id: "scene-a", chapterId: "chapter-authority", title: "Scene A", synopsis: "Scene A synopsis" },
+          { id: "scene-b", chapterId: "chapter-authority", title: "Scene B", synopsis: "Scene B synopsis" },
+        ],
+      },
+      structureDrafts: { sceneOrder: ["scene-a", "scene-b"], scenes: [] },
+      workspace: { project: { lines: [] } },
+    }],
+    sceneStore: { [authorityProjectId]: { "scene-a": authoritySceneA, "scene-b": authoritySceneB } },
+  };
+  const initialAuthorityWrite = await sendJson("/api/project-file/save", {
+    filePath: authorityRoot,
+    snapshot: authoritySnapshot,
+  });
+  const initialAuthorityLoad = await sendJson("/api/project-package/load", { rootPath: authorityRoot });
+  const deletedSceneSnapshot = structuredClone(initialAuthorityLoad.value.snapshot);
+  deletedSceneSnapshot.projects[0].projectIndex.sceneOrder = ["scene-a"];
+  deletedSceneSnapshot.projects[0].projectIndex.scenes = deletedSceneSnapshot.projects[0].projectIndex.scenes
+    .filter((scene) => scene.id === "scene-a");
+  deletedSceneSnapshot.projects[0].structureDrafts.sceneOrder = ["scene-a"];
+  deletedSceneSnapshot.projects[0].structureDrafts.scenes = deletedSceneSnapshot.projects[0].structureDrafts.scenes
+    .filter((scene) => scene.sceneId === "scene-a");
+  deletedSceneSnapshot.projects[0].workspace.project.lines = deletedSceneSnapshot.projects[0].workspace.project.lines
+    .filter((line) => line.sceneId === "scene-a");
+  delete deletedSceneSnapshot.sceneStore[authorityProjectId]["scene-b"];
+  const deletedSceneWrite = await sendJson("/api/project-file/save", {
+    filePath: authorityRoot,
+    snapshot: deletedSceneSnapshot,
+  });
+  const deletedSceneReload = await sendJson("/api/project-package/load", { rootPath: authorityRoot });
+
+  const authoritySceneC = createAuthorityScene("scene-c", "Scene C", "Gamma", 3);
+  const reorderedSnapshot = structuredClone(deletedSceneReload.value.snapshot);
+  reorderedSnapshot.projects[0].projectIndex.sceneOrder = ["scene-c", "scene-a"];
+  reorderedSnapshot.projects[0].projectIndex.scenes = [
+    { id: "scene-c", chapterId: "chapter-authority", title: "Scene C", synopsis: "Scene C synopsis" },
+    { id: "scene-a", chapterId: "chapter-authority", title: "Scene A Renamed", synopsis: "Renamed synopsis" },
+  ];
+  reorderedSnapshot.projects[0].structureDrafts.sceneOrder = ["scene-c", "scene-a"];
+  reorderedSnapshot.sceneStore[authorityProjectId]["scene-a"].sceneTitle = "Scene A Renamed";
+  reorderedSnapshot.sceneStore[authorityProjectId]["scene-a"].sceneSynopsis = "Renamed synopsis";
+  reorderedSnapshot.sceneStore[authorityProjectId]["scene-c"] = authoritySceneC;
+  const reorderedWrite = await sendJson("/api/project-file/save", {
+    filePath: authorityRoot,
+    snapshot: reorderedSnapshot,
+  });
+  const reorderedReload = await sendJson("/api/project-package/load", { rootPath: authorityRoot });
+  assert.equal(initialAuthorityWrite.response.statusCode, 200);
+  assert.equal(initialAuthorityLoad.response.statusCode, 200);
+  assert.equal(deletedSceneWrite.response.statusCode, 200);
+  assert.deepEqual(deletedSceneReload.value.snapshot.projects[0].projectStorage.sceneOrder, ["scene-a"]);
+  assert.equal(Object.hasOwn(deletedSceneReload.value.snapshot.sceneStore[authorityProjectId], "scene-b"), false);
+  assert.equal(reorderedWrite.response.statusCode, 200);
+  assert.deepEqual(reorderedReload.value.snapshot.projects[0].projectStorage.sceneOrder, ["scene-c", "scene-a"]);
+  assert.equal(reorderedReload.value.snapshot.projects[0].projectIndex.scenes[1].title, "Scene A Renamed");
+  assert.equal(
+    reorderedReload.value.snapshot.sceneStore[authorityProjectId]["scene-c"].blocks[0].paragraphId,
+    "paragraph-scene-c",
+  );
+
   let activeRoot = projectA;
   const fetchJson = async (pathname, options = {}) => {
     const result = await sendJson(pathname, options.body);
@@ -615,6 +708,7 @@ async function runLifecycleChild() {
     packageScaffoldExists: requiredDirectories.every((relativePath) => existsSync(path.join(unavailableProjectA, ...relativePath.split("/"))))
       && existsSync(path.join(unavailableProjectA, "project.json")),
     newRoundTripVerified: loadA.response.statusCode === 200,
+    currentSceneAuthorityPreservesDeletionAndEdits: true,
     saveAsCreatedB: saveAs.response.statusCode === 200
       && saveAs.value.finalRootPath === projectB
       && saveAsPublication.committed.value.rootPath === projectB,

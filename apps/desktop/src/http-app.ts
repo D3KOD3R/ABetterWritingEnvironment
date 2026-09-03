@@ -1924,6 +1924,34 @@ function getSceneOrderFromProject(projectRecord: Record<string, any>, sceneStore
   return [...new Set(orderedCandidates.map((sceneId) => normalizeSceneId(sceneId)).filter(Boolean))];
 }
 
+// Current semantic declarations control membership; prior sidecars may backfill bodies but cannot resurrect deleted scenes.
+function getCurrentDeclaredSceneOrder(
+  projectRecord: Record<string, any>,
+  extractedScenes: Record<string, Record<string, any>>,
+  explicitScenes: Record<string, Record<string, any>>,
+) {
+  const fromIndex = Array.isArray(projectRecord?.projectIndex?.sceneOrder)
+    ? projectRecord.projectIndex.sceneOrder
+    : [];
+  const fromStructureOrder = Array.isArray(projectRecord?.structureDrafts?.sceneOrder)
+    ? projectRecord.structureDrafts.sceneOrder
+    : [];
+  const fromStructureScenes = Array.isArray(projectRecord?.structureDrafts?.scenes)
+    ? projectRecord.structureDrafts.scenes.map((scene: any) => scene?.sceneId)
+    : [];
+  const fromWorkspaceLines = Array.isArray(projectRecord?.workspace?.project?.lines)
+    ? projectRecord.workspace.project.lines.map((line: any) => line?.sceneId)
+    : [];
+  return [...new Set([
+    ...fromIndex,
+    ...fromStructureOrder,
+    ...fromStructureScenes,
+    ...fromWorkspaceLines,
+    ...Object.keys(extractedScenes),
+    ...Object.keys(explicitScenes),
+  ].map((sceneId) => normalizeSceneId(sceneId)).filter(Boolean))];
+}
+
 function buildSceneFilesForProject(projectRecord: Record<string, any>, sceneOrder: string[]) {
   const existingSceneFiles = projectRecord?.projectStorage?.sceneFiles
     && typeof projectRecord.projectStorage.sceneFiles === "object"
@@ -2545,13 +2573,15 @@ async function writeProjectPackageAtRoot(projectRootValue: string, snapshot: unk
       ? cloneValue(candidateSnapshot.sceneStore[projectId])
       : {};
     const extractedScenes = collectSceneStoreFromProjectRecord(projectRecord);
-    const mergedScenes: Record<string, Record<string, any>> = {
-      ...existingScenes,
-      ...extractedScenes,
-      ...explicitScenes,
-    };
-
-    const sceneOrder = getSceneOrderFromProject(projectRecord, mergedScenes);
+    const sceneOrder = getCurrentDeclaredSceneOrder(projectRecord, extractedScenes, explicitScenes);
+    const mergedScenes: Record<string, Record<string, any>> = Object.fromEntries(sceneOrder.map((sceneId) => [
+      sceneId,
+      {
+        ...(existingScenes[sceneId] ?? {}),
+        ...(extractedScenes[sceneId] ?? {}),
+        ...(explicitScenes[sceneId] ?? {}),
+      },
+    ]));
     const sceneFiles = buildSceneFilesForProject(projectRecord, sceneOrder);
 
     for (const sceneId of sceneOrder) {
