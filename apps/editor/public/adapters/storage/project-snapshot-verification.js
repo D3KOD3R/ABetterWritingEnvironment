@@ -144,6 +144,34 @@ function buildWriterGeneratedStructuralScene(sceneId, index, indexScene = {}) {
   };
 }
 
+const WRITER_STRUCTURAL_FIELD_NAMES = Object.freeze([
+  "sceneId",
+  "chapterId",
+  "chapterTitle",
+  "sceneTitle",
+  "sceneSynopsis",
+  "order",
+  "initialText",
+]);
+
+function collectAuthoredStructuralProperties(existingScene) {
+  const authoredProperties = cloneValue(existingScene);
+  for (const fieldName of WRITER_STRUCTURAL_FIELD_NAMES) {
+    delete authoredProperties[fieldName];
+  }
+  return authoredProperties;
+}
+
+function resolveStructuralString(existingValue, generatedValue, canonicalValue) {
+  const normalizedValue = typeof existingValue === "string" ? existingValue : generatedValue;
+  return normalizedValue === generatedValue ? canonicalValue : normalizedValue;
+}
+
+function resolveStructuralOrder(existingValue, generatedValue) {
+  const normalizedValue = Number.isFinite(Number(existingValue)) ? Number(existingValue) : generatedValue;
+  return normalizedValue === generatedValue ? generatedValue : normalizedValue;
+}
+
 // Intent: merge canonical scene facts with authored structure without treating manifest scaffolding as authored data.
 function buildCanonicalStructuralScenes(projectRecord, scenes, sceneOrder) {
   const structuralScenes = Array.isArray(projectRecord?.structureDrafts?.scenes)
@@ -164,32 +192,33 @@ function buildCanonicalStructuralScenes(projectRecord, scenes, sceneOrder) {
     const indexScene = indexBySceneId.get(sceneId) ?? {};
     const canonicalScene = scenes[sceneId] ?? {};
     const generatedScene = buildWriterGeneratedStructuralScene(sceneId, index, indexScene);
-    const structuralSource = stableSerialize(existingScene) === stableSerialize(generatedScene)
-      ? {}
-      : existingScene;
+    const authoredProperties = collectAuthoredStructuralProperties(existingScene);
+    const canonicalChapterId = typeof indexScene.chapterId === "string"
+      ? indexScene.chapterId
+      : canonicalScene.chapterId ?? "";
+    const canonicalSceneTitle = typeof indexScene.title === "string"
+      ? indexScene.title
+      : canonicalScene.sceneTitle ?? "Untitled Scene";
+    const canonicalSceneSynopsis = typeof indexScene.synopsis === "string"
+      ? indexScene.synopsis
+      : canonicalScene.sceneSynopsis ?? "";
     return {
-      ...cloneValue(structuralSource),
+      ...authoredProperties,
       sceneId,
-      chapterId: typeof structuralSource.chapterId === "string"
-        ? structuralSource.chapterId
-        : typeof indexScene.chapterId === "string"
-          ? indexScene.chapterId
-          : canonicalScene.chapterId ?? "",
-      chapterTitle: typeof structuralSource.chapterTitle === "string"
-        ? structuralSource.chapterTitle
-        : canonicalScene.chapterTitle ?? "Untitled Chapter",
-      sceneTitle: typeof structuralSource.sceneTitle === "string"
-        ? structuralSource.sceneTitle
-        : typeof indexScene.title === "string"
-          ? indexScene.title
-          : canonicalScene.sceneTitle ?? "Untitled Scene",
-      sceneSynopsis: typeof structuralSource.sceneSynopsis === "string"
-        ? structuralSource.sceneSynopsis
-        : typeof indexScene.synopsis === "string"
-          ? indexScene.synopsis
-          : canonicalScene.sceneSynopsis ?? "",
-      order: Number.isFinite(Number(structuralSource.order)) ? Number(structuralSource.order) : index + 1,
-      initialText: typeof structuralSource.initialText === "string" ? structuralSource.initialText : "",
+      chapterId: resolveStructuralString(existingScene.chapterId, generatedScene.chapterId, canonicalChapterId),
+      chapterTitle: resolveStructuralString(
+        existingScene.chapterTitle,
+        generatedScene.chapterTitle,
+        canonicalScene.chapterTitle ?? "Untitled Chapter",
+      ),
+      sceneTitle: resolveStructuralString(existingScene.sceneTitle, generatedScene.sceneTitle, canonicalSceneTitle),
+      sceneSynopsis: resolveStructuralString(
+        existingScene.sceneSynopsis,
+        generatedScene.sceneSynopsis,
+        canonicalSceneSynopsis,
+      ),
+      order: resolveStructuralOrder(existingScene.order, generatedScene.order),
+      initialText: resolveStructuralString(existingScene.initialText, generatedScene.initialText, ""),
     };
   });
 }

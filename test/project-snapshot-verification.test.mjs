@@ -89,14 +89,16 @@ function materializeWriterStructuralScene(snapshot) {
   const project = candidate.projects[0];
   const sceneId = project.projectIndex.sceneOrder[0];
   const indexScene = project.projectIndex.scenes[0];
+  const existingScene = project.structureDrafts.scenes.find((scene) => scene.sceneId === sceneId) ?? {};
   project.structureDrafts.scenes = [{
+    ...existingScene,
     sceneId,
-    chapterId: indexScene.chapterId,
-    chapterTitle: "Untitled Chapter",
-    sceneTitle: indexScene.title,
-    sceneSynopsis: indexScene.synopsis,
-    order: 1,
-    initialText: "",
+    chapterId: typeof existingScene.chapterId === "string" ? existingScene.chapterId : indexScene.chapterId,
+    chapterTitle: typeof existingScene.chapterTitle === "string" ? existingScene.chapterTitle : "Untitled Chapter",
+    sceneTitle: typeof existingScene.sceneTitle === "string" ? existingScene.sceneTitle : indexScene.title,
+    sceneSynopsis: typeof existingScene.sceneSynopsis === "string" ? existingScene.sceneSynopsis : indexScene.synopsis,
+    order: Number.isFinite(Number(existingScene.order)) ? Number(existingScene.order) : 1,
+    initialText: typeof existingScene.initialText === "string" ? existingScene.initialText : "",
   }];
   return candidate;
 }
@@ -110,6 +112,31 @@ export async function runProjectSnapshotVerificationTest() {
   assert.equal(Object.hasOwn(projected.projects[0].project.structureDrafts, "scenes"), false);
   assert.deepEqual(projected.projects[0].project.structureDrafts.actLabels, ["Arrival"]);
   assert.equal(projected.projects[0].structuralScenes[0].chapterTitle, "Chapter One");
+
+  // Intent: generated fields added beside a custom overlay must not acquire authored semantics during readback.
+  const partialOverlayExpected = createSnapshot();
+  partialOverlayExpected.projects[0].structureDrafts.scenes = [{
+    sceneId: "scene-verification",
+    location: "Mars",
+  }];
+  const partialOverlayMaterialized = materializeWriterStructuralScene(partialOverlayExpected);
+  assert.doesNotThrow(() => assertProjectSnapshotsSemanticallyEquivalent(
+    partialOverlayExpected,
+    partialOverlayMaterialized,
+  ));
+
+  const changedPartialOverlay = structuredClone(partialOverlayMaterialized);
+  changedPartialOverlay.projects[0].structureDrafts.scenes[0].location = "Venus";
+  assert.throws(
+    () => assertProjectSnapshotsSemanticallyEquivalent(partialOverlayExpected, changedPartialOverlay),
+    /not semantically equivalent/,
+  );
+  const removedPartialOverlay = structuredClone(partialOverlayMaterialized);
+  delete removedPartialOverlay.projects[0].structureDrafts.scenes[0].location;
+  assert.throws(
+    () => assertProjectSnapshotsSemanticallyEquivalent(partialOverlayExpected, removedPartialOverlay),
+    /not semantically equivalent/,
+  );
 
   const richExpected = createSnapshot({ includeStructure: true });
   const corruptionCases = [
