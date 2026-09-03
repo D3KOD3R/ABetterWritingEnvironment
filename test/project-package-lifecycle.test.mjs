@@ -117,6 +117,17 @@ export async function runProjectPackageLifecycleTest() {
 async function runLifecycleChild() {
   const lifecycleRoot = process.env.ABE_PACKAGE_LIFECYCLE_ROOT;
   if (!lifecycleRoot) throw new Error("Lifecycle child requires an external temporary root.");
+  const appSource = readFileSync(path.join(WORKTREE_ROOT, "apps", "editor", "public", "app.js"), "utf8");
+  const packageFieldHandlerStart = appSource.indexOf(
+    "if (target instanceof HTMLInputElement && target.dataset.projectPackageField",
+  );
+  const packageFieldHandlerEnd = appSource.indexOf("const { editField, sceneId }", packageFieldHandlerStart);
+  const packageFieldHandler = appSource.slice(packageFieldHandlerStart, packageFieldHandlerEnd);
+  assert.match(
+    packageFieldHandler,
+    /if \(field === "locationPath"\) \{\s*clearProjectPackageDialogDirectoryList\(\);\s*\}[\s\S]*confirmButton\.disabled = !canConfirmProjectPackageDialog/,
+    "Editing the package location must rerender the invalidated directory listing immediately.",
+  );
 
   const [
     { createDesktopResponseForRequest },
@@ -130,6 +141,13 @@ async function runLifecycleChild() {
     { buildProjectIndexFromProjectRecord },
     { PROJECT_SCHEMA_VERSION },
     { normalizeProjectSelectionDefaults },
+    { createProjectActivationStateService },
+    {
+      syncNarrationAlignmentJobsMetadata,
+      syncNarrationSessionMetadata,
+      syncVoiceRecordingsMetadata,
+      syncVoiceRenderJobsMetadata,
+    },
     {
       PROJECT_PACKAGE_DIALOG_MODES,
       applyProjectPackageBrowseResult,
@@ -146,6 +164,8 @@ async function runLifecycleChild() {
     import(new URL("../apps/editor/public/adapters/storage/project-index.js", import.meta.url)),
     import(new URL("../apps/editor/public/adapters/storage/project-migrations.js", import.meta.url)),
     import(new URL("../apps/editor/public/state/project-library-state.js", import.meta.url)),
+    import(new URL("../apps/editor/public/state/project-activation-state.js", import.meta.url)),
+    import(new URL("../apps/editor/public/features/narration/narration-metadata-sync-service.js", import.meta.url)),
     import(new URL("../apps/editor/public/features/project-lifecycle/project-package-dialog.js", import.meta.url)),
   ]);
 
@@ -393,6 +413,70 @@ async function runLifecycleChild() {
     expectedSnapshot: blankPortableSnapshot,
     operation: "Blank New Project package",
   });
+  const blankPublishedLoad = await sendJson("/api/project-package/load", { rootPath: blankProjectRoot });
+  assert.equal(blankPublishedLoad.response.statusCode, 200);
+  const activatedBlankState = {};
+  const activationService = createProjectActivationStateService({
+    state: activatedBlankState,
+    createStructureDrafts: () => ({ scenes: [] }),
+    createTemplateDrafts: () => [],
+    normalizeManuscriptTasks: (value) => Array.isArray(value) ? value : [],
+    normalizePassageNotes: (value) => Array.isArray(value) ? value : [],
+    readRevisionState: () => ({ sessions: [] }),
+    createRevisionPanelStateForProject: () => ({ selectedSessionId: "" }),
+    normalizeProjectSettingsSnapshot: () => ({
+      activePane: "manuscript",
+      editorPrefs: {},
+      localAiPrefs: {},
+      spellcheck: {},
+      writingTargetState: {},
+    }),
+    buildProjectSettingsCandidate: (record) => record,
+    getProjectRecordWordCountForSettings: () => 0,
+    normalizeSpellcheckProjectSettings: (value) => value ?? {},
+  });
+  activationService.applyProjectRecordToState(blankPublishedLoad.value.snapshot.projects[0]);
+
+  // Intent: reproduce the production activation path before render and manuscript metadata consumers dereference service roots.
+  const dream = activatedBlankState.workspace.analysis.dreamScaping;
+  const dreamSuggestions = dream
+    ? activatedBlankState.workspace.analysis.suggestionQueue.filter((suggestion) =>
+        dream.suggestionIds.includes(suggestion.id))
+    : [];
+  const emptyLineIndex = new Map();
+  const emptySceneIndex = new Map();
+  const narrationSession = syncNarrationSessionMetadata(
+    activatedBlankState.workspace.narration.session,
+    emptyLineIndex,
+  );
+  const narrationJobs = syncNarrationAlignmentJobsMetadata(
+    activatedBlankState.workspace.narration.alignmentJobs,
+    emptyLineIndex,
+  );
+  const voiceRecordings = syncVoiceRecordingsMetadata(
+    activatedBlankState.workspace.voice.recordings,
+    emptyLineIndex,
+  );
+  const voiceRenderJobs = syncVoiceRenderJobsMetadata(
+    activatedBlankState.workspace.voice.renderJobs,
+    emptySceneIndex,
+  );
+  const reserializedActivatedBlank = buildPortableExternalProjectSnapshot({
+    ...blankPublishedLoad.value.snapshot,
+    projects: [{
+      ...blankPublishedLoad.value.snapshot.projects[0],
+      workspace: activatedBlankState.workspace,
+    }],
+  });
+  const activatedBlankRuntimeVerified = dream === null
+    && dreamSuggestions.length === 0
+    && narrationSession === null
+    && narrationJobs.length === 0
+    && voiceRecordings.length === 0
+    && voiceRenderJobs.length === 0
+    && reserializedActivatedBlank.projects[0].workspace.analysis === undefined
+    && reserializedActivatedBlank.projects[0].workspace.narration === undefined
+    && reserializedActivatedBlank.projects[0].workspace.voice.renderJobs === undefined;
   const createPublication = await stageLoadVerifyAndCommit({
     pathname: "/api/project-package/create",
     body: {
@@ -868,7 +952,9 @@ async function runLifecycleChild() {
       && createPublication.committed.value.rootPath === projectA,
     blankNewProjectNormalizationVerified: blankPublication.staged.response.statusCode === 200
       && blankPublication.staged.value.finalRootPath === blankProjectRoot
-      && blankPublication.loaded.response.statusCode === 200,
+      && blankPublication.loaded.response.statusCode === 200
+      && activatedBlankRuntimeVerified,
+    locationEditRerendersInvalidatedDirectoryList: true,
     packageScaffoldExists: requiredDirectories.every((relativePath) => existsSync(path.join(unavailableProjectA, ...relativePath.split("/"))))
       && existsSync(path.join(unavailableProjectA, "project.json")),
     newRoundTripVerified: loadA.response.statusCode === 200,

@@ -10,7 +10,34 @@ function cloneValue(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
-function createDefaultVoiceWorkspace() {
+export function createDefaultAnalysisWorkspace() {
+  return {
+    provider: {
+      id: "local-rule-analysis",
+      label: "Local Rule Analysis",
+      availability: "ready",
+      executionMode: "local-only",
+    },
+    lastJob: null,
+    suggestionQueue: [],
+    dreamScaping: null,
+  };
+}
+
+export function createDefaultNarrationWorkspace() {
+  return {
+    provider: {
+      id: "local-audio-service",
+      label: "Local Audio",
+      availability: "ready",
+      alignmentStrategy: "line-based",
+    },
+    session: null,
+    alignmentJobs: [],
+  };
+}
+
+export function createDefaultVoiceWorkspace() {
   return {
     provider: {
       id: "local-voice-service",
@@ -23,6 +50,42 @@ function createDefaultVoiceWorkspace() {
     renderJobs: [],
     recordings: [],
   };
+}
+
+function hydrateRuntimeServiceRoot(value, defaults, arrayKeys) {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const hydrated = {
+    ...defaults,
+    ...source,
+    provider: source.provider && typeof source.provider === "object" && !Array.isArray(source.provider)
+      ? { ...defaults.provider, ...source.provider }
+      : defaults.provider,
+  };
+  for (const key of arrayKeys) {
+    if (!Array.isArray(hydrated[key])) hydrated[key] = [];
+  }
+  return hydrated;
+}
+
+// Intent: portable packages omit live service execution state, so activation owns rebuilding the safe runtime shape.
+export function hydrateRuntimeWorkspace(workspace, { clone = cloneValue } = {}) {
+  const hydrated = clone(workspace && typeof workspace === "object" && !Array.isArray(workspace) ? workspace : {});
+  hydrated.analysis = hydrateRuntimeServiceRoot(
+    hydrated.analysis,
+    createDefaultAnalysisWorkspace(),
+    ["suggestionQueue"],
+  );
+  hydrated.narration = hydrateRuntimeServiceRoot(
+    hydrated.narration,
+    createDefaultNarrationWorkspace(),
+    ["alignmentJobs"],
+  );
+  hydrated.voice = hydrateRuntimeServiceRoot(
+    hydrated.voice,
+    createDefaultVoiceWorkspace(),
+    ["profiles", "bindings", "renderJobs", "recordings"],
+  );
+  return hydrated;
 }
 
 export function createProjectActivationStateService({
@@ -71,12 +134,7 @@ export function createProjectActivationStateService({
 
     state.activeProjectId = record.id;
     state.projectLibrarySelectionId = record.id;
-    state.workspace = clone(record.workspace);
-    if (!state.workspace.voice || typeof state.workspace.voice !== "object") {
-      state.workspace.voice = createDefaultVoiceWorkspace();
-    } else if (!Array.isArray(state.workspace.voice.recordings)) {
-      state.workspace.voice.recordings = [];
-    }
+    state.workspace = hydrateRuntimeWorkspace(record.workspace, { clone });
     state.projectTitle = record.title ?? state.workspace.project.title;
     state.workspace.project.title = state.projectTitle;
     state.sceneDrafts = clone(record.sceneDrafts ?? {});

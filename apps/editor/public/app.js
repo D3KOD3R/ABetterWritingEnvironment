@@ -4175,11 +4175,16 @@ function wireEvents() {
     }
 
     if (target instanceof HTMLInputElement && target.dataset.projectPackageField && state.projectPackageDialog) {
+      const field = target.dataset.projectPackageField;
       state.projectPackageDialog = updateProjectPackageDialogField(
         state.projectPackageDialog,
-        target.dataset.projectPackageField,
+        field,
         target.value,
       );
+      // Intent: typed locations invalidate the browsed directory result, so stale folders must disappear immediately.
+      if (field === "locationPath") {
+        clearProjectPackageDialogDirectoryList();
+      }
       const confirmButton = document.querySelector('[data-action="confirm-project-package-dialog"]');
       if (confirmButton instanceof HTMLButtonElement) {
         confirmButton.disabled = !canConfirmProjectPackageDialog(state.projectPackageDialog);
@@ -5172,6 +5177,11 @@ function renderProjectPackageDialog() {
   const slot = document.querySelector("#project-package-dialog-slot");
   if (!slot) return;
   slot.innerHTML = renderProjectPackageDialogHTML(state.projectPackageDialog);
+}
+
+function clearProjectPackageDialogDirectoryList() {
+  const directoryList = document.querySelector(".project-package-dialog__browser");
+  if (directoryList) directoryList.innerHTML = "<p>No child folders.</p>";
 }
 
 function closeProjectPackageDialog() {

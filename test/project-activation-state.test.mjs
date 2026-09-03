@@ -96,6 +96,11 @@ export function runProjectActivationStateTest() {
         id: "project-1",
         title: "Prior Title",
       },
+      voice: {
+        profiles: [{ id: "voice-profile-1", displayName: "Narrator" }],
+        bindings: [{ id: "voice-binding-1", profileId: "voice-profile-1" }],
+        recordings: [{ id: "recording-1", profileId: "voice-profile-1" }],
+      },
     },
     sceneDrafts: { "scene-1": { editorText: "Active text." } },
     manuscriptTasks: [{ id: "task-1" }],
@@ -115,7 +120,17 @@ export function runProjectActivationStateTest() {
   assert.equal(state.activeProjectId, "project-1");
   assert.equal(state.projectLibrarySelectionId, "project-1");
   assert.equal(state.workspace.project.title, "Activated Project");
+  assert.equal(state.workspace.analysis.provider.id, "local-rule-analysis");
+  assert.equal(state.workspace.analysis.dreamScaping, null);
+  assert.deepEqual(state.workspace.analysis.suggestionQueue, []);
+  assert.equal(state.workspace.narration.provider.id, "local-audio-service");
+  assert.equal(state.workspace.narration.session, null);
+  assert.deepEqual(state.workspace.narration.alignmentJobs, []);
   assert.equal(state.workspace.voice.provider.id, "local-voice-service");
+  assert.equal(state.workspace.voice.profiles[0].id, "voice-profile-1");
+  assert.equal(state.workspace.voice.bindings[0].id, "voice-binding-1");
+  assert.equal(state.workspace.voice.recordings[0].id, "recording-1");
+  assert.deepEqual(state.workspace.voice.renderJobs, []);
   assert.equal(state.sceneDrafts["scene-1"].editorText, "Active text.");
   assert.equal(state.manuscriptTasks[0].id, "task-1");
   assert.equal(state.passageNotes[0].id, "note-1");
