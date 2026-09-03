@@ -82,6 +82,10 @@ const MACHINE_PATH_FIELDS = new Set([
   "defaultProjectRoot",
 ]);
 
+const NONCANONICAL_SCENE_RUNTIME_FIELD_NAMES = Object.freeze([
+  "revisionStats",
+]);
+
 function sanitizePortableValue(value, ancestors = new Set()) {
   if (Array.isArray(value)) {
     if (ancestors.has(value)) throw new TypeError("Portable project state cannot contain cycles.");
@@ -102,6 +106,39 @@ function sanitizePortableValue(value, ancestors = new Set()) {
   return result;
 }
 
+function stripNoncanonicalSceneRuntimeFields(scene) {
+  if (!scene || typeof scene !== "object" || Array.isArray(scene)) return scene;
+  for (const fieldName of NONCANONICAL_SCENE_RUNTIME_FIELD_NAMES) {
+    delete scene[fieldName];
+  }
+  return scene;
+}
+
+function sanitizePortableSceneMap(sceneMap) {
+  const portableSceneMap = sanitizePortableValue(sceneMap);
+  if (!portableSceneMap || typeof portableSceneMap !== "object" || Array.isArray(portableSceneMap)) {
+    return portableSceneMap;
+  }
+  for (const scene of Object.values(portableSceneMap)) {
+    stripNoncanonicalSceneRuntimeFields(scene);
+  }
+  return portableSceneMap;
+}
+
+function sanitizePortableSceneStore(sceneStore) {
+  const portableSceneStore = sanitizePortableValue(sceneStore);
+  if (!portableSceneStore || typeof portableSceneStore !== "object" || Array.isArray(portableSceneStore)) {
+    return portableSceneStore;
+  }
+  for (const projectScenes of Object.values(portableSceneStore)) {
+    if (!projectScenes || typeof projectScenes !== "object" || Array.isArray(projectScenes)) continue;
+    for (const scene of Object.values(projectScenes)) {
+      stripNoncanonicalSceneRuntimeFields(scene);
+    }
+  }
+  return portableSceneStore;
+}
+
 function selectFields(source, fieldNames) {
   if (!source || typeof source !== "object" || Array.isArray(source)) return {};
   return Object.fromEntries(fieldNames
@@ -119,6 +156,9 @@ function serializeWorkspace(workspace) {
 
 function serializeProjectRecord(project) {
   const portableProject = selectFields(project, PROJECT_RECORD_FIELDS);
+  if (Object.prototype.hasOwnProperty.call(portableProject, "sceneDrafts")) {
+    portableProject.sceneDrafts = sanitizePortableSceneMap(project?.sceneDrafts);
+  }
   portableProject.workspace = serializeWorkspace(project?.workspace);
   portableProject.projectSettings = selectFields(project?.projectSettings, PROJECT_SETTINGS_FIELDS);
   portableProject.projectIndex = selectFields(project?.projectIndex, PROJECT_INDEX_FIELDS);
@@ -131,6 +171,6 @@ export function buildPortableProjectSnapshot(snapshot = {}) {
     schemaVersion: snapshot?.schemaVersion,
     activeProjectId: snapshot?.activeProjectId,
     projects: (Array.isArray(snapshot?.projects) ? snapshot.projects : []).map(serializeProjectRecord),
-    sceneStore: sanitizePortableValue(snapshot?.sceneStore ?? {}),
+    sceneStore: sanitizePortableSceneStore(snapshot?.sceneStore ?? {}),
   });
 }
