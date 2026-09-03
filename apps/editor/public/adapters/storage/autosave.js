@@ -14,6 +14,7 @@ export function createProjectFileAutosaveController({
 }) {
   let lastQueueSkipReason = "";
   let immediateFlushPending = false;
+  let activeFlushPromise = null;
   const DEFAULT_DIRTY_DOMAIN = "project";
 
   const normalizeDirtyDomain = (value) => {
@@ -289,7 +290,7 @@ export function createProjectFileAutosaveController({
   };
 
   // Intent: write only if the dirty target still matches the active project file destination.
-  const flush = async () => {
+  const runFlushCycle = async () => {
     const dirty = state.projectFileAutosaveDirty === true;
     const blocked = Boolean(state.projectFileAutosaveBlocked);
     const suppressed = state.projectFileAutosaveSuppressionDepth > 0;
@@ -386,10 +387,41 @@ export function createProjectFileAutosaveController({
         immediate: shouldFlushImmediately,
       });
       if (shouldFlushImmediately) {
-        await flush();
+        await runFlushCycle();
       } else {
         queue();
       }
+    }
+  };
+
+  // Intent: busy callers latch follow-up durability without awaiting the cycle they interrupted.
+  const flush = () => {
+    if (activeFlushPromise) {
+      if (
+        state.projectFileAutosaveDirty === true &&
+        !state.projectFileAutosaveBlocked &&
+        isEnabled() === true &&
+        hasDestination() === true
+      ) {
+        immediateFlushPending = true;
+      }
+      return Promise.resolve();
+    }
+
+    const trackedPromise = runFlushCycle().finally(() => {
+      if (activeFlushPromise === trackedPromise) {
+        activeFlushPromise = null;
+      }
+    });
+    activeFlushPromise = trackedPromise;
+    return trackedPromise;
+  };
+
+  // Intent: project replacement waits through the active write and every explicitly required follow-up.
+  const drain = async () => {
+    await flush();
+    while (activeFlushPromise) {
+      await activeFlushPromise;
     }
   };
 
@@ -398,6 +430,7 @@ export function createProjectFileAutosaveController({
     block,
     clearState,
     clearTimer,
+    drain,
     endSuppression,
     flush,
     isEnabled,

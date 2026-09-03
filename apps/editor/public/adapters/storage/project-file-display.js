@@ -7,9 +7,9 @@ import {
   normalizeProjectFilePath,
 } from "./project-file.js";
 
-const DEFAULT_PROJECT_FILE_DISPLAY_NAME = "Untitled project file";
+const DEFAULT_PROJECT_FILE_DISPLAY_NAME = "Untitled project";
 const PROJECT_FILE_PATH_UNAVAILABLE_TOOLTIP =
-  "Project file path unavailable. Use Save as file with a full path to set one.";
+  "No active project package. Use Save As to choose a package location.";
 
 // Intent: recover the best known full path for tooltips while keeping compact names separate.
 export function resolveProjectFileDisplayState({

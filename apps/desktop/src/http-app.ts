@@ -1,6 +1,7 @@
 // Intent: expose the desktop HTTP surface that serves the editor, workspace data, settings, and local services.
 import { readFileSync } from "node:fs";
-import { appendFile, mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
+import { appendFile, copyFile, lstat, mkdir, readFile, readdir, rm, stat, unlink, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { dirname, extname, isAbsolute, join, relative, resolve as resolvePath, sep as pathSeparator } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -478,6 +479,73 @@ export async function createDesktopResponseForRequest(
         ok: false,
         message: error instanceof Error ? error.message : "Unable to save the project file.",
       }, apiCorsHeaders());
+    }
+  }
+
+  if (method === "POST" && request.pathname === "/api/project-package/browse") {
+    const body = parseJsonBody(request.body);
+    try {
+      return jsonResponse(200, {
+        ok: true,
+        ...await browseProjectPackageDirectories(body.path),
+      });
+    } catch (error) {
+      return jsonResponse(400, {
+        ok: false,
+        message: error instanceof Error ? error.message : "Unable to browse project packages.",
+      });
+    }
+  }
+
+  if (method === "POST" && request.pathname === "/api/project-package/create") {
+    const body = parseJsonBody(request.body);
+    if (!Object.prototype.hasOwnProperty.call(body, "snapshot")) {
+      return jsonResponse(400, { ok: false, message: "A project snapshot is required." });
+    }
+    try {
+      const rootPath = await createProjectPackageAtParent(body.parentPath, body.folderName, body.snapshot);
+      return jsonResponse(200, { ok: true, rootPath });
+    } catch (error) {
+      return jsonResponse(400, {
+        ok: false,
+        message: error instanceof Error ? error.message : "Unable to create the project package.",
+      });
+    }
+  }
+
+  if (method === "POST" && request.pathname === "/api/project-package/load") {
+    const body = parseJsonBody(request.body);
+    try {
+      const rootPath = await requireExistingProjectPackageRoot(body.rootPath);
+      const snapshot = await readProjectPackage(rootPath, { strictPackage: true });
+      delete snapshot._meta;
+      return jsonResponse(200, { ok: true, rootPath, snapshot });
+    } catch (error) {
+      return jsonResponse(400, {
+        ok: false,
+        message: error instanceof Error ? error.message : "Unable to load the project package.",
+      });
+    }
+  }
+
+  if (method === "POST" && request.pathname === "/api/project-package/save-as") {
+    const body = parseJsonBody(request.body);
+    if (!Object.prototype.hasOwnProperty.call(body, "snapshot")) {
+      return jsonResponse(400, { ok: false, message: "A project snapshot is required." });
+    }
+    try {
+      const rootPath = await saveProjectPackageToNewRoot({
+        sourceRoot: body.sourceRoot,
+        destinationParentPath: body.destinationParentPath,
+        folderName: body.folderName,
+        snapshot: body.snapshot,
+      });
+      return jsonResponse(200, { ok: true, rootPath });
+    } catch (error) {
+      return jsonResponse(400, {
+        ok: false,
+        message: error instanceof Error ? error.message : "Unable to save the project package.",
+      });
     }
   }
 
@@ -1231,6 +1299,7 @@ function normalizeSceneDraft(sceneId: string, candidate: any): Record<string, an
     : [];
 
   return {
+    ...cloneValue(source),
     sceneId: fallbackId,
     chapterId: typeof source.chapterId === "string" ? source.chapterId : "",
     chapterTitle: typeof source.chapterTitle === "string" ? source.chapterTitle : "Untitled Chapter",
@@ -1901,6 +1970,7 @@ function buildProjectManifestRecord(
     const existingScene = structureBySceneId.get(sceneId) ?? {};
     const indexScene = indexBySceneId.get(sceneId) ?? {};
     return {
+      ...cloneValue(existingScene),
       sceneId,
       chapterId: typeof existingScene.chapterId === "string" ? existingScene.chapterId : (indexScene.chapterId ?? ""),
       chapterTitle: typeof existingScene.chapterTitle === "string" ? existingScene.chapterTitle : "Untitled Chapter",
@@ -1914,6 +1984,222 @@ function buildProjectManifestRecord(
   return record;
 }
 
+const MANAGED_PROJECT_TREE_NAMES = Object.freeze(["assets", "transcripts", "revisions"]);
+
+function normalizeAbsoluteDesktopPath(candidate: unknown, label: string): string {
+  const normalized = normalizeFilePath(candidate);
+  if (!normalized || !isAbsolute(normalized)) {
+    throw new Error(`${label} must be an absolute path.`);
+  }
+  return resolvePath(normalized);
+}
+
+function isPathContainedBy(rootPath: string, candidatePath: string): boolean {
+  const relativePath = relative(resolvePath(rootPath), resolvePath(candidatePath));
+  return relativePath === "" || (
+    relativePath !== ".."
+    && !relativePath.startsWith(`..${pathSeparator}`)
+    && !isAbsolute(relativePath)
+  );
+}
+
+async function requireExistingDirectory(candidate: unknown, label: string): Promise<string> {
+  const resolvedPath = normalizeAbsoluteDesktopPath(candidate, label);
+  const pathStats = await lstat(resolvedPath);
+  if (pathStats.isSymbolicLink()) {
+    throw new Error(`${label} must not be a symlink.`);
+  }
+  if (!pathStats.isDirectory()) {
+    throw new Error(`${label} must be an existing directory.`);
+  }
+  return resolvedPath;
+}
+
+async function isProjectPackageRoot(candidate: string): Promise<boolean> {
+  try {
+    const rootStats = await lstat(candidate);
+    if (!rootStats.isDirectory() || rootStats.isSymbolicLink()) return false;
+    const manifestStats = await lstat(join(candidate, "project.json"));
+    return manifestStats.isFile() && !manifestStats.isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
+async function requireExistingProjectPackageRoot(candidate: unknown): Promise<string> {
+  const rootPath = await requireExistingDirectory(candidate, "Project package root");
+  if (!(await isProjectPackageRoot(rootPath))) {
+    throw new Error(`Project package is missing project.json at ${rootPath}.`);
+  }
+  return rootPath;
+}
+
+function sanitizeProjectPackageFolderName(candidate: unknown): string {
+  const rawName = String(candidate ?? "").normalize("NFKC").trim();
+  if (!rawName || /[\\/]/.test(rawName)) {
+    throw new Error("Project folder name must not contain path separators.");
+  }
+  const sanitized = rawName
+    .replace(/[<>:"|?*\u0000-\u001F]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/[. ]+$/g, "")
+    .trim();
+  if (!sanitized || sanitized === "." || sanitized === "..") {
+    throw new Error("Project folder name is invalid.");
+  }
+  return sanitized;
+}
+
+async function browseProjectPackageDirectories(candidatePath: unknown) {
+  let startPath = normalizeFilePath(candidatePath);
+  if (!startPath) {
+    const settingsRoot = normalizeFilePath(createDesktopSettingsSnapshot().projectRoot);
+    startPath = settingsRoot && isAbsolute(settingsRoot) && await pathExists(settingsRoot)
+      ? settingsRoot
+      : homedir();
+  }
+  const rootPath = await requireExistingDirectory(startPath, "Browse path");
+  const childEntries = await readdir(rootPath, { withFileTypes: true });
+  const directories = [];
+  for (const entry of childEntries.sort((left, right) => left.name.localeCompare(right.name))) {
+    if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
+    const childPath = join(rootPath, entry.name);
+    directories.push({
+      name: entry.name,
+      path: childPath,
+      isProjectPackage: await isProjectPackageRoot(childPath),
+    });
+  }
+  const parentPath = dirname(rootPath);
+  return {
+    path: rootPath,
+    parentPath: parentPath === rootPath ? "" : parentPath,
+    isProjectPackage: await isProjectPackageRoot(rootPath),
+    directories,
+  };
+}
+
+async function createExclusiveProjectRoot(parentPath: unknown, folderName: unknown): Promise<string> {
+  const resolvedParent = await requireExistingDirectory(parentPath, "Project parent folder");
+  const safeFolderName = sanitizeProjectPackageFolderName(folderName);
+  const projectRoot = resolvePath(resolvedParent, safeFolderName);
+  if (!isPathContainedBy(resolvedParent, projectRoot) || dirname(projectRoot) !== resolvedParent) {
+    throw new Error("Project destination must be a direct child of the selected parent folder.");
+  }
+  if (await pathExists(projectRoot)) {
+    throw new Error(`Project destination already exists at ${projectRoot}.`);
+  }
+  await mkdir(projectRoot, { recursive: false });
+  return projectRoot;
+}
+
+async function removeCreatedProjectRoot(projectRoot: string, parentPath: string) {
+  // Intent: cleanup is allowed only for the exact direct child created by the failed operation.
+  const resolvedRoot = resolvePath(projectRoot);
+  const resolvedParent = resolvePath(parentPath);
+  if (dirname(resolvedRoot) !== resolvedParent || !isPathContainedBy(resolvedParent, resolvedRoot)) {
+    throw new Error("Refused to clean up an unverified project destination.");
+  }
+  await rm(resolvedRoot, { recursive: true, force: true });
+}
+
+async function copyManagedProjectTree(sourcePath: string, destinationPath: string, destinationRoot: string) {
+  const sourceStats = await lstat(sourcePath);
+  if (sourceStats.isSymbolicLink()) {
+    throw new Error(`Managed project files must not use symlinks: ${sourcePath}`);
+  }
+  if (sourceStats.isDirectory()) {
+    if (!isPathContainedBy(destinationRoot, destinationPath)) {
+      throw new Error("Managed project copy escaped the destination package.");
+    }
+    await mkdir(destinationPath, { recursive: true });
+    for (const entry of await readdir(sourcePath, { withFileTypes: true })) {
+      await copyManagedProjectTree(
+        join(sourcePath, entry.name),
+        join(destinationPath, entry.name),
+        destinationRoot,
+      );
+    }
+    return;
+  }
+  if (!sourceStats.isFile()) {
+    throw new Error(`Managed project entry is not a regular file: ${sourcePath}`);
+  }
+  if (!isPathContainedBy(destinationRoot, destinationPath)) {
+    throw new Error("Managed project copy escaped the destination package.");
+  }
+  await mkdir(dirname(destinationPath), { recursive: true });
+  await copyFile(sourcePath, destinationPath);
+}
+
+async function copyManagedProjectTrees(sourceRoot: string, destinationRoot: string) {
+  if (!(await isProjectPackageRoot(sourceRoot))) return;
+  for (const treeName of MANAGED_PROJECT_TREE_NAMES) {
+    const sourceTree = join(sourceRoot, treeName);
+    if (!(await pathExists(sourceTree))) continue;
+    await copyManagedProjectTree(sourceTree, join(destinationRoot, treeName), destinationRoot);
+  }
+}
+
+async function createProjectPackageAtParent(parentPath: unknown, folderName: unknown, snapshot: unknown) {
+  const resolvedParent = await requireExistingDirectory(parentPath, "Project parent folder");
+  const projectRoot = await createExclusiveProjectRoot(resolvedParent, folderName);
+  try {
+    return await writeProjectPackageAtRoot(projectRoot, snapshot);
+  } catch (error) {
+    await removeCreatedProjectRoot(projectRoot, resolvedParent);
+    throw error;
+  }
+}
+
+async function saveProjectPackageToNewRoot({
+  sourceRoot,
+  destinationParentPath,
+  folderName,
+  snapshot,
+}: {
+  sourceRoot?: unknown;
+  destinationParentPath: unknown;
+  folderName: unknown;
+  snapshot: unknown;
+}) {
+  const resolvedParent = await requireExistingDirectory(destinationParentPath, "Project destination parent");
+  const normalizedSource = normalizeFilePath(sourceRoot);
+  let resolvedSource = "";
+  if (normalizedSource) {
+    resolvedSource = normalizeAbsoluteDesktopPath(normalizedSource, "Source project path");
+    const sourceStats = await lstat(resolvedSource);
+    if (sourceStats.isSymbolicLink()) {
+      throw new Error("Source project path must not be a symlink.");
+    }
+    if (sourceStats.isDirectory() && !(await isProjectPackageRoot(resolvedSource))) {
+      throw new Error("Source project folder must contain project.json.");
+    }
+  }
+  const safeFolderName = sanitizeProjectPackageFolderName(folderName);
+  const prospectiveProjectRoot = resolvePath(resolvedParent, safeFolderName);
+  if (resolvedSource && (
+    prospectiveProjectRoot === resolvedSource
+    || isPathContainedBy(resolvedSource, prospectiveProjectRoot)
+  )) {
+    throw new Error("Save As destination must not equal or be nested inside the source project.");
+  }
+  const projectRoot = await createExclusiveProjectRoot(resolvedParent, safeFolderName);
+
+  try {
+    if (resolvedSource) {
+      const sourceStats = await stat(resolvedSource);
+      if (sourceStats.isDirectory()) {
+        await copyManagedProjectTrees(resolvedSource, projectRoot);
+      }
+    }
+    return await writeProjectPackageAtRoot(projectRoot, snapshot);
+  } catch (error) {
+    await removeCreatedProjectRoot(projectRoot, resolvedParent);
+    throw error;
+  }
+}
+
 async function ensureProjectPackageScaffold(projectRoot: string) {
   const requiredDirectories = [
     projectRoot,
@@ -1925,6 +2211,7 @@ async function ensureProjectPackageScaffold(projectRoot: string) {
     join(projectRoot, "assets", "images"),
     join(projectRoot, "metadata"),
     join(projectRoot, "transcripts"),
+    join(projectRoot, "revisions"),
     join(projectRoot, "cache"),
     join(projectRoot, "cache", "waveforms"),
     join(projectRoot, "cache", "ai-index"),
@@ -1963,7 +2250,11 @@ async function resolveWritableProjectRoot(filePath: string) {
   return resolvedPath;
 }
 
-async function readSceneStoreFromManifest(projectRoot: string, manifestProjects: Array<Record<string, any>>) {
+async function readSceneStoreFromManifest(
+  projectRoot: string,
+  manifestProjects: Array<Record<string, any>>,
+  { strictPackage = false }: { strictPackage?: boolean } = {},
+) {
   const sceneStore: Record<string, Record<string, any>> = {};
   for (const project of manifestProjects) {
     const projectId = typeof project?.id === "string" ? project.id.trim() : "";
@@ -1977,15 +2268,25 @@ async function readSceneStoreFromManifest(projectRoot: string, manifestProjects:
 
     for (const sceneId of sceneOrder) {
       const relativeScenePath = sceneFiles[sceneId] || defaultSceneFilePath(projectId, sceneId);
-      const scenePath = resolvePath(projectRoot, relativeScenePath);
+      const scenePath = resolveProjectRelativeStoragePath(projectRoot, relativeScenePath);
+      if (!scenePath) {
+        if (strictPackage) throw new Error(`Scene sidecar path is invalid for ${projectId}/${sceneId}.`);
+        continue;
+      }
       if (!(await pathExists(scenePath))) {
+        if (strictPackage) throw new Error(`Scene sidecar is missing for ${projectId}/${sceneId}.`);
         continue;
       }
 
       try {
+        const sceneStats = await lstat(scenePath);
+        if (!sceneStats.isFile() || sceneStats.isSymbolicLink()) {
+          throw new Error(`Scene sidecar must be a regular file for ${projectId}/${sceneId}.`);
+        }
         const sceneContent = await readFile(scenePath, "utf8");
         projectScenes[sceneId] = normalizeSceneDraft(sceneId, parseJsonText(sceneContent));
-      } catch {
+      } catch (error) {
+        if (strictPackage) throw error;
         // Skip malformed or unreadable scene chunks.
       }
     }
@@ -1998,7 +2299,10 @@ async function readSceneStoreFromManifest(projectRoot: string, manifestProjects:
   return sceneStore;
 }
 
-async function readProjectPackage(filePath: string): Promise<Record<string, any>> {
+async function readProjectPackage(
+  filePath: string,
+  { strictPackage = false }: { strictPackage?: boolean } = {},
+): Promise<Record<string, any>> {
   const resolvedPath = resolvePath(filePath);
   const stats = await stat(resolvedPath);
   if (stats.isDirectory()) {
@@ -2008,8 +2312,18 @@ async function readProjectPackage(filePath: string): Promise<Record<string, any>
     }
     const manifestContent = await readFile(manifestPath, "utf8");
     const manifestSnapshot = normalizeProjectLibrarySnapshotCandidate(parseJsonText(manifestContent));
+    if (strictPackage) {
+      const projectIds = manifestSnapshot.projects
+        .map((project) => (typeof project?.id === "string" ? project.id.trim() : ""));
+      if (!projectIds.length || projectIds.some((projectId) => !projectId) || new Set(projectIds).size !== projectIds.length) {
+        throw new Error("Project package manifest must contain projects with unique non-empty IDs.");
+      }
+      if (!manifestSnapshot.activeProjectId || !projectIds.includes(manifestSnapshot.activeProjectId)) {
+        throw new Error("Project package activeProjectId must identify a manifest project.");
+      }
+    }
     const projects = await hydrateProjectMetadataFoldersFromPackage(resolvedPath, manifestSnapshot.projects);
-    const sceneStore = await readSceneStoreFromManifest(resolvedPath, projects);
+    const sceneStore = await readSceneStoreFromManifest(resolvedPath, projects, { strictPackage });
     return {
       schemaVersion: manifestSnapshot.schemaVersion,
       activeProjectId: manifestSnapshot.activeProjectId,
@@ -2070,9 +2384,15 @@ async function readProjectPackage(filePath: string): Promise<Record<string, any>
   };
 }
 
-async function writeProjectPackage(filePath: string, snapshot: unknown): Promise<string> {
+async function writeProjectPackageAtRoot(projectRootValue: string, snapshot: unknown): Promise<string> {
+  const projectRoot = normalizeAbsoluteDesktopPath(projectRootValue, "Project package root");
+  if (await pathExists(projectRoot)) {
+    const rootStats = await stat(projectRoot);
+    if (!rootStats.isDirectory()) {
+      throw new Error("Project package root must use explicit directory semantics.");
+    }
+  }
   const candidateSnapshot = normalizeProjectLibrarySnapshotCandidate(snapshot);
-  const projectRoot = await resolveWritableProjectRoot(filePath);
   const existingSnapshot = await (async () => {
     try {
       return await readProjectPackage(projectRoot);
@@ -2122,7 +2442,10 @@ async function writeProjectPackage(filePath: string, snapshot: unknown): Promise
       }
 
       const relativeScenePath = sceneFiles[normalizedId] || defaultSceneFilePath(projectId, normalizedId);
-      const scenePath = resolvePath(projectRoot, relativeScenePath);
+      const scenePath = resolveProjectRelativeStoragePath(projectRoot, relativeScenePath);
+      if (!scenePath) {
+        throw new Error(`Scene sidecar path is invalid for ${projectId}/${normalizedId}.`);
+      }
       await mkdir(dirname(scenePath), { recursive: true });
       await writeFile(scenePath, JSON.stringify(mergedScenes[normalizedId], null, 2), "utf8");
     }
@@ -2146,6 +2469,12 @@ async function writeProjectPackage(filePath: string, snapshot: unknown): Promise
   await writeFile(manifestPath, JSON.stringify(manifestSnapshot, null, 2), "utf8");
 
   return projectRoot;
+}
+
+// Intent: retain legacy path inference only for compatibility callers using the old project-file route.
+async function writeProjectPackage(filePath: string, snapshot: unknown): Promise<string> {
+  const projectRoot = await resolveWritableProjectRoot(filePath);
+  return writeProjectPackageAtRoot(projectRoot, snapshot);
 }
 
 async function writeBinaryFile(filePath: string, content: Buffer): Promise<string> {

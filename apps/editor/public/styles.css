@@ -1741,6 +1741,112 @@ select {
   outline: none;
 }
 
+.project-package-location output {
+  display: block;
+  min-height: 32px;
+  padding: 7px 8px;
+  border: 1px solid rgba(31, 36, 48, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.34);
+  color: var(--ink-deep);
+  font-size: 0.78rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+/* Intent: keep package selection modal state visible without making it durable editor state. */
+.project-package-dialog-backdrop {
+  position: fixed;
+  z-index: 120;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(14, 18, 24, 0.48);
+  backdrop-filter: blur(4px);
+}
+
+.project-package-dialog {
+  display: grid;
+  gap: 14px;
+  width: min(680px, calc(100vw - 32px));
+  max-height: min(760px, calc(100vh - 32px));
+  padding: 20px;
+  border: 1px solid var(--line-soft);
+  border-radius: 16px;
+  background: var(--panel-bg);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.28);
+  overflow: auto;
+}
+
+.project-package-dialog header,
+.project-package-dialog footer,
+.project-package-dialog__path-row,
+.project-package-dialog__directory {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.project-package-dialog header,
+.project-package-dialog footer {
+  justify-content: space-between;
+}
+
+.project-package-dialog h2,
+.project-package-dialog p {
+  margin: 0;
+}
+
+.project-package-dialog label {
+  display: grid;
+  gap: 6px;
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.project-package-dialog input {
+  width: 100%;
+  min-height: 38px;
+  box-sizing: border-box;
+}
+
+.project-package-dialog__path-row input {
+  flex: 1;
+}
+
+.project-package-dialog__browser {
+  display: grid;
+  gap: 6px;
+  min-height: 150px;
+  max-height: 300px;
+  padding: 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  overflow: auto;
+}
+
+.project-package-dialog__directory {
+  justify-content: space-between;
+  width: 100%;
+  text-align: left;
+}
+
+.project-package-dialog__directory.is-project-package small {
+  color: var(--accent-deep);
+  font-weight: 800;
+}
+
+.project-package-dialog__error {
+  color: var(--danger-strong, #a63838);
+}
+
+.project-package-dialog__hint {
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+}
+
 .file-menu .project-library-status {
   margin: 0;
   color: var(--ink-soft);

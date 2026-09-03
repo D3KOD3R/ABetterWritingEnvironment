@@ -1187,6 +1187,237 @@ export async function runProjectPersistenceServiceTest() {
     () => projectPersistenceService.buildProjectSnapshotForSaveFile(),
     /Refusing to save/,
   );
+
+  await runDesktopPackageTransactionAssertions();
+}
+
+// Intent: prove package destinations remain unchanged until host write, read-back, and semantic verification all succeed.
+async function runDesktopPackageTransactionAssertions() {
+  const record = createLoadedProjectRecord();
+  const sourceRoot = "C:\\Projects\\Project A";
+  const destinationRoot = "C:\\Projects\\Project B";
+  record.projectSettings.projectFilePath = sourceRoot;
+  const state = {
+    activeProjectId: record.id,
+    projectLibrarySelectionId: record.id,
+    projectLibrary: [record],
+    projectTitle: record.title,
+    projectFilePath: sourceRoot,
+    projectFileHandle: null,
+    projectFileHandlePermission: "",
+    projectFileStatus: "",
+    projectFileBusy: false,
+    projectFileAutosaveDirty: false,
+    projectFileAutosaveBlocked: null,
+    projectFileAutosaveTarget: null,
+    projectFileAutosaveTimer: null,
+    projectFileAutosaveRevision: 0,
+    projectFileAutosaveSuppressionDepth: 0,
+    projectCacheSuppressionDepth: 0,
+    projectPersistenceDirtyDomains: {},
+    editorPrefs: { projectFileAutosaveEnabled: true },
+    workspace: record.workspace,
+  };
+  const operationLog = [];
+  const packageSnapshots = new Map();
+  const desktopSnapshots = new Map();
+  let transportFailure = "";
+  let corruptReadBack = false;
+  const fetchJsonFromDesktopApi = async (pathname, options = {}) => {
+    const body = options.body ?? {};
+    operationLog.push(`${pathname}:${body.rootPath ?? body.filePath ?? body.folderName ?? ""}`);
+    if (transportFailure === pathname) {
+      return { ok: false, error: new Error("Simulated package transport failure.") };
+    }
+    if (pathname === "/api/project-package/create") {
+      const rootPath = `C:\\Projects\\${body.folderName}`;
+      packageSnapshots.set(rootPath, structuredClone(body.snapshot));
+      return { ok: true, value: { ok: true, rootPath } };
+    }
+    if (pathname === "/api/project-package/save-as") {
+      packageSnapshots.set(destinationRoot, structuredClone(body.snapshot));
+      return { ok: true, value: { ok: true, rootPath: destinationRoot } };
+    }
+    if (pathname === "/api/project-package/load") {
+      if (!packageSnapshots.has(body.rootPath)) {
+        return { ok: false, error: new Error("Invalid package.") };
+      }
+      const snapshot = structuredClone(packageSnapshots.get(body.rootPath));
+      if (corruptReadBack) snapshot.projects[0].title = "Corrupted read-back";
+      return { ok: true, value: { ok: true, rootPath: body.rootPath, snapshot } };
+    }
+    if (pathname === "/api/project-file/save") {
+      desktopSnapshots.set(body.filePath, structuredClone(body.snapshot));
+      return { ok: true, value: { ok: true, filePath: body.filePath } };
+    }
+    if (pathname === "/api/project-file/load") {
+      return { ok: true, value: structuredClone(desktopSnapshots.get(body.filePath)) };
+    }
+    if (pathname === "/api/settings") {
+      return { ok: true, value: {} };
+    }
+    return { ok: false, error: new Error(`Unhandled path ${pathname}`) };
+  };
+  const projectService = createFakeProjectService(record, record, []);
+  const service = createProjectPersistenceService({
+    state,
+    windowRef: createFakeWindowRef(),
+    projectService,
+    projectRepository: {
+      saveActiveProjectId(projectId) {
+        operationLog.push(`activate-id:${projectId}`);
+      },
+    },
+    fetchJsonFromDesktopApi,
+    projectSchemaVersion: 2,
+    autosaveDelayMs: 5000,
+    createProjectRecordFromRuntimeState: () => ({
+      ...state.projectLibrary[0],
+      projectSettings: {
+        ...(state.projectLibrary[0]?.projectSettings ?? {}),
+        projectFilePath: state.projectFilePath,
+      },
+    }),
+    getActiveProjectRecord: () => state.projectLibrary[0] ?? null,
+    normalizeProjectLibrarySnapshot: (snapshot) => structuredClone(snapshot),
+    normalizeProjectRecord: (candidate) => candidate,
+    resolveActiveProjectId: (candidate, library) => candidate ?? library.projects[0]?.id ?? null,
+    activateLoadedProjectRecord: ({ projectRecord }) => {
+      operationLog.push(`activate-record:${projectRecord.id}`);
+      state.workspace = projectRecord.workspace;
+      state.projectTitle = projectRecord.title;
+    },
+    prepareProjectSnapshotForSave: () => {
+      operationLog.push("prepare");
+    },
+    renderHeader: () => {},
+    loggerSources: {
+      projectPersistence: {
+        debug() {},
+        info(scope, event) {
+          operationLog.push(event);
+        },
+        warn() {},
+        error() {},
+      },
+    },
+  });
+  const candidateSnapshot = {
+    schemaVersion: 2,
+    activeProjectId: record.id,
+    projects: [structuredClone(record)],
+    sceneStore: { [record.id]: structuredClone(record.sceneDrafts) },
+  };
+
+  transportFailure = "/api/project-package/create";
+  await assert.rejects(
+    () => service.createDesktopProjectPackage({
+      parentPath: "C:\\Projects",
+      folderName: "Project B",
+      buildCandidateSnapshot: () => candidateSnapshot,
+    }),
+    /transport failure/,
+  );
+  assert.equal(state.projectFilePath, sourceRoot);
+  assert.equal(state.activeProjectId, record.id);
+
+  transportFailure = "";
+  corruptReadBack = true;
+  await assert.rejects(
+    () => service.createDesktopProjectPackage({
+      parentPath: "C:\\Projects",
+      folderName: "Project B",
+      buildCandidateSnapshot: () => candidateSnapshot,
+    }),
+    /not semantically equivalent/,
+  );
+  assert.equal(state.projectFilePath, sourceRoot);
+  assert.equal(state.activeProjectId, record.id);
+
+  corruptReadBack = false;
+  transportFailure = "/api/project-package/save-as";
+  await assert.rejects(
+    () => service.saveProjectSnapshotAsPackage({
+      destinationParentPath: "C:\\Projects",
+      folderName: "Project B",
+    }),
+    /transport failure/,
+  );
+  assert.equal(state.projectFilePath, sourceRoot);
+  assert.equal(state.activeProjectId, record.id);
+
+  transportFailure = "";
+  corruptReadBack = true;
+  await assert.rejects(
+    () => service.saveProjectSnapshotAsPackage({
+      destinationParentPath: "C:\\Projects",
+      folderName: "Project B",
+    }),
+    /not semantically equivalent/,
+  );
+  assert.equal(state.projectFilePath, sourceRoot);
+  assert.equal(state.activeProjectId, record.id);
+
+  corruptReadBack = false;
+  operationLog.length = 0;
+  await service.saveProjectSnapshot({ reason: "post-failure-normal-save" });
+  assert.equal(
+    operationLog.some((entry) => entry === `/api/project-file/save:${sourceRoot}`),
+    true,
+    "A normal Save after failed Save As must still target A.",
+  );
+
+  operationLog.length = 0;
+  await service.saveProjectSnapshotAsPackage({
+    destinationParentPath: "C:\\Projects",
+    folderName: "Project B",
+  });
+  const saveIndex = operationLog.findIndex((entry) => entry.startsWith("/api/project-package/save-as:"));
+  const loadIndex = operationLog.findIndex((entry) => entry === `/api/project-package/load:${destinationRoot}`);
+  const verificationIndex = operationLog.findIndex((entry) => entry === "project.package.verified");
+  const settingsIndex = operationLog.findIndex((entry) => entry === "/api/settings:");
+  assert.equal(
+    saveIndex >= 0 && loadIndex > saveIndex && verificationIndex > loadIndex && settingsIndex > verificationIndex,
+    true,
+  );
+  assert.equal(state.projectFilePath, destinationRoot);
+  assert.equal(state.activeProjectId, record.id);
+  assert.equal(packageSnapshots.get(destinationRoot).projects[0].projectSettings.projectFilePath, undefined);
+  assert.equal(state.projectFileStorageMode, "desktop-package");
+
+  operationLog.length = 0;
+  await service.saveProjectSnapshot({ reason: "package-normal-save" });
+  assert.equal(desktopSnapshots.get(destinationRoot).projects[0].projectSettings.projectFilePath, undefined);
+  assert.equal(state.projectLibrary[0].projectSettings.projectFilePath, destinationRoot);
+
+  const createRoot = "C:\\Projects\\Project C";
+  operationLog.length = 0;
+  await service.createDesktopProjectPackage({
+    parentPath: "C:\\Projects",
+    folderName: "Project C",
+    buildCandidateSnapshot: () => candidateSnapshot,
+  });
+  const createIndex = operationLog.findIndex((entry) => entry === "/api/project-package/create:Project C");
+  const createLoadIndex = operationLog.findIndex((entry) => entry === `/api/project-package/load:${createRoot}`);
+  const createVerificationIndex = operationLog.findIndex((entry) => entry === "project.package.verified");
+  const activationIndex = operationLog.findIndex((entry) => entry === `activate-record:${record.id}`);
+  assert.equal(
+    createIndex >= 0
+      && createLoadIndex > createIndex
+      && createVerificationIndex > createLoadIndex
+      && activationIndex > createVerificationIndex,
+    true,
+  );
+  assert.equal(state.projectFilePath, createRoot);
+  assert.equal(state.activeProjectId, record.id);
+
+  transportFailure = "/api/project-package/load";
+  await assert.rejects(
+    () => service.openDesktopProjectPackage({ rootPath: destinationRoot }),
+    /transport failure/,
+  );
+  assert.equal(state.projectFilePath, createRoot);
+  assert.equal(state.activeProjectId, record.id);
 }
 
 function createFakeProjectService(projectRecord, loadedRecord, browserCacheWrites = []) {

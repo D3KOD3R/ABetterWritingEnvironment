@@ -8,6 +8,13 @@
 import { createProjectFileAutosaveController } from "./autosave.js";
 import { resolveProjectFileDisplayState } from "./project-file-display.js";
 import {
+  browseProjectPackageDirectories,
+  createProjectPackage as createProjectPackageOnDesktop,
+  loadProjectPackage as loadProjectPackageFromDesktop,
+  saveProjectPackageAs as saveProjectPackageAsOnDesktop,
+} from "./project-package.js";
+import { assertProjectSnapshotsSemanticallyEquivalent } from "./project-snapshot-verification.js";
+import {
   buildProjectFilePathFromRoot,
   canUseBrowserOpenPicker,
   canUseBrowserSavePicker,
@@ -87,6 +94,21 @@ function cloneValue(value) {
   }
 
   return JSON.parse(JSON.stringify(value));
+}
+
+// Intent: external folder packages must not retain the machine-specific active package authority.
+export function buildPortableExternalProjectSnapshot(snapshot = {}) {
+  const portableSnapshot = cloneValue(snapshot);
+  portableSnapshot.projects = (Array.isArray(portableSnapshot.projects) ? portableSnapshot.projects : [])
+    .map((project) => {
+      const portableProject = cloneValue(project);
+      delete portableProject.projectFilePath;
+      if (portableProject.projectSettings && typeof portableProject.projectSettings === "object" && !Array.isArray(portableProject.projectSettings)) {
+        delete portableProject.projectSettings.projectFilePath;
+      }
+      return portableProject;
+    });
+  return portableSnapshot;
 }
 
 const WORKSPACE_PANE_IDS = Object.freeze(["manuscript", "world", "narration"]);
@@ -1013,6 +1035,9 @@ export function createProjectPersistenceService({
     state.projectFileHandlePermission = handle
       ? (options.handlePermission ?? state.projectFileHandlePermission ?? "prompt")
       : "";
+    if (typeof options.storageMode === "string") {
+      state.projectFileStorageMode = options.storageMode;
+    }
     if (shouldPersistProjectCache() === true) {
       writeProjectFilePathCache(state.projectFilePath);
     }
@@ -1350,16 +1375,22 @@ export function createProjectPersistenceService({
     }
   }
 
-  async function verifyDesktopPathSnapshotSynced(filePath, snapshot) {
+  async function verifyDesktopPathSnapshotSynced(filePath, snapshot, { semantic = false } = {}) {
     const resolvedPath = normalizeProjectFilePath(filePath);
     try {
       const writtenSnapshot = await readProjectLibraryFromDesktopPath(resolvedPath, {
         fetchJsonFromDesktopApi,
       });
-      assertSavedProjectSnapshotMatches(writtenSnapshot, snapshot, {
-        mode: "desktop-path",
-        filePath: resolvedPath,
-      });
+      if (semantic) {
+        assertProjectSnapshotsSemanticallyEquivalent(snapshot, writtenSnapshot, {
+          operation: "Project package save",
+        });
+      } else {
+        assertSavedProjectSnapshotMatches(writtenSnapshot, snapshot, {
+          mode: "desktop-path",
+          filePath: resolvedPath,
+        });
+      }
       desktopFileSystemLog.info("persistence", "project.save.file-path-verified", "Verified project file JSON after desktop-path write.", {
         projectId: state.activeProjectId ?? state.workspace?.project?.id ?? "",
         filePath: resolvedPath,
@@ -1404,12 +1435,28 @@ export function createProjectPersistenceService({
       throw new Error("A browser file handle is required.");
     }
 
-    const resolvedSnapshot = snapshot ?? await buildProjectSnapshotForSaveFileWithRecovery({
+    const sourceSnapshot = snapshot ?? await buildProjectSnapshotForSaveFileWithRecovery({
       reason: options.reason ?? "save-project",
     });
     const saveProjectId = state.activeProjectId ?? state.workspace?.project?.id ?? "";
     const saveRevision = state.projectFileAutosaveRevision;
-    const browserHandleProjectFilePath = state.projectFilePath || handle.name || "";
+    const browserHandleProjectFilePath = normalizeProjectFilePath(options.destinationPath)
+      || state.projectFilePath
+      || handle.name
+      || "";
+    // Intent: preserve the legacy single-file contract without changing the active destination before verification succeeds.
+    const resolvedSnapshot = options.destinationPath
+      ? {
+        ...cloneValue(sourceSnapshot),
+        projects: (sourceSnapshot?.projects ?? []).map((project) => ({
+          ...cloneValue(project),
+          projectSettings: {
+            ...cloneValue(project?.projectSettings ?? {}),
+            projectFilePath: browserHandleProjectFilePath,
+          },
+        })),
+      }
+      : sourceSnapshot;
     state.projectFileBusy = true;
     state.projectFileStatus = "Saving project file...";
     renderHeader();
@@ -1449,6 +1496,7 @@ export function createProjectPersistenceService({
         persistBrowserFileHandle: true,
         persistDesktopProjectFilePath: hasProjectFilePath(browserHandleProjectFilePath),
         clearDesktopProjectFilePath: !hasProjectFilePath(browserHandleProjectFilePath),
+        storageMode: "browser-handle",
       });
       persistProjectSnapshotToBrowserCache(resolvedSnapshot, {
         target: "browser-handle",
@@ -1484,6 +1532,7 @@ export function createProjectPersistenceService({
             persistBrowserFileHandle: true,
             persistDesktopProjectFilePath: hasProjectFilePath(browserHandleProjectFilePath),
             clearDesktopProjectFilePath: !hasProjectFilePath(browserHandleProjectFilePath),
+            storageMode: "browser-handle",
             source: "saveProjectSnapshotToBrowserHandleVerified",
           });
           persistProjectSnapshotToBrowserCache(resolvedSnapshot, {
@@ -1563,7 +1612,9 @@ export function createProjectPersistenceService({
       const savedPath = await writeProjectLibraryToDesktopPath(resolvedPath, resolvedSnapshot, {
         fetchJsonFromDesktopApi,
       });
-      await verifyDesktopPathSnapshotSynced(savedPath, resolvedSnapshot);
+      await verifyDesktopPathSnapshotSynced(savedPath, resolvedSnapshot, {
+        semantic: options.semanticVerification === true,
+      });
       const activeProjectId = state.activeProjectId ?? state.workspace?.project?.id ?? "";
       if (activeProjectId !== saveProjectId) {
         desktopFileSystemLog.warn(
@@ -1583,9 +1634,10 @@ export function createProjectPersistenceService({
         skipProjectFileAutosave: true,
         persistDesktopProjectFilePath: true,
         clearBrowserFileHandle: true,
+        storageMode: options.storageMode,
         source: "saveProjectSnapshotToFilePath",
       });
-      persistProjectSnapshotToBrowserCache(resolvedSnapshot, {
+      persistProjectSnapshotToBrowserCache(options.cacheSnapshot ?? resolvedSnapshot, {
         target: "desktop-path",
         reason: "save-project",
         filePath: savedPath,
@@ -1634,7 +1686,96 @@ export function createProjectPersistenceService({
     });
 
     if (state.projectFileAutosaveDirty === true) {
-      await flushProjectAutosave();
+      await autosaveController.drain();
+    }
+  }
+
+  function browseDesktopProjectPackages(path = "") {
+    return browseProjectPackageDirectories({ path }, { fetchJsonFromDesktopApi });
+  }
+
+  // Intent: construct and verify a new package before any candidate project becomes active.
+  async function createDesktopProjectPackage({
+    parentPath,
+    folderName,
+    buildCandidateSnapshot,
+  } = {}) {
+    if (typeof buildCandidateSnapshot !== "function") {
+      throw new Error("New Project requires a candidate snapshot builder.");
+    }
+    await preserveActiveProjectBeforeLoad("create-desktop-project-package");
+    const candidateSnapshot = await buildCandidateSnapshot();
+    const portableSnapshot = buildPortableExternalProjectSnapshot(candidateSnapshot);
+    state.projectFileBusy = true;
+    state.projectFileStatus = "Creating project package...";
+    renderHeader();
+    try {
+      const created = await createProjectPackageOnDesktop({
+        parentPath,
+        folderName,
+        snapshot: portableSnapshot,
+      }, { fetchJsonFromDesktopApi });
+      const loaded = await loadProjectPackageFromDesktop({
+        rootPath: created.rootPath,
+      }, { fetchJsonFromDesktopApi });
+      assertProjectSnapshotsSemanticallyEquivalent(portableSnapshot, loaded.snapshot, {
+        operation: "New Project package",
+      });
+      projectPersistenceLog.info("validation", "project.package.verified", "Verified the new project package before activation.", {
+        rootPath: loaded.rootPath,
+        operation: "create",
+      });
+      await hydrateProjectLibraryFromLoadedSnapshot(loaded.snapshot, {
+        filePath: loaded.rootPath,
+        sourceLabel: "desktop project package",
+        reason: "create-project-package",
+        mode: "desktop-package",
+        preserveProjectIdentity: true,
+      });
+      state.projectFileStatus = `Created project package at ${loaded.rootPath}`;
+      renderHeader();
+      return {
+        status: "created",
+        rootPath: loaded.rootPath,
+        snapshot: loaded.snapshot,
+      };
+    } catch (error) {
+      state.projectFileStatus = `Project creation failed: ${toErrorMessage(error)}`;
+      renderHeader();
+      throw error;
+    } finally {
+      state.projectFileBusy = false;
+      renderHeader();
+    }
+  }
+
+  // Intent: validate a folder package before draining and replacing the current active project.
+  async function openDesktopProjectPackage({ rootPath } = {}) {
+    state.projectFileStatus = "Reading project package...";
+    renderHeader();
+    try {
+      const loaded = await loadProjectPackageFromDesktop({ rootPath }, { fetchJsonFromDesktopApi });
+      await preserveActiveProjectBeforeLoad("open-desktop-project-package");
+      state.projectFileBusy = true;
+      await hydrateProjectLibraryFromLoadedSnapshot(loaded.snapshot, {
+        filePath: loaded.rootPath,
+        sourceLabel: "desktop project package",
+        reason: "open-project-package",
+        mode: "desktop-package",
+        preserveProjectIdentity: true,
+      });
+      return {
+        status: "opened",
+        rootPath: loaded.rootPath,
+        snapshot: loaded.snapshot,
+      };
+    } catch (error) {
+      state.projectFileStatus = `Open failed: ${toErrorMessage(error)}`;
+      renderHeader();
+      throw error;
+    } finally {
+      state.projectFileBusy = false;
+      renderHeader();
     }
   }
 
@@ -1682,7 +1823,7 @@ export function createProjectPersistenceService({
       ? state.projectLibrary.find((project) => project?.id === loadedActiveProject.id) ?? null
       : null;
     const existingProjectFilePath = getProjectRecordFilePath(existingProjectWithSameId);
-    const shouldRemapLoadedProjectId =
+    const shouldRemapLoadedProjectId = options.preserveProjectIdentity !== true &&
       Boolean(loadedFileDisplayPath) &&
       Boolean(existingProjectWithSameId) &&
       normalizeProjectFilePath(existingProjectFilePath) !== loadedFileDisplayPath;
@@ -1795,6 +1936,13 @@ export function createProjectPersistenceService({
       persistDesktopProjectFilePath: loadedDestination.isDurablePath,
       clearDesktopProjectFilePath: !loadedDestination.isDurablePath,
       clearBrowserFileHandle: !loadedDestination.fileHandle && loadedDestination.isDurablePath,
+      storageMode: options.mode === "desktop-package"
+        ? "desktop-package"
+        : options.mode === "desktop-path"
+          ? "desktop-path"
+          : loadedDestination.fileHandle
+            ? "browser-handle"
+            : "",
       source: "hydrateProjectLibraryFromLoadedSnapshot",
     });
     activateLoadedProjectRecord({
@@ -2203,9 +2351,16 @@ export function createProjectPersistenceService({
       let projectSnapshotReportTarget = filePath ? "desktop-path" : "browser-library";
       let projectSnapshotReportMessage;
       if (filePath) {
+        const isDesktopPackage = state.projectFileStorageMode === "desktop-package";
+        const externalSnapshot = isDesktopPackage
+          ? buildPortableExternalProjectSnapshot(snapshot)
+          : snapshot;
         try {
-          await saveProjectSnapshotToFilePath(filePath, snapshot, {
+          await saveProjectSnapshotToFilePath(filePath, externalSnapshot, {
             clearAutosaveStateOnSuccess: reason !== "autosave",
+            semanticVerification: isDesktopPackage,
+            cacheSnapshot: snapshot,
+            storageMode: isDesktopPackage ? "desktop-package" : "desktop-path",
           });
           projectSnapshotPersisted = true;
           desktopFileSystemLog.info("persistence", "project.save.file-path", "Saved project library to file path.", {
@@ -2273,6 +2428,67 @@ export function createProjectPersistenceService({
     }
   }
 
+  // Intent: keep A authoritative until B has been written, reloaded, and semantically verified.
+  async function saveProjectSnapshotAsPackage({ destinationParentPath, folderName } = {}) {
+    const reason = "save-project-as-package";
+    const sourceRoot = hasProjectFilePath(state.projectFilePath)
+      ? normalizeProjectFilePath(state.projectFilePath)
+      : "";
+    await preserveActiveProjectBeforeLoad(reason);
+    await prepareProjectSnapshotForSave({ reason });
+    const runtimeSnapshot = await buildProjectSnapshotForSaveFileWithRecovery({ reason });
+    const portableSnapshot = buildPortableExternalProjectSnapshot(runtimeSnapshot);
+    state.projectFileBusy = true;
+    state.projectFileStatus = "Saving project package as...";
+    renderHeader();
+    try {
+      const saved = await saveProjectPackageAsOnDesktop({
+        sourceRoot,
+        destinationParentPath,
+        folderName,
+        snapshot: portableSnapshot,
+      }, { fetchJsonFromDesktopApi });
+      const loaded = await loadProjectPackageFromDesktop({
+        rootPath: saved.rootPath,
+      }, { fetchJsonFromDesktopApi });
+      assertProjectSnapshotsSemanticallyEquivalent(portableSnapshot, loaded.snapshot, {
+        operation: "Save As package",
+      });
+      projectPersistenceLog.info("validation", "project.package.verified", "Verified the Save As package before destination adoption.", {
+        rootPath: loaded.rootPath,
+        operation: "save-as",
+      });
+
+      await setActiveProjectFileDestination(loaded.rootPath, null, {
+        skipProjectFileAutosave: true,
+        persistDesktopProjectFilePath: true,
+        clearBrowserFileHandle: true,
+        storageMode: "desktop-package",
+        source: "saveProjectSnapshotAsPackage",
+      });
+      clearProjectAutosaveState();
+      clearEditorWorkingDirtyState("project-save-as-package-succeeded");
+      primeProjectAutosaveTarget();
+      state.projectFileStatus = `Saved project package to ${loaded.rootPath}`;
+      renderHeader();
+      return {
+        status: "saved",
+        mode: "desktop-package",
+        rootPath: loaded.rootPath,
+        snapshot: loaded.snapshot,
+        projectFilePersisted: true,
+        fallbackPersisted: false,
+      };
+    } catch (error) {
+      state.projectFileStatus = `Save As failed: ${toErrorMessage(error)}`;
+      renderHeader();
+      throw error;
+    } finally {
+      state.projectFileBusy = false;
+      renderHeader();
+    }
+  }
+
   async function saveProjectSnapshotAs(options = {}) {
     const reason = options.reason ?? "save-project-as";
     const suggestedProjectFileName = options.suggestedName
@@ -2289,16 +2505,11 @@ export function createProjectPersistenceService({
       const typedPath = normalizeProjectFilePath(state.projectFilePath);
       if (hasProjectFilePath(typedPath)) {
         await prepareProjectSnapshotForSave({ reason });
-        await setActiveProjectFileDestination(typedPath, null, {
-          skipProjectFileAutosave: true,
-          persistDesktopProjectFilePath: true,
-          clearBrowserFileHandle: true,
-          source: "saveProjectSnapshotAs",
-        });
         const snapshot = await buildProjectSnapshotForSaveFileWithRecovery({ reason });
         try {
           const savedPath = await saveProjectSnapshotToFilePath(typedPath, snapshot, {
             clearAutosaveStateOnSuccess: true,
+            storageMode: "desktop-path",
           });
           projectSaveGateLog.info("persistence", "project.save-as.file-path", "Saved project snapshot using typed file path.", {
             projectId: state.activeProjectId ?? state.workspace?.project?.id ?? "",
@@ -2351,18 +2562,12 @@ export function createProjectPersistenceService({
           const handlePermission = await requestProjectFileHandleWritePermission(handle);
           await prepareProjectSnapshotForSave({ reason });
           const browserHandleProjectFilePath = handle.name || suggestedProjectFileName;
-          await setActiveProjectFileDestination(browserHandleProjectFilePath, handle, {
-            skipProjectFileAutosave: true,
-            handlePermission,
-            persistBrowserFileHandle: handlePermission === "granted",
-            persistDesktopProjectFilePath: hasProjectFilePath(browserHandleProjectFilePath),
-            clearDesktopProjectFilePath: !hasProjectFilePath(browserHandleProjectFilePath),
-            source: "saveProjectSnapshotAs",
-          });
           const snapshot = await buildProjectSnapshotForSaveFileWithRecovery({ reason });
           const savedLabel = await saveProjectSnapshotToBrowserHandle(handle, snapshot, {
             requestPermission: false,
             clearAutosaveStateOnSuccess: true,
+            destinationPath: browserHandleProjectFilePath,
+            handlePermission,
           });
           return {
             status: "saved",
@@ -2532,27 +2737,31 @@ export function createProjectPersistenceService({
       return;
     }
 
-    if (candidatePath !== activeProjectFilePath) {
-      await setActiveProjectFileDestination(candidatePath, null, {
-        skipProjectFileAutosave: true,
-        skipProjectRecordPersistence: true,
-        persistDesktopProjectFilePath: true,
-        source: "restoreLastOpenedProject",
-      });
-    }
-
     try {
-      const snapshot = await readProjectLibraryFromDesktopPath(candidatePath, {
-        fetchJsonFromDesktopApi,
-      });
+      let snapshot;
+      let storageMode = "desktop-package";
+      try {
+        const loadedPackage = await loadProjectPackageFromDesktop({
+          rootPath: candidatePath,
+        }, { fetchJsonFromDesktopApi });
+        snapshot = loadedPackage.snapshot;
+      } catch (packageError) {
+        if (!/\.json$/i.test(candidatePath)) throw packageError;
+        storageMode = "desktop-path";
+        snapshot = await readProjectLibraryFromDesktopPath(candidatePath, {
+          fetchJsonFromDesktopApi,
+        });
+      }
       await hydrateProjectLibraryFromLoadedSnapshot(snapshot, {
         filePath: candidatePath,
         fileHandle: null,
-        sourceLabel: "project file",
+        sourceLabel: storageMode === "desktop-package" ? "desktop project package" : "project file",
         reason: "boot-reconnect",
-        mode: "desktop-path",
+        mode: storageMode,
       });
-      state.projectFileStatus = `Writing to JSON file: ${candidatePath}`;
+      state.projectFileStatus = storageMode === "desktop-package"
+        ? `Writing to project package: ${candidatePath}`
+        : `Writing to JSON file: ${candidatePath}`;
       await persistDesktopProjectFilePath(candidatePath);
     } catch (error) {
       state.projectFileStatus = `Project file check failed: ${toErrorMessage(error)}`;
@@ -2661,8 +2870,13 @@ export function createProjectPersistenceService({
     await autosaveController.flush();
   }
 
+  async function drainProjectAutosave() {
+    await autosaveController.drain();
+  }
+
   return {
     beginProjectAutosaveSuppression,
+    browseDesktopProjectPackages,
     buildProjectSnapshotForSaveFile,
     chooseProjectSnapshotFileForLoad,
     chooseScrivenerProjectForImport,
@@ -2670,6 +2884,8 @@ export function createProjectPersistenceService({
     clearProjectAutosaveTimer,
     clearEditorWorkingDirtyState,
     commitCanonicalProjectMutation,
+    createDesktopProjectPackage,
+    drainProjectAutosave,
     endProjectAutosaveSuppression,
     exportProjectLibrarySnapshot,
     flushProjectAutosave,
@@ -2681,6 +2897,7 @@ export function createProjectPersistenceService({
     loadProjectSnapshotFromFile,
     markProjectAutosaveDirty,
     markEditorWorkingMutation,
+    openDesktopProjectPackage,
     persistActiveProjectRecord,
     persistActiveProjectId,
     persistDesktopProjectFilePath,
@@ -2689,6 +2906,7 @@ export function createProjectPersistenceService({
     restoreLastOpenedProject,
     saveProjectSnapshot,
     saveProjectSnapshotAs,
+    saveProjectSnapshotAsPackage,
     saveProjectSnapshotToBrowserHandle,
     saveProjectSnapshotToFilePath,
     syncActiveProjectFileDestinationFromRecord,

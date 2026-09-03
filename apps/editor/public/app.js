@@ -245,10 +245,8 @@ import { createDeveloperLogger } from "./shared/developer-logger.js";
 import {
   getProjectRecordFilePath,
   getSuggestedProjectFileName as getSuggestedProjectFileNameFromTitle,
-  getSuggestedProjectFilePath as getSuggestedProjectFilePathFromProject,
   hasProjectFilePath,
   normalizeProjectFilePath,
-  promptForProjectTitle,
   resolveProjectFilePath,
 } from "./adapters/storage/project-file.js";
 import {
@@ -292,6 +290,14 @@ import {
 } from "./adapters/storage/project-metrics.js";
 import { PROJECT_SCHEMA_VERSION } from "./adapters/storage/project-migrations.js";
 import { createProjectPersistenceService } from "./adapters/storage/project-persistence-service.js";
+import {
+  PROJECT_PACKAGE_DIALOG_MODES,
+  applyProjectPackageBrowseResult,
+  canConfirmProjectPackageDialog,
+  createProjectPackageDialogState,
+  renderProjectPackageDialogHTML,
+  updateProjectPackageDialogField,
+} from "./features/project-lifecycle/project-package-dialog.js";
 import { createProjectSourceService } from "./adapters/storage/project-source-service.js";
 import {
   createProjectLibraryStateService,
@@ -697,6 +703,8 @@ const state = {
   projectFilePath: "",
   projectFileStatus: "",
   projectFileBusy: false,
+  projectFileStorageMode: "",
+  projectPackageDialog: null,
   projectFileAutosaveDirty: false,
   projectFileAutosaveBlocked: null,
   projectFileAutosaveTarget: null,
@@ -2389,6 +2397,26 @@ function wireEvents() {
       action !== "close-dictionary-window"
     ) {
       hideTaskContextMenu();
+    }
+
+    if (action === "cancel-project-package-dialog") {
+      closeProjectPackageDialog();
+      return;
+    }
+
+    if (action === "browse-project-package-path") {
+      void browseProjectPackageDialog(state.projectPackageDialog?.locationPath ?? "");
+      return;
+    }
+
+    if (action === "navigate-project-package") {
+      void browseProjectPackageDialog(target.dataset.projectPackagePath ?? "");
+      return;
+    }
+
+    if (action === "confirm-project-package-dialog") {
+      void confirmProjectPackageDialog();
+      return;
     }
 
     if (action === "toggle-file-menu") {
@@ -4140,6 +4168,19 @@ function wireEvents() {
       return;
     }
 
+    if (target instanceof HTMLInputElement && target.dataset.projectPackageField && state.projectPackageDialog) {
+      state.projectPackageDialog = updateProjectPackageDialogField(
+        state.projectPackageDialog,
+        target.dataset.projectPackageField,
+        target.value,
+      );
+      const confirmButton = document.querySelector('[data-action="confirm-project-package-dialog"]');
+      if (confirmButton instanceof HTMLButtonElement) {
+        confirmButton.disabled = !canConfirmProjectPackageDialog(state.projectPackageDialog);
+      }
+      return;
+    }
+
     const { editField, sceneId } = target.dataset;
     if (!editField) {
       return;
@@ -4158,12 +4199,6 @@ function wireEvents() {
       state.projectSourceStatus = "";
       writeStoredJsonRaw(EDITOR_PROJECT_SOURCE_PATH_KEY, target.value);
       persistCurrentProjectRecord({ skipProjectFileAutosave: true });
-      return;
-    }
-
-    if (editField === "project-file-path") {
-      setProjectFilePath(target.value, null, { skipProjectFileAutosave: true });
-      state.projectFileStatus = "";
       return;
     }
 
@@ -4495,6 +4530,11 @@ function wireEvents() {
     }
 
     if (event.key === "Escape") {
+      if (state.projectPackageDialog) {
+        event.preventDefault();
+        closeProjectPackageDialog();
+        return;
+      }
       if (state.keyboardShortcutSettingsWindowOpen) {
         closeKeyboardShortcutSettingsWindow();
         return;
@@ -4916,6 +4956,7 @@ function render() {
   syncSidePanelsHiddenClass();
   syncLayoutWidths({ reason: "render" });
   renderHeader();
+  renderProjectPackageDialog();
   renderBinderPanel();
   renderManuscriptPanel();
   renderConsolePanel();
@@ -4983,6 +5024,7 @@ function renderShell() {
     <div id="local-ai-panel-slot"></div>
     <div id="keyboard-shortcut-settings-slot"></div>
     <div id="dictionary-window-slot"></div>
+    <div id="project-package-dialog-slot"></div>
   `;
 }
 
@@ -5106,8 +5148,68 @@ function renderHeader() {
     writingTargetSummary,
     projectFileAutosaveConnected,
     projectFileDisplay,
-    createProjectLibraryRecord: createProjectLibraryRecordFromState,
-    getSuggestedProjectFilePath,
+  });
+}
+
+function renderProjectPackageDialog() {
+  const slot = document.querySelector("#project-package-dialog-slot");
+  if (!slot) return;
+  slot.innerHTML = renderProjectPackageDialogHTML(state.projectPackageDialog);
+}
+
+function closeProjectPackageDialog() {
+  if (state.projectPackageDialog?.busy) return;
+  state.projectPackageDialog = null;
+  renderProjectPackageDialog();
+}
+
+async function browseProjectPackageDialog(path = "", { preferParentOfPackage = false } = {}) {
+  if (!state.projectPackageDialog) return;
+  state.projectPackageDialog = {
+    ...state.projectPackageDialog,
+    busy: true,
+    errorMessage: "",
+  };
+  renderProjectPackageDialog();
+  try {
+    let result;
+    try {
+      result = await projectPersistenceService.browseDesktopProjectPackages(path);
+    } catch (error) {
+      if (!(preferParentOfPackage && path)) throw error;
+      result = await projectPersistenceService.browseDesktopProjectPackages("");
+    }
+    if (preferParentOfPackage && result.isProjectPackage && result.parentPath) {
+      result = await projectPersistenceService.browseDesktopProjectPackages(result.parentPath);
+    }
+    if (!state.projectPackageDialog) return;
+    state.projectPackageDialog = applyProjectPackageBrowseResult(state.projectPackageDialog, result);
+  } catch (error) {
+    if (!state.projectPackageDialog) return;
+    state.projectPackageDialog = {
+      ...state.projectPackageDialog,
+      busy: false,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    };
+  }
+  renderProjectPackageDialog();
+}
+
+function openProjectPackageDialog(mode) {
+  const projectTitle = mode === PROJECT_PACKAGE_DIALOG_MODES.NEW
+    ? "Untitled Project"
+    : state.projectTitle || state.workspace?.project?.title || "Untitled Project";
+  state.projectPackageDialog = createProjectPackageDialogState({
+    mode,
+    projectTitle,
+    sourceRoot: state.projectFilePath,
+  });
+  renderProjectPackageDialog();
+  const initialPath = mode === PROJECT_PACKAGE_DIALOG_MODES.SAVE_AS && hasProjectFilePath(state.projectFilePath)
+    ? state.projectFilePath
+    : "";
+  void browseProjectPackageDialog(initialPath, {
+    preferParentOfPackage: mode === PROJECT_PACKAGE_DIALOG_MODES.SAVE_AS,
   });
 }
 
@@ -5139,14 +5241,6 @@ function toggleDeveloperOptionsMenu() {
     state.projectSettingsMenuOpen = false;
   }
   renderHeader();
-}
-
-function focusProjectFilePathInput() {
-  const input = document.querySelector('[data-edit-field="project-file-path"]');
-  if (input instanceof HTMLInputElement) {
-    input.focus({ preventScroll: true });
-    input.select();
-  }
 }
 
 function hideFileMenu() {
@@ -5376,6 +5470,11 @@ function handleGlobalKeyboardShortcut(event) {
   const key = typeof event.key === "string" ? event.key.toLowerCase() : "";
 
   if (key === "escape") {
+    if (state.projectPackageDialog) {
+      event.preventDefault();
+      closeProjectPackageDialog();
+      return;
+    }
     if (state.keyboardShortcutSettingsWindowOpen) {
       event.preventDefault();
       closeKeyboardShortcutSettingsWindow();
@@ -5549,14 +5648,8 @@ function handleGlobalKeyboardShortcut(event) {
 
   if (behaviorId === "project.openMenu") {
     event.preventDefault();
-    toggleFileMenu();
-    if (state.fileMenuOpen) {
-      window.requestAnimationFrame(() => {
-        if (state.fileMenuOpen) {
-          focusProjectFilePathInput();
-        }
-      });
-    }
+    hideFileMenu();
+    openProjectPackageDialog(PROJECT_PACKAGE_DIALOG_MODES.OPEN);
     return;
   }
 
@@ -16704,14 +16797,6 @@ function loadSelectedProject(requestedProjectId = null) {
   }
 }
 
-// Intent: expose project-file labels through the shared display resolver so chrome and panels stay consistent.
-function getSuggestedProjectFilePath() {
-  return getSuggestedProjectFilePathFromProject({
-    projectTitle: state.projectTitle || state.workspace?.project?.title || "Untitled Project",
-    projectRoot: state.workspace?.settings?.projectRoot ?? "",
-  });
-}
-
 function getSuggestedProjectFileName(projectTitle = "") {
   const title = projectTitle || state.projectTitle || state.workspace?.project?.title || "Untitled Project";
   return getSuggestedProjectFileNameFromTitle(title);
@@ -16723,10 +16808,6 @@ function hasProjectFileDestination() {
 
 function getProjectFileDisplayState() {
   return projectPersistenceService.getProjectFileDisplayState();
-}
-
-function setProjectFilePath(pathValue, handle = null, options = {}) {
-  projectPersistenceService.setActiveProjectFileDestination(pathValue, handle, options);
 }
 
 // Intent: build the canonical payload written to every `.abe-project.json` destination.
@@ -16772,7 +16853,7 @@ function downloadProjectLibrarySnapshot(snapshot, fileName = getSuggestedProject
 }
 
 async function loadProjectLibraryFromFile() {
-  await projectPersistenceService.chooseProjectSnapshotFileForLoad();
+  openProjectPackageDialog(PROJECT_PACKAGE_DIALOG_MODES.OPEN);
 }
 
 async function portScrivenerProject() {
@@ -16789,6 +16870,10 @@ async function waitForNarrationRecordingTranscriptAlignmentJobs({
 async function saveCurrentProject({
   waitForNarrationRecordingTranscriptAlignment = true,
 } = {}) {
+  if (!hasProjectFileDestination()) {
+    openProjectPackageDialog(PROJECT_PACKAGE_DIALOG_MODES.SAVE_AS);
+    return;
+  }
   if (waitForNarrationRecordingTranscriptAlignment) {
     await waitForNarrationRecordingTranscriptAlignmentJobs({
       reason: "save-project",
@@ -16798,25 +16883,16 @@ async function saveCurrentProject({
 }
 
 async function saveCurrentProjectFileAs() {
-  await projectPersistenceService.saveProjectSnapshotAs();
+  openProjectPackageDialog(PROJECT_PACKAGE_DIALOG_MODES.SAVE_AS);
 }
 
 function createProject() {
+  openProjectPackageDialog(PROJECT_PACKAGE_DIALOG_MODES.NEW);
+}
+
+function buildBlankProjectCandidateSnapshot(title) {
   const now = new Date().toISOString();
   const baseWorkspace = state.workspace ?? state.projectLibrary[0]?.workspace;
-  const defaultTitle = "Untitled Project";
-  const requestedTitle = promptForProjectTitle({
-    message: "Name your new project:",
-    defaultTitle,
-    windowRef: window,
-  });
-  if (requestedTitle === null) {
-    state.projectFileStatus = "Project creation cancelled.";
-    uiEventDispatcherLog.info("user-action", "project.create.cancelled", "Project creation cancelled by user.");
-    renderHeader();
-    return;
-  }
-  const title = requestedTitle.trim() || defaultTitle;
   const projectId = `project-${now.replace(/[^0-9A-Za-z]/g, "").slice(0, 14) || Date.now()}`;
   const workspace = createBlankWorkspaceSnapshot(baseWorkspace, projectId, title, now);
   const record = createProjectLibraryRecordFromWorkspace(workspace, {
@@ -16835,29 +16911,52 @@ function createProject() {
     editorPrefs: createDefaultEditorPrefs(),
     localAiPrefs: createDefaultLocalAiPrefs(),
   });
-
-  state.projectLibrary = [...state.projectLibrary.filter((project) => project.id !== record.id), record];
-  projectPersistenceLog.info("state-change", "project.create", "Created a new project record.", {
-    projectId: record.id,
-    title: record.title,
-  });
-  activateProjectRecord(record, {
-    reason: "create-project",
-    beforeRender: () => {
-      setProjectFilePath(getSuggestedProjectFilePath(), null, { skipProjectFileAutosave: true });
-      persistCurrentProjectRecord({ skipProjectFileAutosave: true });
+  return projectService.exportProjectLibrarySnapshot({
+    librarySnapshot: {
+      schemaVersion: PROJECT_SCHEMA_VERSION,
+      activeProjectId: projectId,
+      projects: [record],
+      sceneStore: {},
     },
-    renderAfter: true,
-    recordSnapshot: true,
   });
-  if (state.workspace?.project?.stats) {
-    reportBrowserLog("info", "project-library", "Created a new project.", {
-      projectId: record.id,
-      title: record.title,
-      chapters: state.workspace.project.stats.chapterCount,
-      scenes: state.workspace.project.stats.sceneCount,
-      templates: state.workspace.world?.stats?.templateCount ?? 0,
-    });
+}
+
+async function confirmProjectPackageDialog() {
+  const dialog = state.projectPackageDialog;
+  if (!dialog || !canConfirmProjectPackageDialog(dialog)) return;
+  state.projectPackageDialog = { ...dialog, busy: true, errorMessage: "" };
+  renderProjectPackageDialog();
+  try {
+    if (dialog.mode === PROJECT_PACKAGE_DIALOG_MODES.NEW) {
+      const title = dialog.projectName.trim() || "Untitled Project";
+      await projectPersistenceService.createDesktopProjectPackage({
+        parentPath: dialog.locationPath,
+        folderName: dialog.folderName,
+        buildCandidateSnapshot: () => buildBlankProjectCandidateSnapshot(title),
+      });
+      projectPersistenceLog.info("state-change", "project.create", "Created and activated a verified project package.", {
+        projectId: state.activeProjectId,
+        title: state.projectTitle,
+        projectRoot: state.projectFilePath,
+      });
+    } else if (dialog.mode === PROJECT_PACKAGE_DIALOG_MODES.OPEN) {
+      await projectPersistenceService.openDesktopProjectPackage({ rootPath: dialog.locationPath });
+    } else {
+      await waitForNarrationRecordingTranscriptAlignmentJobs({ reason: "save-project-as-package" });
+      await projectPersistenceService.saveProjectSnapshotAsPackage({
+        destinationParentPath: dialog.locationPath,
+        folderName: dialog.folderName,
+      });
+    }
+    state.projectPackageDialog = null;
+    render();
+  } catch (error) {
+    state.projectPackageDialog = {
+      ...dialog,
+      busy: false,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    };
+    renderProjectPackageDialog();
   }
 }
 

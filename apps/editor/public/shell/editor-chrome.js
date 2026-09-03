@@ -34,7 +34,6 @@ export function renderEditorChrome({
   writingTargetSummary,
   projectFileAutosaveConnected = false,
   projectFileDisplay,
-  getSuggestedProjectFilePath,
 }) {
   const projectWorkspace = workspace ?? state?.workspace ?? null;
   const activePane = state?.activePane ?? "manuscript";
@@ -74,7 +73,6 @@ export function renderEditorChrome({
               state,
               projectFileAutosaveConnected,
               projectFileDisplay: safeProjectFileDisplay,
-              getSuggestedProjectFilePath,
             }) : ""}
           </div>
           ${renderProjectSettingsControl(state, { proofReadAvailable })}
@@ -325,31 +323,23 @@ function renderFileMenu({
   state,
   projectFileAutosaveConnected,
   projectFileDisplay,
-  getSuggestedProjectFilePath,
 }) {
   const projectFilePathLabel = projectFileDisplay?.pathLabel ?? state.projectFilePath ?? "";
   const recentProjects = buildRecentProjectMenuItems(state);
   const projectFileStatus = state.projectFileStatus
     ? state.projectFileStatus
     : projectFilePathLabel
-      ? `Path: ${projectFilePathLabel}`
-      : "No project path selected.";
+      ? `Package: ${projectFilePathLabel}`
+      : "No project package selected.";
 
   return `
     <div class="file-menu-panel" role="menu" aria-label="Project menu">
       <div class="file-menu-section">
         <span class="file-menu-label">Project</span>
-        <label class="project-file-shell compact">
-          <span>Path</span>
-          <input
-            type="text"
-            value="${escapeHtml(projectFileDisplay?.inputValue ?? state.projectFilePath)}"
-            data-edit-field="project-file-path"
-            placeholder="${escapeHtml(getSuggestedProjectFilePath())}"
-            aria-label="Project path"
-            spellcheck="false"
-          />
-        </label>
+        <div class="project-file-shell compact project-package-location">
+          <span>Project location</span>
+          <output title="${escapeHtml(projectFileDisplay?.tooltip ?? projectFilePathLabel)}">${escapeHtml(projectFilePathLabel || "No package selected")}</output>
+        </div>
         <div class="file-menu-actions project-file-actions">
           <button
             class="panel-action-button project-menu-button"
@@ -357,7 +347,7 @@ function renderFileMenu({
             data-action="create-project"
             ${state.projectFileBusy ? "disabled" : ""}
           >
-            New project
+            New Project...
           </button>
           <div class="project-load-menu">
             <button
@@ -367,18 +357,10 @@ function renderFileMenu({
               ${state.projectFileBusy ? "disabled" : ""}
               aria-haspopup="menu"
             >
-              Load project
+              Open Project...
             </button>
             ${renderRecentProjectMenu(recentProjects, state)}
           </div>
-          <button
-            class="panel-action-button project-menu-button"
-            type="button"
-            data-action="import-scrivener-project"
-            ${state.projectFileBusy ? "disabled" : ""}
-          >
-            Port Scrivener
-          </button>
           <button
             class="panel-action-button project-menu-button"
             type="button"
@@ -386,6 +368,22 @@ function renderFileMenu({
             ${state.projectFileBusy ? "disabled" : ""}
           >
             Save
+          </button>
+          <button
+            class="panel-action-button project-menu-button"
+            type="button"
+            data-action="save-project-file-as"
+            ${state.projectFileBusy ? "disabled" : ""}
+          >
+            Save As...
+          </button>
+          <button
+            class="panel-action-button project-menu-button"
+            type="button"
+            data-action="import-scrivener-project"
+            ${state.projectFileBusy ? "disabled" : ""}
+          >
+            Port Scrivener...
           </button>
         </div>
         ${renderProjectFileAutosaveSetting(state, projectFileAutosaveConnected)}

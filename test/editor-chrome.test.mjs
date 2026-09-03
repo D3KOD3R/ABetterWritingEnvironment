@@ -59,6 +59,7 @@ function createWritingTargetSummary() {
 }
 
 function renderChromeForPane(activePane, stateOverrides = {}) {
+  const projectFilePath = stateOverrides.projectFilePath ?? "";
   return renderEditorChrome({
     state: createChromeState(activePane, stateOverrides),
     workspace: {
@@ -68,19 +69,10 @@ function renderChromeForPane(activePane, stateOverrides = {}) {
     writingTargetSummary: createWritingTargetSummary(),
     projectFileAutosaveConnected: false,
     projectFileDisplay: {
-      inputValue: "",
-      pathLabel: "",
-      tooltip: "No project file selected",
+      inputValue: projectFilePath,
+      pathLabel: projectFilePath,
+      tooltip: projectFilePath || "No project file selected",
     },
-    createProjectLibraryRecord: () => ({
-      id: "project-1",
-      title: "Test project",
-      workspace: {
-        project: { stats: { chapterCount: 1, sceneCount: 1 } },
-        world: { stats: { templateCount: 0 } },
-      },
-    }),
-    getSuggestedProjectFilePath: () => "C:\\Projects\\Novel.abe-project.json",
   });
 }
 
@@ -264,17 +256,20 @@ export function runEditorChromeTest() {
   });
   assert.match(fileMenuHtml, /aria-label="Project menu"/);
   assert.match(fileMenuHtml, /file-menu-actions project-file-actions/);
-  assert.match(fileMenuHtml, /data-action="create-project"[\s\S]*New project/);
-  assert.match(fileMenuHtml, /data-action="load-project-file"[\s\S]*Load project/);
-  assert.match(fileMenuHtml, /data-action="import-scrivener-project"[\s\S]*Port Scrivener/);
+  assert.match(fileMenuHtml, /Project location/);
+  assert.match(fileMenuHtml, /C:\\Projects\\Novel\.abe-project\.json/);
+  assert.match(fileMenuHtml, /data-action="create-project"[\s\S]*New Project\.\.\./);
+  assert.match(fileMenuHtml, /data-action="load-project-file"[\s\S]*Open Project\.\.\./);
+  assert.match(fileMenuHtml, /data-action="import-scrivener-project"[\s\S]*Port Scrivener\.\.\./);
   assert.match(fileMenuHtml, /class="project-recent-menu" role="menu" aria-label="Recent loaded projects"/);
   assert.match(fileMenuHtml, /data-action="load-project"[\s\S]*data-project-id="project-new"[\s\S]*Recent Novel/);
   assert.match(fileMenuHtml, /data-action="load-project"[\s\S]*data-project-id="project-old"[\s\S]*Older Novel/);
   assert.ok(fileMenuHtml.indexOf("Recent Novel") < fileMenuHtml.indexOf("Older Novel"));
   assert.match(fileMenuHtml, /data-action="save-project"[\s\S]*Save/);
+  assert.match(fileMenuHtml, /data-action="save-project-file-as"[\s\S]*Save As\.\.\./);
   assert.match(fileMenuHtml, />Autosave</);
   assert.doesNotMatch(fileMenuHtml, /Saved projects/);
-  assert.doesNotMatch(fileMenuHtml, /Save as file/);
+  assert.doesNotMatch(fileMenuHtml, /data-edit-field="project-file-path"/);
   assert.doesNotMatch(fileMenuHtml, /Load file/);
   assert.doesNotMatch(fileMenuHtml, /Load Project Source/);
 

@@ -793,7 +793,7 @@ export async function runDesktopApplicationTest() {
   assert.match(appScript.body, /updateSceneEditorSelectionSnapshotFromTextarea/);
   assert.match(appScript.body, /behaviorId === "history\.undo"/);
   assert.match(appScript.body, /behaviorId === "history\.redo"/);
-  assert.match(appScript.body, /focusProjectFilePathInput/);
+  assert.match(appScript.body, /openProjectPackageDialog/);
   assert.match(projectPersistenceServiceScript, /canUseBrowserSavePicker/);
   assert.match(projectPersistenceServiceScript, /canUseBrowserOpenPicker/);
   assert.match(projectPersistenceServiceScript, /chooseProjectSnapshotFileForLoad/);
@@ -825,7 +825,7 @@ export async function runDesktopApplicationTest() {
   assert.doesNotMatch(shellScript, /project-title-input/);
   assert.doesNotMatch(shellScript, /desktop-project-title-shell/);
   assert.match(shellScript, /data-file-path-tooltip="\$\{escapeHtml\(safeProjectFileDisplay\.tooltip\)\}"/);
-  assert.match(shellScript, /project-file-path/);
+  assert.match(shellScript, /project-package-location/);
   assert.match(shellScript, /project-file-status/);
   assert.match(projectFileAdapterScript, /writeProjectLibraryToDesktopPath/);
   assert.match(projectFileAdapterScript, /readProjectLibraryFromBrowserFile/);
@@ -841,7 +841,7 @@ export async function runDesktopApplicationTest() {
   assert.match(shellScript, /project-file-actions/);
   assert.match(appScript.body, /state\.projectLibrarySelectionId = target\.dataset\.projectId/);
   assert.doesNotMatch(shellScript, /Saved projects/);
-  assert.doesNotMatch(shellScript, /Save as file/);
+  assert.match(shellScript, /Save As\.\.\./);
   assert.doesNotMatch(shellScript, /Load file/);
   assert.doesNotMatch(shellScript, /project-library-select/);
   assert.doesNotMatch(shellScript, /project-library-status/);
@@ -1077,7 +1077,7 @@ export async function runDesktopApplicationTest() {
   );
   assert.match(
     appScript.body,
-    /async function saveCurrentProjectFileAs\(\) \{[\s\S]*?projectPersistenceService\.saveProjectSnapshotAs\(\);/,
+    /async function saveCurrentProjectFileAs\(\) \{[\s\S]*?openProjectPackageDialog\(PROJECT_PACKAGE_DIALOG_MODES\.SAVE_AS\);/,
   );
   assert.match(appScript.body, /saveWritingTargetState/);
   assert.match(appScript.body, /syncWritingTargetWindowLiveState/);
@@ -1096,9 +1096,9 @@ export async function runDesktopApplicationTest() {
   assert.match(appScript.body, /void loadProjectLibraryFromFile\(\)/);
   assert.match(
     appScript.body,
-    /async function loadProjectLibraryFromFile\(\) \{[\s\S]*?projectPersistenceService\.chooseProjectSnapshotFileForLoad\(\);/,
+    /async function loadProjectLibraryFromFile\(\) \{[\s\S]*?openProjectPackageDialog\(PROJECT_PACKAGE_DIALOG_MODES\.OPEN\);/,
   );
-  assert.match(appScript.body, /focusProjectFilePathInput/);
+  assert.doesNotMatch(appScript.body, /focusProjectFilePathInput/);
   assert.match(writingTargetWindowScript, /Words/);
   assert.match(writingTargetWindowScript, /Days to release/);
   assert.match(appScript.body, /const DEFAULT_SESSION_TIMEOUT_MINUTES = 20;/);

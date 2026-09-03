@@ -24,7 +24,12 @@ export async function runProjectFileStorageAdaptersTest() {
   // Intent: lock down save destination precedence before exercising autosave state.
   assert.equal(normalizeProjectFilePath("  C:\\Projects\\Novel.abe-project.json  "), "C:\\Projects\\Novel.abe-project.json");
   assert.equal(hasProjectFilePath("Novel.abe-project.json"), false);
-  assert.equal(hasProjectFilePath("C:\\Projects\\Novel.abe-project.json"), true);
+  assert.equal(hasProjectFilePath("C:\\Projects\\Novel"), true);
+  assert.equal(hasProjectFilePath("\\\\server\\share\\Novel"), true);
+  assert.equal(hasProjectFilePath("/tmp/Novel"), true);
+  assert.equal(hasProjectFilePath("some/folder"), false);
+  assert.equal(hasProjectFilePath("../Novel"), false);
+  assert.equal(hasProjectFilePath("Novel.json"), false);
   assert.equal(hasProjectFileDestination({ filePath: "Novel.abe-project.json" }), false);
   assert.equal(hasProjectFileDestination({ fileHandle: { name: "Novel.abe-project.json" } }), true);
   assert.equal(getSuggestedProjectFileName("The Crown: Draft?"), "the-crown-draft.abe-project.json");
@@ -293,6 +298,66 @@ export async function runProjectFileStorageAdaptersTest() {
     "scene-c": "mars",
   });
   assert.equal(sequentialState.projectFileAutosaveDirty, false);
+
+  // Intent: project transitions must wait for both an active write and its accumulated follow-up write.
+  const drainState = createAutosaveState();
+  const drainTimer = createFakeTimer();
+  let drainSaveCount = 0;
+  let releaseFirstDrainSave;
+  let releaseSecondDrainSave;
+  let announceFirstDrainSave;
+  let announceSecondDrainSave;
+  const firstDrainSaveStarted = new Promise((resolve) => {
+    announceFirstDrainSave = resolve;
+  });
+  const secondDrainSaveStarted = new Promise((resolve) => {
+    announceSecondDrainSave = resolve;
+  });
+  const firstDrainSaveGate = new Promise((resolve) => {
+    releaseFirstDrainSave = resolve;
+  });
+  const secondDrainSaveGate = new Promise((resolve) => {
+    releaseSecondDrainSave = resolve;
+  });
+  const drainController = createProjectFileAutosaveController({
+    state: drainState,
+    delayMs: 250,
+    windowRef: drainTimer.windowRef,
+    getTarget: () => ({ projectId: "project-drain", filePath: "C:\\Projects\\drain", fileHandle: null }),
+    hasDestination: () => true,
+    isBusy: () => false,
+    isEnabled: () => true,
+    save: async () => {
+      drainSaveCount += 1;
+      if (drainSaveCount === 1) {
+        announceFirstDrainSave();
+        await firstDrainSaveGate;
+      } else {
+        announceSecondDrainSave();
+        await secondDrainSaveGate;
+      }
+    },
+    setStatus: () => {},
+    renderStatus: () => {},
+  });
+  drainController.markDirty({ domain: "manuscript", reason: "first-edit", source: "test" });
+  const activeDrainFlush = drainController.flush();
+  await firstDrainSaveStarted;
+  drainController.markDirty({ domain: "world", reason: "second-edit", source: "test" });
+  let drainResolved = false;
+  const transitionDrain = drainController.drain().then(() => {
+    drainResolved = true;
+  });
+  await Promise.resolve();
+  assert.equal(drainResolved, false);
+  releaseFirstDrainSave();
+  await secondDrainSaveStarted;
+  assert.equal(drainResolved, false);
+  releaseSecondDrainSave();
+  await Promise.all([activeDrainFlush, transitionDrain]);
+  assert.equal(drainSaveCount, 2);
+  assert.equal(drainResolved, true);
+  assert.equal(drainState.projectFileAutosaveDirty, false);
 
   // Cache-only fallback must leave the project file dirty and visibly out of sync.
   controller.markDirty({

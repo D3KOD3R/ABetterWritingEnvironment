@@ -3,10 +3,16 @@ export function normalizeProjectFilePath(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-// Intent: treat only absolute-looking paths as durable file destinations.
+// Intent: recognize desktop absolute roots without borrowing browser cwd semantics.
 export function hasProjectFilePath(value) {
   const normalized = normalizeProjectFilePath(value);
-  return Boolean(normalized) && /[\\/]/.test(normalized);
+  if (!normalized) {
+    return false;
+  }
+  const windowsDrivePath = /^[A-Za-z]:[\\/]/.test(normalized);
+  const windowsUncPath = /^(?:\\\\|\/\/)[^\\/]+[\\/][^\\/]+(?:[\\/]|$)/.test(normalized);
+  const posixAbsolutePath = /^\/(?!\/)/.test(normalized);
+  return windowsDrivePath || windowsUncPath || posixAbsolutePath;
 }
 
 // Intent: prefer the file that was actually loaded over any stale path carried in memory.
