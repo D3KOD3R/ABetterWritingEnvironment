@@ -1,14 +1,29 @@
 // Intent: add responsive project-package location UX while keeping app.js as the lifecycle authority.
-import { chooseDesktopDirectory } from "../../adapters/platform/desktop-directory-picker.js";
+import {
+  chooseDesktopDirectory,
+  installDesktopDirectoryPickerBridge,
+  queueDesktopDirectoryForNextPicker,
+} from "../../adapters/platform/desktop-directory-picker.js";
 
 export const PROJECT_PACKAGE_LOCATION_REFRESH_DELAY_MS = 260;
 
 let locationRefreshTimer = null;
 let nativePickerBusy = false;
+let scrivenerPickerBusy = false;
+let replayingScrivenerClick = false;
 let pendingFocusRestore = null;
 let pendingCompletionRestore = null;
 let suppressNextLocationFocusRefresh = false;
 let suppressNextLocationInputRefresh = false;
+
+function hasNativeDesktopDirectoryPicker() {
+  return document.querySelector('meta[name="abe-native-directory-picker"][content="true"]') !== null;
+}
+
+// Intent: install the compatibility bridge only on desktop hosts that can preselect through the shared native chooser.
+if (hasNativeDesktopDirectoryPicker()) {
+  installDesktopDirectoryPickerBridge();
+}
 
 function getLocationInput() {
   const input = document.querySelector('[data-project-package-field="locationPath"]');
@@ -203,6 +218,40 @@ async function openNativeProjectPackageDirectoryPicker() {
   }
 }
 
+function replayScrivenerPortClick(target) {
+  replayingScrivenerClick = true;
+  try {
+    target.click();
+  } finally {
+    replayingScrivenerClick = false;
+  }
+}
+
+// Intent: select the Scrivener source with the same native picker used by New Project before persistence awaits can lose the click gesture.
+async function openNativeScrivenerDirectoryPicker(target) {
+  if (scrivenerPickerBusy) return;
+  scrivenerPickerBusy = true;
+  try {
+    const result = await chooseDesktopDirectory();
+    if (!result.supported) {
+      replayScrivenerPortClick(target);
+      return;
+    }
+    if (result.cancelled || !result.path) return;
+
+    queueDesktopDirectoryForNextPicker({
+      rootPath: result.path,
+      windowRef: window,
+    });
+    replayScrivenerPortClick(target);
+  } catch (error) {
+    console.warn("Desktop Scrivener folder selection failed; falling back to the existing import path.", error);
+    replayScrivenerPortClick(target);
+  } finally {
+    scrivenerPickerBusy = false;
+  }
+}
+
 // Intent: validation may canonicalize a path, but it must not rewrite text while the user is still editing it.
 const dialogObserver = new MutationObserver(() => {
   if (restorePartialLocationCompletion()) return;
@@ -245,6 +294,19 @@ document.addEventListener("focusin", (event) => {
     return;
   }
   scheduleLocationRefresh(input);
+}, true);
+
+// Intent: on desktop, Port Scrivener reuses the New Project native chooser and then re-enters the established persistence/import action.
+document.addEventListener("click", (event) => {
+  if (replayingScrivenerClick || !hasNativeDesktopDirectoryPicker()) return;
+  const target = event.target instanceof Element
+    ? event.target.closest('[data-action="import-scrivener-project"]')
+    : null;
+  if (!(target instanceof HTMLElement)) return;
+
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  void openNativeScrivenerDirectoryPicker(target);
 }, true);
 
 // Intent: Browse means native OS selection on supported desktop hosts, with the existing browser as fallback.

@@ -1,5 +1,9 @@
 // Intent: own runtime-only project package dialog state and markup without persistence side effects.
 import { escapeHtml } from "../../shared/ui-utils.js";
+import {
+  renderDirectoryLocationFieldHTML,
+  renderFormTextFieldHTML,
+} from "../../shared/form-field-components.js";
 
 export const PROJECT_PACKAGE_DIALOG_MODES = Object.freeze({
   NEW: "new",
@@ -121,25 +125,29 @@ export function renderProjectPackageDialogHTML(dialog) {
           </div>
           <button type="button" data-action="cancel-project-package-dialog" aria-label="Close" ${disabled}>×</button>
         </header>
-        ${isNew ? `
-          <label>
-            <span>Project name</span>
-            <input data-project-package-field="projectName" value="${escapeHtml(dialog.projectName)}" ${disabled} />
-          </label>
-        ` : ""}
-        ${!isOpen ? `
-          <label>
-            <span>Project folder name</span>
-            <input data-project-package-field="folderName" value="${escapeHtml(dialog.folderName)}" ${disabled} />
-          </label>
-        ` : ""}
-        <label>
-          <span>Location</span>
-          <div class="project-package-dialog__path-row">
-            <input data-project-package-field="locationPath" value="${escapeHtml(dialog.locationPath)}" placeholder="Absolute folder path" spellcheck="false" ${disabled} />
-            <button type="button" data-action="browse-project-package-path" ${disabled}>Browse</button>
-          </div>
-        </label>
+        ${isNew ? renderFormTextFieldHTML({
+          label: "Project name",
+          value: dialog.projectName,
+          fieldName: "projectName",
+          fieldAttribute: "data-project-package-field",
+          disabled: dialog.busy,
+        }) : ""}
+        ${!isOpen ? renderFormTextFieldHTML({
+          label: "Project folder name",
+          value: dialog.folderName,
+          fieldName: "folderName",
+          fieldAttribute: "data-project-package-field",
+          disabled: dialog.busy,
+        }) : ""}
+        ${renderDirectoryLocationFieldHTML({
+          label: "Location",
+          value: dialog.locationPath,
+          fieldName: "locationPath",
+          fieldAttribute: "data-project-package-field",
+          browseAction: "browse-project-package-path",
+          placeholder: "Absolute folder path",
+          disabled: dialog.busy,
+        })}
         <div class="project-package-dialog__browser" aria-label="Project folders">
           ${dialog.parentPath ? `
             <button type="button" class="project-package-dialog__directory" data-action="navigate-project-package" data-project-package-path="${escapeHtml(dialog.parentPath)}" ${disabled}>

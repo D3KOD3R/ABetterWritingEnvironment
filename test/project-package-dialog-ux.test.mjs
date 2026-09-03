@@ -1,4 +1,4 @@
-// Intent: keep project-package dialog UX wiring small, themed, and behind the desktop capability boundary.
+// Intent: keep project-package dialog UX wiring small, themed, componentized, and behind one desktop capability boundary.
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -12,11 +12,22 @@ async function readRepoFile(relativePath) {
 }
 
 export async function runProjectPackageDialogUxTest() {
-  const [indexHtml, dialogCss, dialogController, dialogRenderer, desktopServer, directoryPicker] = await Promise.all([
+  const [
+    indexHtml,
+    dialogCss,
+    dialogController,
+    dialogRenderer,
+    formComponents,
+    desktopAdapter,
+    desktopServer,
+    directoryPicker,
+  ] = await Promise.all([
     readRepoFile("apps/editor/public/index.html"),
     readRepoFile("apps/editor/public/project-package-dialog.css"),
     readRepoFile("apps/editor/public/features/project-lifecycle/project-package-dialog-controller.js"),
     readRepoFile("apps/editor/public/features/project-lifecycle/project-package-dialog.js"),
+    readRepoFile("apps/editor/public/shared/form-field-components.js"),
+    readRepoFile("apps/editor/public/adapters/platform/desktop-directory-picker.js"),
     readRepoFile("apps/desktop/server.mjs"),
     readRepoFile("apps/desktop/src/directory-picker.ts"),
   ]);
@@ -27,6 +38,13 @@ export async function runProjectPackageDialogUxTest() {
   assert.match(dialogCss, /\.project-package-dialog\s*\{[\s\S]*background:\s*var\(--project-package-dialog-background\)/);
   assert.match(dialogCss, /:root\[data-theme="dark"\][\s\S]*--project-package-dialog-background:/);
   assert.doesNotMatch(dialogCss, /var\(--panel-bg\)|var\(--line-soft\)/);
+
+  assert.match(dialogRenderer, /renderFormTextFieldHTML/);
+  assert.match(dialogRenderer, /renderDirectoryLocationFieldHTML/);
+  assert.doesNotMatch(dialogRenderer, /project-package-dialog__path-row/);
+  assert.match(formComponents, /export function renderFormTextFieldHTML/);
+  assert.match(formComponents, /export function renderDirectoryLocationFieldHTML/);
+  assert.match(formComponents, /data-action="\$\{escapeHtml\(browseAction\)\}"/);
 
   assert.match(dialogController, /PROJECT_PACKAGE_LOCATION_REFRESH_DELAY_MS\s*=\s*260/);
   assert.match(dialogController, /resolveProjectPackageLocationLookup/);
@@ -46,10 +64,23 @@ export async function runProjectPackageDialogUxTest() {
   assert.match(dialogController, /MutationObserver[\s\S]*input\.value\s*=\s*value[\s\S]*setSelectionRange/);
   assert.doesNotMatch(dialogController, /input\.value\s*!==\s*pendingFocusRestore\.value/);
 
+  // Scrivener must reuse the existing desktop chooser rather than introducing another file-selection UI.
+  assert.match(dialogController, /hasNativeDesktopDirectoryPicker\(\)[\s\S]*installDesktopDirectoryPickerBridge\(\)/);
+  assert.match(dialogController, /import-scrivener-project[\s\S]*openNativeScrivenerDirectoryPicker/);
+  assert.match(dialogController, /chooseDesktopDirectory\(\)/);
+  assert.match(dialogController, /queueDesktopDirectoryForNextPicker/);
+  assert.match(dialogController, /abe-native-directory-picker/);
+  assert.match(desktopAdapter, /pendingDirectoryHandles/);
+  assert.match(desktopAdapter, /createDesktopDirectoryHandle/);
+  assert.match(desktopAdapter, /browserDirectoryPicker\(options\)/);
+
   assert.match(dialogRenderer, /Folders update automatically as you edit the location\./);
   assert.doesNotMatch(dialogRenderer, /Press Enter or Browse to validate/);
 
   assert.match(desktopServer, /\/api\/platform\/pick-directory/);
+  assert.match(desktopServer, /\/api\/platform\/directory\/list/);
+  assert.match(desktopServer, /\/api\/platform\/directory\/read-file/);
+  assert.match(desktopServer, /abe-native-directory-picker/);
   assert.match(desktopServer, /pickDesktopDirectory/);
   assert.doesNotMatch(desktopServer, /Access-Control-Allow-Origin/);
 
@@ -57,4 +88,6 @@ export async function runProjectPackageDialogUxTest() {
   assert.match(directoryPicker, /powershell\.exe/);
   assert.match(directoryPicker, /ABE_DIRECTORY_PICKER_INITIAL_PATH/);
   assert.match(directoryPicker, /isAbsolute\(normalizedPath\)/);
+  assert.match(directoryPicker, /realpath/);
+  assert.match(directoryPicker, /Selected-directory access cannot escape the chosen root\./);
 }

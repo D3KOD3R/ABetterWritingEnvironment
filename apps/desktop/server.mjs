@@ -2,7 +2,11 @@
 import http from "node:http";
 
 import { createDesktopResponseForRequest } from "./src/http-app.ts";
-import { pickDesktopDirectory } from "./src/directory-picker.ts";
+import {
+  listDesktopDirectoryEntries,
+  pickDesktopDirectory,
+  readDesktopDirectoryFile,
+} from "./src/directory-picker.ts";
 
 const host = "127.0.0.1";
 const port = Number(process.env.PORT ?? 4310);
@@ -35,11 +39,66 @@ const server = http.createServer(async (request, response) => {
     return;
   }
 
+  // Intent: expose a read-only, containment-checked directory view for importers after the user selects a root.
+  if ((request.method ?? "GET").toUpperCase() === "POST" && url.pathname === "/api/platform/directory/list") {
+    try {
+      const payload = parseJsonBody(body);
+      const result = await listDesktopDirectoryEntries({
+        rootPath: typeof payload.rootPath === "string" ? payload.rootPath : "",
+        relativePath: typeof payload.relativePath === "string" ? payload.relativePath : "",
+      });
+      writeJsonResponse(response, 200, {
+        ok: true,
+        ...result,
+      });
+    } catch (error) {
+      writeJsonResponse(response, 400, {
+        ok: false,
+        message: error instanceof Error ? error.message : "Unable to list the selected directory.",
+      });
+    }
+    return;
+  }
+
+  if ((request.method ?? "GET").toUpperCase() === "POST" && url.pathname === "/api/platform/directory/read-file") {
+    try {
+      const payload = parseJsonBody(body);
+      const result = await readDesktopDirectoryFile({
+        rootPath: typeof payload.rootPath === "string" ? payload.rootPath : "",
+        relativePath: typeof payload.relativePath === "string" ? payload.relativePath : "",
+      });
+      writeJsonResponse(response, 200, {
+        ok: true,
+        ...result,
+      });
+    } catch (error) {
+      writeJsonResponse(response, 400, {
+        ok: false,
+        message: error instanceof Error ? error.message : "Unable to read the selected directory file.",
+      });
+    }
+    return;
+  }
+
   const result = await createDesktopResponseForRequest({
     method: request.method,
     pathname: url.pathname,
     body,
   });
+
+  // Intent: give browser-side adapters a synchronous host-capability marker without probing an API and losing user activation.
+  if (
+    (url.pathname === "/" || url.pathname === "/index.html")
+    && typeof result.body === "string"
+    && result.headers["Content-Type"]?.startsWith("text/html")
+  ) {
+    result.body = result.body.replace(
+      "<head>",
+      `<head>
+    <meta name="abe-desktop-host" content="true" />
+    <meta name="abe-native-directory-picker" content="${process.platform === "win32" ? "true" : "false"}" />`,
+    );
+  }
 
   response.writeHead(result.statusCode, result.headers);
   response.end(result.body);
