@@ -29,10 +29,20 @@ export async function runProjectPackageDialogUxTest() {
   assert.doesNotMatch(dialogCss, /var\(--panel-bg\)|var\(--line-soft\)/);
 
   assert.match(dialogController, /PROJECT_PACKAGE_LOCATION_REFRESH_DELAY_MS\s*=\s*260/);
+  assert.match(dialogController, /resolveProjectPackageLocationLookup/);
+  assert.match(dialogController, /lastIndexOf\("\\\\"\)[\s\S]*lastIndexOf\("\/"\)/);
+  assert.match(dialogController, /isPartialSegment:[\s\S]*Boolean\(browsePath\)/);
+  assert.match(dialogController, /browsePath:\s*lookup\.browsePath[\s\S]*prefix:\s*lookup\.prefix/);
+  assert.match(dialogController, /startsWith\(normalizedPrefix\)/);
+  assert.match(dialogController, /No matching child folders\./);
+  assert.match(dialogController, /suppressNextLocationInputRefresh/);
+  assert.match(dialogController, /input\.dispatchEvent\(new Event\("input"[\s\S]*browser\.innerHTML\s*=\s*matchingMarkup/);
+  assert.match(dialogController, /querySelector\("\.project-package-dialog__error"\)\?\.remove\(\)/);
   assert.match(dialogController, /addEventListener\("input"[\s\S]*scheduleLocationRefresh/);
   assert.match(dialogController, /addEventListener\("focusin"[\s\S]*scheduleLocationRefresh/);
   assert.match(dialogController, /KeyboardEvent\("keydown"[\s\S]*key:\s*"Enter"/);
   assert.match(dialogController, /browse-project-package-path[\s\S]*openNativeProjectPackageDirectoryPicker/);
+  assert.match(dialogController, /MutationObserver[\s\S]*restorePartialLocationCompletion/);
   assert.match(dialogController, /MutationObserver[\s\S]*input\.value\s*=\s*value[\s\S]*setSelectionRange/);
   assert.doesNotMatch(dialogController, /input\.value\s*!==\s*pendingFocusRestore\.value/);
 

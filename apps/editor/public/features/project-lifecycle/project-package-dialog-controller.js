@@ -6,7 +6,9 @@ export const PROJECT_PACKAGE_LOCATION_REFRESH_DELAY_MS = 260;
 let locationRefreshTimer = null;
 let nativePickerBusy = false;
 let pendingFocusRestore = null;
+let pendingCompletionRestore = null;
 let suppressNextLocationFocusRefresh = false;
+let suppressNextLocationInputRefresh = false;
 
 function getLocationInput() {
   const input = document.querySelector('[data-project-package-field="locationPath"]');
@@ -32,17 +34,68 @@ function rememberLocationFocus(input) {
   };
 }
 
+export function resolveProjectPackageLocationLookup(value) {
+  const typedValue = String(value ?? "").trim();
+  if (!typedValue) {
+    return {
+      typedValue,
+      browsePath: "",
+      prefix: "",
+      isPartialSegment: false,
+    };
+  }
+
+  const endsWithSeparator = /[\\/]$/.test(typedValue);
+  const separatorIndex = Math.max(typedValue.lastIndexOf("\\"), typedValue.lastIndexOf("/"));
+  if (endsWithSeparator || separatorIndex < 0) {
+    return {
+      typedValue,
+      browsePath: typedValue,
+      prefix: "",
+      isPartialSegment: false,
+    };
+  }
+
+  const separator = typedValue[separatorIndex];
+  let browsePath = typedValue.slice(0, separatorIndex);
+  if (/^[A-Za-z]:$/.test(browsePath)) {
+    browsePath += separator;
+  } else if (!browsePath && typedValue.startsWith(separator)) {
+    browsePath = separator;
+  }
+
+  return {
+    typedValue,
+    browsePath,
+    prefix: typedValue.slice(separatorIndex + 1),
+    isPartialSegment: Boolean(browsePath),
+  };
+}
+
 // Intent: reuse the existing Enter-to-validate path so persistence ordering stays in the established app controller.
-function requestExistingProjectPackageValidation({ restoreFocus = false } = {}) {
+function requestExistingProjectPackageValidation({
+  restoreFocus = false,
+  browsePath = null,
+  completion = null,
+} = {}) {
   const input = getLocationInput();
   if (!input || input.disabled) return false;
   if (restoreFocus) rememberLocationFocus(input);
+  if (completion) pendingCompletionRestore = completion;
+
+  const typedValue = input.value;
+  if (typeof browsePath === "string") {
+    input.value = browsePath;
+  }
   input.dispatchEvent(new KeyboardEvent("keydown", {
     key: "Enter",
     code: "Enter",
     bubbles: true,
     cancelable: true,
   }));
+
+  // The existing handler may replace this node synchronously, but restore the detached node too for callers/tests.
+  input.value = typedValue;
   return true;
 }
 
@@ -54,8 +107,72 @@ function scheduleLocationRefresh(input) {
     locationRefreshTimer = null;
     const currentInput = getLocationInput();
     if (!currentInput || currentInput.value !== expectedValue || currentInput.disabled) return;
-    requestExistingProjectPackageValidation({ restoreFocus: document.activeElement === currentInput });
+
+    const lookup = resolveProjectPackageLocationLookup(expectedValue);
+    const restoreFocus = document.activeElement === currentInput;
+    if (lookup.isPartialSegment) {
+      const selectionStart = currentInput.selectionStart;
+      const selectionEnd = currentInput.selectionEnd;
+      requestExistingProjectPackageValidation({
+        restoreFocus,
+        browsePath: lookup.browsePath,
+        completion: {
+          typedValue: lookup.typedValue,
+          prefix: lookup.prefix,
+          restoreFocus,
+          selectionStart,
+          selectionEnd,
+        },
+      });
+      return;
+    }
+
+    requestExistingProjectPackageValidation({ restoreFocus });
   }, PROJECT_PACKAGE_LOCATION_REFRESH_DELAY_MS);
+}
+
+function collectMatchingDirectoryMarkup(prefix) {
+  const browser = document.querySelector(".project-package-dialog__browser");
+  if (!(browser instanceof HTMLElement)) return "";
+  const normalizedPrefix = String(prefix ?? "").toLocaleLowerCase();
+  const matches = Array.from(browser.querySelectorAll('[data-action="navigate-project-package"]'))
+    .filter((button) => {
+      const name = String(button.querySelector("span")?.textContent ?? "").trim();
+      if (!name || name === "..") return false;
+      return !normalizedPrefix || name.toLocaleLowerCase().startsWith(normalizedPrefix);
+    })
+    .map((button) => button.outerHTML);
+  return matches.join("") || "<p>No matching child folders.</p>";
+}
+
+function restorePartialLocationCompletion() {
+  if (!pendingCompletionRestore) return false;
+  const input = getLocationInput();
+  if (!input || input.disabled) return false;
+
+  const completion = pendingCompletionRestore;
+  const browser = document.querySelector(".project-package-dialog__browser");
+  const matchingMarkup = collectMatchingDirectoryMarkup(completion.prefix);
+  pendingCompletionRestore = null;
+  pendingFocusRestore = null;
+
+  suppressNextLocationInputRefresh = true;
+  input.value = completion.typedValue;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+
+  document.querySelector(".project-package-dialog__error")?.remove();
+  if (browser instanceof HTMLElement) {
+    browser.innerHTML = matchingMarkup;
+  }
+
+  if (completion.restoreFocus) {
+    suppressNextLocationFocusRefresh = true;
+    input.focus({ preventScroll: true });
+    if (Number.isInteger(completion.selectionStart) && Number.isInteger(completion.selectionEnd)) {
+      input.setSelectionRange(completion.selectionStart, completion.selectionEnd);
+    }
+  }
+  return true;
 }
 
 async function openNativeProjectPackageDirectoryPicker() {
@@ -88,6 +205,7 @@ async function openNativeProjectPackageDirectoryPicker() {
 
 // Intent: validation may canonicalize a path, but it must not rewrite text while the user is still editing it.
 const dialogObserver = new MutationObserver(() => {
+  if (restorePartialLocationCompletion()) return;
   if (!pendingFocusRestore) return;
   const input = getLocationInput();
   if (!input || input.disabled) return;
@@ -112,6 +230,10 @@ dialogObserver.observe(document.documentElement, {
 document.addEventListener("input", (event) => {
   const input = event.target;
   if (!(input instanceof HTMLInputElement) || input.dataset.projectPackageField !== "locationPath") return;
+  if (suppressNextLocationInputRefresh) {
+    suppressNextLocationInputRefresh = false;
+    return;
+  }
   scheduleLocationRefresh(input);
 }, true);
 
