@@ -8,6 +8,10 @@
 import { buildProjectIndexFromProjectRecord } from "./project-index.js";
 import { mergeProjectIndexWithLiveSceneOverrides } from "./project-metrics.js";
 import { migrateProjectData, PROJECT_SCHEMA_VERSION } from "./project-migrations.js";
+import {
+  composePersistedSceneEditorText,
+  normalizePersistedSceneBlock,
+} from "./project-scene-block.js";
 
 function cloneValue(value) {
   if (typeof globalThis.structuredClone === "function") {
@@ -40,10 +44,7 @@ function sceneDraftHasSubstantiveBody(sceneDraft) {
 }
 
 function composeSceneDraftText(blocks = []) {
-  return blocks
-    .map((block) => String(block?.text ?? ""))
-    .filter((text) => text.length > 0)
-    .join("\n\n");
+  return composePersistedSceneEditorText(blocks);
 }
 
 // Intent: normalize live editor scene drafts just enough for portable project-file scene stores.
@@ -57,7 +58,11 @@ function normalizeRuntimeSceneDraft(candidate, fallbackSceneId) {
     return null;
   }
 
-  const blocks = Array.isArray(candidate.blocks) ? cloneValue(candidate.blocks) : [];
+  const blocks = Array.isArray(candidate.blocks)
+    ? candidate.blocks.map((block, index) => normalizePersistedSceneBlock(block, {
+      fallbackBlockId: `block-${sceneId}-${index + 1}`,
+    }))
+    : [];
   return {
     ...cloneValue(candidate),
     sceneId,
@@ -192,17 +197,10 @@ function resolveSceneDraft(projectRecord, sceneId) {
     chapterTitle: sceneLines[0]?.chapterTitle ?? "Untitled Chapter",
     sceneTitle: sceneLines[0]?.sceneTitle ?? "Untitled Scene",
     sceneSynopsis: sceneLines[0]?.sceneSynopsis ?? "",
-    blocks: sceneLines.map((line) => ({
-      blockId: line?.blockId ?? `draft-block-${sceneId}`,
-      lineNumber: Number.isFinite(Number(line?.lineNumber)) ? Number(line.lineNumber) : null,
-      kind: line?.kind ?? "narration",
-      speakerLabel: line?.speakerLabel ?? "",
-      text: line?.text ?? "",
-      issueIds: Array.isArray(line?.issueIds) ? [...line.issueIds] : [],
-      eventTagIds: Array.isArray(line?.eventTagIds) ? [...line.eventTagIds] : [],
-      isDraft: false,
+    blocks: sceneLines.map((line, index) => normalizePersistedSceneBlock(line, {
+      fallbackBlockId: `block-${sceneId}-${index + 1}`,
     })),
-    editorText: sceneLines.map((line) => line?.text ?? "").join("\n\n"),
+    editorText: composePersistedSceneEditorText(sceneLines),
   };
 }
 

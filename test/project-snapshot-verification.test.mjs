@@ -4,7 +4,9 @@ import { buildPortableExternalProjectSnapshot } from "../apps/editor/public/adap
 import {
   assertProjectSnapshotsSemanticallyEquivalent,
   buildProjectSemanticVerificationSnapshot,
+  collectProjectSnapshotSemanticDifferences,
 } from "../apps/editor/public/adapters/storage/project-snapshot-verification.js";
+import { composePersistedSceneEditorText } from "../apps/editor/public/adapters/storage/project-scene-block.js";
 import { normalizeProjectSelectionDefaults } from "../apps/editor/public/state/project-library-state.js";
 
 function createSnapshot({ includeStructure = false } = {}) {
@@ -51,6 +53,7 @@ function createSnapshot({ includeStructure = false } = {}) {
             sceneTitle: "Arrival",
             sceneSynopsis: "The traveller reaches the city.",
             blockId: "block-1",
+            paragraphId: "paragraph-1",
             lineNumber: 1,
             kind: "narration",
             speakerLabel: "",
@@ -72,6 +75,7 @@ function createSnapshot({ includeStructure = false } = {}) {
           editorText: "Rain silvered the station roof.",
           blocks: [{
             blockId: "block-1",
+            paragraphId: "paragraph-1",
             lineNumber: 1,
             kind: "narration",
             speakerLabel: "",
@@ -231,4 +235,47 @@ export async function runProjectSnapshotVerificationTest() {
     () => assertProjectSnapshotsSemanticallyEquivalent(richExpected, changedNonSceneStructure),
     /not semantically equivalent/,
   );
+
+  const manuscriptCorruptionCases = [
+    ["text", (block) => { block.text = "Changed manuscript text."; }],
+    ["block ID", (block) => { block.blockId = "block-corrupt"; }],
+    ["paragraph ID", (block) => { block.paragraphId = "paragraph-corrupt"; }],
+    ["kind", (block) => { block.kind = "dialogue"; }],
+    ["speaker", (block) => { block.speakerLabel = "Traveller"; }],
+    ["issue tags", (block) => { block.issueIds = ["issue-corrupt"]; }],
+    ["event tags", (block) => { block.eventTagIds = ["event-corrupt"]; }],
+  ];
+  for (const [label, corrupt] of manuscriptCorruptionCases) {
+    const candidate = structuredClone(richExpected);
+    corrupt(candidate.sceneStore["project-verification"]["scene-verification"].blocks[0]);
+    assert.throws(
+      () => assertProjectSnapshotsSemanticallyEquivalent(richExpected, candidate, { operation: label }),
+      /not semantically equivalent/,
+      `${label} corruption must fail semantic verification`,
+    );
+  }
+
+  const boundedDifferenceCandidate = structuredClone(richExpected);
+  boundedDifferenceCandidate.activeProjectId = "project-corrupt";
+  boundedDifferenceCandidate.projects[0].title = "Corrupt title";
+  boundedDifferenceCandidate.sceneStore["project-verification"]["scene-verification"].blocks[0].text = "Corrupt text";
+  assert.equal(collectProjectSnapshotSemanticDifferences(
+    richExpected,
+    boundedDifferenceCandidate,
+    { limit: 2 },
+  ).length, 2);
+
+  const emptyParagraphBlocks = [
+    { blockId: "block-empty-leading", paragraphId: "paragraph-empty-leading", lineNumber: null, text: "" },
+    { blockId: "block-middle", paragraphId: "paragraph-middle", lineNumber: 2, text: "Middle" },
+    { blockId: "block-empty-trailing", paragraphId: "paragraph-empty-trailing", lineNumber: null, text: "" },
+  ];
+  assert.equal(composePersistedSceneEditorText(emptyParagraphBlocks), "\n\nMiddle\n\n");
+  const draftLineExpected = createSnapshot();
+  draftLineExpected.sceneStore["project-verification"]["scene-verification"].blocks = emptyParagraphBlocks;
+  delete draftLineExpected.sceneStore["project-verification"]["scene-verification"].editorText;
+  const draftLineProjected = buildProjectSemanticVerificationSnapshot(draftLineExpected);
+  assert.equal(draftLineProjected.projects[0].scenes["scene-verification"].blocks[0].lineNumber, null);
+  assert.equal(draftLineProjected.projects[0].scenes["scene-verification"].blocks[0].isDraft, true);
+  assert.equal(draftLineProjected.projects[0].scenes["scene-verification"].editorText, "\n\nMiddle\n\n");
 }

@@ -298,6 +298,7 @@ import {
   renderProjectPackageDialogHTML,
   updateProjectPackageDialogField,
 } from "./features/project-lifecycle/project-package-dialog.js";
+import { createNewProjectCandidateBuilder } from "./features/project-lifecycle/new-project-candidate.js";
 import { createProjectSourceService } from "./adapters/storage/project-source-service.js";
 import {
   createProjectLibraryStateService,
@@ -1241,6 +1242,11 @@ const {
   normalizeProjectRecord,
   createProjectRecordFromWorkspace: createProjectLibraryRecordFromWorkspace,
 } = projectRecordStateService;
+const { buildNewProjectCandidateSnapshot } = createNewProjectCandidateBuilder({
+  createProjectRecordFromWorkspace: createProjectLibraryRecordFromWorkspace,
+  exportProjectLibrarySnapshot: (options) => projectService.exportProjectLibrarySnapshot(options),
+  getBaseWorkspace: () => state.workspace ?? state.projectLibrary[0]?.workspace ?? null,
+});
 
 // Intent: keep project-library normalization and active-record selection outside the shell orchestration file.
 const projectLibraryStateService = createProjectLibraryStateService({
@@ -16890,37 +16896,6 @@ function createProject() {
   openProjectPackageDialog(PROJECT_PACKAGE_DIALOG_MODES.NEW);
 }
 
-function buildBlankProjectCandidateSnapshot(title) {
-  const now = new Date().toISOString();
-  const baseWorkspace = state.workspace ?? state.projectLibrary[0]?.workspace;
-  const projectId = `project-${now.replace(/[^0-9A-Za-z]/g, "").slice(0, 14) || Date.now()}`;
-  const workspace = createBlankWorkspaceSnapshot(baseWorkspace, projectId, title, now);
-  const record = createProjectLibraryRecordFromWorkspace(workspace, {
-    id: projectId,
-    title,
-    source: "user-created",
-    createdAt: now,
-    updatedAt: now,
-    sceneDrafts: {},
-    structureDrafts: createStructureDrafts(),
-    templateDrafts: createTemplateDrafts(),
-    manuscriptTasks: [],
-    passageNotes: [],
-    metadataSubgroups: [],
-    draftProofing: createDefaultDraftProofingState(),
-    editorPrefs: createDefaultEditorPrefs(),
-    localAiPrefs: createDefaultLocalAiPrefs(),
-  });
-  return projectService.exportProjectLibrarySnapshot({
-    librarySnapshot: {
-      schemaVersion: PROJECT_SCHEMA_VERSION,
-      activeProjectId: projectId,
-      projects: [record],
-      sceneStore: {},
-    },
-  });
-}
-
 async function confirmProjectPackageDialog() {
   const dialog = state.projectPackageDialog;
   if (!dialog || !canConfirmProjectPackageDialog(dialog)) return;
@@ -16932,7 +16907,7 @@ async function confirmProjectPackageDialog() {
       await projectPersistenceService.createDesktopProjectPackage({
         parentPath: dialog.locationPath,
         folderName: dialog.folderName,
-        buildCandidateSnapshot: () => buildBlankProjectCandidateSnapshot(title),
+        buildCandidateSnapshot: () => buildNewProjectCandidateSnapshot(title),
       });
       projectPersistenceLog.info("state-change", "project.create", "Created and activated a verified project package.", {
         projectId: state.activeProjectId,
@@ -17044,205 +17019,6 @@ async function loadProjectSource() {
     });
     renderHeader();
   }
-}
-
-function createBlankWorkspaceSnapshot(baseWorkspace, projectId, title, now) {
-  const templateWorkspace = cloneValue(baseWorkspace ?? state.workspace ?? {});
-  const workspaceTitle =
-    typeof templateWorkspace.workspaceTitle === "string" && templateWorkspace.workspaceTitle.trim()
-      ? templateWorkspace.workspaceTitle
-      : "ABetterNovelAuthoringEnvironment";
-  const chapterId = "chapter-0001";
-  const sceneId = "scene-0001";
-  const blockId = "block-0001";
-  const paragraphId = "paragraph-0001";
-  const chapterTitle = "Chapter 1";
-  const sceneTitle = "Scene 1";
-  const starterLine = {
-    id: blockId,
-    blockId,
-    paragraphId,
-    lineNumber: 1,
-    sceneLineNumber: 1,
-    kind: "narration",
-    speakerLabel: "",
-    text: "",
-    chapterId,
-    chapterTitle,
-    sceneId,
-    sceneTitle,
-    sceneSynopsis: "",
-    startsChapter: true,
-    startsScene: true,
-    issueIds: [],
-    eventTagIds: [],
-  };
-  const project = {
-    id: projectId,
-    title,
-    binder: {
-      id: projectId,
-      kind: "project",
-      refId: projectId,
-      title,
-      order: 1,
-      children: [
-        {
-          id: `binder-${chapterId}`,
-          kind: "chapter",
-          refId: chapterId,
-          title: chapterTitle,
-          order: 1,
-          children: [
-            {
-              id: `binder-${sceneId}`,
-              kind: "scene",
-              refId: sceneId,
-              title: sceneTitle,
-              order: 1,
-              children: [],
-            },
-          ],
-        },
-      ],
-    },
-    stats: {
-      chapterCount: 1,
-      sceneCount: 1,
-      lineCount: 1,
-      issueCount: 0,
-      eventCount: 0,
-      characterCount: 0,
-    },
-    navigationTargets: {
-      [projectId]: {
-        refId: projectId,
-        kind: "project",
-        title,
-        lineId: blockId,
-        lineNumber: 1,
-      },
-      [chapterId]: {
-        refId: chapterId,
-        kind: "chapter",
-        title: chapterTitle,
-        lineId: blockId,
-        lineNumber: 1,
-      },
-      [sceneId]: {
-        refId: sceneId,
-        kind: "scene",
-        title: sceneTitle,
-        lineId: blockId,
-        lineNumber: 1,
-      },
-    },
-    lines: [starterLine],
-    issues: [],
-    eventTags: [],
-    characters: [],
-  };
-  const world = {
-    id: `world-${projectId}`,
-    title: `${title} World`,
-    stats: {
-      templateCount: 0,
-      entityCount: 0,
-      spineCount: 0,
-      nodeCount: 0,
-      edgeCount: 0,
-    },
-    templates: [],
-    entities: [],
-    spines: [],
-    edges: [],
-  };
-  const providerFallbacks = templateWorkspace?.analysis ?? {};
-  const audioProvider = templateWorkspace?.narration?.provider ?? {
-    id: "local-audio-service",
-    label: "Local Audio",
-    availability: "ready",
-    alignmentStrategy: "line-based",
-  };
-  const voiceProvider = templateWorkspace?.voice?.provider ?? {
-    id: "local-voice-service",
-    label: "Local Voice",
-    availability: "ready",
-    synthesisMode: "local",
-  };
-  const analysisProvider = providerFallbacks.provider ?? {
-    id: "local-rule-analysis",
-    label: "Local Rule Analysis",
-    availability: "ready",
-    executionMode: "local-only",
-  };
-
-  return {
-    generatedAt: now,
-    workspaceTitle,
-    settings: cloneValue(templateWorkspace.settings ?? {
-      executionMode: "local-only",
-      modelRoot: "",
-      assetRoot: "",
-      projectRoot: "",
-    }),
-    project,
-    world,
-    analysis: {
-      provider: analysisProvider,
-      lastJob: {
-        id: `analysis-${projectId}`,
-        type: "analysis",
-        status: "completed",
-        createdAt: now,
-        updatedAt: now,
-        request: {
-          projectId,
-          trigger: "manual",
-        },
-        result: {
-          providerId: analysisProvider.id,
-          issueCount: 0,
-          eventCount: 0,
-          suggestionCount: 0,
-        },
-      },
-      suggestionQueue: [],
-    },
-    narration: {
-      provider: audioProvider,
-      session: {
-        id: `narration-${projectId}`,
-        projectId,
-        providerId: audioProvider.id,
-        sessionLabel: title,
-        status: "paused",
-        currentAnchor: {
-          projectId,
-          chapterId,
-          sceneId,
-          blockId,
-          paragraphId,
-          startOffset: 0,
-          endOffset: 0,
-        },
-        currentLineNumber: 1,
-        currentText: "",
-        updatedAt: now,
-      },
-      alignmentJobs: [],
-    },
-    voice: {
-      provider: voiceProvider,
-      profiles: cloneValue(templateWorkspace?.voice?.profiles ?? []),
-      bindings: [],
-      renderJobs: [],
-      recordings: [],
-    },
-    selectionDefaults: {
-      lineId: blockId,
-    },
-  };
 }
 
 // Intent: resolve DOM events back to stable scene and selection context for anchored editor actions.

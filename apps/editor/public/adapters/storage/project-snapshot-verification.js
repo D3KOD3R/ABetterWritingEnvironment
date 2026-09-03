@@ -1,5 +1,9 @@
 // Intent: compare project semantics independently of the chunked folder package's storage shape.
 import { canonicalizeJsonPersistenceValue } from "./json-persistence-boundary.js";
+import {
+  composePersistedSceneEditorText,
+  normalizePersistedSceneBlock,
+} from "./project-scene-block.js";
 
 function cloneValue(value) {
   if (typeof globalThis.structuredClone === "function") {
@@ -17,24 +21,28 @@ function stableSerialize(value) {
   return JSON.stringify(value);
 }
 
-function findFirstSemanticDifference(expected, actual, path = "$" ) {
-  if (stableSerialize(expected) === stableSerialize(actual)) return null;
+function collectSemanticDifferences(expected, actual, path, differences, limit) {
+  if (differences.length >= limit || stableSerialize(expected) === stableSerialize(actual)) return;
   if (Array.isArray(expected) && Array.isArray(actual)) {
-    if (expected.length !== actual.length) return `${path}.length`;
-    for (let index = 0; index < expected.length; index += 1) {
-      const difference = findFirstSemanticDifference(expected[index], actual[index], `${path}[${index}]`);
-      if (difference) return difference;
+    if (expected.length !== actual.length) differences.push(`${path}.length`);
+    const sharedLength = Math.min(expected.length, actual.length);
+    for (let index = 0; index < sharedLength && differences.length < limit; index += 1) {
+      collectSemanticDifferences(expected[index], actual[index], `${path}[${index}]`, differences, limit);
     }
   } else if (expected && actual && typeof expected === "object" && typeof actual === "object") {
     const keys = [...new Set([...Object.keys(expected), ...Object.keys(actual)])].sort();
     for (const key of keys) {
+      if (differences.length >= limit) break;
       if (!Object.prototype.hasOwnProperty.call(expected, key)
-        || !Object.prototype.hasOwnProperty.call(actual, key)) return `${path}.${key}`;
-      const difference = findFirstSemanticDifference(expected[key], actual[key], `${path}.${key}`);
-      if (difference) return difference;
+        || !Object.prototype.hasOwnProperty.call(actual, key)) {
+        differences.push(`${path}.${key}`);
+        continue;
+      }
+      collectSemanticDifferences(expected[key], actual[key], `${path}.${key}`, differences, limit);
     }
+  } else {
+    differences.push(path);
   }
-  return path;
 }
 
 function normalizeSceneId(value) {
@@ -42,27 +50,15 @@ function normalizeSceneId(value) {
 }
 
 function composeEditorText(blocks) {
-  return (Array.isArray(blocks) ? blocks : [])
-    .map((block) => String(block?.text ?? ""))
-    .join("\n\n");
+  return composePersistedSceneEditorText(Array.isArray(blocks) ? blocks : []);
 }
 
 function normalizeScene(sceneId, candidate = {}) {
   const id = normalizeSceneId(sceneId || candidate?.sceneId);
   const source = candidate && typeof candidate === "object" && !Array.isArray(candidate) ? candidate : {};
-  const blocks = (Array.isArray(source.blocks) ? source.blocks : []).map((block, index) => ({
-    ...cloneValue(block ?? {}),
-    blockId: typeof block?.blockId === "string" && block.blockId.trim()
-      ? block.blockId
-      : `block-${id}-${index + 1}`,
-    lineNumber: Number.isFinite(Number(block?.lineNumber)) ? Number(block.lineNumber) : null,
-    kind: typeof block?.kind === "string" ? block.kind : "narration",
-    speakerLabel: typeof block?.speakerLabel === "string" ? block.speakerLabel : "",
-    text: typeof block?.text === "string" ? block.text : "",
-    issueIds: Array.isArray(block?.issueIds) ? [...block.issueIds] : [],
-    eventTagIds: Array.isArray(block?.eventTagIds) ? [...block.eventTagIds] : [],
-    isDraft: block?.isDraft === true || block?.lineNumber == null,
-  }));
+  const blocks = (Array.isArray(source.blocks) ? source.blocks : []).map((block, index) => (
+    normalizePersistedSceneBlock(block, { fallbackBlockId: `block-${id}-${index + 1}` })
+  ));
   return {
     ...cloneValue(source),
     sceneId: id,
@@ -91,13 +87,9 @@ function collectScenesFromLines(projectRecord) {
       sceneSynopsis: typeof line?.sceneSynopsis === "string" ? line.sceneSynopsis : "",
       blocks: [],
     };
-    scene.blocks.push({
-      ...cloneValue(line),
-      blockId: typeof line?.blockId === "string" && line.blockId.trim()
-        ? line.blockId
-        : `block-${sceneId}-${scene.blocks.length + 1}`,
-      isDraft: false,
-    });
+    scene.blocks.push(normalizePersistedSceneBlock(line, {
+      fallbackBlockId: `block-${sceneId}-${scene.blocks.length + 1}`,
+    }));
     sceneMap.set(sceneId, scene);
   }
   return Object.fromEntries([...sceneMap.entries()].map(([sceneId, scene]) => [
@@ -273,14 +265,26 @@ export function buildProjectSemanticVerificationSnapshot(snapshot = {}) {
   };
 }
 
-export function assertProjectSnapshotsSemanticallyEquivalent(expectedSnapshot, actualSnapshot, {
-  operation = "project package",
+export function collectProjectSnapshotSemanticDifferences(expectedSnapshot, actualSnapshot, {
+  limit = 20,
 } = {}) {
+  const normalizedLimit = Math.max(1, Math.min(100, Number.isInteger(limit) ? limit : 20));
   const expected = buildProjectSemanticVerificationSnapshot(expectedSnapshot);
   const actual = buildProjectSemanticVerificationSnapshot(actualSnapshot);
-  if (stableSerialize(expected) !== stableSerialize(actual)) {
-    const differencePath = findFirstSemanticDifference(expected, actual) ?? "$";
-    throw new Error(`${operation} verification failed: the loaded package is not semantically equivalent to the expected project snapshot (first difference: ${differencePath}).`);
+  const differences = [];
+  collectSemanticDifferences(expected, actual, "$", differences, normalizedLimit);
+  return differences;
+}
+
+export function assertProjectSnapshotsSemanticallyEquivalent(expectedSnapshot, actualSnapshot, {
+  operation = "project package",
+  differenceLimit = 20,
+} = {}) {
+  const differences = collectProjectSnapshotSemanticDifferences(expectedSnapshot, actualSnapshot, {
+    limit: differenceLimit,
+  });
+  if (differences.length) {
+    throw new Error(`${operation} verification failed: the loaded package is not semantically equivalent to the expected project snapshot (first difference: ${differences[0]}; difference paths: ${differences.join(", ")}).`);
   }
   return true;
 }

@@ -123,8 +123,13 @@ async function runLifecycleChild() {
     { createNarrationMediaService },
     {
       assertProjectSnapshotsSemanticallyEquivalent,
+      collectProjectSnapshotSemanticDifferences,
     },
     { buildPortableExternalProjectSnapshot },
+    { createNewProjectCandidateBuilder },
+    { buildProjectIndexFromProjectRecord },
+    { PROJECT_SCHEMA_VERSION },
+    { normalizeProjectSelectionDefaults },
     {
       PROJECT_PACKAGE_DIALOG_MODES,
       createProjectPackageDialogState,
@@ -134,6 +139,10 @@ async function runLifecycleChild() {
     import(new URL("../apps/editor/public/features/narration/narration-media-service.js", import.meta.url)),
     import(new URL("../apps/editor/public/adapters/storage/project-snapshot-verification.js", import.meta.url)),
     import(new URL("../apps/editor/public/adapters/storage/project-persistence-service.js", import.meta.url)),
+    import(new URL("../apps/editor/public/features/project-lifecycle/new-project-candidate.js", import.meta.url)),
+    import(new URL("../apps/editor/public/adapters/storage/project-index.js", import.meta.url)),
+    import(new URL("../apps/editor/public/adapters/storage/project-migrations.js", import.meta.url)),
+    import(new URL("../apps/editor/public/state/project-library-state.js", import.meta.url)),
     import(new URL("../apps/editor/public/features/project-lifecycle/project-package-dialog.js", import.meta.url)),
   ]);
 
@@ -213,64 +222,37 @@ async function runLifecycleChild() {
   };
   const portableSnapshot = buildPortableExternalProjectSnapshot(runtimeSnapshot);
 
-  // Intent: reproduce New Project's empty structure overlay before the richer portability fixture masks normalization.
   const blankProjectId = "project-blank-lifecycle";
-  const blankSceneId = "scene-blank-lifecycle";
-  const blankPortableSnapshot = buildPortableExternalProjectSnapshot({
-    schemaVersion: 2,
-    activeProjectId: blankProjectId,
-    projects: [{
-      id: blankProjectId,
-      schemaVersion: 2,
-      title: "Blank Lifecycle Novel",
-      projectSettings: { activeSceneId: blankSceneId },
-      projectIndex: {
-        sceneOrder: [blankSceneId],
-        scenes: [{ id: blankSceneId, chapterId: "chapter-0001", title: "Scene 1", synopsis: "" }],
-      },
-      structureDrafts: { scenes: [], sceneOrder: [] },
-      workspace: {
-        project: {
-          lines: [{
-            sceneId: blankSceneId,
-            chapterId: "chapter-0001",
-            chapterTitle: "Chapter 1",
-            sceneTitle: "Scene 1",
-            sceneSynopsis: "",
-            blockId: "block-0001",
-            lineNumber: 1,
-            kind: "narration",
-            speakerLabel: "",
-            text: "",
-            issueIds: [],
-            eventTagIds: [],
-          }],
+  const blankCandidateBuilder = createNewProjectCandidateBuilder({
+    createProjectId: () => blankProjectId,
+    now: () => "2026-09-03T00:00:00.000Z",
+    createProjectRecordFromWorkspace: (workspace, options) => {
+      const normalizedWorkspace = structuredClone(workspace);
+      normalizedWorkspace.selectionDefaults = normalizeProjectSelectionDefaults(
+        normalizedWorkspace.selectionDefaults,
+        normalizedWorkspace.project,
+      );
+      const record = {
+        ...structuredClone(options),
+        id: options.id,
+        title: options.title,
+        workspace: normalizedWorkspace,
+        projectSettings: {
+          editorPrefs: structuredClone(options.editorPrefs),
+          localAiPrefs: structuredClone(options.localAiPrefs),
         },
-      },
-    }],
-    sceneStore: {
-      [blankProjectId]: {
-        [blankSceneId]: {
-          sceneId: blankSceneId,
-          chapterId: "chapter-0001",
-          chapterTitle: "Chapter 1",
-          sceneTitle: "Scene 1",
-          sceneSynopsis: "",
-          editorText: "",
-          blocks: [{
-            blockId: "block-0001",
-            lineNumber: 1,
-            kind: "narration",
-            speakerLabel: "",
-            text: "",
-            issueIds: [],
-            eventTagIds: [],
-            isDraft: false,
-          }],
-        },
-      },
+        schemaVersion: PROJECT_SCHEMA_VERSION,
+      };
+      record.projectIndex = buildProjectIndexFromProjectRecord(record, {
+        schemaVersion: PROJECT_SCHEMA_VERSION,
+      });
+      return record;
     },
+    exportProjectLibrarySnapshot: ({ librarySnapshot }) => structuredClone(librarySnapshot),
   });
+  const blankPortableSnapshot = buildPortableExternalProjectSnapshot(
+    blankCandidateBuilder.buildNewProjectCandidateSnapshot("Blank Lifecycle Novel"),
+  );
 
   const sendJson = async (pathname, body) => {
     const response = await createDesktopResponseForRequest({ method: "POST", pathname, body: JSON.stringify(body) });
@@ -296,6 +278,8 @@ async function runLifecycleChild() {
       false,
     );
     const loaded = await sendJson("/api/project-package/load", { rootPath: staged.value.stagingRootPath });
+    const differences = collectProjectSnapshotSemanticDifferences(expectedSnapshot, loaded.value.snapshot, { limit: 100 });
+    assert.deepEqual(differences, [], `${operation} differences:\n${differences.join("\n")}`);
     assertProjectSnapshotsSemanticallyEquivalent(expectedSnapshot, loaded.value.snapshot, { operation });
     const committed = await sendJson("/api/project-package/commit", {
       operationToken: staged.value.operationToken,

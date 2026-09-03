@@ -1303,10 +1303,13 @@ function sanitizePathToken(candidate: unknown): string {
 }
 
 function composeEditorText(blocks: Array<{ text?: unknown }>): string {
-  return blocks
-    .map((block) => (typeof block?.text === "string" ? block.text : ""))
-    .filter((line) => line.length > 0)
-    .join("\n\n");
+  return blocks.map((block) => (typeof block?.text === "string" ? block.text : "")).join("\n\n");
+}
+
+function normalizeNullableLineNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const normalized = Number(value);
+  return Number.isFinite(normalized) ? normalized : null;
 }
 
 function normalizeSceneDraft(sceneId: string, candidate: any): Record<string, any> {
@@ -1315,18 +1318,22 @@ function normalizeSceneDraft(sceneId: string, candidate: any): Record<string, an
     ? candidate
     : {};
   const normalizedBlocks = Array.isArray(source.blocks)
-    ? source.blocks.map((block: any, index: number) => ({
+    ? source.blocks.map((block: any, index: number) => {
+      const lineNumber = normalizeNullableLineNumber(block?.lineNumber);
+      return ({
       blockId: typeof block?.blockId === "string" && block.blockId.trim()
         ? block.blockId
         : `block-${fallbackId}-${index + 1}`,
-      lineNumber: Number.isFinite(Number(block?.lineNumber)) ? Number(block.lineNumber) : null,
+      paragraphId: typeof block?.paragraphId === "string" ? block.paragraphId : "",
+      lineNumber,
       kind: typeof block?.kind === "string" ? block.kind : "narration",
       speakerLabel: typeof block?.speakerLabel === "string" ? block.speakerLabel : "",
       text: typeof block?.text === "string" ? block.text : "",
       issueIds: Array.isArray(block?.issueIds) ? [...block.issueIds] : [],
       eventTagIds: Array.isArray(block?.eventTagIds) ? [...block.eventTagIds] : [],
-      isDraft: block?.isDraft === true || block?.lineNumber == null,
-    }))
+      isDraft: block?.isDraft === true || lineNumber === null,
+    });
+    })
     : [];
 
   return {
@@ -1875,17 +1882,19 @@ function collectSceneStoreFromProjectRecord(projectRecord: Record<string, any>):
       sceneMap.set(sceneId, scene);
     }
 
+    const lineNumber = normalizeNullableLineNumber(line?.lineNumber);
     scene.blocks.push({
       blockId: typeof line?.blockId === "string" && line.blockId.trim()
         ? line.blockId
         : `block-${sceneId}-${scene.blocks.length + 1}`,
-      lineNumber: Number.isFinite(Number(line?.lineNumber)) ? Number(line.lineNumber) : null,
+      paragraphId: typeof line?.paragraphId === "string" ? line.paragraphId : "",
+      lineNumber,
       kind: typeof line?.kind === "string" ? line.kind : "narration",
       speakerLabel: typeof line?.speakerLabel === "string" ? line.speakerLabel : "",
       text: typeof line?.text === "string" ? line.text : "",
       issueIds: Array.isArray(line?.issueIds) ? [...line.issueIds] : [],
       eventTagIds: Array.isArray(line?.eventTagIds) ? [...line.eventTagIds] : [],
-      isDraft: false,
+      isDraft: line?.isDraft === true || lineNumber === null,
     });
   }
 

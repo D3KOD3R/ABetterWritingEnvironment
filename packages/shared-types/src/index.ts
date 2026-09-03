@@ -519,6 +519,19 @@ export interface WorkspaceLineRecord {
   eventTagIds: string[];
 }
 
+// Persisted scene sidecars omit duplicated chapter/scene context carried by the manifest and project index.
+export interface PersistedSceneBlock {
+  blockId: string;
+  paragraphId: string;
+  lineNumber: number | null;
+  kind: "narration" | "dialogue";
+  speakerLabel: string;
+  text: string;
+  issueIds: string[];
+  eventTagIds: string[];
+  isDraft: boolean;
+}
+
 export interface IssueConsoleRecord {
   id: string;
   category: IssueCategory;
