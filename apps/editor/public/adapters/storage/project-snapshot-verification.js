@@ -132,11 +132,79 @@ function getSceneOrder(projectRecord, scenes) {
   return [...new Set(candidates.map(normalizeSceneId).filter(Boolean))];
 }
 
+function buildWriterGeneratedStructuralScene(sceneId, index, indexScene = {}) {
+  return {
+    sceneId,
+    chapterId: indexScene.chapterId ?? "",
+    chapterTitle: "Untitled Chapter",
+    sceneTitle: indexScene.title ?? "Untitled Scene",
+    sceneSynopsis: indexScene.synopsis ?? "",
+    order: index + 1,
+    initialText: "",
+  };
+}
+
+// Intent: merge canonical scene facts with authored structure without treating manifest scaffolding as authored data.
+function buildCanonicalStructuralScenes(projectRecord, scenes, sceneOrder) {
+  const structuralScenes = Array.isArray(projectRecord?.structureDrafts?.scenes)
+    ? projectRecord.structureDrafts.scenes
+    : [];
+  const structureBySceneId = new Map(
+    structuralScenes
+      .filter((scene) => scene && typeof scene === "object" && !Array.isArray(scene))
+      .map((scene) => [normalizeSceneId(scene.sceneId), scene]),
+  );
+  const indexBySceneId = new Map(
+    (Array.isArray(projectRecord?.projectIndex?.scenes) ? projectRecord.projectIndex.scenes : [])
+      .map((scene) => [normalizeSceneId(scene?.id), scene]),
+  );
+
+  return sceneOrder.map((sceneId, index) => {
+    const existingScene = structureBySceneId.get(sceneId) ?? {};
+    const indexScene = indexBySceneId.get(sceneId) ?? {};
+    const canonicalScene = scenes[sceneId] ?? {};
+    const generatedScene = buildWriterGeneratedStructuralScene(sceneId, index, indexScene);
+    const structuralSource = stableSerialize(existingScene) === stableSerialize(generatedScene)
+      ? {}
+      : existingScene;
+    return {
+      ...cloneValue(structuralSource),
+      sceneId,
+      chapterId: typeof structuralSource.chapterId === "string"
+        ? structuralSource.chapterId
+        : typeof indexScene.chapterId === "string"
+          ? indexScene.chapterId
+          : canonicalScene.chapterId ?? "",
+      chapterTitle: typeof structuralSource.chapterTitle === "string"
+        ? structuralSource.chapterTitle
+        : canonicalScene.chapterTitle ?? "Untitled Chapter",
+      sceneTitle: typeof structuralSource.sceneTitle === "string"
+        ? structuralSource.sceneTitle
+        : typeof indexScene.title === "string"
+          ? indexScene.title
+          : canonicalScene.sceneTitle ?? "Untitled Scene",
+      sceneSynopsis: typeof structuralSource.sceneSynopsis === "string"
+        ? structuralSource.sceneSynopsis
+        : typeof indexScene.synopsis === "string"
+          ? indexScene.synopsis
+          : canonicalScene.sceneSynopsis ?? "",
+      order: Number.isFinite(Number(structuralSource.order)) ? Number(structuralSource.order) : index + 1,
+      initialText: typeof structuralSource.initialText === "string" ? structuralSource.initialText : "",
+    };
+  });
+}
+
 function normalizeProjectRecord(projectRecord, sceneOrder) {
   const record = cloneValue(projectRecord ?? {});
   delete record.projectFilePath;
   delete record.projectStorage;
   delete record.sceneDrafts;
+  record.structureDrafts = record.structureDrafts
+    && typeof record.structureDrafts === "object"
+    && !Array.isArray(record.structureDrafts)
+    ? record.structureDrafts
+    : {};
+  delete record.structureDrafts.scenes;
   record.schemaVersion = Number(record.schemaVersion) || 2;
   record.metadataSubgroups = Array.isArray(record.metadataSubgroups) ? record.metadataSubgroups : [];
   if (record.projectSettings && typeof record.projectSettings === "object" && !Array.isArray(record.projectSettings)) {
@@ -166,6 +234,7 @@ export function buildProjectSemanticVerificationSnapshot(snapshot = {}) {
       return {
         project: normalizeProjectRecord(projectRecord, sceneOrder),
         sceneOrder,
+        structuralScenes: buildCanonicalStructuralScenes(projectRecord, scenes, sceneOrder),
         scenes: Object.fromEntries(sceneOrder.map((sceneId) => [sceneId, scenes[sceneId] ?? null])),
       };
     }),

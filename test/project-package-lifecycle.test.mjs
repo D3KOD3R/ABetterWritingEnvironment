@@ -140,6 +140,7 @@ async function runLifecycleChild() {
   const projectId = "project-lifecycle";
   const sceneId = "scene-lifecycle";
   const authoredText = "The package crossed the river intact.";
+  const blankProjectRoot = path.join(lifecycleRoot, "Blank Project");
   const projectA = path.join(lifecycleRoot, "Project A");
   const unavailableProjectA = path.join(lifecycleRoot, "Project A unavailable");
   const projectB = path.join(lifecycleRoot, "Project B");
@@ -212,6 +213,65 @@ async function runLifecycleChild() {
   };
   const portableSnapshot = buildPortableExternalProjectSnapshot(runtimeSnapshot);
 
+  // Intent: reproduce New Project's empty structure overlay before the richer portability fixture masks normalization.
+  const blankProjectId = "project-blank-lifecycle";
+  const blankSceneId = "scene-blank-lifecycle";
+  const blankPortableSnapshot = buildPortableExternalProjectSnapshot({
+    schemaVersion: 2,
+    activeProjectId: blankProjectId,
+    projects: [{
+      id: blankProjectId,
+      schemaVersion: 2,
+      title: "Blank Lifecycle Novel",
+      projectSettings: { activeSceneId: blankSceneId },
+      projectIndex: {
+        sceneOrder: [blankSceneId],
+        scenes: [{ id: blankSceneId, chapterId: "chapter-0001", title: "Scene 1", synopsis: "" }],
+      },
+      structureDrafts: { scenes: [], sceneOrder: [] },
+      workspace: {
+        project: {
+          lines: [{
+            sceneId: blankSceneId,
+            chapterId: "chapter-0001",
+            chapterTitle: "Chapter 1",
+            sceneTitle: "Scene 1",
+            sceneSynopsis: "",
+            blockId: "block-0001",
+            lineNumber: 1,
+            kind: "narration",
+            speakerLabel: "",
+            text: "",
+            issueIds: [],
+            eventTagIds: [],
+          }],
+        },
+      },
+    }],
+    sceneStore: {
+      [blankProjectId]: {
+        [blankSceneId]: {
+          sceneId: blankSceneId,
+          chapterId: "chapter-0001",
+          chapterTitle: "Chapter 1",
+          sceneTitle: "Scene 1",
+          sceneSynopsis: "",
+          editorText: "",
+          blocks: [{
+            blockId: "block-0001",
+            lineNumber: 1,
+            kind: "narration",
+            speakerLabel: "",
+            text: "",
+            issueIds: [],
+            eventTagIds: [],
+            isDraft: false,
+          }],
+        },
+      },
+    },
+  });
+
   const sendJson = async (pathname, body) => {
     const response = await createDesktopResponseForRequest({ method: "POST", pathname, body: JSON.stringify(body) });
     return { response, value: JSON.parse(String(response.body || "{}")) };
@@ -225,6 +285,15 @@ async function runLifecycleChild() {
 
   const browse = await sendJson("/api/project-package/browse", { path: lifecycleRoot });
   const defaultBrowse = await sendJson("/api/project-package/browse", { path: "" });
+  const createBlank = await sendJson("/api/project-package/create", {
+    parentPath: lifecycleRoot,
+    folderName: "Blank Project",
+    snapshot: blankPortableSnapshot,
+  });
+  const loadBlank = await sendJson("/api/project-package/load", { rootPath: createBlank.value.rootPath });
+  assertProjectSnapshotsSemanticallyEquivalent(blankPortableSnapshot, loadBlank.value.snapshot, {
+    operation: "Blank New Project package",
+  });
   const create = await sendJson("/api/project-package/create", {
     parentPath: lifecycleRoot,
     folderName: "Project A",
@@ -379,6 +448,9 @@ async function runLifecycleChild() {
     defaultBrowseDoesNotUseRuntimeCwd: defaultBrowse.response.statusCode === 200
       && path.resolve(defaultBrowse.value.path) !== path.resolve(process.cwd()),
     newCreatedExclusiveFolder: create.response.statusCode === 200 && create.value.rootPath === projectA,
+    blankNewProjectNormalizationVerified: createBlank.response.statusCode === 200
+      && createBlank.value.rootPath === blankProjectRoot
+      && loadBlank.response.statusCode === 200,
     packageScaffoldExists: requiredDirectories.every((relativePath) => existsSync(path.join(unavailableProjectA, ...relativePath.split("/"))))
       && existsSync(path.join(unavailableProjectA, "project.json")),
     newRoundTripVerified: loadA.response.statusCode === 200,
