@@ -1,0 +1,136 @@
+import { canonicalizeJsonPersistenceValue } from "./json-persistence-boundary.js";
+
+const PROJECT_RECORD_FIELDS = Object.freeze([
+  "id",
+  "schemaVersion",
+  "title",
+  "source",
+  "createdAt",
+  "updatedAt",
+  "sceneDrafts",
+  "structureDrafts",
+  "templateDrafts",
+  "manuscriptTasks",
+  "passageNotes",
+  "metadataSubgroups",
+  "draftProofing",
+  "sourceArchive",
+  "importReport",
+  "editorPrefs",
+  "localAiPrefs",
+  "revisions",
+]);
+
+const PROJECT_SETTINGS_FIELDS = Object.freeze([
+  "activeSceneId",
+  "assetRegistry",
+  "editorPrefs",
+  "localAiPrefs",
+  "activePane",
+  "binderPanelWidth",
+  "consoleDockWidth",
+  "userSettingPanelResizerLeftPercent",
+  "userSettingPanelResizerRightPercent",
+  "panelResizerLayoutProfiles",
+  "worldSpineEventRailWidth",
+  "worldSpineManuscriptPaneWidth",
+  "worldSpinePanelLayoutProfiles",
+  "worldSpineRightPaneMode",
+  "worldSpineUnplacedDockCollapsed",
+  "worldSpineLocationFilter",
+  "consoleDockCollapsed",
+  "sidePanelsHidden",
+  "sidePanelVisibility",
+  "topPanelVisibility",
+  "customMetadataDefinitions",
+  "collapsedChapterIds",
+  "collapsedConsoleChapterIds",
+  "writingTargetState",
+  "writingTargetViewMode",
+  "writingTargetSelectedDateKey",
+  "writingTargetCalendarMonthKey",
+  "spellcheck",
+]);
+
+const PROJECT_INDEX_FIELDS = Object.freeze([
+  "schemaVersion",
+  "projectId",
+  "projectTitle",
+  "createdAt",
+  "updatedAt",
+  "chapters",
+  "scenes",
+  "sceneOrder",
+  "assetIds",
+  "assets",
+]);
+
+const WORKSPACE_FIELDS = Object.freeze([
+  "generatedAt",
+  "workspaceTitle",
+  "project",
+  "world",
+  "selectionDefaults",
+]);
+
+const MACHINE_PATH_FIELDS = new Set([
+  "projectFilePath",
+  "projectSourcePath",
+  "projectRoot",
+  "modelRoot",
+  "assetRoot",
+  "defaultProjectRoot",
+]);
+
+function sanitizePortableValue(value, ancestors = new Set()) {
+  if (Array.isArray(value)) {
+    if (ancestors.has(value)) throw new TypeError("Portable project state cannot contain cycles.");
+    ancestors.add(value);
+    const result = value.map((entry) => sanitizePortableValue(entry, ancestors));
+    ancestors.delete(value);
+    return result;
+  }
+  if (!value || typeof value !== "object") return value;
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) return value;
+  if (ancestors.has(value)) throw new TypeError("Portable project state cannot contain cycles.");
+  ancestors.add(value);
+  const result = Object.fromEntries(Object.entries(value)
+    .filter(([key]) => !MACHINE_PATH_FIELDS.has(key))
+    .map(([key, entry]) => [key, sanitizePortableValue(entry, ancestors)]));
+  ancestors.delete(value);
+  return result;
+}
+
+function selectFields(source, fieldNames) {
+  if (!source || typeof source !== "object" || Array.isArray(source)) return {};
+  return Object.fromEntries(fieldNames
+    .filter((fieldName) => Object.prototype.hasOwnProperty.call(source, fieldName))
+    .map((fieldName) => [fieldName, sanitizePortableValue(source[fieldName])]));
+}
+
+function serializeWorkspace(workspace) {
+  const portableWorkspace = selectFields(workspace, WORKSPACE_FIELDS);
+  if (workspace?.voice && typeof workspace.voice === "object" && !Array.isArray(workspace.voice)) {
+    portableWorkspace.voice = selectFields(workspace.voice, ["profiles", "bindings", "recordings"]);
+  }
+  return portableWorkspace;
+}
+
+function serializeProjectRecord(project) {
+  const portableProject = selectFields(project, PROJECT_RECORD_FIELDS);
+  portableProject.workspace = serializeWorkspace(project?.workspace);
+  portableProject.projectSettings = selectFields(project?.projectSettings, PROJECT_SETTINGS_FIELDS);
+  portableProject.projectIndex = selectFields(project?.projectIndex, PROJECT_INDEX_FIELDS);
+  return portableProject;
+}
+
+// Intent: only current semantic state and deliberate project preferences cross the external package boundary.
+export function buildPortableProjectSnapshot(snapshot = {}) {
+  return canonicalizeJsonPersistenceValue({
+    schemaVersion: snapshot?.schemaVersion,
+    activeProjectId: snapshot?.activeProjectId,
+    projects: (Array.isArray(snapshot?.projects) ? snapshot.projects : []).map(serializeProjectRecord),
+    sceneStore: sanitizePortableValue(snapshot?.sceneStore ?? {}),
+  });
+}

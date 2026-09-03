@@ -31,6 +31,22 @@ export function loadProjectPackage({ rootPath } = {}, options = {}) {
   return requestProjectPackage("/api/project-package/load", { rootPath }, options);
 }
 
+export function stageProjectPackageSave({ rootPath, snapshot } = {}, options = {}) {
+  return requestProjectPackage("/api/project-package/save-stage", { rootPath, snapshot }, options);
+}
+
+export function loadStagedProjectPackageSave({ operationToken } = {}, options = {}) {
+  return requestProjectPackage("/api/project-package/save-load", { operationToken }, options);
+}
+
+export function commitStagedProjectPackageSave({ operationToken } = {}, options = {}) {
+  return requestProjectPackage("/api/project-package/save-commit", { operationToken }, options);
+}
+
+export function discardStagedProjectPackageSave({ operationToken } = {}, options = {}) {
+  return requestProjectPackage("/api/project-package/save-discard", { operationToken }, options);
+}
+
 export function stageSaveAsProjectPackage({
   sourceRoot = "",
   destinationParentPath,

@@ -33,6 +33,7 @@ export function createProjectPackageDialogState({
       : deriveProjectPackageFolderName(projectTitle),
     sourceRoot: String(sourceRoot ?? "").trim(),
     locationPath: "",
+    validatedLocationPath: "",
     parentPath: "",
     isProjectPackage: false,
     directories: [],
@@ -43,9 +44,21 @@ export function createProjectPackageDialogState({
 
 export function updateProjectPackageDialogField(dialog, field, value) {
   if (!dialog || !["projectName", "folderName", "locationPath"].includes(field)) return dialog;
+  const normalizedValue = String(value ?? "");
+  if (field === "locationPath") {
+    return {
+      ...dialog,
+      locationPath: normalizedValue,
+      validatedLocationPath: "",
+      parentPath: "",
+      isProjectPackage: false,
+      directories: [],
+      errorMessage: "",
+    };
+  }
   return {
     ...dialog,
-    [field]: String(value ?? ""),
+    [field]: normalizedValue,
     errorMessage: "",
   };
 }
@@ -54,6 +67,7 @@ export function applyProjectPackageBrowseResult(dialog, result = {}) {
   return {
     ...dialog,
     locationPath: String(result.path ?? ""),
+    validatedLocationPath: String(result.path ?? ""),
     parentPath: String(result.parentPath ?? ""),
     isProjectPackage: result.isProjectPackage === true,
     directories: Array.isArray(result.directories) ? result.directories : [],
@@ -64,11 +78,13 @@ export function applyProjectPackageBrowseResult(dialog, result = {}) {
 
 export function canConfirmProjectPackageDialog(dialog) {
   if (!dialog || dialog.busy) return false;
+  const locationPath = String(dialog.locationPath ?? "").trim();
+  const locationValidated = locationPath && locationPath === String(dialog.validatedLocationPath ?? "").trim();
   if (dialog.mode === PROJECT_PACKAGE_DIALOG_MODES.OPEN) {
-    return Boolean(String(dialog.locationPath ?? "").trim() && dialog.isProjectPackage === true);
+    return Boolean(locationValidated && dialog.isProjectPackage === true);
   }
   return Boolean(
-    String(dialog.locationPath ?? "").trim()
+    locationValidated
     && String(dialog.folderName ?? "").trim()
     && (dialog.mode !== PROJECT_PACKAGE_DIALOG_MODES.NEW || String(dialog.projectName ?? "").trim()),
   );
@@ -133,6 +149,9 @@ export function renderProjectPackageDialogHTML(dialog) {
           ${directories || "<p>No child folders.</p>"}
         </div>
         ${dialog.errorMessage ? `<p class="project-package-dialog__error" role="alert">${escapeHtml(dialog.errorMessage)}</p>` : ""}
+        ${dialog.locationPath && dialog.locationPath !== dialog.validatedLocationPath
+          ? '<p class="project-package-dialog__hint">Press Enter or Browse to validate this location and show its folders.</p>'
+          : ""}
         ${isOpen && dialog.locationPath && !dialog.isProjectPackage
           ? '<p class="project-package-dialog__hint">Choose a folder containing project.json.</p>'
           : ""}

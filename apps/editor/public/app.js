@@ -4503,6 +4503,17 @@ function wireEvents() {
     }
 
     if (
+      event.key === "Enter"
+      && event.target instanceof HTMLInputElement
+      && event.target.dataset.projectPackageField === "locationPath"
+      && state.projectPackageDialog
+    ) {
+      event.preventDefault();
+      void browseProjectPackageDialog(event.target.value);
+      return;
+    }
+
+    if (
       event.target instanceof HTMLInputElement &&
       event.target.dataset.editField === "chapter-title" &&
       (event.key === "Enter" || event.key === "Escape")

@@ -80,6 +80,22 @@ export async function runProjectServiceStorageTest() {
     migrated.projects[0].projectIndex.scenes.find((scene) => scene.id === "scene-1")?.inspirationCount,
     1,
   );
+  assert.deepEqual(
+    migrateProjectData(migrated),
+    migrated,
+    "Migrating the current schema twice must be idempotent.",
+  );
+  assert.throws(
+    () => migrateProjectData({ schemaVersion: PROJECT_SCHEMA_VERSION + 1, projects: [createProjectRecord()] }),
+    /newer than this app supports/,
+  );
+  assert.throws(
+    () => migrateProjectData({
+      schemaVersion: PROJECT_SCHEMA_VERSION,
+      projects: [{ ...createProjectRecord(), schemaVersion: PROJECT_SCHEMA_VERSION + 1 }],
+    }),
+    /newer than this app supports/,
+  );
 
   // Intent: existing indexes from older project files must be repaired from passage notes during migration.
   const migratedWithExistingIndex = migrateProjectData({

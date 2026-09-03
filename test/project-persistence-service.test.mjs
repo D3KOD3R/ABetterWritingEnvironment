@@ -15,6 +15,7 @@ export async function runProjectPersistenceServiceTest() {
   const browserCacheWrites = [];
   const browserCacheClears = [];
   const browserLogs = [];
+  const browserHandleWrites = [];
   let runtimeWritingTargetState = null;
   let runtimePassageNotes = [];
   let runtimeManuscriptTasks = [];
@@ -27,7 +28,9 @@ export async function runProjectPersistenceServiceTest() {
     projectLibrarySelectionId: "project-1",
     projectLibrary: [projectRecord],
     projectTitle: "Project 1",
-    projectFileHandle: createFakeWritableHandle("project-1.abe-project.json", operationLog),
+    projectFileHandle: createFakeWritableHandle("project-1.abe-project.json", operationLog, {
+      writtenValues: browserHandleWrites,
+    }),
     projectFileHandlePermission: "granted",
     projectFilePath: "project-1.abe-project.json",
     projectFileStatus: "",
@@ -199,7 +202,44 @@ export async function runProjectPersistenceServiceTest() {
   assert.equal(operationLog.includes("prepare-save"), true);
   assert.equal(operationLog.some((entry) => String(entry).startsWith("write:")), true);
   assert.equal(operationLog.includes("get-file"), true);
+  const jsonBoundaryWrite = JSON.parse(browserHandleWrites.at(-1));
+  const jsonBoundarySelection = jsonBoundaryWrite.projects[0].workspace.selectionDefaults;
+  assert.equal(Object.hasOwn(jsonBoundarySelection, "entityId"), false);
+  assert.equal(Object.hasOwn(jsonBoundarySelection, "nodeId"), false);
+  assert.equal(Object.hasOwn(jsonBoundarySelection, "issueId"), false);
+  assert.equal(jsonBoundarySelection.explicitNull, null);
+  assert.equal(jsonBoundarySelection.emptyText, "");
+  assert.equal(jsonBoundarySelection.zero, 0);
+  assert.equal(jsonBoundarySelection.disabled, false);
   projectPersistenceService.clearProjectAutosaveState();
+
+  // A real selection ID remains semantic through legacy JSON and cannot disappear or change during readback.
+  projectRecord.workspace.selectionDefaults.entityId = "world-entity-123";
+  state.projectLibrary = [projectRecord];
+  const missingEntityHandle = createFakeWritableHandle("project-1.abe-project.json", operationLog, {
+    transformReadback(text) {
+      const parsed = JSON.parse(text);
+      delete parsed.projects[0].workspace.selectionDefaults.entityId;
+      return JSON.stringify(parsed);
+    },
+  });
+  await assert.rejects(
+    () => projectPersistenceService.saveProjectSnapshotToBrowserHandle(missingEntityHandle),
+    /does not contain the latest project snapshot/,
+  );
+  const changedEntityHandle = createFakeWritableHandle("project-1.abe-project.json", operationLog, {
+    transformReadback(text) {
+      const parsed = JSON.parse(text);
+      parsed.projects[0].workspace.selectionDefaults.entityId = "world-entity-456";
+      return JSON.stringify(parsed);
+    },
+  });
+  await assert.rejects(
+    () => projectPersistenceService.saveProjectSnapshotToBrowserHandle(changedEntityHandle),
+    /does not contain the latest project snapshot/,
+  );
+  projectRecord.workspace.selectionDefaults.entityId = undefined;
+  state.projectLibrary = [projectRecord];
 
   // Failed external writes must still preserve the latest project in browser-backed project storage.
   operationLog.length = 0;
@@ -602,9 +642,10 @@ export async function runProjectPersistenceServiceTest() {
   };
   await projectPersistenceService.saveProjectSnapshot({ reason: "manual-save" });
   assert.equal(operationLog.some((entry) => String(entry).startsWith("write:")), true);
-  assert.equal(state.projectFileAutosaveDirty, false);
+  assert.equal(state.projectFileAutosaveDirty, true);
   assert.equal(state.projectFileAutosaveBlocked, null);
-  assert.deepEqual(state.projectPersistenceDirtyDomains, {});
+  assert.equal(state.projectPersistenceDirtyDomains.manuscript.reason, "stale-blocked-save");
+  projectPersistenceService.clearProjectAutosaveState();
 
   // Project-file loads must flush pending passage-note mutations before reading a possibly stale file.
   operationLog.length = 0;
@@ -987,9 +1028,10 @@ export async function runProjectPersistenceServiceTest() {
   assert.equal(projectPersistenceService.hasProjectSaveDestination(), true);
 
   // Scrivener ports should activate an imported project and immediately ask for an ABE project file destination.
-  state.projectFilePath = "";
+  state.projectFilePath = "C:\\Projects\\project-1-renamed.abe-project.json";
   state.projectFileHandle = null;
   state.projectFileHandlePermission = "";
+  projectPersistenceService.clearProjectAutosaveState();
   activationLog.length = 0;
   operationLog.length = 0;
   const scrivenerSaveWrites = [];
@@ -1203,6 +1245,7 @@ async function runDesktopPackageTransactionAssertions() {
     projectLibrary: [record],
     projectTitle: record.title,
     projectFilePath: sourceRoot,
+    projectFileStorageMode: "desktop-package",
     projectFileHandle: null,
     projectFileHandlePermission: "",
     projectFileStatus: "",
@@ -1220,12 +1263,15 @@ async function runDesktopPackageTransactionAssertions() {
   };
   const operationLog = [];
   const stagedPackages = new Map();
+  const stagedSaves = new Map();
   const publishedPackages = new Map();
   const desktopSnapshots = new Map();
   const authorityAtCommits = [];
   let stagedPackageSequence = 0;
   let transportFailure = "";
   let corruptReadBack = false;
+  let pauseSaveAsStage = null;
+  let pauseNormalSaveStage = null;
   const stagePackage = (finalRootPath, snapshot) => {
     stagedPackageSequence += 1;
     const operationToken = `stage-${stagedPackageSequence}`;
@@ -1248,7 +1294,36 @@ async function runDesktopPackageTransactionAssertions() {
       return { ok: true, value: stagePackage(rootPath, body.snapshot) };
     }
     if (pathname === "/api/project-package/save-as") {
+      if (pauseSaveAsStage) await pauseSaveAsStage;
       return { ok: true, value: stagePackage(destinationRoot, body.snapshot) };
+    }
+    if (pathname === "/api/project-package/save-stage") {
+      stagedPackageSequence += 1;
+      const operationToken = `save-${stagedPackageSequence}`;
+      stagedSaves.set(operationToken, {
+        rootPath: body.rootPath,
+        snapshot: structuredClone(body.snapshot),
+      });
+      if (pauseNormalSaveStage) await pauseNormalSaveStage;
+      return { ok: true, value: { ok: true, operationToken, rootPath: body.rootPath } };
+    }
+    if (pathname === "/api/project-package/save-load") {
+      const stagedSave = stagedSaves.get(body.operationToken);
+      if (!stagedSave) return { ok: false, error: new Error("Unknown staged save.") };
+      const snapshot = structuredClone(stagedSave.snapshot);
+      if (corruptReadBack) snapshot.projects[0].title = "Corrupted read-back";
+      return { ok: true, value: { ok: true, rootPath: stagedSave.rootPath, snapshot } };
+    }
+    if (pathname === "/api/project-package/save-commit") {
+      const stagedSave = stagedSaves.get(body.operationToken);
+      if (!stagedSave) return { ok: false, error: new Error("Unknown staged save.") };
+      stagedSaves.delete(body.operationToken);
+      desktopSnapshots.set(stagedSave.rootPath, structuredClone(stagedSave.snapshot));
+      return { ok: true, value: { ok: true, rootPath: stagedSave.rootPath } };
+    }
+    if (pathname === "/api/project-package/save-discard") {
+      stagedSaves.delete(body.operationToken);
+      return { ok: true, value: { ok: true, discarded: true } };
     }
     if (pathname === "/api/project-package/load") {
       const stagedPackage = [...stagedPackages.values()].find((entry) => entry.stagingRootPath === body.rootPath);
@@ -1449,7 +1524,7 @@ async function runDesktopPackageTransactionAssertions() {
   operationLog.length = 0;
   await service.saveProjectSnapshot({ reason: "post-failure-normal-save" });
   assert.equal(
-    operationLog.some((entry) => entry === `/api/project-file/save:${sourceRoot}`),
+    operationLog.some((entry) => entry === `/api/project-package/save-stage:${sourceRoot}`),
     true,
     "A normal Save after failed Save As must still target A.",
   );
@@ -1483,6 +1558,86 @@ async function runDesktopPackageTransactionAssertions() {
   await service.saveProjectSnapshot({ reason: "package-normal-save" });
   assert.equal(desktopSnapshots.get(destinationRoot).projects[0].projectSettings.projectFilePath, undefined);
   assert.equal(state.projectLibrary[0].projectSettings.projectFilePath, destinationRoot);
+  const normalStageIndex = operationLog.findIndex((entry) => entry === `/api/project-package/save-stage:${destinationRoot}`);
+  const normalLoadIndex = operationLog.findIndex((entry) => entry.startsWith("/api/project-package/save-load:save-"));
+  const normalCommitIndex = operationLog.findIndex((entry) => entry.startsWith("/api/project-package/save-commit:save-"));
+  assert.equal(normalStageIndex >= 0 && normalLoadIndex > normalStageIndex && normalCommitIndex > normalLoadIndex, true);
+
+  // Normal package Save must discard an unpublished generation for every editor-side failure boundary.
+  for (const failurePath of [
+    "/api/project-package/save-stage",
+    "/api/project-package/save-load",
+    "/api/project-package/save-commit",
+  ]) {
+    transportFailure = failurePath;
+    await assert.rejects(
+      () => service.saveProjectSnapshotToFilePath(destinationRoot, null, {
+        semanticVerification: true,
+        storageMode: "desktop-package",
+      }),
+      /transport failure/,
+    );
+    assert.equal(state.projectFilePath, destinationRoot);
+    assert.equal(stagedSaves.size, 0);
+  }
+  transportFailure = "";
+  corruptReadBack = true;
+  await assert.rejects(
+    () => service.saveProjectSnapshotToFilePath(destinationRoot, null, {
+      semanticVerification: true,
+      storageMode: "desktop-package",
+    }),
+    /not semantically equivalent/,
+  );
+  assert.equal(state.projectFilePath, destinationRoot);
+  assert.equal(stagedSaves.size, 0);
+  corruptReadBack = false;
+
+  // A normal Save completion may publish its captured revision, but it must not clear a newer canonical mutation.
+  let releaseNormalSave;
+  let normalSaveStageReached;
+  const normalSaveStageReachedPromise = new Promise((resolve) => { normalSaveStageReached = resolve; });
+  pauseNormalSaveStage = new Promise((resolve) => { releaseNormalSave = resolve; });
+  const staleNormalSave = service.saveProjectSnapshot({ reason: "concurrent-normal-save" });
+  while (!operationLog.at(-1)?.startsWith("/api/project-package/save-stage:")) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  normalSaveStageReached();
+  state.projectLibrary[0] = { ...state.projectLibrary[0], title: "Mutation during normal Save" };
+  service.markProjectAutosaveDirty({ domain: "project", reason: "concurrent-normal-mutation", source: "test" });
+  releaseNormalSave();
+  await normalSaveStageReachedPromise;
+  await staleNormalSave;
+  pauseNormalSaveStage = null;
+  assert.equal(state.projectFileAutosaveDirty, true);
+  assert.equal(state.projectPersistenceDirtyDomains.project.reason, "concurrent-normal-mutation");
+  await service.flushProjectAutosave();
+  assert.equal(desktopSnapshots.get(destinationRoot).projects[0].title, "Mutation during normal Save");
+  assert.equal(state.projectFileAutosaveDirty, false);
+
+  // Save As retargets a mutation made during staging to B and flushes it before reporting synchronization.
+  state.projectFilePath = sourceRoot;
+  state.projectFileStorageMode = "desktop-package";
+  state.projectLibrary[0] = { ...state.projectLibrary[0], title: record.title };
+  service.clearProjectAutosaveState();
+  let releaseSaveAs;
+  pauseSaveAsStage = new Promise((resolve) => { releaseSaveAs = resolve; });
+  operationLog.length = 0;
+  const concurrentSaveAs = service.saveProjectSnapshotAsPackage({
+    destinationParentPath: "C:\\Projects",
+    folderName: "Project B",
+  });
+  while (!operationLog.some((entry) => entry.startsWith("/api/project-package/save-as:"))) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  state.projectLibrary[0] = { ...state.projectLibrary[0], title: "Mutation during Save As" };
+  service.markProjectAutosaveDirty({ domain: "project", reason: "concurrent-save-as-mutation", source: "test" });
+  releaseSaveAs();
+  await concurrentSaveAs;
+  pauseSaveAsStage = null;
+  assert.equal(state.projectFilePath, destinationRoot);
+  assert.equal(desktopSnapshots.get(destinationRoot).projects[0].title, "Mutation during Save As");
+  assert.equal(state.projectFileAutosaveDirty, false);
 
   const createRoot = "C:\\Projects\\Project C";
   operationLog.length = 0;
@@ -1516,6 +1671,63 @@ async function runDesktopPackageTransactionAssertions() {
   );
   assert.equal(state.projectFilePath, createRoot);
   assert.equal(state.activeProjectId, record.id);
+
+  // Cache-only fallback and an existing autosave block cannot authorize replacement of dirty A.
+  transportFailure = "/api/project-package/save-stage";
+  service.clearProjectAutosaveState();
+  service.markProjectAutosaveDirty({ domain: "manuscript", reason: "transition-write-failure", source: "test" });
+  await assert.rejects(
+    () => service.openDesktopProjectPackage({ rootPath: destinationRoot }),
+    /could not be durably saved/,
+  );
+  assert.equal(state.projectFilePath, createRoot);
+  assert.equal(state.activeProjectId, record.id);
+  assert.equal(state.projectFileAutosaveDirty, true);
+  assert.equal(state.projectFileAutosaveBlocked?.reason, "write-failed");
+
+  transportFailure = "";
+  await assert.rejects(
+    () => service.openDesktopProjectPackage({ rootPath: destinationRoot }),
+    /durable save is blocked/,
+  );
+  assert.equal(state.projectFilePath, createRoot);
+  assert.equal(state.activeProjectId, record.id);
+
+  // With no durable target, New/Open are blocked; Save As itself remains the explicit durability path.
+  service.clearProjectAutosaveState();
+  state.projectFilePath = "";
+  state.projectFileStorageMode = "";
+  service.markProjectAutosaveDirty({ domain: "project", reason: "transition-no-destination", source: "test" });
+  const stagedCountBeforeBlockedNew = stagedPackages.size;
+  await assert.rejects(
+    () => service.createDesktopProjectPackage({
+      parentPath: "C:\\Projects",
+      folderName: "Blocked New",
+      buildCandidateSnapshot: () => candidateSnapshot,
+    }),
+    /no durable destination/,
+  );
+  assert.equal(stagedPackages.size, stagedCountBeforeBlockedNew);
+  await service.saveProjectSnapshotAsPackage({
+    destinationParentPath: "C:\\Projects",
+    folderName: "Project B",
+  });
+  assert.equal(state.projectFilePath, destinationRoot);
+  assert.equal(state.projectFileAutosaveDirty, false);
+
+  // A successful drain writes A before Open adopts B.
+  state.projectFilePath = createRoot;
+  state.projectFileStorageMode = "desktop-package";
+  service.clearProjectAutosaveState();
+  service.markProjectAutosaveDirty({ domain: "manuscript", reason: "transition-success", source: "test" });
+  operationLog.length = 0;
+  await service.openDesktopProjectPackage({ rootPath: destinationRoot });
+  const transitionLoadIndex = operationLog.findIndex((entry) => entry === `/api/project-package/load:${destinationRoot}`);
+  const transitionSaveIndex = operationLog.findIndex((entry) => entry === `/api/project-package/save-stage:${createRoot}`);
+  const transitionActivationIndex = operationLog.findIndex((entry) => entry === `activate-record:${record.id}`);
+  assert.equal(transitionLoadIndex >= 0 && transitionSaveIndex > transitionLoadIndex && transitionActivationIndex > transitionSaveIndex, true);
+  assert.equal(state.projectFilePath, destinationRoot);
+  assert.equal(state.projectFileAutosaveDirty, false);
 }
 
 function createFakeProjectService(projectRecord, loadedRecord, browserCacheWrites = []) {
@@ -1650,6 +1862,14 @@ function createProjectRecord() {
         },
       },
       selectionDefaults: {
+        lineId: "block-1",
+        issueId: undefined,
+        nodeId: undefined,
+        entityId: undefined,
+        explicitNull: null,
+        emptyText: "",
+        zero: 0,
+        disabled: false,
         sceneId: "scene-1",
         sceneSelectionLineNumber: 7,
         sceneSelectionBlockId: "block-1",
@@ -1994,7 +2214,9 @@ function createFakeWritableHandle(name, operationLog, options = {}) {
             });
           }
           if (writtenText) {
-            return writtenText;
+            return typeof options.transformReadback === "function"
+              ? options.transformReadback(writtenText)
+              : writtenText;
           }
           return JSON.stringify({
             activeProjectId: "project-loaded",

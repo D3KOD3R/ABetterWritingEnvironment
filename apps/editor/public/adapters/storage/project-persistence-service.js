@@ -7,12 +7,17 @@
 // - Keep log context focused on IDs, file paths, and operation state; avoid dumping full manuscript text.
 import { createProjectFileAutosaveController } from "./autosave.js";
 import { canonicalizeJsonPersistenceValue } from "./json-persistence-boundary.js";
+import { buildPortableProjectSnapshot } from "./project-portable-snapshot.js";
 import { resolveProjectFileDisplayState } from "./project-file-display.js";
 import {
   browseProjectPackageDirectories,
+  commitStagedProjectPackageSave as commitStagedProjectPackageSaveOnDesktop,
   commitStagedProjectPackage as commitStagedProjectPackageOnDesktop,
+  discardStagedProjectPackageSave as discardStagedProjectPackageSaveOnDesktop,
   discardStagedProjectPackage as discardStagedProjectPackageOnDesktop,
+  loadStagedProjectPackageSave as loadStagedProjectPackageSaveFromDesktop,
   loadProjectPackage as loadProjectPackageFromDesktop,
+  stageProjectPackageSave as stageProjectPackageSaveOnDesktop,
   stageNewProjectPackage as stageNewProjectPackageOnDesktop,
   stageSaveAsProjectPackage as stageSaveAsProjectPackageOnDesktop,
 } from "./project-package.js";
@@ -101,17 +106,7 @@ function cloneValue(value) {
 
 // Intent: external folder packages must not retain the machine-specific active package authority.
 export function buildPortableExternalProjectSnapshot(snapshot = {}) {
-  const portableSnapshot = cloneValue(snapshot);
-  portableSnapshot.projects = (Array.isArray(portableSnapshot.projects) ? portableSnapshot.projects : [])
-    .map((project) => {
-      const portableProject = cloneValue(project);
-      delete portableProject.projectFilePath;
-      if (portableProject.projectSettings && typeof portableProject.projectSettings === "object" && !Array.isArray(portableProject.projectSettings)) {
-        delete portableProject.projectSettings.projectFilePath;
-      }
-      return portableProject;
-    });
-  return canonicalizeJsonPersistenceValue(portableSnapshot);
+  return buildPortableProjectSnapshot(snapshot);
 }
 
 const WORKSPACE_PANE_IDS = Object.freeze(["manuscript", "world", "narration"]);
@@ -1296,17 +1291,9 @@ export function createProjectPersistenceService({
     }
   }
 
-  function hasProjectAutosaveDirtyDomains() {
-    return Boolean(
-      state.projectPersistenceDirtyDomains &&
-      typeof state.projectPersistenceDirtyDomains === "object" &&
-      Object.keys(state.projectPersistenceDirtyDomains).length > 0,
-    );
-  }
-
   // Intent: clear stale permission blocks after a successful file write without dropping fresh edits made during that write.
   function shouldClearProjectAutosaveAfterSuccessfulSave(saveRevision) {
-    return state.projectFileAutosaveRevision === saveRevision || !hasProjectAutosaveDirtyDomains();
+    return state.projectFileAutosaveRevision === saveRevision;
   }
 
   // Intent: preserve refresh safety even when the external file target rejects the write.
@@ -1332,7 +1319,8 @@ export function createProjectPersistenceService({
 
     try {
       const writtenSnapshot = await readProjectLibraryFromBrowserHandle(handle);
-      return stableSerialize(writtenSnapshot) === stableSerialize(snapshot);
+      return stableSerialize(canonicalizeJsonPersistenceValue(writtenSnapshot))
+        === stableSerialize(canonicalizeJsonPersistenceValue(snapshot));
     } catch (error) {
       desktopFileSystemLog.warn("persistence", "project.save.browser-handle-verify-failed", "Unable to verify project file contents after browser-handle write failure.", {
         projectId: state.activeProjectId ?? state.workspace?.project?.id ?? "",
@@ -1348,7 +1336,8 @@ export function createProjectPersistenceService({
     mode = "project-file",
     filePath = "",
   } = {}) {
-    if (stableSerialize(writtenSnapshot) === stableSerialize(expectedSnapshot)) {
+    if (stableSerialize(canonicalizeJsonPersistenceValue(writtenSnapshot))
+      === stableSerialize(canonicalizeJsonPersistenceValue(expectedSnapshot))) {
       return;
     }
 
@@ -1460,6 +1449,7 @@ export function createProjectPersistenceService({
         })),
       }
       : sourceSnapshot;
+    const jsonSnapshot = canonicalizeJsonPersistenceValue(resolvedSnapshot);
     state.projectFileBusy = true;
     state.projectFileStatus = "Saving project file...";
     renderHeader();
@@ -1473,11 +1463,11 @@ export function createProjectPersistenceService({
         throw new Error("Project file write permission is unavailable. Use Ctrl+S or Save as file to re-authorize this file.");
       }
 
-      const savedLabel = await writeProjectLibraryToBrowserHandle(handle, resolvedSnapshot, {
+      const savedLabel = await writeProjectLibraryToBrowserHandle(handle, jsonSnapshot, {
         fallbackFileName: resolveSuggestedProjectFileName(),
         skipPermissionCheck: true,
       });
-      await verifyBrowserHandleSnapshotSynced(handle, resolvedSnapshot);
+      await verifyBrowserHandleSnapshotSynced(handle, jsonSnapshot);
       const activeProjectId = state.activeProjectId ?? state.workspace?.project?.id ?? "";
       if (activeProjectId !== saveProjectId) {
         desktopFileSystemLog.warn(
@@ -1501,11 +1491,13 @@ export function createProjectPersistenceService({
         clearDesktopProjectFilePath: !hasProjectFilePath(browserHandleProjectFilePath),
         storageMode: "browser-handle",
       });
-      persistProjectSnapshotToBrowserCache(resolvedSnapshot, {
-        target: "browser-handle",
-        reason: "save-project",
-        filePath: savedLabel,
-      });
+      if (shouldClearProjectAutosaveAfterSuccessfulSave(saveRevision)) {
+        persistProjectSnapshotToBrowserCache(resolvedSnapshot, {
+          target: "browser-handle",
+          reason: "save-project",
+          filePath: savedLabel,
+        });
+      }
       state.projectFileStatus = `Saved to ${savedLabel}`;
       reportBrowserLog("info", "project-file", "Saved the current project file.", {
         filePath: savedLabel,
@@ -1513,9 +1505,11 @@ export function createProjectPersistenceService({
         title: state.projectTitle,
         mode: "browser-handle",
       });
-      if (options.clearAutosaveStateOnSuccess === true || shouldClearProjectAutosaveAfterSuccessfulSave(saveRevision)) {
+      if (shouldClearProjectAutosaveAfterSuccessfulSave(saveRevision)) {
         clearProjectAutosaveState();
         clearEditorWorkingDirtyState("project-save-succeeded");
+      } else {
+        state.projectFileAutosaveBlocked = null;
       }
       renderHeader();
       return savedLabel;
@@ -1526,7 +1520,7 @@ export function createProjectPersistenceService({
       const writeProgress = getProjectFileWriteProgress(error);
       const browserAcceptedSnapshotWrite = writeProgress?.writeCompleted === true;
       if (isBackgroundWritePolicyError && activeProjectId === saveProjectId) {
-        const verifiedSynced = await isBrowserHandleSnapshotSynced(handle, resolvedSnapshot);
+        const verifiedSynced = await isBrowserHandleSnapshotSynced(handle, jsonSnapshot);
         if (verifiedSynced || browserAcceptedSnapshotWrite) {
           const savedLabel = handle?.name || browserHandleProjectFilePath || resolveSuggestedProjectFileName();
           await setActiveProjectFileDestination(browserHandleProjectFilePath || savedLabel, handle, {
@@ -1538,11 +1532,13 @@ export function createProjectPersistenceService({
             storageMode: "browser-handle",
             source: "saveProjectSnapshotToBrowserHandleVerified",
           });
-          persistProjectSnapshotToBrowserCache(resolvedSnapshot, {
-            target: "browser-handle",
-            reason: "save-project",
-            filePath: savedLabel,
-          });
+          if (shouldClearProjectAutosaveAfterSuccessfulSave(saveRevision)) {
+            persistProjectSnapshotToBrowserCache(resolvedSnapshot, {
+              target: "browser-handle",
+              reason: "save-project",
+              filePath: savedLabel,
+            });
+          }
           state.projectFileStatus = `Saved to ${savedLabel}`;
           reportBrowserLog("info", "project-file", verifiedSynced
             ? "Verified project file write after browser reported a background-write block."
@@ -1555,9 +1551,11 @@ export function createProjectPersistenceService({
             activeProjectId,
             writeProgress,
           });
-          if (options.clearAutosaveStateOnSuccess === true || shouldClearProjectAutosaveAfterSuccessfulSave(saveRevision)) {
+          if (shouldClearProjectAutosaveAfterSuccessfulSave(saveRevision)) {
             clearProjectAutosaveState();
             clearEditorWorkingDirtyState("project-save-succeeded");
+          } else {
+            state.projectFileAutosaveBlocked = null;
           }
           renderHeader();
           return savedLabel;
@@ -1605,6 +1603,7 @@ export function createProjectPersistenceService({
     const resolvedSnapshot = snapshot ?? await buildProjectSnapshotForSaveFileWithRecovery({
       reason: options.reason ?? "save-project",
     });
+    const jsonSnapshot = canonicalizeJsonPersistenceValue(resolvedSnapshot);
     const saveProjectId = state.activeProjectId ?? state.workspace?.project?.id ?? "";
     const saveRevision = state.projectFileAutosaveRevision;
     state.projectFileBusy = true;
@@ -1612,12 +1611,46 @@ export function createProjectPersistenceService({
     renderHeader();
 
     try {
-      const savedPath = await writeProjectLibraryToDesktopPath(resolvedPath, resolvedSnapshot, {
-        fetchJsonFromDesktopApi,
-      });
-      await verifyDesktopPathSnapshotSynced(savedPath, resolvedSnapshot, {
-        semantic: options.semanticVerification === true,
-      });
+      let savedPath;
+      if (options.semanticVerification === true) {
+        let stagedSave = null;
+        try {
+          stagedSave = await stageProjectPackageSaveOnDesktop({
+            rootPath: resolvedPath,
+            snapshot: jsonSnapshot,
+          }, { fetchJsonFromDesktopApi });
+          const loaded = await loadStagedProjectPackageSaveFromDesktop({
+            operationToken: stagedSave.operationToken,
+          }, { fetchJsonFromDesktopApi });
+          assertProjectSnapshotsSemanticallyEquivalent(jsonSnapshot, loaded.snapshot, {
+            operation: "Project package save",
+          });
+          const committed = await commitStagedProjectPackageSaveOnDesktop({
+            operationToken: stagedSave.operationToken,
+          }, { fetchJsonFromDesktopApi });
+          savedPath = committed.rootPath;
+        } catch (error) {
+          if (stagedSave?.operationToken) {
+            try {
+              await discardStagedProjectPackageSaveOnDesktop({
+                operationToken: stagedSave.operationToken,
+              }, { fetchJsonFromDesktopApi });
+            } catch (discardError) {
+              desktopFileSystemLog.warn("persistence", "project.save.package-discard-failed", "Unable to discard a failed staged package save.", {
+                projectId: saveProjectId,
+                filePath: resolvedPath,
+                error: discardError,
+              });
+            }
+          }
+          throw error;
+        }
+      } else {
+        savedPath = await writeProjectLibraryToDesktopPath(resolvedPath, jsonSnapshot, {
+          fetchJsonFromDesktopApi,
+        });
+        await verifyDesktopPathSnapshotSynced(savedPath, jsonSnapshot);
+      }
       const activeProjectId = state.activeProjectId ?? state.workspace?.project?.id ?? "";
       if (activeProjectId !== saveProjectId) {
         desktopFileSystemLog.warn(
@@ -1640,11 +1673,13 @@ export function createProjectPersistenceService({
         storageMode: options.storageMode,
         source: "saveProjectSnapshotToFilePath",
       });
-      persistProjectSnapshotToBrowserCache(options.cacheSnapshot ?? resolvedSnapshot, {
-        target: "desktop-path",
-        reason: "save-project",
-        filePath: savedPath,
-      });
+      if (shouldClearProjectAutosaveAfterSuccessfulSave(saveRevision)) {
+        persistProjectSnapshotToBrowserCache(options.cacheSnapshot ?? resolvedSnapshot, {
+          target: "desktop-path",
+          reason: "save-project",
+          filePath: savedPath,
+        });
+      }
       state.projectFileStatus = `Saved to ${savedPath}`;
       reportBrowserLog("info", "project-file", "Saved the current project file.", {
         filePath: savedPath,
@@ -1652,9 +1687,11 @@ export function createProjectPersistenceService({
         title: state.projectTitle,
         mode: "desktop-path",
       });
-      if (options.clearAutosaveStateOnSuccess === true || shouldClearProjectAutosaveAfterSuccessfulSave(saveRevision)) {
+      if (shouldClearProjectAutosaveAfterSuccessfulSave(saveRevision)) {
         clearProjectAutosaveState();
         clearEditorWorkingDirtyState("project-save-succeeded");
+      } else {
+        state.projectFileAutosaveBlocked = null;
       }
       renderHeader();
       return savedPath;
@@ -1688,8 +1725,19 @@ export function createProjectPersistenceService({
       markWorkingState: false,
     });
 
-    if (state.projectFileAutosaveDirty === true) {
-      await autosaveController.drain();
+    if (state.projectFileAutosaveDirty !== true) return;
+
+    // Browser cache is recovery only: replacing the active project requires the external target to be current.
+    if (!hasProjectSaveDestination()) {
+      throw new Error("The current project has unsaved changes and no durable destination. Use Save As, or explicitly discard the changes, before continuing.");
+    }
+    if (state.projectFileAutosaveBlocked) {
+      throw new Error("The current project has unsaved changes because its durable save is blocked. Resolve the save, use Save As, or explicitly discard the changes before continuing.");
+    }
+
+    await autosaveController.drain();
+    if (state.projectFileAutosaveDirty === true || state.projectFileAutosaveBlocked) {
+      throw new Error("The current project could not be durably saved. Resolve the save, use Save As, or explicitly discard the changes before continuing.");
     }
   }
 
@@ -2442,9 +2490,9 @@ export function createProjectPersistenceService({
         });
         if (persistedToBrowserCache) {
           projectSnapshotPersisted = true;
-          state.projectFileStatus = "Saved to the browser project library. Use Save as file to create a manuscript file.";
-          clearProjectAutosaveState();
-          clearEditorWorkingDirtyState("project-save-succeeded");
+          projectSnapshotReportMessage = "Preserved current project in browser cache without durable package authority.";
+          state.projectFileStatus = "Latest project preserved in browser cache. Use Save As to create a durable project package.";
+          blockProjectAutosave({ reason: "no-durable-destination" });
         } else {
           state.projectFileStatus = "Save failed: unable to persist the browser project library.";
           if (reason === "autosave") {
@@ -2458,8 +2506,10 @@ export function createProjectPersistenceService({
         reportProjectLibrarySaveResult(projectSnapshotReportTarget, projectSnapshotReportMessage);
       }
       return {
-        projectFilePersisted: filePath ? projectSnapshotReportTarget === "desktop-path" : projectSnapshotPersisted,
-        fallbackPersisted: projectSnapshotReportTarget === "desktop-path-fallback" && projectSnapshotPersisted,
+        projectFilePersisted: filePath ? projectSnapshotReportTarget === "desktop-path" : false,
+        fallbackPersisted: filePath
+          ? projectSnapshotReportTarget === "desktop-path-fallback" && projectSnapshotPersisted
+          : projectSnapshotPersisted,
       };
     } finally {
       projectSaveGateLog.info("lifecycle", "project.save.end", "Project save flow completed.", {
@@ -2476,8 +2526,9 @@ export function createProjectPersistenceService({
     const sourceRoot = hasProjectFilePath(state.projectFilePath)
       ? normalizeProjectFilePath(state.projectFilePath)
       : "";
-    await preserveActiveProjectBeforeLoad(reason);
     await prepareProjectSnapshotForSave({ reason });
+    const saveProjectId = state.activeProjectId ?? state.workspace?.project?.id ?? "";
+    const saveRevision = state.projectFileAutosaveRevision;
     const runtimeSnapshot = await buildProjectSnapshotForSaveFileWithRecovery({ reason });
     const portableSnapshot = buildPortableExternalProjectSnapshot(runtimeSnapshot);
     state.projectFileBusy = true;
@@ -2495,6 +2546,11 @@ export function createProjectPersistenceService({
         }, { fetchJsonFromDesktopApi }),
       });
 
+      const activeProjectId = state.activeProjectId ?? state.workspace?.project?.id ?? "";
+      if (activeProjectId !== saveProjectId) {
+        throw new Error("Save As completed for a project that is no longer active; the current project authority was not changed.");
+      }
+
       await setActiveProjectFileDestination(published.rootPath, null, {
         skipProjectFileAutosave: true,
         persistDesktopProjectFilePath: true,
@@ -2502,9 +2558,23 @@ export function createProjectPersistenceService({
         storageMode: "desktop-package",
         source: "saveProjectSnapshotAsPackage",
       });
-      clearProjectAutosaveState();
-      clearEditorWorkingDirtyState("project-save-as-package-succeeded");
-      primeProjectAutosaveTarget();
+      if (shouldClearProjectAutosaveAfterSuccessfulSave(saveRevision)) {
+        clearProjectAutosaveState();
+        clearEditorWorkingDirtyState("project-save-as-package-succeeded");
+        primeProjectAutosaveTarget();
+      } else {
+        // A mutation committed during staging belongs to the same project, but its old A target must follow the adopted B authority.
+        state.projectFileAutosaveBlocked = null;
+        state.projectFileAutosaveTarget = {
+          projectId: activeProjectId,
+          filePath: normalizeProjectFilePath(published.rootPath),
+          fileHandle: null,
+        };
+        const followUp = await saveProjectSnapshot({ reason: "save-as-follow-up" });
+        if (followUp?.projectFilePersisted !== true) {
+          throw new Error("Save As published the destination, but a newer edit could not be durably synchronized to it.");
+        }
+      }
       state.projectFileStatus = `Saved project package to ${published.rootPath}`;
       renderHeader();
       return {

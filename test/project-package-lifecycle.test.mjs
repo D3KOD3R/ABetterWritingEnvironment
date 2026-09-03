@@ -132,7 +132,10 @@ async function runLifecycleChild() {
     { normalizeProjectSelectionDefaults },
     {
       PROJECT_PACKAGE_DIALOG_MODES,
+      applyProjectPackageBrowseResult,
+      canConfirmProjectPackageDialog,
       createProjectPackageDialogState,
+      updateProjectPackageDialogField,
     },
   ] = await Promise.all([
     import(new URL("../apps/desktop/src/http-app.ts", import.meta.url)),
@@ -160,7 +163,13 @@ async function runLifecycleChild() {
       id: projectId,
       schemaVersion: 2,
       title: "Lifecycle Novel",
-      projectSettings: { activeSceneId: sceneId, projectFilePath: projectA },
+      projectSettings: {
+        activeSceneId: sceneId,
+        projectFilePath: projectA,
+        customMetadataDefinitions: [{ id: "custom-continuity", label: "Continuity" }],
+        writingTargetViewMode: "month",
+        spellcheck: { dictionaryWords: ["starwake"], exceptionWords: ["Marsward"] },
+      },
       projectIndex: {
         sceneOrder: [sceneId],
         scenes: [{ id: sceneId, chapterId: "chapter-1", title: "Crossing", synopsis: "A package test." }],
@@ -178,6 +187,24 @@ async function runLifecycleChild() {
       },
       manuscriptTasks: [{ id: "task-1", title: "Check crossing", status: "open" }],
       passageNotes: [{ id: "note-1", title: "River", body: "Keep this detail." }],
+      metadataSubgroups: [{
+        id: "metadata-folder-research",
+        groupId: "research",
+        title: "Research",
+        createdAt: "2026-09-03T00:00:00.000Z",
+        updatedAt: "2026-09-03T00:00:00.000Z",
+        notes: [{
+          id: "metadata-folder-note-orbit",
+          title: "Orbit",
+          body: "Retain the orbital detail.",
+          createdAt: "2026-09-03T00:00:00.000Z",
+          updatedAt: "2026-09-03T00:00:00.000Z",
+          anchor: null,
+        }],
+        folders: [],
+      }],
+      draftProofing: { schemaVersion: 1, activeRunId: "proof-1", runs: [{ id: "proof-1", status: "complete" }] },
+      revisions: { schemaVersion: 1, activeSessionId: "revision-1", sessions: [{ metadata: { id: "revision-1" } }] },
       workspace: {
         project: {
           lines: [{
@@ -194,6 +221,12 @@ async function runLifecycleChild() {
             issueIds: [],
             eventTagIds: [],
           }],
+        },
+        world: {
+          entities: [{ id: "world-entity-1", title: "The River", categoryId: "location" }],
+          spines: [{ id: "spine-1", title: "Crossing arc", nodeIds: ["node-1"] }],
+          nodes: [{ id: "node-1", sceneId, title: "Crossing" }],
+          edges: [],
         },
       },
     }],
@@ -226,6 +259,13 @@ async function runLifecycleChild() {
   const blankCandidateBuilder = createNewProjectCandidateBuilder({
     createProjectId: () => blankProjectId,
     now: () => "2026-09-03T00:00:00.000Z",
+    getBaseWorkspace: () => ({
+      workspaceTitle: "ABetterNovelAuthoringEnvironment",
+      settings: { projectRoot: projectA, modelRoot: projectA, assetRoot: projectA },
+      analysis: { provider: { id: "poison-analysis", executablePath: projectA } },
+      narration: { provider: { id: "poison-audio", modelRoot: projectA } },
+      voice: { provider: { id: "poison-voice", assetRoot: projectA }, profiles: [{ id: "poison-profile" }] },
+    }),
     createProjectRecordFromWorkspace: (workspace, options) => {
       const normalizedWorkspace = structuredClone(workspace);
       normalizedWorkspace.selectionDefaults = normalizeProjectSelectionDefaults(
@@ -253,9 +293,16 @@ async function runLifecycleChild() {
   const blankPortableSnapshot = buildPortableExternalProjectSnapshot(
     blankCandidateBuilder.buildNewProjectCandidateSnapshot("Blank Lifecycle Novel"),
   );
+  assert.equal(JSON.stringify(blankPortableSnapshot).includes(projectA), false);
+  assert.equal(blankPortableSnapshot.projects[0].workspace.analysis, undefined);
+  assert.equal(blankPortableSnapshot.projects[0].workspace.narration, undefined);
+  assert.deepEqual(blankPortableSnapshot.projects[0].workspace.voice.profiles, []);
 
-  const sendJson = async (pathname, body) => {
-    const response = await createDesktopResponseForRequest({ method: "POST", pathname, body: JSON.stringify(body) });
+  const sendJson = async (pathname, body, hostOptions = {}) => {
+    const response = await createDesktopResponseForRequest(
+      { method: "POST", pathname, body: JSON.stringify(body) },
+      hostOptions,
+    );
     return { response, value: JSON.parse(String(response.body || "{}")) };
   };
   const expectSemanticFailure = (candidate, label) => {
@@ -315,6 +362,23 @@ async function runLifecycleChild() {
       && discarded.response.statusCode === 200
       && !existsSync(staged.value.stagingRootPath)
       && !existsSync(staged.value.finalRootPath);
+  };
+  const saveVerifiedPackage = async (rootPath, snapshot) => {
+    const expectedSnapshot = buildPortableExternalProjectSnapshot(snapshot);
+    const staged = await sendJson("/api/project-package/save-stage", { rootPath, snapshot: expectedSnapshot });
+    assert.equal(staged.response.statusCode, 200);
+    const loaded = await sendJson("/api/project-package/save-load", {
+      operationToken: staged.value.operationToken,
+    });
+    assert.equal(loaded.response.statusCode, 200);
+    assertProjectSnapshotsSemanticallyEquivalent(expectedSnapshot, loaded.value.snapshot, {
+      operation: "Normal project package save",
+    });
+    const committed = await sendJson("/api/project-package/save-commit", {
+      operationToken: staged.value.operationToken,
+    });
+    assert.equal(committed.response.statusCode, 200);
+    return { staged, loaded, committed };
   };
 
   const browse = await sendJson("/api/project-package/browse", { path: lifecycleRoot });
@@ -400,10 +464,41 @@ async function runLifecycleChild() {
   deletedSceneSnapshot.projects[0].workspace.project.lines = deletedSceneSnapshot.projects[0].workspace.project.lines
     .filter((line) => line.sceneId === "scene-a");
   delete deletedSceneSnapshot.sceneStore[authorityProjectId]["scene-b"];
-  const deletedSceneWrite = await sendJson("/api/project-file/save", {
-    filePath: authorityRoot,
-    snapshot: deletedSceneSnapshot,
+  const failedGenerationWrite = await sendJson("/api/project-package/save-stage", {
+    rootPath: authorityRoot,
+    snapshot: buildPortableExternalProjectSnapshot(deletedSceneSnapshot),
+  }, {
+    projectPackageFaultInjector: {
+      afterStructuredSidecarWrite({ count }) {
+        if (count === 1) throw new Error("Injected crash after one structured sidecar write.");
+      },
+    },
   });
+  assert.equal(failedGenerationWrite.response.statusCode, 400);
+  const afterGenerationFailure = await sendJson("/api/project-package/load", { rootPath: authorityRoot });
+  assertProjectSnapshotsSemanticallyEquivalent(initialAuthorityLoad.value.snapshot, afterGenerationFailure.value.snapshot, {
+    operation: "Old generation after sidecar failure",
+  });
+
+  const uncommittedSave = await sendJson("/api/project-package/save-stage", {
+    rootPath: authorityRoot,
+    snapshot: buildPortableExternalProjectSnapshot(deletedSceneSnapshot),
+  });
+  assert.equal(uncommittedSave.response.statusCode, 200);
+  const beforeManifestCommit = await sendJson("/api/project-package/load", { rootPath: authorityRoot });
+  assertProjectSnapshotsSemanticallyEquivalent(initialAuthorityLoad.value.snapshot, beforeManifestCommit.value.snapshot, {
+    operation: "Old generation before manifest commit",
+  });
+  const discardedSave = await sendJson("/api/project-package/save-discard", {
+    operationToken: uncommittedSave.value.operationToken,
+  });
+  assert.equal(discardedSave.response.statusCode, 200);
+  const afterDiscardedSave = await sendJson("/api/project-package/load", { rootPath: authorityRoot });
+  assertProjectSnapshotsSemanticallyEquivalent(initialAuthorityLoad.value.snapshot, afterDiscardedSave.value.snapshot, {
+    operation: "Old generation after staged save discard",
+  });
+
+  const deletedSceneWrite = await saveVerifiedPackage(authorityRoot, deletedSceneSnapshot);
   const deletedSceneReload = await sendJson("/api/project-package/load", { rootPath: authorityRoot });
 
   const authoritySceneC = createAuthorityScene("scene-c", "Scene C", "Gamma", 3);
@@ -417,17 +512,14 @@ async function runLifecycleChild() {
   reorderedSnapshot.sceneStore[authorityProjectId]["scene-a"].sceneTitle = "Scene A Renamed";
   reorderedSnapshot.sceneStore[authorityProjectId]["scene-a"].sceneSynopsis = "Renamed synopsis";
   reorderedSnapshot.sceneStore[authorityProjectId]["scene-c"] = authoritySceneC;
-  const reorderedWrite = await sendJson("/api/project-file/save", {
-    filePath: authorityRoot,
-    snapshot: reorderedSnapshot,
-  });
+  const reorderedWrite = await saveVerifiedPackage(authorityRoot, reorderedSnapshot);
   const reorderedReload = await sendJson("/api/project-package/load", { rootPath: authorityRoot });
   assert.equal(initialAuthorityWrite.response.statusCode, 200);
   assert.equal(initialAuthorityLoad.response.statusCode, 200);
-  assert.equal(deletedSceneWrite.response.statusCode, 200);
+  assert.equal(deletedSceneWrite.committed.response.statusCode, 200);
   assert.deepEqual(deletedSceneReload.value.snapshot.projects[0].projectStorage.sceneOrder, ["scene-a"]);
   assert.equal(Object.hasOwn(deletedSceneReload.value.snapshot.sceneStore[authorityProjectId], "scene-b"), false);
-  assert.equal(reorderedWrite.response.statusCode, 200);
+  assert.equal(reorderedWrite.committed.response.statusCode, 200);
   assert.deepEqual(reorderedReload.value.snapshot.projects[0].projectStorage.sceneOrder, ["scene-c", "scene-a"]);
   assert.equal(reorderedReload.value.snapshot.projects[0].projectIndex.scenes[1].title, "Scene A Renamed");
   assert.equal(
@@ -461,6 +553,24 @@ async function runLifecycleChild() {
   const saveAs = saveAsPublication.staged;
   const loadB = await sendJson("/api/project-package/load", { rootPath: saveAsPublication.committed.value.rootPath });
   assertProjectSnapshotsSemanticallyEquivalent(portableSnapshot, loadB.value.snapshot, { operation: "Save As package" });
+
+  for (const failAfterCount of [1, 2]) {
+    const interruptedSave = await sendJson("/api/project-package/save-stage", {
+      rootPath: projectB,
+      snapshot: portableSnapshot,
+    }, {
+      projectPackageFaultInjector: {
+        afterStructuredSidecarWrite({ count }) {
+          if (count === failAfterCount) throw new Error(`Injected crash after structured sidecar ${count}.`);
+        },
+      },
+    });
+    assert.equal(interruptedSave.response.statusCode, 400);
+    const afterInterruptedSave = await sendJson("/api/project-package/load", { rootPath: projectB });
+    assertProjectSnapshotsSemanticallyEquivalent(portableSnapshot, afterInterruptedSave.value.snapshot, {
+      operation: `Old generation after interrupted sidecar ${failAfterCount}`,
+    });
+  }
 
   const manifestPath = path.join(projectB, "project.json");
   const manifestText = readFileSync(manifestPath, "utf8");
@@ -546,6 +656,32 @@ async function runLifecycleChild() {
   });
   unlinkSync(sourceLink);
 
+  // Existing package components may not redirect any relative read, write, or delete outside package authority.
+  const containmentOutside = path.join(lifecycleRoot, "Containment Outside");
+  mkdirSync(containmentOutside);
+  const containmentSentinel = path.join(containmentOutside, "sentinel.txt");
+  writeFileSync(containmentSentinel, "outside-untouched", "utf8");
+  const containmentResults = [];
+  for (const treeName of ["assets", "manuscript", "metadata", "transcripts"]) {
+    const redirectPath = path.join(projectB, treeName, "containment-link");
+    symlinkSync(containmentOutside, redirectPath, "junction");
+    const projectRelativePath = `${treeName}/containment-link/sentinel.txt`;
+    const requestContext = { activeProjectRoot: projectB, projectRelativePath };
+    const loadRedirect = await sendJson("/api/project-media/load", requestContext);
+    const writeRedirect = await sendJson("/api/project-media/save", {
+      ...requestContext,
+      contentBase64: Buffer.from("overwrite-attempt").toString("base64"),
+    });
+    const deleteRedirect = await sendJson("/api/project-media/delete", requestContext);
+    containmentResults.push(
+      loadRedirect.response.statusCode === 400
+      && writeRedirect.response.statusCode === 400
+      && deleteRedirect.response.statusCode === 400
+      && readFileSync(containmentSentinel, "utf8") === "outside-untouched",
+    );
+    unlinkSync(redirectPath);
+  }
+
   const invalidWriteSnapshot = structuredClone(portableSnapshot);
   invalidWriteSnapshot.projects[0].projectStorage = {
     sceneOrder: [sceneId],
@@ -566,6 +702,18 @@ async function runLifecycleChild() {
   });
   const stagingEntriesAfterWriteFailures = readdirSync(lifecycleRoot)
     .filter((name) => name.startsWith(".abe-project-stage-"));
+  const futureSchemaSnapshot = structuredClone(portableSnapshot);
+  futureSchemaSnapshot.schemaVersion = PROJECT_SCHEMA_VERSION + 1;
+  futureSchemaSnapshot.projects[0].schemaVersion = PROJECT_SCHEMA_VERSION + 1;
+  const futureSchemaCreate = await sendJson("/api/project-package/create", {
+    parentPath: lifecycleRoot,
+    folderName: "Future Schema",
+    snapshot: futureSchemaSnapshot,
+  });
+  const futureSchemaSave = await sendJson("/api/project-package/save-stage", {
+    rootPath: projectB,
+    snapshot: futureSchemaSnapshot,
+  });
 
   const abortedNewLoad = await stageAndDiscardAfterFailure({
     pathname: "/api/project-package/create",
@@ -651,6 +799,22 @@ async function runLifecycleChild() {
     projectTitle: "Lifecycle Novel",
     sourceRoot: projectB,
   });
+  dialog = applyProjectPackageBrowseResult(dialog, {
+    path: lifecycleRoot,
+    parentPath: path.dirname(lifecycleRoot),
+    directories: [{ name: "Project B", path: projectB, isProjectPackage: true }],
+  });
+  assert.equal(canConfirmProjectPackageDialog(dialog), true);
+  dialog = updateProjectPackageDialogField(dialog, "locationPath", projectB);
+  assert.equal(dialog.directories.length, 0);
+  assert.equal(canConfirmProjectPackageDialog(dialog), false);
+  dialog = applyProjectPackageBrowseResult(dialog, {
+    path: projectB,
+    parentPath: lifecycleRoot,
+    isProjectPackage: true,
+    directories: [],
+  });
+  assert.equal(canConfirmProjectPackageDialog(dialog), true);
   dialog = null;
   const cancellationPreservedState = dialog === null
     && activeState.projectId === projectId
@@ -731,11 +895,16 @@ async function runLifecycleChild() {
       && !existsSync(path.join(lifecycleRoot, "Invalid Source Copy")),
     symlinkCopyRejectedAndCleaned: symlinkCopy.response.statusCode === 400
       && !existsSync(path.join(lifecycleRoot, "Symlink Copy")),
+    realFilesystemContainmentRejectsRedirectedOperations: containmentResults.every(Boolean)
+      && readFileSync(containmentSentinel, "utf8") === "outside-untouched",
     failedWritesLeaveNoPublishedOrStagedPackage: failedNewWrite.response.statusCode === 400
       && failedSaveAsWrite.response.statusCode === 400
       && !existsSync(path.join(lifecycleRoot, "New Write Failure"))
       && !existsSync(path.join(lifecycleRoot, "Save As Write Failure"))
       && JSON.stringify(stagingEntriesAfterWriteFailures) === JSON.stringify(stagingEntriesBeforeWriteFailures),
+    futureSchemaRejectedBeforeWrite: futureSchemaCreate.response.statusCode === 400
+      && futureSchemaSave.response.statusCode === 400
+      && !existsSync(path.join(lifecycleRoot, "Future Schema")),
     failedReadbackAndVerificationLeaveNoDestination: abortedNewLoad
       && abortedNewVerification
       && abortedSaveAsLoad

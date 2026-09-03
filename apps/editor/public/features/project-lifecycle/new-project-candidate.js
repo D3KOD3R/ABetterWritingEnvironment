@@ -107,19 +107,19 @@ export function createNewProjectCandidateBuilder({
       spines: [],
       edges: [],
     };
-    const audioProvider = templateWorkspace?.narration?.provider ?? {
+    const audioProvider = {
       id: "local-audio-service",
       label: "Local Audio",
       availability: "ready",
       alignmentStrategy: "line-based",
     };
-    const voiceProvider = templateWorkspace?.voice?.provider ?? {
+    const voiceProvider = {
       id: "local-voice-service",
       label: "Local Voice",
       availability: "ready",
       synthesisMode: "local",
     };
-    const analysisProvider = templateWorkspace?.analysis?.provider ?? {
+    const analysisProvider = {
       id: "local-rule-analysis",
       label: "Local Rule Analysis",
       availability: "ready",
@@ -129,12 +129,12 @@ export function createNewProjectCandidateBuilder({
     return {
       generatedAt: createdAt,
       workspaceTitle,
-      settings: clone(templateWorkspace.settings ?? {
+      settings: {
         executionMode: "local-only",
         modelRoot: "",
         assetRoot: "",
         projectRoot: "",
-      }),
+      },
       project,
       world,
       analysis: {
@@ -167,7 +167,7 @@ export function createNewProjectCandidateBuilder({
       },
       voice: {
         provider: voiceProvider,
-        profiles: clone(templateWorkspace?.voice?.profiles ?? []),
+        profiles: [],
         bindings: [],
         renderJobs: [],
         recordings: [],

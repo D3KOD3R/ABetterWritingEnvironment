@@ -7,6 +7,13 @@ import {
 
 export const PROJECT_SCHEMA_VERSION = 2;
 
+function requireSupportedSchemaVersion(candidateVersion, targetSchemaVersion, label) {
+  const schemaVersion = Number(candidateVersion);
+  if (Number.isFinite(schemaVersion) && schemaVersion > targetSchemaVersion) {
+    throw new Error(`${label} uses schema version ${schemaVersion}, newer than this app supports (${targetSchemaVersion}).`);
+  }
+}
+
 function cloneValue(value) {
   if (typeof globalThis.structuredClone === "function") {
     return globalThis.structuredClone(value);
@@ -175,6 +182,11 @@ function migrateProjectRecord(record, targetSchemaVersion) {
 export function migrateProjectData(rawData, {
   targetSchemaVersion = PROJECT_SCHEMA_VERSION,
 } = {}) {
+  // Intent: never normalize a future durable schema into today's shape and then overwrite data this app cannot understand.
+  requireSupportedSchemaVersion(rawData?.schemaVersion, targetSchemaVersion, "Project snapshot");
+  for (const project of Array.isArray(rawData?.projects) ? rawData.projects : [rawData]) {
+    requireSupportedSchemaVersion(project?.schemaVersion, targetSchemaVersion, "Project record");
+  }
   const snapshot = normalizeSnapshotCandidate(rawData);
   const migratedProjects = (Array.isArray(snapshot.projects) ? snapshot.projects : [])
     .map((project) => migrateProjectRecord(project, targetSchemaVersion))

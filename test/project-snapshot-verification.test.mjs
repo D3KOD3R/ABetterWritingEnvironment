@@ -126,7 +126,7 @@ export async function runProjectSnapshotVerificationTest() {
     { lineId: "block-1" },
     expectedWorkspace.project,
   );
-  expectedWorkspace.jsonBoundaryProbe = {
+  expectedWorkspace.project.jsonBoundaryProbe = {
     nested: {
       omitted: undefined,
       explicitNull: null,
@@ -148,16 +148,65 @@ export async function runProjectSnapshotVerificationTest() {
     "entityId",
   ), false);
   assert.equal(Object.hasOwn(
-    portableJsonBoundarySnapshot.projects[0].workspace.jsonBoundaryProbe.nested,
+    portableJsonBoundarySnapshot.projects[0].workspace.project.jsonBoundaryProbe.nested,
     "omitted",
   ), false);
   assert.deepEqual(
-    portableJsonBoundarySnapshot.projects[0].workspace.jsonBoundaryProbe.nested,
+    portableJsonBoundarySnapshot.projects[0].workspace.project.jsonBoundaryProbe.nested,
     { explicitNull: null, emptyText: "", zero: 0, disabled: false },
   );
   assert.deepEqual(
-    portableJsonBoundarySnapshot.projects[0].workspace.jsonBoundaryProbe.arrayValues,
+    portableJsonBoundarySnapshot.projects[0].workspace.project.jsonBoundaryProbe.arrayValues,
     [null, null, "", 0, false],
+  );
+
+  const machineSentinel = "C:\\OldMachine\\Project-A";
+  const portableBoundaryExpected = createSnapshot();
+  const portableProject = portableBoundaryExpected.projects[0];
+  portableProject.projectFilePath = machineSentinel;
+  portableProject.runtimeJob = { projectRoot: machineSentinel };
+  portableProject.projectSettings = {
+    activeSceneId: "scene-verification",
+    projectFilePath: machineSentinel,
+    projectSourcePath: machineSentinel,
+    customMetadataDefinitions: [{ id: "custom-1", label: "Continuity" }],
+    writingTargetViewMode: "month",
+  };
+  portableProject.projectIndex.fileRefs = {
+    projectFilePath: machineSentinel,
+    projectSourcePath: machineSentinel,
+  };
+  portableProject.workspace.settings = {
+    projectRoot: machineSentinel,
+    modelRoot: machineSentinel,
+    assetRoot: machineSentinel,
+  };
+  portableProject.workspace.analysis = { provider: { executablePath: machineSentinel }, lastJob: { id: "job-1" } };
+  portableProject.workspace.narration = { provider: { modelRoot: machineSentinel }, alignmentJobs: [{ id: "job-2" }] };
+  portableProject.workspace.voice = {
+    provider: { assetRoot: machineSentinel },
+    profiles: [{ id: "voice-profile-1", label: "Narrator" }],
+    bindings: [{ id: "binding-1", voiceProfileId: "voice-profile-1" }],
+    recordings: [{ id: "recording-1", mediaPath: "assets/audio/take-1.webm" }],
+    renderJobs: [{ id: "job-3" }],
+  };
+  portableProject.manuscriptTasks = [{ id: "task-1", title: "Keep" }];
+  const explicitPortableSnapshot = buildPortableExternalProjectSnapshot(portableBoundaryExpected);
+  const serializedPortableSnapshot = JSON.stringify(explicitPortableSnapshot);
+  assert.equal(serializedPortableSnapshot.includes(machineSentinel), false);
+  assert.equal(Object.hasOwn(explicitPortableSnapshot.projects[0], "runtimeJob"), false);
+  assert.equal(Object.hasOwn(explicitPortableSnapshot.projects[0].workspace, "settings"), false);
+  assert.equal(Object.hasOwn(explicitPortableSnapshot.projects[0].workspace, "analysis"), false);
+  assert.equal(Object.hasOwn(explicitPortableSnapshot.projects[0].workspace, "narration"), false);
+  assert.deepEqual(explicitPortableSnapshot.projects[0].workspace.voice.profiles, [{ id: "voice-profile-1", label: "Narrator" }]);
+  assert.deepEqual(explicitPortableSnapshot.projects[0].manuscriptTasks, [{ id: "task-1", title: "Keep" }]);
+  assert.deepEqual(explicitPortableSnapshot.projects[0].projectSettings.customMetadataDefinitions, [{ id: "custom-1", label: "Continuity" }]);
+
+  const nonFiniteSnapshot = createSnapshot();
+  nonFiniteSnapshot.projects[0].workspace.project.stats = { wordCount: Number.POSITIVE_INFINITY };
+  assert.throws(
+    () => buildPortableExternalProjectSnapshot(nonFiniteSnapshot),
+    /non-finite number/,
   );
 
   const selectedEntityExpected = createSnapshot();
