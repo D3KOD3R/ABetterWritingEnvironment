@@ -1,0 +1,94 @@
+:root {
+  --project-package-dialog-background: #fffaf3;
+  --project-package-dialog-browser-background: #f2ede5;
+  --project-package-dialog-control-background: #ffffff;
+  --project-package-dialog-control-hover: #fff4e9;
+  --project-package-dialog-border: rgba(63, 81, 92, 0.22);
+  --project-package-dialog-directory-background: #ffffff;
+  --project-package-dialog-directory-hover: #fff4e9;
+  --project-package-dialog-shadow: 0 24px 80px rgba(28, 35, 44, 0.24);
+}
+
+:root[data-theme="dark"] {
+  --project-package-dialog-background: #262420;
+  --project-package-dialog-browser-background: #191815;
+  --project-package-dialog-control-background: #302d28;
+  --project-package-dialog-control-hover: #41352d;
+  --project-package-dialog-border: rgba(239, 228, 213, 0.2);
+  --project-package-dialog-directory-background: #302d28;
+  --project-package-dialog-directory-hover: #41352d;
+  --project-package-dialog-shadow: 0 24px 80px rgba(0, 0, 0, 0.46);
+}
+
+/* Intent: the modal itself stays opaque while the backdrop alone dims the workspace. */
+.project-package-dialog {
+  border: 1px solid var(--project-package-dialog-border);
+  background: var(--project-package-dialog-background);
+  color: var(--ink);
+  box-shadow: var(--project-package-dialog-shadow);
+}
+
+.project-package-dialog__browser {
+  border: 1px solid var(--project-package-dialog-border);
+  background: var(--project-package-dialog-browser-background);
+}
+
+.project-package-dialog input {
+  border: 1px solid var(--project-package-dialog-border);
+  border-radius: 8px;
+  background: var(--project-package-dialog-control-background);
+  color: var(--ink);
+  padding: 7px 9px;
+  outline: none;
+}
+
+.project-package-dialog input:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+.project-package-dialog button {
+  border: 1px solid var(--project-package-dialog-border);
+  border-radius: 8px;
+  background: var(--project-package-dialog-control-background);
+  color: var(--ink);
+}
+
+.project-package-dialog button:hover:not(:disabled),
+.project-package-dialog button:focus-visible:not(:disabled) {
+  background: var(--project-package-dialog-control-hover);
+  border-color: color-mix(in srgb, var(--accent) 52%, var(--project-package-dialog-border));
+  outline: none;
+}
+
+.project-package-dialog__directory {
+  background: var(--project-package-dialog-directory-background);
+}
+
+.project-package-dialog__directory:hover:not(:disabled),
+.project-package-dialog__directory:focus-visible:not(:disabled) {
+  background: var(--project-package-dialog-directory-hover);
+}
+
+.project-package-dialog button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fffaf3;
+  font-weight: 700;
+}
+
+.project-package-dialog button.primary:hover:not(:disabled),
+.project-package-dialog button.primary:focus-visible:not(:disabled) {
+  background: var(--accent-deep);
+  border-color: var(--accent-deep);
+}
+
+.project-package-dialog button:disabled,
+.project-package-dialog input:disabled {
+  cursor: default;
+  opacity: 0.58;
+}
+
+.project-package-dialog__hint {
+  color: var(--ink-soft);
+}

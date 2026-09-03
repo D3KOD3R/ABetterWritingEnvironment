@@ -150,7 +150,7 @@ export function renderProjectPackageDialogHTML(dialog) {
         </div>
         ${dialog.errorMessage ? `<p class="project-package-dialog__error" role="alert">${escapeHtml(dialog.errorMessage)}</p>` : ""}
         ${dialog.locationPath && dialog.locationPath !== dialog.validatedLocationPath
-          ? '<p class="project-package-dialog__hint">Press Enter or Browse to validate this location and show its folders.</p>'
+          ? '<p class="project-package-dialog__hint">Folders update automatically as you edit the location.</p>'
           : ""}
         ${isOpen && dialog.locationPath && !dialog.isProjectPackage
           ? '<p class="project-package-dialog__hint">Choose a folder containing project.json.</p>'
