@@ -25288,7 +25288,7 @@ function resolveBinderSceneDropTarget(event) {
       return null;
     }
 
-    const scene = getPersistentSceneById(sceneId);
+    const scene = getMovableSceneById(sceneId);
     if (!scene) {
       return null;
     }
@@ -25314,7 +25314,7 @@ function resolveBinderSceneDropTarget(event) {
       return null;
     }
 
-    const scene = getPersistentSceneById(sceneId);
+    const scene = getMovableSceneById(sceneId);
     if (!scene) {
       return null;
     }
@@ -25334,12 +25334,12 @@ function resolveBinderSceneDropTarget(event) {
       return null;
     }
 
-    const chapterScenes = getScenesForChapter(chapterId).filter((candidate) => isPersistentScene(candidate));
+    const chapterScenes = getScenesForChapter(chapterId).filter((candidate) => isMovableScene(candidate));
     if (!chapterScenes.length) {
       return null;
     }
 
-    // Intent: map chapter-body drops to the nearest persistent scene boundary so end-of-chapter drops land after the last scene instead of collapsing to the first placeholder.
+    // Intent: map chapter-body drops to the nearest movable scene boundary so end-of-chapter drops land after the last scene instead of collapsing to the first placeholder.
     const pointerY = Number(event.clientY);
     const chapterSceneTargets = chapterScenes
       .map((scene) => {
