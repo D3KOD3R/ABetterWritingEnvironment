@@ -108,8 +108,19 @@ function collectProjectScenes(snapshot, projectRecord, projectId) {
   const explicitScenes = snapshot?.sceneStore?.[projectId] && typeof snapshot.sceneStore[projectId] === "object"
     ? snapshot.sceneStore[projectId]
     : {};
-  return Object.fromEntries(Object.entries({ ...extractedScenes, ...explicitScenes })
-    .map(([sceneId, scene]) => [normalizeSceneId(sceneId), normalizeScene(sceneId, scene)])
+  const sceneIds = [...new Set([...Object.keys(extractedScenes), ...Object.keys(explicitScenes)])];
+
+  // Intent: sceneStore owns current body/chunk facts, but an older sidecar may omit durable metadata still carried by the canonical record.
+  // Compose those representations field-by-field just like the folder-package writer instead of replacing the whole scene DTO.
+  return Object.fromEntries(sceneIds
+    .map((sceneId) => {
+      const normalizedId = normalizeSceneId(sceneId);
+      const mergedScene = {
+        ...(extractedScenes[sceneId] ?? {}),
+        ...(explicitScenes[sceneId] ?? {}),
+      };
+      return [normalizedId, normalizeScene(normalizedId, mergedScene)];
+    })
     .filter(([sceneId]) => Boolean(sceneId)));
 }
 
