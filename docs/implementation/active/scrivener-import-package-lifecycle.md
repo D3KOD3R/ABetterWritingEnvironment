@@ -11,6 +11,18 @@ Desktop Scrivener source selection/conversion was repaired, but the legacy impor
 
 The transition guard is therefore not the defect. The defect is activation ordering: a desktop import must not become the active project until the normal package lifecycle has staged, verified and published its destination.
 
+### Follow-on save-verification regression found during manual recheck
+
+A second persistence defect was exposed after the import/package strategy became reachable. An older Scrivener-derived folder package can contain body-bearing scene sidecars created before the scene-level `scrivenerMetadata` provenance field was written into those chunks. The live canonical project record can still carry that durable imported metadata.
+
+On Save, the folder-package writer correctly composes the canonical project-record scene with the previously loaded scene chunk field-by-field, so the newly staged sidecar is enriched with `scrivenerMetadata`. Semantic verification previously did something different: it let the body-bearing `sceneStore` entry replace the whole canonical scene record while building the expected comparison snapshot. That made the expected snapshot omit `scrivenerMetadata`, while the correctly enriched staged package contained it, producing a false verification failure such as:
+
+```text
+$.projects[0].scenes.scene-0023.scrivenerMetadata
+```
+
+The safety check must not be disabled and `scrivenerMetadata` must not be discarded merely to pass verification. The verifier now composes split-storage scene semantics field-by-field, matching package-writer behavior. A changed Scrivener provenance value still fails semantic verification.
+
 ## Required flow
 
 ```text
@@ -52,6 +64,7 @@ The published imported project uses the exact same folder package structure as N
 - Failure to preserve the previous active project leaves the import form open/retryable and does not activate the candidate.
 - Staging/verification/publication failure leaves the previous project authoritative and does not publish a partial final destination.
 - A project created by the older broken cache-only import route should be recovered with Save As before switching; do not weaken the dirty/no-durable-destination transition guard.
+- A semantic verification failure must remain blocking until the actual comparison mismatch is repaired; never clear dirty state merely to unlock New/Open/Import.
 
 ## Chunking and lazy loading
 
@@ -62,6 +75,8 @@ Desktop package open currently still reads all scene sidecars before the browser
 ## Automated coverage
 
 `test/scrivener-import-package-lifecycle.test.mjs` guards the import-candidate/package-publication seam: the pending candidate drives the existing New Project form, source provenance survives project renaming, the native blank-project builder is bypassed only while a pending import exists, and the desktop import preparation code does not activate a project or invoke legacy Save As.
+
+`test/project-snapshot-scrivener-metadata-regression.test.mjs` reproduces the older split-storage shape where the canonical scene record contains `scrivenerMetadata` but the already-loaded body sidecar does not. It verifies that semantic comparison composes those representations, accepts the correctly enriched staged package, and still rejects a changed Scrivener provenance UUID.
 
 Existing Scrivener parser/RTF/comment/metadata tests remain responsible for conversion fidelity. Existing project-package lifecycle tests remain responsible for staging, scaffold creation, semantic verification, publication and authority adoption.
 
@@ -76,7 +91,7 @@ Existing Scrivener parser/RTF/comment/metadata tests remain responsible for conv
 7. Confirm Project location shows the published folder root and the destination contains the normal package scaffold/scene chunks.
 8. Confirm there was no `.abe-project.json` download fallback on the supported desktop flow.
 9. Verify binder/chapter/scene order, manuscript text, metadata, comments/footnotes, world catalogue data and editor preferences.
-10. Save, refresh, close/reopen and verify again.
+10. Save, refresh, close/reopen and verify again. For an older Scrivener-derived package, specifically confirm Save no longer fails on `scene-0023.scrivenerMetadata` (or another scene-level Scrivener metadata path).
 11. Save As package B, reopen B, and verify imported data.
 12. File -> New Project and create another project; confirm no no-durable-destination block remains from the import.
 13. Open unrelated package C and verify imported state does not leak.
