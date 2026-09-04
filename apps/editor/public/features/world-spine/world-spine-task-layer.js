@@ -1,4 +1,5 @@
 // Intent: project grouped manuscript task iterations onto the rendered World Spine without owning task persistence.
+import { createEditorStorage } from "../../adapters/storage/editor-storage.js";
 import {
   buildTaskIterationWorldSpineLinks,
   formatTaskIterationLabel,
@@ -8,7 +9,6 @@ import {
 export const WORLD_SPINE_RELATIONSHIP_MODE_IMPLICATIONS = "implications";
 export const WORLD_SPINE_RELATIONSHIP_MODE_TASKS = "tasks";
 export const WORLD_SPINE_TASK_LAYER_STORAGE_KEY = "abe-world-spine-relationship-mode-v1";
-const MANUSCRIPT_TASKS_STORAGE_KEY = "abe-manuscript-tasks-v1";
 const TASK_LAYER_SELECTOR = "[data-world-spine-task-layer]";
 const TASK_BADGE_LAYER_SELECTOR = "[data-world-spine-task-badge-layer]";
 const RELATIONSHIP_CONTROL_SELECTOR = "[data-world-spine-relationship-control]";
@@ -47,41 +47,31 @@ export function buildWorldSpineTaskLayerModel(tasks = []) {
 
 export function createWorldSpineTaskLayerController({
   documentRef = globalThis.document,
-  storage = globalThis.localStorage,
+  storageAdapter = null,
 } = {}) {
   if (!documentRef) {
     return { refresh() {}, destroy() {} };
   }
 
+  const editorStorage = storageAdapter ?? createEditorStorage({
+    windowRef: documentRef.defaultView ?? globalThis.window,
+  });
   let observer = null;
   let currentRoot = null;
   let refreshQueued = false;
 
-  const readMode = () => {
-    try {
-      return normalizeWorldSpineRelationshipMode(storage?.getItem?.(WORLD_SPINE_TASK_LAYER_STORAGE_KEY));
-    } catch {
-      return WORLD_SPINE_RELATIONSHIP_MODE_IMPLICATIONS;
-    }
-  };
+  const readMode = () => normalizeWorldSpineRelationshipMode(
+    editorStorage.readStoredJson(WORLD_SPINE_TASK_LAYER_STORAGE_KEY),
+  );
 
   const writeMode = (mode) => {
-    try {
-      storage?.setItem?.(WORLD_SPINE_TASK_LAYER_STORAGE_KEY, normalizeWorldSpineRelationshipMode(mode));
-    } catch {
-      // Relationship display preference is non-critical when storage is unavailable.
-    }
+    editorStorage.writeStoredJsonRaw(
+      WORLD_SPINE_TASK_LAYER_STORAGE_KEY,
+      normalizeWorldSpineRelationshipMode(mode),
+    );
   };
 
-  const readTasks = () => {
-    try {
-      const raw = storage?.getItem?.(MANUSCRIPT_TASKS_STORAGE_KEY);
-      const parsed = raw ? JSON.parse(raw) : [];
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  };
+  const readTasks = () => editorStorage.loadManuscriptTasks();
 
   function refresh() {
     refreshQueued = false;
