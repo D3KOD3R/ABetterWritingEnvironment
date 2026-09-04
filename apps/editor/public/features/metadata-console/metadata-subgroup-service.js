@@ -1,5 +1,7 @@
 // Intent: own project-level metadata folder records without requiring manuscript anchors.
 
+import { normalizeMetadataNoteTitle } from "../../shared/metadata-note-title.js";
+
 export const BUILT_IN_METADATA_SUBGROUP_GROUP_IDS = Object.freeze(["inspiration", "research"]);
 
 const CUSTOM_METADATA_GROUP_ID_PATTERN = /^metadata-[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$/;
@@ -105,7 +107,7 @@ export function createMetadataSubgroup(input = {}, existingSubgroups = [], suppo
     };
   }
 
-  const title = normalizeMetadataSubgroupTitle(input.title) || "New folder";
+  const title = normalizeMetadataFolderTitle(input.title) || "New folder";
   const usedIds = collectMetadataSubgroupIds(normalizedExisting);
   const subgroup = {
     id: createUniqueSubgroupId(createSubgroupIdFromTitle(title), usedIds),
@@ -154,7 +156,7 @@ export function updateMetadataSubgroup(subgroups = [], subgroupId = "", patch = 
     normalizedSubgroupId,
     (subgroup) => ({
       ...subgroup,
-      title: normalizeMetadataSubgroupTitle(patch.title) || subgroup.title,
+      title: normalizeMetadataFolderTitle(patch.title) || subgroup.title,
       updatedAt: now,
     }),
     { touchAncestorsAt: now },
@@ -314,7 +316,7 @@ export function createMetadataSubgroupNoteInputFromPassageNote(passageNote = {},
   });
   return {
     subgroupId: normalizedSubgroupId,
-    title: normalizeMetadataSubgroupTitle(passageNote.title) || "Moved note",
+    title: normalizeMetadataNoteTitle(passageNote.title) || "Moved note",
     body: String(passageNote.body ?? ""),
     anchor,
   };
@@ -345,7 +347,7 @@ function normalizeMetadataSubgroupRecord(item, {
   return {
     id,
     groupId,
-    title: normalizeMetadataSubgroupTitle(item.title) || "Notes",
+    title: normalizeMetadataFolderTitle(item.title) || "Notes",
     createdAt,
     updatedAt,
     notes: normalizeMetadataSubgroupNotes(item.notes, {
@@ -408,7 +410,7 @@ function normalizeMetadataSubgroupNote(note, context = {}) {
   }
 
   const id = normalizeMetadataSubgroupNoteId(note.id) || `metadata-folder-note-${createRandomIdSuffix()}`;
-  const title = normalizeMetadataSubgroupTitle(note.title) || "Note";
+  const title = normalizeMetadataNoteTitle(note.title) || "Note";
   const body = String(note.body ?? "");
   const normalized = {
     ...cloneValue(note),
@@ -554,7 +556,7 @@ function normalizeMetadataSubgroupNoteId(value) {
   return /^metadata-(?:folder|subgroup)-note-[a-z0-9-]+$/.test(normalized) ? normalized : "";
 }
 
-function normalizeMetadataSubgroupTitle(value) {
+function normalizeMetadataFolderTitle(value) {
   return String(value ?? "")
     .normalize("NFKC")
     .replace(/\s+/g, " ")
@@ -571,7 +573,7 @@ function normalizeTimestamp(value) {
 }
 
 function createSubgroupIdFromTitle(title) {
-  const slug = normalizeMetadataSubgroupTitle(title)
+  const slug = normalizeMetadataFolderTitle(title)
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")

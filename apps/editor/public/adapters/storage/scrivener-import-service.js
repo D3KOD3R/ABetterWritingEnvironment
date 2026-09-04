@@ -1,5 +1,7 @@
 // Intent: import Scrivener project packages into the app's canonical local-first project shape.
 
+import { normalizeMetadataNoteTitle } from "../../shared/metadata-note-title.js";
+
 const TEXT_EXTENSIONS = new Set([".rtf", ".txt", ".md", ".markdown", ".html", ".htm"]);
 const SCRIVENER_COMMENTS_METADATA_GROUP_ID = "metadata-comments-and-footnotes";
 const SCRIVENER_COMMENTS_METADATA_LABEL = "Comments and Footnotes";
@@ -1482,12 +1484,13 @@ function createScrivenerCommentMetadataNote({
 }
 
 function createScrivenerCommentNoteTitle(kindLabel, sceneTitle, selectedText, noteIndex) {
-  const anchorPreview = String(selectedText ?? "").replace(/\s+/g, " ").trim();
+  const anchorPreview = normalizeMetadataNoteTitle(selectedText);
   if (anchorPreview) {
-    return `${kindLabel}: ${anchorPreview.slice(0, 52)}`;
+    // Slicing a preview can expose trailing whitespace even after the source was trimmed.
+    return normalizeMetadataNoteTitle(`${kindLabel}: ${anchorPreview.slice(0, 52)}`);
   }
 
-  return `${kindLabel}: ${sceneTitle || `Imported note ${noteIndex}`}`;
+  return normalizeMetadataNoteTitle(`${kindLabel}: ${sceneTitle || `Imported note ${noteIndex}`}`);
 }
 
 function buildScrivenerCommentMetadataSubgroups(commentImports, now) {

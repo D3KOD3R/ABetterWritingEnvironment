@@ -119,6 +119,13 @@ function collectProjectScenes(snapshot, projectRecord, projectId) {
         ...(extractedScenes[sceneId] ?? {}),
         ...(explicitScenes[sceneId] ?? {}),
       };
+      // A chunk that supplies blocks owns their body semantics; do not retain a stale derived editorText from the manifest side.
+      if (
+        Object.prototype.hasOwnProperty.call(explicitScenes[sceneId] ?? {}, "blocks")
+        && !Object.prototype.hasOwnProperty.call(explicitScenes[sceneId] ?? {}, "editorText")
+      ) {
+        delete mergedScene.editorText;
+      }
       return [normalizedId, normalizeScene(normalizedId, mergedScene)];
     })
     .filter(([sceneId]) => Boolean(sceneId)));

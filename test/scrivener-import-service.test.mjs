@@ -105,7 +105,7 @@ export async function runScrivenerImportServiceTest() {
     `),
     createTextFile(
       "Novel.scriv/Files/Data/scene-one/content.rtf",
-      "{\\rtf1\\ansi First \\u8220\\'93quoted\\u8221\\'94 paragraph.\\par Second {\\field{\\*\\fldinst HYPERLINK \"scrivcmt://COMMENT-1\"}{\\fldrsltanchored phrase}} paragraph with {\\field{\\*\\fldinst HYPERLINK \"scrivcmt://FOOT-1\"}{\\fldrsltgate}}.}",
+      "{\\rtf1\\ansi First \\u8220\\'93quoted\\u8221\\'94 paragraph.\\par Second {\\field{\\*\\fldinst HYPERLINK \"scrivcmt://COMMENT-1\"}{\\fldrslt A carefully chosen imported comment preview ends at this space and continues}} paragraph with {\\field{\\*\\fldinst HYPERLINK \"scrivcmt://FOOT-1\"}{\\fldrsltgate}}.}",
     ),
     createTextFile("Novel.scriv/Files/Data/scene-one/content.comments", `
       <?xml version="1.0" encoding="UTF-8"?>
@@ -146,7 +146,7 @@ export async function runScrivenerImportServiceTest() {
   assert.deepEqual(record.structureDrafts.sceneOrder, ["scene-0001", "scene-0002"]);
   assert.equal(record.structureDrafts.scenes[0].chapterTitle, "Chapter One");
   assert.equal(record.sceneDrafts["scene-0001"].sceneTitle, "Opening Scene");
-  assert.equal(record.sceneDrafts["scene-0001"].editorText, "First “quoted” paragraph.\n\nSecond anchored phrase paragraph with gate.");
+  assert.equal(record.sceneDrafts["scene-0001"].editorText, "First “quoted” paragraph.\n\nSecond A carefully chosen imported comment preview ends at this space and continues paragraph with gate.");
   assert.equal(record.sceneDrafts["scene-0002"].editorText, "Legacy text document.");
   assert.equal(record.sceneDrafts["scene-0001"].sceneSynopsis, "The ship arrives.");
   assert.equal(record.sceneDrafts["scene-0001"].scrivenerMetadata.label, "First Draft");
@@ -157,8 +157,9 @@ export async function runScrivenerImportServiceTest() {
   assert.equal(record.metadataSubgroups[0].groupId, "metadata-comments-and-footnotes");
   assert.equal(record.metadataSubgroups[0].title, "Opening Scene");
   assert.equal(record.metadataSubgroups[0].notes.length, 2);
-  assert.equal(record.metadataSubgroups[0].notes[0].anchor.selectedText, "anchored phrase");
+  assert.equal(record.metadataSubgroups[0].notes[0].anchor.selectedText, "A carefully chosen imported comment preview ends at this space and continues");
   assert.equal(record.metadataSubgroups[0].notes[0].anchor.startOffset, 34);
+  assert.equal(record.metadataSubgroups[0].notes[0].title, "Comment: A carefully chosen imported comment preview ends at");
   assert.equal(record.metadataSubgroups[0].notes[0].sourceDocumentId, "scene-one");
   assert.equal(record.metadataSubgroups[0].notes[0].sourceCommentId, "COMMENT-1");
   assert.equal(record.metadataSubgroups[0].notes[0].sourceKind, "comment");

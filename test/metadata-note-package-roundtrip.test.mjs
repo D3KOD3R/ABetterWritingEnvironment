@@ -11,6 +11,7 @@ import { assertProjectSnapshotsSemanticallyEquivalent } from "../apps/editor/pub
 const PROJECT_ID = "project-metadata-note-roundtrip";
 const FOLDER_ID = "metadata-folder-comments";
 const NOTE_ID = "metadata-folder-note-comment-one";
+const NOTE_TITLE = "Imported metadata note title that deliberately continues beyond sixty-four characters intact";
 
 function createCandidateSnapshot() {
   return {
@@ -31,7 +32,7 @@ function createCandidateSnapshot() {
         updatedAt: "2026-09-04T00:00:00.000Z",
         notes: [{
           id: NOTE_ID,
-          title: "Comment 1",
+          title: NOTE_TITLE,
           body: "Imported comment body.",
           createdAt: "2026-09-04T00:00:00.000Z",
           updatedAt: "2026-09-04T00:00:00.000Z",
@@ -70,7 +71,10 @@ export async function runMetadataNotePackageRoundtripTest() {
 
     const manifest = JSON.parse(await readFile(path.join(staged.value.stagingRootPath, "project.json"), "utf8"));
     const noteRelativePath = manifest.projects[0].projectStorage.metadataFolders.noteFiles[FOLDER_ID][NOTE_ID];
+    assert.ok(path.basename(noteRelativePath, ".json").length <= 69);
     const sidecar = JSON.parse(await readFile(path.join(staged.value.stagingRootPath, ...noteRelativePath.split("/")), "utf8"));
+    assert.ok(NOTE_TITLE.length > 64);
+    assert.equal(sidecar.title, NOTE_TITLE);
     assert.equal(sidecar.sourceDocumentId, "scene-one");
     assert.equal(sidecar.sourceCommentId, "COMMENT-1");
     assert.equal(sidecar.sourceKind, "comment");
@@ -82,6 +86,7 @@ export async function runMetadataNotePackageRoundtripTest() {
     });
     assert.equal(loaded.response.statusCode, 200);
     const loadedNote = loaded.value.snapshot.projects[0].metadataSubgroups[0].notes[0];
+    assert.equal(loadedNote.title, NOTE_TITLE);
     assert.equal(loadedNote.sourceDocumentId, "scene-one");
     assert.equal(loadedNote.sourceCommentId, "COMMENT-1");
     assert.equal(loadedNote.sourceKind, "comment");

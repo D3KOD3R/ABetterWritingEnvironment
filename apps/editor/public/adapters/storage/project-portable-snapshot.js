@@ -154,10 +154,23 @@ function serializeWorkspace(workspace) {
   return portableWorkspace;
 }
 
+function serializeImportReport(importReport) {
+  const portableImportReport = sanitizePortableValue(importReport);
+  if (!portableImportReport || typeof portableImportReport !== "object" || Array.isArray(portableImportReport)) {
+    return portableImportReport;
+  }
+  // The selected source package is import-time authority only; relative provenance elsewhere remains portable project data.
+  delete portableImportReport.sourcePath;
+  return portableImportReport;
+}
+
 function serializeProjectRecord(project) {
   const portableProject = selectFields(project, PROJECT_RECORD_FIELDS);
   if (Object.prototype.hasOwnProperty.call(portableProject, "sceneDrafts")) {
     portableProject.sceneDrafts = sanitizePortableSceneMap(project?.sceneDrafts);
+  }
+  if (Object.prototype.hasOwnProperty.call(portableProject, "importReport")) {
+    portableProject.importReport = serializeImportReport(project?.importReport);
   }
   portableProject.workspace = serializeWorkspace(project?.workspace);
   portableProject.projectSettings = selectFields(project?.projectSettings, PROJECT_SETTINGS_FIELDS);

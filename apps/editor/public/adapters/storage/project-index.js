@@ -25,6 +25,8 @@ export const PROJECT_INDEX_SCENE_METADATA_KEYS = Object.freeze([
   "locationChanges", "locationChange", "settingChanges", "placeChanges",
   "worldSpineMetadata", "worldMetadata", "timelineMetadata", "storyMetadata",
   "customMetadata", "metadata",
+  // Scrivener provenance is durable non-body scene metadata and must survive browser-cache activation before the first Save.
+  "scrivenerMetadata",
 ]);
 
 // Intent: keep non-body scene metadata in the complete project index for lazy global projections after reload.

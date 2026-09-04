@@ -34,6 +34,14 @@ export function runMetadataSubgroupServiceTest() {
   assert.equal(noteResult.note.title, "Library lead");
   assert.equal(noteResult.note.anchor, null);
 
+  const longNoteTitle = "Native metadata note title that deliberately continues beyond sixty-four characters intact";
+  const longNoteResult = createMetadataSubgroupNote({
+    subgroupId: created.subgroup.id,
+    title: longNoteTitle,
+  }, noteResult.subgroups, supportedGroupIds, "2026-07-15T01:06:00.000Z");
+  assert.ok(longNoteTitle.length > 64);
+  assert.equal(longNoteResult.note.title, longNoteTitle);
+
   const anchored = updateMetadataSubgroupNote(
     noteResult.subgroups,
     created.subgroup.id,

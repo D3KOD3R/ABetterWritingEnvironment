@@ -50,6 +50,7 @@ const SESSION_TRACKER_FLAMING_PEN_SVG_PATH = fileURLToPath(
   new URL("../../editor/public/assets/icons/session-tracker-flaming-pen.svg", import.meta.url),
 );
 const METADATA_FOLDER_MANIFEST_FILE_NAME = "_folder.json";
+const METADATA_NOTE_FILE_STEM_MAX_LENGTH = 69;
 const SUPPORTED_PROJECT_SCHEMA_VERSION = 2;
 const APP_JS_PATH = fileURLToPath(new URL("../../editor/public/app.js", import.meta.url));
 const EDITOR_MODEL_JS_PATH = fileURLToPath(
@@ -1428,13 +1429,17 @@ function normalizeMetadataFolderNoteId(candidate: unknown): string {
   return /^metadata-(?:folder|subgroup)-note-[a-z0-9-]+$/.test(value) ? value : "";
 }
 
-function normalizeMetadataTitle(candidate: unknown, fallback: string): string {
+function normalizeMetadataFolderTitle(candidate: unknown, fallback: string): string {
   const title = String(candidate ?? "")
     .normalize("NFKC")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 64);
   return title || fallback;
+}
+
+function readMetadataNoteTitle(candidate: unknown, fallback: string): string {
+  return typeof candidate === "string" && candidate.length ? candidate : fallback;
 }
 
 function createMetadataFolderIdFromTitle(title: string): string {
@@ -1478,7 +1483,8 @@ function normalizeMetadataFolderNoteRecord(candidate: unknown, index = 0): Recor
   }
 
   const source = candidate as Record<string, any>;
-  const title = normalizeMetadataTitle(source.title, "Note");
+  // The editor/import boundary owns title canonicalization; package persistence must preserve semantic text exactly.
+  const title = readMetadataNoteTitle(source.title, "Note");
   const normalized = {
     ...cloneValue(source),
     id: normalizeMetadataFolderNoteId(source.id) || createMetadataFolderNoteIdFromTitle(`${title}-${index + 1}`),
@@ -1505,7 +1511,7 @@ function normalizeMetadataFolderRecord(candidate: unknown, index = 0, parentGrou
     return null;
   }
 
-  const title = normalizeMetadataTitle(source.title, "Notes");
+  const title = normalizeMetadataFolderTitle(source.title, "Notes");
   const notes = Array.isArray(source.notes)
     ? source.notes
       .map((note, noteIndex) => normalizeMetadataFolderNoteRecord(note, noteIndex))
@@ -1544,7 +1550,8 @@ function normalizeMetadataFolderRecords(candidate: unknown): Array<Record<string
 }
 
 function createUniqueFileName(baseName: string, usedNames: Set<string>): string {
-  const safeBaseName = sanitizePathToken(baseName || "note") || "note";
+  // Preserve the former bounded file-name footprint without applying that storage limit to the semantic note title.
+  const safeBaseName = (sanitizePathToken(baseName || "note") || "note").slice(0, METADATA_NOTE_FILE_STEM_MAX_LENGTH);
   let fileName = `${safeBaseName}.json`;
   let suffix = 2;
   while (usedNames.has(fileName)) {

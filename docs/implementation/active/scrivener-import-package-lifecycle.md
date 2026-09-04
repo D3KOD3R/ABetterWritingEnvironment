@@ -23,6 +23,16 @@ $.projects[0].scenes.scene-0023.scrivenerMetadata
 
 The safety check must not be disabled and `scrivenerMetadata` must not be discarded merely to pass verification. The verifier now composes split-storage scene semantics field-by-field, matching package-writer behavior. A changed Scrivener provenance value still fails semantic verification.
 
+### GUI activation regression found during manual recheck
+
+The desktop package readback contained complete scene chunks, including `scrivenerMetadata`, but activation then passed the package through the browser project repository. That repository deliberately collapses non-active scene bodies into project-index metadata; its metadata allowlist did not include Scrivener provenance. The active body-bearing runtime draft therefore lost `scrivenerMetadata`, and the immediate GUI Save treated that draft as authoritative while the filesystem writer still composed against the enriched existing sidecar. Expected and staged snapshots diverged at paths such as `$.projects[0].scenes.scene-0001.scrivenerMetadata`.
+
+Scrivener provenance is durable non-body scene metadata. It now participates in the project-index/browser-hydration metadata projection, so activation and the immediate Save preserve the complete scene provenance without consulting the original `.scriv` source.
+
+### Portable source-location boundary
+
+`buildScrivenerProjectSnapshotFromFiles()` records the selected absolute package location as `importReport.sourcePath` while conversion and the import form are in progress. That path is useful transient UI state but is machine-specific and must not enter the finished ABE package. The portable snapshot serializer therefore removes only `project.importReport.sourcePath`; it does not globally strip `sourcePath`, because relative binder/content provenance on imported tasks, notes, entities and archive records remains semantic project data.
+
 ## Required flow
 
 ```text
@@ -77,6 +87,10 @@ Desktop package open currently still reads all scene sidecars before the browser
 `test/scrivener-import-package-lifecycle.test.mjs` guards the import-candidate/package-publication seam: the pending candidate drives the existing New Project form, source provenance survives project renaming, the native blank-project builder is bypassed only while a pending import exists, and the desktop import preparation code does not activate a project or invoke legacy Save As.
 
 `test/project-snapshot-scrivener-metadata-regression.test.mjs` reproduces the older split-storage shape where the canonical scene record contains `scrivenerMetadata` but the already-loaded body sidecar does not. It verifies that semantic comparison composes those representations, accepts the correctly enriched staged package, and still rejects a changed Scrivener provenance UUID.
+
+`test/scrivener-import-metadata-runtime-hydration.test.mjs` reproduces the GUI-only package activation path through the browser repository and proves the active draft, metadata-only scene projection and immediate exported Save all retain `scrivenerMetadata`.
+
+`test/scrivener-import-portability.test.mjs` proves the transient import candidate may retain an obvious fake absolute source path while the portable snapshot, physical `project.json`, loaded package and subsequent Save/reload omit it. Scrivener source name, UUID, binder path and relative content-file provenance remain intact.
 
 Existing Scrivener parser/RTF/comment/metadata tests remain responsible for conversion fidelity. Existing project-package lifecycle tests remain responsible for staging, scaffold creation, semantic verification, publication and authority adoption.
 
