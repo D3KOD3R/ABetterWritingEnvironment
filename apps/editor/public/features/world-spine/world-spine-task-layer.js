@@ -1,4 +1,4 @@
-// Intent: project grouped manuscript task iterations onto the rendered World Spine without owning task persistence.
+// Intent: project manuscript tasks and grouped task iterations onto the rendered World Spine without owning task persistence.
 import { createEditorStorage } from "../../adapters/storage/editor-storage.js";
 import { EDITOR_TASKS_KEY } from "../../editor-model.js";
 import {
@@ -9,7 +9,6 @@ import {
 
 export const WORLD_SPINE_RELATIONSHIP_MODE_IMPLICATIONS = "implications";
 export const WORLD_SPINE_RELATIONSHIP_MODE_TASKS = "tasks";
-export const WORLD_SPINE_TASK_LAYER_STORAGE_KEY = "abe-world-spine-relationship-mode-v1";
 const TASK_LAYER_SELECTOR = "[data-world-spine-task-layer]";
 const TASK_BADGE_LAYER_SELECTOR = "[data-world-spine-task-badge-layer]";
 const RELATIONSHIP_CONTROL_SELECTOR = "[data-world-spine-relationship-control]";
@@ -23,25 +22,36 @@ export function normalizeWorldSpineRelationshipMode(value) {
 export function buildWorldSpineTaskLayerModel(tasks = []) {
   const taskList = Array.isArray(tasks) ? tasks.filter(Boolean) : [];
   const groupedTasks = taskList.filter((task) => String(task?.taskGroupId ?? "").trim());
-  const points = groupedTasks
-    .map((task) => ({
-      taskId: String(task.id ?? ""),
-      sceneId: String(task.sceneId ?? ""),
-      taskGroupId: String(task.taskGroupId ?? ""),
-      label: formatTaskIterationLabel(task),
-      title: String(task.title ?? task.body ?? "Task iteration"),
-      resolved: isTaskIterationResolved(task),
-      iterationIndex: Number.isInteger(Number(task.taskIterationIndex)) ? Number(task.taskIterationIndex) : 0,
-    }))
+  const points = taskList
+    .map((task) => {
+      const taskGroupId = String(task?.taskGroupId ?? "").trim();
+      const taskNumber = Number.isInteger(Number(task?.taskNumber)) && Number(task.taskNumber) > 0
+        ? Number(task.taskNumber)
+        : 1;
+      return {
+        taskId: String(task.id ?? ""),
+        sceneId: String(task.sceneId ?? ""),
+        taskGroupId,
+        isGrouped: Boolean(taskGroupId),
+        label: taskGroupId ? formatTaskIterationLabel(task) : `T${taskNumber}`,
+        title: String(task.title ?? task.body ?? "Task"),
+        resolved: isTaskIterationResolved(task),
+        iterationIndex: Number.isInteger(Number(task.taskIterationIndex)) ? Number(task.taskIterationIndex) : 0,
+        taskNumber,
+      };
+    })
     .filter((point) => point.taskId && point.sceneId)
-    .sort((left, right) => left.taskGroupId === right.taskGroupId
-      ? left.iterationIndex - right.iterationIndex
-      : left.taskGroupId.localeCompare(right.taskGroupId));
+    .sort((left, right) => {
+      if (left.taskGroupId && right.taskGroupId && left.taskGroupId === right.taskGroupId) {
+        return left.iterationIndex - right.iterationIndex;
+      }
+      return left.taskNumber - right.taskNumber || left.taskId.localeCompare(right.taskId);
+    });
 
   return {
     points,
     links: buildTaskIterationWorldSpineLinks(groupedTasks),
-    groupCount: new Set(points.map((point) => point.taskGroupId)).size,
+    groupCount: new Set(groupedTasks.map((task) => String(task.taskGroupId ?? "").trim())).size,
     pointCount: points.length,
   };
 }
@@ -60,19 +70,9 @@ export function createWorldSpineTaskLayerController({
   let observer = null;
   let currentRoot = null;
   let refreshQueued = false;
+  let relationshipMode = WORLD_SPINE_RELATIONSHIP_MODE_IMPLICATIONS;
 
-  const readMode = () => normalizeWorldSpineRelationshipMode(
-    editorStorage.readStoredJson(WORLD_SPINE_TASK_LAYER_STORAGE_KEY),
-  );
-
-  const writeMode = (mode) => {
-    editorStorage.writeStoredJsonRaw(
-      WORLD_SPINE_TASK_LAYER_STORAGE_KEY,
-      normalizeWorldSpineRelationshipMode(mode),
-    );
-  };
-
-  // Intent: preserve forward-compatible task iteration metadata that the legacy task normalizer does not yet understand.
+  // Intent: read the compatibility task cache without normalizing away forward-compatible iteration metadata.
   const readTasks = () => {
     const candidate = editorStorage.readStoredJson(EDITOR_TASKS_KEY);
     return Array.isArray(candidate) ? candidate : [];
@@ -93,12 +93,11 @@ export function createWorldSpineTaskLayerController({
     }
 
     currentRoot = root;
-    const mode = readMode();
     const model = buildWorldSpineTaskLayerModel(readTasks());
-    root.dataset.worldSpineRelationshipMode = mode;
-    renderRelationshipControl(headerActions, mode, model);
+    root.dataset.worldSpineRelationshipMode = relationshipMode;
+    renderRelationshipControl(headerActions, relationshipMode, model);
     renderTaskLayer(canvas, model, {
-      active: mode === WORLD_SPINE_RELATIONSHIP_MODE_TASKS,
+      active: relationshipMode === WORLD_SPINE_RELATIONSHIP_MODE_TASKS,
       documentRef,
     });
   }
@@ -123,7 +122,7 @@ export function createWorldSpineTaskLayerController({
     if (!target) {
       return;
     }
-    writeMode(target.dataset.worldSpineRelationshipMode);
+    relationshipMode = normalizeWorldSpineRelationshipMode(target.dataset.worldSpineRelationshipMode);
     refresh();
   }
 
@@ -150,7 +149,7 @@ function renderRelationshipControl(headerActions, mode, model) {
       <span class="world-spine-relationship-control__label">Relationships</span>
       <div class="world-spine-relationship-control__modes">
         ${renderModeButton(WORLD_SPINE_RELATIONSHIP_MODE_IMPLICATIONS, "Implications", mode)}
-        ${renderModeButton(WORLD_SPINE_RELATIONSHIP_MODE_TASKS, `Tasks${model.groupCount ? ` · ${model.groupCount}` : ""}`, mode)}
+        ${renderModeButton(WORLD_SPINE_RELATIONSHIP_MODE_TASKS, `Tasks${model.pointCount ? ` · ${model.pointCount}` : ""}`, mode)}
       </div>
     </div>`;
   if (existing) {
@@ -252,7 +251,8 @@ function renderTaskPointBadge(point, sceneNodes, index) {
   const slot = index % 3;
   const left = node.left + node.width - 12 - (slot * 30);
   const top = node.top - 14;
-  return `<button type="button" class="world-spine-task-point${point.resolved ? " is-resolved" : ""}" data-task-preview-id="${escapeHtml(point.taskId)}" data-world-spine-task-group-id="${escapeHtml(point.taskGroupId)}" style="left:${round(left)}px; top:${round(top)}px;" title="${escapeHtml(`${point.label}: ${point.title}`)}" aria-label="${escapeHtml(`Task ${point.label}: ${point.title}`)}"><span>${escapeHtml(point.label)}</span>${point.resolved ? "<i aria-hidden=\"true\">✓</i>" : ""}</button>`;
+  const groupClass = point.isGrouped ? " is-grouped" : " is-standalone";
+  return `<button type="button" class="world-spine-task-point${groupClass}${point.resolved ? " is-resolved" : ""}" data-task-preview-id="${escapeHtml(point.taskId)}" data-world-spine-task-group-id="${escapeHtml(point.taskGroupId)}" style="left:${round(left)}px; top:${round(top)}px;" title="${escapeHtml(`${point.label}: ${point.title}`)}" aria-label="${escapeHtml(`Task ${point.label}: ${point.title}`)}"><span>${escapeHtml(point.label)}</span>${point.resolved ? "<i aria-hidden=\"true\">✓</i>" : ""}</button>`;
 }
 
 function round(value) {
