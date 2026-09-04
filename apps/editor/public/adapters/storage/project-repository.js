@@ -616,6 +616,10 @@ export function createProjectRepository({
 
     const key = getSceneStorageKey(libraryStorageKey, normalizedProjectId, normalizedSceneId);
     const candidate = storageAdapter.readJson(key);
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+      return null;
+    }
+
     return normalizeSceneDraft(candidate, { sceneId: normalizedSceneId });
   };
 
