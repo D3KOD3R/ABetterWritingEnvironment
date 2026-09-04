@@ -1,4 +1,4 @@
-// Intent: verify grouped task iterations become a World Spine-ready visual projection.
+// Intent: verify manuscript tasks and grouped iterations become a World Spine-ready visual projection.
 import assert from "node:assert/strict";
 
 import {
@@ -44,14 +44,16 @@ export function runWorldSpineTaskLayerTest() {
       id: "ordinary-task",
       sceneId: "scene-d",
       taskNumber: 9,
+      title: "Standalone task",
       status: "open",
     },
   ]);
 
   assert.equal(model.groupCount, 1);
-  assert.equal(model.pointCount, 3);
-  assert.deepEqual(model.points.map((point) => point.label), ["1a", "1b", "1c"]);
+  assert.equal(model.pointCount, 4);
+  assert.deepEqual(model.points.map((point) => point.label), ["1a", "1b", "1c", "T9"]);
   assert.equal(model.points[2].resolved, true);
+  assert.equal(model.points[3].isGrouped, false);
   assert.equal(model.links.length, 2);
   assert.deepEqual(model.links.map((link) => [link.sourceSceneId, link.targetSceneId]), [
     ["scene-a", "scene-b"],
