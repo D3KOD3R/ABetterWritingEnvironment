@@ -22,7 +22,6 @@ export function normalizeWorldSpineRelationshipMode(value) {
 export function buildWorldSpineTaskLayerModel(tasks = []) {
   const taskList = Array.isArray(tasks) ? tasks.filter(Boolean) : [];
   const groupedTasks = taskList.filter((task) => String(task?.taskGroupId ?? "").trim());
-  const links = buildTaskIterationWorldSpineLinks(groupedTasks);
   const points = groupedTasks
     .map((task) => ({
       taskId: String(task.id ?? ""),
@@ -34,16 +33,13 @@ export function buildWorldSpineTaskLayerModel(tasks = []) {
       iterationIndex: Number.isInteger(Number(task.taskIterationIndex)) ? Number(task.taskIterationIndex) : 0,
     }))
     .filter((point) => point.taskId && point.sceneId)
-    .sort((left, right) => {
-      if (left.taskGroupId !== right.taskGroupId) {
-        return left.taskGroupId.localeCompare(right.taskGroupId);
-      }
-      return left.iterationIndex - right.iterationIndex;
-    });
+    .sort((left, right) => left.taskGroupId === right.taskGroupId
+      ? left.iterationIndex - right.iterationIndex
+      : left.taskGroupId.localeCompare(right.taskGroupId));
 
   return {
     points,
-    links,
+    links: buildTaskIterationWorldSpineLinks(groupedTasks),
     groupCount: new Set(points.map((point) => point.taskGroupId)).size,
     pointCount: points.length,
   };
@@ -58,25 +54,26 @@ export function createWorldSpineTaskLayerController({
   }
 
   let observer = null;
+  let currentRoot = null;
   let refreshQueued = false;
 
-  function readMode() {
+  const readMode = () => {
     try {
       return normalizeWorldSpineRelationshipMode(storage?.getItem?.(WORLD_SPINE_TASK_LAYER_STORAGE_KEY));
     } catch {
       return WORLD_SPINE_RELATIONSHIP_MODE_IMPLICATIONS;
     }
-  }
+  };
 
-  function writeMode(mode) {
+  const writeMode = (mode) => {
     try {
       storage?.setItem?.(WORLD_SPINE_TASK_LAYER_STORAGE_KEY, normalizeWorldSpineRelationshipMode(mode));
     } catch {
-      // UI mode is non-critical; keep the runtime state usable when browser storage is unavailable.
+      // Relationship display preference is non-critical when storage is unavailable.
     }
-  }
+  };
 
-  function readTasks() {
+  const readTasks = () => {
     try {
       const raw = storage?.getItem?.(MANUSCRIPT_TASKS_STORAGE_KEY);
       const parsed = raw ? JSON.parse(raw) : [];
@@ -84,12 +81,13 @@ export function createWorldSpineTaskLayerController({
     } catch {
       return [];
     }
-  }
+  };
 
   function refresh() {
     refreshQueued = false;
     const root = documentRef.querySelector("[data-world-spine-root]");
     if (!(root instanceof Element)) {
+      currentRoot = null;
       return;
     }
 
@@ -99,19 +97,28 @@ export function createWorldSpineTaskLayerController({
       return;
     }
 
+    currentRoot = root;
     const mode = readMode();
     const model = buildWorldSpineTaskLayerModel(readTasks());
     root.dataset.worldSpineRelationshipMode = mode;
     renderRelationshipControl(headerActions, mode, model);
-    renderTaskLayer(canvas, model, { active: mode === WORLD_SPINE_RELATIONSHIP_MODE_TASKS });
+    renderTaskLayer(canvas, model, {
+      active: mode === WORLD_SPINE_RELATIONSHIP_MODE_TASKS,
+      documentRef,
+    });
   }
 
-  function queueRefresh() {
-    if (refreshQueued) {
+  function queueRefreshForRootChange() {
+    const nextRoot = documentRef.querySelector("[data-world-spine-root]");
+    if (nextRoot === currentRoot || refreshQueued) {
       return;
     }
     refreshQueued = true;
-    globalThis.requestAnimationFrame?.(refresh) ?? globalThis.setTimeout?.(refresh, 0);
+    if (typeof globalThis.requestAnimationFrame === "function") {
+      globalThis.requestAnimationFrame(refresh);
+    } else {
+      globalThis.setTimeout?.(refresh, 0);
+    }
   }
 
   function handleClick(event) {
@@ -121,14 +128,13 @@ export function createWorldSpineTaskLayerController({
     if (!target) {
       return;
     }
-    const mode = normalizeWorldSpineRelationshipMode(target.dataset.worldSpineRelationshipMode);
-    writeMode(mode);
+    writeMode(target.dataset.worldSpineRelationshipMode);
     refresh();
   }
 
   documentRef.addEventListener("click", handleClick);
-  if (typeof MutationObserver === "function") {
-    observer = new MutationObserver(queueRefresh);
+  if (typeof MutationObserver === "function" && documentRef.body) {
+    observer = new MutationObserver(queueRefreshForRootChange);
     observer.observe(documentRef.body, { childList: true, subtree: true });
   }
   refresh();
@@ -151,29 +157,20 @@ function renderRelationshipControl(headerActions, mode, model) {
         ${renderModeButton(WORLD_SPINE_RELATIONSHIP_MODE_IMPLICATIONS, "Implications", mode)}
         ${renderModeButton(WORLD_SPINE_RELATIONSHIP_MODE_TASKS, `Tasks${model.groupCount ? ` · ${model.groupCount}` : ""}`, mode)}
       </div>
-    </div>
-  `;
-
+    </div>`;
   if (existing) {
     existing.outerHTML = html;
-    return;
+  } else {
+    headerActions.insertAdjacentHTML("afterbegin", html);
   }
-  headerActions.insertAdjacentHTML("afterbegin", html);
 }
 
 function renderModeButton(modeId, label, activeMode) {
   const active = modeId === activeMode;
-  return `
-    <button
-      type="button"
-      class="world-spine-relationship-control__button${active ? " is-active" : ""}"
-      data-world-spine-relationship-mode="${escapeAttribute(modeId)}"
-      aria-pressed="${active ? "true" : "false"}"
-    >${escapeHtml(label)}</button>
-  `;
+  return `<button type="button" class="world-spine-relationship-control__button${active ? " is-active" : ""}" data-world-spine-relationship-mode="${escapeHtml(modeId)}" aria-pressed="${active ? "true" : "false"}">${escapeHtml(label)}</button>`;
 }
 
-function renderTaskLayer(canvas, model, { active = false } = {}) {
+function renderTaskLayer(canvas, model, { active = false, documentRef = document } = {}) {
   canvas.querySelector(TASK_LAYER_SELECTOR)?.remove();
   canvas.querySelector(TASK_BADGE_LAYER_SELECTOR)?.remove();
   if (!active) {
@@ -183,27 +180,17 @@ function renderTaskLayer(canvas, model, { active = false } = {}) {
   const width = Number(canvas.dataset.worldSpineCanvasWidth) || canvas.offsetWidth || 900;
   const height = Number(canvas.dataset.worldSpineCanvasHeight) || canvas.offsetHeight || 520;
   const sceneNodes = createSceneNodeGeometryIndex(canvas);
-  const drawableLinks = model.links
-    .map((link, index) => createDrawableTaskLink(link, sceneNodes, index))
-    .filter(Boolean);
-
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  const drawableLinks = model.links.map((link, index) => createDrawableTaskLink(link, sceneNodes, index)).filter(Boolean);
+  const svg = documentRef.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("class", "world-spine-task-layer");
   svg.setAttribute("data-world-spine-task-layer", "");
   svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
   svg.setAttribute("width", String(width));
   svg.setAttribute("height", String(height));
-  svg.innerHTML = `
-    <defs>
-      <marker id="world-spine-task-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-        <path class="world-spine-task-arrow" d="M 0 0 L 8 4 L 0 8 z"></path>
-      </marker>
-    </defs>
-    ${drawableLinks.map(renderTaskConnectionSvg).join("")}
-  `;
+  svg.innerHTML = `<defs><marker id="world-spine-task-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path class="world-spine-task-arrow" d="M 0 0 L 8 4 L 0 8 z"></path></marker></defs>${drawableLinks.map(renderTaskConnectionSvg).join("")}`;
   canvas.append(svg);
 
-  const badgeLayer = document.createElement("div");
+  const badgeLayer = documentRef.createElement("div");
   badgeLayer.className = "world-spine-task-badge-layer";
   badgeLayer.setAttribute("data-world-spine-task-badge-layer", "");
   badgeLayer.innerHTML = model.points.map((point, index) => renderTaskPointBadge(point, sceneNodes, index)).join("");
@@ -245,30 +232,21 @@ function createDrawableTaskLink(link, sceneNodes, index) {
   const distance = Math.abs(endX - startX);
   const handle = Math.max(46, Math.min(132, distance * 0.38));
   const laneLift = 58 + ((index % 4) * 18);
+  const controlY = Math.max(28, Math.min(startY, endY) - laneLift);
   const control1X = startX + (leftToRight ? handle : -handle);
   const control2X = endX - (leftToRight ? handle : -handle);
-  const controlY = Math.max(28, Math.min(startY, endY) - laneLift);
-  const labelX = (startX + endX) / 2;
-  const labelY = controlY - 8;
-
   return {
     ...link,
     path: `M ${round(startX)} ${round(startY)} C ${round(control1X)} ${round(controlY)}, ${round(control2X)} ${round(controlY)}, ${round(endX)} ${round(endY)}`,
-    labelX: round(labelX),
-    labelY: round(labelY),
+    labelX: round((startX + endX) / 2),
+    labelY: round(controlY - 8),
   };
 }
 
 function renderTaskConnectionSvg(link) {
   const resolvedClass = link.sourceResolved && link.targetResolved ? " is-resolved" : "";
   const label = `${link.sourceLabel} → ${link.targetLabel}`;
-  return `
-    <g class="world-spine-task-connection${resolvedClass}" data-task-preview-id="${escapeAttribute(link.targetTaskId)}" tabindex="0" role="link" aria-label="${escapeAttribute(`Navigate to ${link.targetLabel}`)}">
-      <path class="world-spine-task-connection__hit" d="${escapeAttribute(link.path)}"></path>
-      <path class="world-spine-task-connection__line" d="${escapeAttribute(link.path)}" marker-end="url(#world-spine-task-arrow)"></path>
-      <text class="world-spine-task-connection__label" x="${link.labelX}" y="${link.labelY}"><tspan>${escapeHtml(label)}</tspan></text>
-    </g>
-  `;
+  return `<g class="world-spine-task-connection${resolvedClass}" data-task-preview-id="${escapeHtml(link.targetTaskId)}" tabindex="0" role="link" aria-label="${escapeHtml(`Navigate to ${link.targetLabel}`)}"><path class="world-spine-task-connection__hit" d="${escapeHtml(link.path)}"></path><path class="world-spine-task-connection__line" d="${escapeHtml(link.path)}" marker-end="url(#world-spine-task-arrow)"></path><text class="world-spine-task-connection__label" x="${link.labelX}" y="${link.labelY}"><tspan>${escapeHtml(label)}</tspan></text></g>`;
 }
 
 function renderTaskPointBadge(point, sceneNodes, index) {
@@ -279,17 +257,7 @@ function renderTaskPointBadge(point, sceneNodes, index) {
   const slot = index % 3;
   const left = node.left + node.width - 12 - (slot * 30);
   const top = node.top - 14;
-  return `
-    <button
-      type="button"
-      class="world-spine-task-point${point.resolved ? " is-resolved" : ""}"
-      data-task-preview-id="${escapeAttribute(point.taskId)}"
-      data-world-spine-task-group-id="${escapeAttribute(point.taskGroupId)}"
-      style="left:${round(left)}px; top:${round(top)}px;"
-      title="${escapeAttribute(`${point.label}: ${point.title}`)}"
-      aria-label="${escapeAttribute(`Task ${point.label}: ${point.title}`)}"
-    ><span>${escapeHtml(point.label)}</span>${point.resolved ? "<i aria-hidden=\"true\">✓</i>" : ""}</button>
-  `;
+  return `<button type="button" class="world-spine-task-point${point.resolved ? " is-resolved" : ""}" data-task-preview-id="${escapeHtml(point.taskId)}" data-world-spine-task-group-id="${escapeHtml(point.taskGroupId)}" style="left:${round(left)}px; top:${round(top)}px;" title="${escapeHtml(`${point.label}: ${point.title}`)}" aria-label="${escapeHtml(`Task ${point.label}: ${point.title}`)}"><span>${escapeHtml(point.label)}</span>${point.resolved ? "<i aria-hidden=\"true\">✓</i>" : ""}</button>`;
 }
 
 function round(value) {
@@ -303,10 +271,6 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
-}
-
-function escapeAttribute(value) {
-  return escapeHtml(value);
 }
 
 if (typeof document !== "undefined") {
