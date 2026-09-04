@@ -1,0 +1,170 @@
+/* Intent: keep grouped task iteration links visually distinct from story implication links. */
+.world-spine-workspace[data-world-spine-relationship-mode="tasks"] [data-world-spine-implication-connections] {
+  opacity: 0.08;
+  pointer-events: none;
+}
+
+.world-spine-relationship-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border: 1px solid var(--border-subtle, rgba(127, 127, 127, 0.24));
+  border-radius: 10px;
+  background: var(--surface-raised, rgba(255, 255, 255, 0.05));
+}
+
+.world-spine-relationship-control__label {
+  padding-left: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.62;
+}
+
+.world-spine-relationship-control__modes {
+  display: flex;
+  gap: 2px;
+}
+
+.world-spine-relationship-control__button {
+  min-height: 28px;
+  padding: 4px 9px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  opacity: 0.68;
+}
+
+.world-spine-relationship-control__button:hover,
+.world-spine-relationship-control__button:focus-visible {
+  opacity: 1;
+  background: rgba(127, 127, 127, 0.12);
+  outline: none;
+}
+
+.world-spine-relationship-control__button.is-active {
+  opacity: 1;
+  font-weight: 700;
+  background: rgba(88, 166, 255, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(88, 166, 255, 0.28);
+}
+
+.world-spine-task-layer,
+.world-spine-task-badge-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.world-spine-task-layer {
+  z-index: 5;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.world-spine-task-badge-layer {
+  z-index: 7;
+  pointer-events: none;
+}
+
+.world-spine-task-connection {
+  pointer-events: visibleStroke;
+  cursor: pointer;
+}
+
+.world-spine-task-connection__hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 16;
+}
+
+.world-spine-task-connection__line {
+  fill: none;
+  stroke: rgba(88, 166, 255, 0.92);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.world-spine-task-connection:hover .world-spine-task-connection__line,
+.world-spine-task-connection:focus .world-spine-task-connection__line {
+  stroke-width: 3.4;
+}
+
+.world-spine-task-connection.is-resolved .world-spine-task-connection__line {
+  opacity: 0.34;
+  stroke-dasharray: 5 6;
+}
+
+.world-spine-task-connection__label {
+  fill: currentColor;
+  font-size: 11px;
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: var(--surface, #10151d);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+.world-spine-task-arrow {
+  fill: rgba(88, 166, 255, 0.95);
+}
+
+.world-spine-task-point {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  min-width: 30px;
+  height: 28px;
+  padding: 0 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 1px solid rgba(88, 166, 255, 0.58);
+  border-radius: 999px;
+  background: var(--surface, #10151d);
+  color: inherit;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.world-spine-task-point:hover,
+.world-spine-task-point:focus-visible {
+  border-color: rgba(88, 166, 255, 0.95);
+  box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.16), 0 4px 14px rgba(0, 0, 0, 0.24);
+  outline: none;
+}
+
+.world-spine-task-point.is-resolved {
+  opacity: 0.46;
+  border-style: dashed;
+}
+
+.world-spine-task-point i {
+  font-style: normal;
+  font-size: 10px;
+}
+
+@media (prefers-color-scheme: light) {
+  .world-spine-task-connection__label {
+    stroke: #ffffff;
+  }
+
+  .world-spine-task-point {
+    background: #ffffff;
+  }
+}
