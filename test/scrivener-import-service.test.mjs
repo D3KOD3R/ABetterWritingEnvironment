@@ -20,7 +20,7 @@ export async function runScrivenerImportServiceTest() {
     "Alpha–Beta—Gamma.",
   );
 
-  const snapshot = await buildScrivenerProjectSnapshotFromFiles([
+  const sourceFiles = [
     createTextFile("Novel.scriv/Novel.scrivx", `
       <ScrivenerProject>
         <CustomMetaDataSettings>
@@ -119,15 +119,31 @@ export async function runScrivenerImportServiceTest() {
     createTextFile("Novel.scriv/Files/Data/reference-character/content.rtf", "{\\rtf1\\ansi Role: Security adviser\\par Notes: Ava keeps the council line.}"),
     createTextFile("Novel.scriv/Files/Data/reference-ship/content.rtf", "{\\rtf1\\ansi Class: Drop ship\\par Notes: John's squad craft.}"),
     createTextFile("Novel.scriv/Files/Data/reference-station/content.rtf", "{\\rtf1\\ansi Capacity: Large orbital settlement\\par Notes: Ceres staging ground.}"),
-  ], {
+  ];
+  const importOptions = {
     now: "2026-07-19T12:00:00.000Z",
     sourceLabel: "Novel.scriv",
     sourcePath: "Novel.scriv",
-  });
+  };
+  const snapshot = await buildScrivenerProjectSnapshotFromFiles(sourceFiles, importOptions);
+  const repeatedSnapshot = await buildScrivenerProjectSnapshotFromFiles(sourceFiles, importOptions);
 
   const record = snapshot.projects[0];
-  assert.equal(snapshot.activeProjectId, "scrivener-novel");
+  const repeatedRecord = repeatedSnapshot.projects[0];
+  assert.match(snapshot.activeProjectId, /^project-[0-9a-f-]{36}$/i);
+  assert.notEqual(snapshot.activeProjectId, repeatedSnapshot.activeProjectId);
+  assert.equal(snapshot.activeProjectId, record.id);
+  assert.equal(repeatedSnapshot.activeProjectId, repeatedRecord.id);
+  assert.deepEqual(Object.keys(snapshot.sceneStore), [record.id]);
+  assert.deepEqual(Object.keys(repeatedSnapshot.sceneStore), [repeatedRecord.id]);
+  // Source identity remains stable provenance even though each ABE package receives independent ownership.
+  assert.deepEqual(repeatedRecord.importReport, record.importReport);
+  assert.deepEqual(repeatedRecord.structureDrafts.scrivenerBinder, record.structureDrafts.scrivenerBinder);
+  assert.deepEqual(repeatedRecord.sceneDrafts["scene-0001"].scrivenerMetadata, record.sceneDrafts["scene-0001"].scrivenerMetadata);
+  assert.deepEqual(repeatedRecord.sourceArchive, record.sourceArchive);
+  assert.deepEqual(repeatedRecord.metadataSubgroups, record.metadataSubgroups);
   assert.equal(record.title, "Novel");
+  assert.equal(repeatedRecord.title, "Novel");
   assert.equal(record.source, "scrivener-import");
   assert.equal(record.importReport.manuscriptSceneCount, 2);
   assert.equal(record.importReport.importedTextDocumentCount, 2);

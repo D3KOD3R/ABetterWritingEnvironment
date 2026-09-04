@@ -1,6 +1,7 @@
 // Intent: import Scrivener project packages into the app's canonical local-first project shape.
 
 import { normalizeMetadataNoteTitle } from "../../shared/metadata-note-title.js";
+import { createRandomProjectId } from "../../shared/project-id.js";
 
 const TEXT_EXTENSIONS = new Set([".rtf", ".txt", ".md", ".markdown", ".html", ".htm"]);
 const SCRIVENER_COMMENTS_METADATA_GROUP_ID = "metadata-comments-and-footnotes";
@@ -1805,7 +1806,8 @@ export async function buildScrivenerProjectSnapshotFromFiles(files = [], options
   const projectTitle = normalizeString(options.projectTitle) ||
     stripFileExtension(scrivxEntry.name) ||
     "Imported Scrivener Project";
-  const projectId = `scrivener-${createSlug(projectTitle, "project")}`;
+  // ABE identity belongs to this new package; Scrivener names and UUIDs remain provenance only.
+  const projectId = createRandomProjectId();
   const xmlText = await readEntryText(scrivxEntry);
   const xmlRoot = parseScrivenerXml(xmlText);
   const customDefinitionMap = collectCustomMetadataDefinitions(xmlRoot);

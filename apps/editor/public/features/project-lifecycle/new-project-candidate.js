@@ -5,19 +5,13 @@ import {
   createTemplateDrafts,
 } from "../../editor-model.js";
 import { PROJECT_SCHEMA_VERSION } from "../../adapters/storage/project-migrations.js";
+import { createRandomProjectId } from "../../shared/project-id.js";
 import { buildPendingProjectImportSnapshot } from "../../state/project-import-candidate-store.js";
 import { createDefaultDraftProofingState } from "../draft-proofing/draft-proofing-service.js";
 
 function cloneValue(value) {
   if (typeof globalThis.structuredClone === "function") return globalThis.structuredClone(value);
   return JSON.parse(JSON.stringify(value));
-}
-
-function createRandomProjectId() {
-  if (typeof globalThis.crypto?.randomUUID !== "function") {
-    throw new Error("New Project requires collision-resistant UUID generation.");
-  }
-  return `project-${globalThis.crypto.randomUUID()}`;
 }
 
 export function createNewProjectCandidateBuilder({

@@ -1045,7 +1045,9 @@ export async function runProjectPersistenceServiceTest() {
     return scrivenerProjectHandle;
   };
   await projectPersistenceService.chooseScrivenerProjectForImport();
-  assert.equal(state.activeProjectId, "scrivener-imported-novel");
+  const importedProjectId = state.activeProjectId;
+  assert.match(importedProjectId, /^project-[0-9a-f-]{36}$/i);
+  assert.notEqual(importedProjectId, "scrivener-imported-novel");
   assert.equal(scrivenerSavePickerCalls.length, 1);
   assert.equal(scrivenerSavePickerCalls[0].suggestedName, "imported-novel.abe-project.json");
   assert.equal(state.projectFilePath, "imported-novel.abe-project.json");
@@ -1054,11 +1056,11 @@ export async function runProjectPersistenceServiceTest() {
   assert.equal(activationLog.at(-1)?.activeSceneText, "Imported Scrivener text.");
   assert.equal(scrivenerSaveWrites.length, 1);
   const savedScrivenerSnapshot = JSON.parse(scrivenerSaveWrites[0]);
-  assert.equal(savedScrivenerSnapshot.activeProjectId, "scrivener-imported-novel");
-  assert.equal(savedScrivenerSnapshot.projects[0].id, "scrivener-imported-novel");
+  assert.equal(savedScrivenerSnapshot.activeProjectId, importedProjectId);
+  assert.equal(savedScrivenerSnapshot.projects[0].id, importedProjectId);
   assert.equal(savedScrivenerSnapshot.projects[0].projectSettings.projectFilePath, "imported-novel.abe-project.json");
   assert.equal(
-    state.projectLibrary.find((project) => project.id === "scrivener-imported-novel")?.projectSettings?.projectFilePath,
+    state.projectLibrary.find((project) => project.id === importedProjectId)?.projectSettings?.projectFilePath,
     "imported-novel.abe-project.json",
   );
   assert.match(state.projectFileStatus, /Ported Scrivener project: 1 scene/);

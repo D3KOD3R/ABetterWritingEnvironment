@@ -1,6 +1,6 @@
 # Scrivener Import Package Lifecycle
 
-Status: Fix in progress / manual recheck required
+Status: Complete / rechecked
 Date: 2026-09-04
 Branch: `fix/persistence-scrivener-import-package-lifecycle`
 Related: `docs/implementation/active/desktop-project-package-lifecycle.md`, `docs/implementation/active/persistence-cross-feature-regression-checklist.md`, Feature `8.6`
@@ -67,6 +67,8 @@ The original `.scriv` package is read-only import provenance. It is never an ABE
 
 The published imported project uses the exact same folder package structure as New Project and Save As, including `project.json`, chunked manuscript scene files, metadata files, asset directories, transcripts, revisions and cache directories.
 
+Each conversion allocates a fresh ABE project identity using the same `project-<UUID>` allocator as native New Project creation. Scrivener titles, filenames, source paths and source UUIDs remain labels or provenance; none of them determines the ABE project ID or the project-scoped scene-store/cache owner.
+
 ## Cancellation and failure
 
 - Cancelling source selection changes nothing.
@@ -91,6 +93,8 @@ Desktop package open currently still reads all scene sidecars before the browser
 `test/scrivener-import-metadata-runtime-hydration.test.mjs` reproduces the GUI-only package activation path through the browser repository and proves the active draft, metadata-only scene projection and immediate exported Save all retain `scrivenerMetadata`.
 
 `test/scrivener-import-portability.test.mjs` proves the transient import candidate may retain an obvious fake absolute source path while the portable snapshot, physical `project.json`, loaded package and subsequent Save/reload omit it. Scrivener source name, UUID, binder path and relative content-file provenance remain intact.
+
+`test/scrivener-import-service.test.mjs` imports the same source snapshot twice and proves the ABE project IDs and scene-store owners differ while Scrivener binder, scene, comment and archive provenance stays equal. `test/scrivener-import-package-lifecycle.test.mjs` publishes both same-title imports as independent physical packages, semantically verifies both, saves an edit to the first and reloads the untouched second independently.
 
 Existing Scrivener parser/RTF/comment/metadata tests remain responsible for conversion fidelity. Existing project-package lifecycle tests remain responsible for staging, scaffold creation, semantic verification, publication and authority adoption.
 
