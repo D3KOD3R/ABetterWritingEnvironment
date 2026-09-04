@@ -24885,8 +24885,8 @@ function removeScenesFromProject(removedSceneIds) {
     scenes: Array.isArray(state.structureDrafts.scenes)
       ? state.structureDrafts.scenes.filter((draftScene) => {
           const draftSceneId = String(draftScene?.sceneId ?? "");
-          const draftChapterId = String(draftScene?.chapterId ?? "");
-          return !removedSet.has(draftSceneId) && !removedChapterIds.has(draftChapterId);
+          // Intent: scene deletion must remove only requested draft IDs; chapter deletion already passes every scene ID in the chapter.
+          return !removedSet.has(draftSceneId);
         })
       : [],
   };
