@@ -1,5 +1,6 @@
 // Intent: project grouped manuscript task iterations onto the rendered World Spine without owning task persistence.
 import { createEditorStorage } from "../../adapters/storage/editor-storage.js";
+import { EDITOR_TASKS_KEY } from "../../editor-model.js";
 import {
   buildTaskIterationWorldSpineLinks,
   formatTaskIterationLabel,
@@ -71,7 +72,11 @@ export function createWorldSpineTaskLayerController({
     );
   };
 
-  const readTasks = () => editorStorage.loadManuscriptTasks();
+  // Intent: preserve forward-compatible task iteration metadata that the legacy task normalizer does not yet understand.
+  const readTasks = () => {
+    const candidate = editorStorage.readStoredJson(EDITOR_TASKS_KEY);
+    return Array.isArray(candidate) ? candidate : [];
+  };
 
   function refresh() {
     refreshQueued = false;
