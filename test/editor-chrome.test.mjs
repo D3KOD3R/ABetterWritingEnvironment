@@ -260,7 +260,7 @@ export function runEditorChromeTest() {
   assert.match(fileMenuHtml, /C:\\Projects\\Novel\.abe-project\.json/);
   assert.match(fileMenuHtml, /data-action="create-project"[\s\S]*New Project\.\.\./);
   assert.match(fileMenuHtml, /data-action="load-project-file"[\s\S]*Open Project\.\.\./);
-  assert.match(fileMenuHtml, /data-action="import-scrivener-project"[\s\S]*Port Scrivener\.\.\./);
+  assert.match(fileMenuHtml, /data-action="import-scrivener-project"[\s\S]*Import Scrivener Project\.\.\./);
   assert.match(fileMenuHtml, /class="project-recent-menu" role="menu" aria-label="Recent loaded projects"/);
   assert.match(fileMenuHtml, /data-action="load-project"[\s\S]*data-project-id="project-new"[\s\S]*Recent Novel/);
   assert.match(fileMenuHtml, /data-action="load-project"[\s\S]*data-project-id="project-old"[\s\S]*Older Novel/);
@@ -279,9 +279,9 @@ export function runEditorChromeTest() {
     projectLibrary: [
       {
         id: "scrivener-imported-novel",
-        title: "Ported Scrivener Novel",
+        title: "Imported Scrivener Novel",
         updatedAt: "2026-07-01T09:00:00.000Z",
-        projectSettings: { projectFilePath: "imported-novel.abe-project.json" },
+        projectSettings: { projectFilePath: "C:\\Projects\\Imported Scrivener Novel" },
       },
       ...Array.from({ length: 6 }, (_, index) => ({
         id: `newer-project-${index + 1}`,
@@ -291,6 +291,6 @@ export function runEditorChromeTest() {
       })),
     ],
   });
-  assert.match(pinnedActiveProjectMenuHtml, /Ported Scrivener Novel/);
-  assert.ok(pinnedActiveProjectMenuHtml.indexOf("Ported Scrivener Novel") < pinnedActiveProjectMenuHtml.indexOf("Newer Project 6"));
+  assert.match(pinnedActiveProjectMenuHtml, /Imported Scrivener Novel/);
+  assert.ok(pinnedActiveProjectMenuHtml.indexOf("Imported Scrivener Novel") < pinnedActiveProjectMenuHtml.indexOf("Newer Project 6"));
 }

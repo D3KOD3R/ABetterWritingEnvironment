@@ -4,13 +4,19 @@ import {
   installDesktopDirectoryPickerBridge,
   queueDesktopDirectoryForNextPicker,
 } from "../../adapters/platform/desktop-directory-picker.js";
+import {
+  clearProjectImportCandidate,
+  peekProjectImportCandidate,
+  subscribeProjectImportCandidate,
+} from "../../state/project-import-candidate-store.js";
+import { prepareScrivenerImportCandidate } from "./scrivener-import-candidate.js";
 
 export const PROJECT_PACKAGE_LOCATION_REFRESH_DELAY_MS = 260;
 
 let locationRefreshTimer = null;
 let nativePickerBusy = false;
 let scrivenerPickerBusy = false;
-let replayingScrivenerClick = false;
+let scrivenerImportDialogObserved = false;
 let pendingFocusRestore = null;
 let pendingCompletionRestore = null;
 let suppressNextLocationFocusRefresh = false;
@@ -23,6 +29,39 @@ function hasNativeDesktopDirectoryPicker() {
 // Intent: install the compatibility bridge only on desktop hosts that can preselect through the shared native chooser.
 if (hasNativeDesktopDirectoryPicker()) {
   installDesktopDirectoryPickerBridge();
+}
+
+function openNewProjectActionForPendingImport(candidate) {
+  if (!candidate || candidate.kind !== "scrivener" || !hasNativeDesktopDirectoryPicker()) return;
+  window.queueMicrotask(() => {
+    let createProjectButton = document.querySelector('[data-action="create-project"]');
+    if (!(createProjectButton instanceof HTMLButtonElement)) {
+      const fileMenuButton = document.querySelector('[data-action="toggle-file-menu"]');
+      if (fileMenuButton instanceof HTMLButtonElement) {
+        fileMenuButton.click();
+        createProjectButton = document.querySelector('[data-action="create-project"]');
+      }
+    }
+    if (createProjectButton instanceof HTMLButtonElement && !createProjectButton.disabled) {
+      createProjectButton.click();
+    }
+  });
+}
+
+subscribeProjectImportCandidate((candidate) => {
+  openNewProjectActionForPendingImport(candidate);
+});
+
+function syncPendingImportDialogLifecycle() {
+  const importDialog = document.querySelector('[data-project-package-intent="scrivener-import"]');
+  if (importDialog) {
+    scrivenerImportDialogObserved = true;
+    return;
+  }
+  if (scrivenerImportDialogObserved && peekProjectImportCandidate()) {
+    clearProjectImportCandidate("scrivener-import-dialog-closed");
+  }
+  scrivenerImportDialogObserved = false;
 }
 
 function getLocationInput() {
@@ -52,23 +91,13 @@ function rememberLocationFocus(input) {
 export function resolveProjectPackageLocationLookup(value) {
   const typedValue = String(value ?? "").trim();
   if (!typedValue) {
-    return {
-      typedValue,
-      browsePath: "",
-      prefix: "",
-      isPartialSegment: false,
-    };
+    return { typedValue, browsePath: "", prefix: "", isPartialSegment: false };
   }
 
   const endsWithSeparator = /[\\/]$/.test(typedValue);
   const separatorIndex = Math.max(typedValue.lastIndexOf("\\"), typedValue.lastIndexOf("/"));
   if (endsWithSeparator || separatorIndex < 0) {
-    return {
-      typedValue,
-      browsePath: typedValue,
-      prefix: "",
-      isPartialSegment: false,
-    };
+    return { typedValue, browsePath: typedValue, prefix: "", isPartialSegment: false };
   }
 
   const separator = typedValue[separatorIndex];
@@ -88,28 +117,20 @@ export function resolveProjectPackageLocationLookup(value) {
 }
 
 // Intent: reuse the existing Enter-to-validate path so persistence ordering stays in the established app controller.
-function requestExistingProjectPackageValidation({
-  restoreFocus = false,
-  browsePath = null,
-  completion = null,
-} = {}) {
+function requestExistingProjectPackageValidation({ restoreFocus = false, browsePath = null, completion = null } = {}) {
   const input = getLocationInput();
   if (!input || input.disabled) return false;
   if (restoreFocus) rememberLocationFocus(input);
   if (completion) pendingCompletionRestore = completion;
 
   const typedValue = input.value;
-  if (typeof browsePath === "string") {
-    input.value = browsePath;
-  }
+  if (typeof browsePath === "string") input.value = browsePath;
   input.dispatchEvent(new KeyboardEvent("keydown", {
     key: "Enter",
     code: "Enter",
     bubbles: true,
     cancelable: true,
   }));
-
-  // The existing handler may replace this node synchronously, but restore the detached node too for callers/tests.
   input.value = typedValue;
   return true;
 }
@@ -141,7 +162,6 @@ function scheduleLocationRefresh(input) {
       });
       return;
     }
-
     requestExistingProjectPackageValidation({ restoreFocus });
   }, PROJECT_PACKAGE_LOCATION_REFRESH_DELAY_MS);
 }
@@ -174,11 +194,8 @@ function restorePartialLocationCompletion() {
   suppressNextLocationInputRefresh = true;
   input.value = completion.typedValue;
   input.dispatchEvent(new Event("input", { bubbles: true }));
-
   document.querySelector(".project-package-dialog__error")?.remove();
-  if (browser instanceof HTMLElement) {
-    browser.innerHTML = matchingMarkup;
-  }
+  if (browser instanceof HTMLElement) browser.innerHTML = matchingMarkup;
 
   if (completion.restoreFocus) {
     suppressNextLocationFocusRefresh = true;
@@ -218,42 +235,30 @@ async function openNativeProjectPackageDirectoryPicker() {
   }
 }
 
-function replayScrivenerPortClick(target) {
-  replayingScrivenerClick = true;
-  try {
-    target.click();
-  } finally {
-    replayingScrivenerClick = false;
-  }
-}
-
-// Intent: select the Scrivener source with the same native picker used by New Project before persistence awaits can lose the click gesture.
-async function openNativeScrivenerDirectoryPicker(target) {
+// Intent: select/convert the source first, but do not replace the current project until the normal package publication succeeds.
+async function openNativeScrivenerDirectoryPicker() {
   if (scrivenerPickerBusy) return;
   scrivenerPickerBusy = true;
+  clearProjectImportCandidate("scrivener-import-restarted");
   try {
     const result = await chooseDesktopDirectory();
-    if (!result.supported) {
-      replayScrivenerPortClick(target);
-      return;
-    }
-    if (result.cancelled || !result.path) return;
+    if (!result.supported || result.cancelled || !result.path) return;
 
-    queueDesktopDirectoryForNextPicker({
-      rootPath: result.path,
+    queueDesktopDirectoryForNextPicker({ rootPath: result.path, windowRef: window });
+    await prepareScrivenerImportCandidate({
       windowRef: window,
+      sourcePath: result.path,
     });
-    replayScrivenerPortClick(target);
   } catch (error) {
-    console.warn("Desktop Scrivener folder selection failed; falling back to the existing import path.", error);
-    replayScrivenerPortClick(target);
+    clearProjectImportCandidate("scrivener-import-failed");
+    console.warn("Scrivener project import preparation failed.", error);
   } finally {
     scrivenerPickerBusy = false;
   }
 }
 
-// Intent: validation may canonicalize a path, but it must not rewrite text while the user is still editing it.
 const dialogObserver = new MutationObserver(() => {
+  syncPendingImportDialogLifecycle();
   if (restorePartialLocationCompletion()) return;
   if (!pendingFocusRestore) return;
   const input = getLocationInput();
@@ -262,19 +267,14 @@ const dialogObserver = new MutationObserver(() => {
   const { value, selectionStart, selectionEnd } = pendingFocusRestore;
   pendingFocusRestore = null;
   suppressNextLocationFocusRefresh = true;
-  if (input.value !== value) {
-    input.value = value;
-  }
+  if (input.value !== value) input.value = value;
   input.focus({ preventScroll: true });
   if (Number.isInteger(selectionStart) && Number.isInteger(selectionEnd)) {
     input.setSelectionRange(selectionStart, selectionEnd);
   }
 });
 
-dialogObserver.observe(document.documentElement, {
-  childList: true,
-  subtree: true,
-});
+dialogObserver.observe(document.documentElement, { childList: true, subtree: true });
 
 document.addEventListener("input", (event) => {
   const input = event.target;
@@ -296,9 +296,9 @@ document.addEventListener("focusin", (event) => {
   scheduleLocationRefresh(input);
 }, true);
 
-// Intent: on desktop, Port Scrivener reuses the New Project native chooser and then re-enters the established persistence/import action.
+// Intent: desktop Import Scrivener is intercepted before the legacy single-file port route; browser compatibility is unchanged.
 document.addEventListener("click", (event) => {
-  if (replayingScrivenerClick || !hasNativeDesktopDirectoryPicker()) return;
+  if (!hasNativeDesktopDirectoryPicker()) return;
   const target = event.target instanceof Element
     ? event.target.closest('[data-action="import-scrivener-project"]')
     : null;
@@ -306,7 +306,7 @@ document.addEventListener("click", (event) => {
 
   event.preventDefault();
   event.stopImmediatePropagation();
-  void openNativeScrivenerDirectoryPicker(target);
+  void openNativeScrivenerDirectoryPicker();
 }, true);
 
 // Intent: Browse means native OS selection on supported desktop hosts, with the existing browser as fallback.

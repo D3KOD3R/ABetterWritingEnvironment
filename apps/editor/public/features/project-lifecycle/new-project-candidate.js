@@ -5,6 +5,7 @@ import {
   createTemplateDrafts,
 } from "../../editor-model.js";
 import { PROJECT_SCHEMA_VERSION } from "../../adapters/storage/project-migrations.js";
+import { buildPendingProjectImportSnapshot } from "../../state/project-import-candidate-store.js";
 import { createDefaultDraftProofingState } from "../draft-proofing/draft-proofing-service.js";
 
 function cloneValue(value) {
@@ -177,6 +178,10 @@ export function createNewProjectCandidateBuilder({
   }
 
   function buildNewProjectCandidateSnapshot(title) {
+    // Intent: external imports publish through the exact New Project package boundary instead of activating a cache-only intermediate project.
+    const pendingImportSnapshot = buildPendingProjectImportSnapshot(title);
+    if (pendingImportSnapshot) return pendingImportSnapshot;
+
     const createdAt = now();
     const projectId = createProjectId();
     const workspace = createBlankWorkspaceSnapshot(getBaseWorkspace(), projectId, title, createdAt);

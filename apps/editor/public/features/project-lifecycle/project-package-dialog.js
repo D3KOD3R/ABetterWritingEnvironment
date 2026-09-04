@@ -1,5 +1,6 @@
 // Intent: own runtime-only project package dialog state and markup without persistence side effects.
 import { escapeHtml } from "../../shared/ui-utils.js";
+import { peekProjectImportCandidate } from "../../state/project-import-candidate-store.js";
 import {
   renderDirectoryLocationFieldHTML,
   renderFormTextFieldHTML,
@@ -9,6 +10,11 @@ export const PROJECT_PACKAGE_DIALOG_MODES = Object.freeze({
   NEW: "new",
   OPEN: "open",
   SAVE_AS: "save-as",
+});
+
+export const PROJECT_PACKAGE_DIALOG_INTENTS = Object.freeze({
+  NEW_PROJECT: "new-project",
+  SCRIVENER_IMPORT: "scrivener-import",
 });
 
 export function deriveProjectPackageFolderName(projectTitle = "") {
@@ -29,13 +35,27 @@ export function createProjectPackageDialogState({
   const normalizedMode = Object.values(PROJECT_PACKAGE_DIALOG_MODES).includes(mode)
     ? mode
     : PROJECT_PACKAGE_DIALOG_MODES.OPEN;
+  const pendingImport = normalizedMode === PROJECT_PACKAGE_DIALOG_MODES.NEW
+    ? peekProjectImportCandidate()
+    : null;
+  const isScrivenerImport = pendingImport?.kind === "scrivener";
+  const resolvedProjectTitle = isScrivenerImport
+    ? pendingImport.projectTitle || projectTitle
+    : projectTitle;
+  const resolvedSourceRoot = isScrivenerImport
+    ? pendingImport.sourcePath || pendingImport.sourceLabel || sourceRoot
+    : sourceRoot;
+
   return {
     mode: normalizedMode,
-    projectName: normalizedMode === PROJECT_PACKAGE_DIALOG_MODES.NEW ? projectTitle : "",
+    intent: isScrivenerImport
+      ? PROJECT_PACKAGE_DIALOG_INTENTS.SCRIVENER_IMPORT
+      : PROJECT_PACKAGE_DIALOG_INTENTS.NEW_PROJECT,
+    projectName: normalizedMode === PROJECT_PACKAGE_DIALOG_MODES.NEW ? resolvedProjectTitle : "",
     folderName: normalizedMode === PROJECT_PACKAGE_DIALOG_MODES.OPEN
       ? ""
-      : deriveProjectPackageFolderName(projectTitle),
-    sourceRoot: String(sourceRoot ?? "").trim(),
+      : deriveProjectPackageFolderName(resolvedProjectTitle),
+    sourceRoot: String(resolvedSourceRoot ?? "").trim(),
     locationPath: "",
     validatedLocationPath: "",
     parentPath: "",
@@ -98,8 +118,21 @@ export function renderProjectPackageDialogHTML(dialog) {
   if (!dialog) return "";
   const isNew = dialog.mode === PROJECT_PACKAGE_DIALOG_MODES.NEW;
   const isOpen = dialog.mode === PROJECT_PACKAGE_DIALOG_MODES.OPEN;
-  const title = isNew ? "New Project" : isOpen ? "Open Project" : "Save Project As";
-  const confirmLabel = isNew ? "Create Project" : isOpen ? "Open Project" : "Save As";
+  const isScrivenerImport = dialog.intent === PROJECT_PACKAGE_DIALOG_INTENTS.SCRIVENER_IMPORT;
+  const title = isScrivenerImport
+    ? "Import Scrivener Project"
+    : isNew
+      ? "New Project"
+      : isOpen
+        ? "Open Project"
+        : "Save Project As";
+  const confirmLabel = isScrivenerImport
+    ? "Import Project"
+    : isNew
+      ? "Create Project"
+      : isOpen
+        ? "Open Project"
+        : "Save As";
   const disabled = dialog.busy ? "disabled" : "";
   const confirmDisabled = canConfirmProjectPackageDialog(dialog) ? "" : "disabled";
   const directories = dialog.directories.map((directory) => `
@@ -117,7 +150,13 @@ export function renderProjectPackageDialogHTML(dialog) {
 
   return `
     <div class="project-package-dialog-backdrop" data-project-package-dialog-backdrop>
-      <section class="project-package-dialog" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}">
+      <section
+        class="project-package-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label="${escapeHtml(title)}"
+        data-project-package-intent="${escapeHtml(dialog.intent ?? "")}"
+      >
         <header>
           <div>
             <p class="panel-kicker">Project package</p>
@@ -138,6 +177,14 @@ export function renderProjectPackageDialogHTML(dialog) {
           fieldName: "folderName",
           fieldAttribute: "data-project-package-field",
           disabled: dialog.busy,
+        }) : ""}
+        ${isScrivenerImport ? renderFormTextFieldHTML({
+          label: "Scrivener source",
+          value: dialog.sourceRoot,
+          fieldName: "sourceRoot",
+          fieldAttribute: "data-project-import-source",
+          disabled: true,
+          spellcheck: false,
         }) : ""}
         ${renderDirectoryLocationFieldHTML({
           label: "Location",

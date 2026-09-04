@@ -175,7 +175,7 @@ function renderTopPanelRestoreTarget(groupId, label) {
   `;
 }
 
-// Intent: keep the target-strip leading cards configurable without moving proof-read or log behavior into this shell.
+// Intent: keep the target-strip leading cards configurable without moving proof-read or log behavior into writing metrics.
 function renderLeadingTargetStripCards({
   state,
   summary,
@@ -383,7 +383,7 @@ function renderFileMenu({
             data-action="import-scrivener-project"
             ${state.projectFileBusy ? "disabled" : ""}
           >
-            Port Scrivener...
+            Import Scrivener Project...
           </button>
         </div>
         ${renderProjectFileAutosaveSetting(state, projectFileAutosaveConnected)}

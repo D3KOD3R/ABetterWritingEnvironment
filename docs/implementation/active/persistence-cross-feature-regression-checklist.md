@@ -74,7 +74,7 @@ Known manual failures at the start of this sweep:
 | Feature | Priority | Status | Known symptom |
 | --- | --- | --- | --- |
 | `1.6b` Scene drag/drop reorder | P0 | **Broken** | Manuscript binder scene drag/drop no longer reorders scenes. |
-| `8.6` Scrivener project port | P0 | **Broken** | `Port Scrivener` currently appears to do nothing in manual testing. |
+| `8.6` Scrivener project import | P0 | **Fix in progress** | Source selection/conversion works, but the imported project is activated without folder-package authority, reports `No package selected`, can fall back to a downloaded `.abe-project.json`, and can leave the next New Project transition blocked by the no-durable-destination guard. |
 | `8.2d` Package dialog workflow | P0 | Needs recheck | Recent manual testing found weak/incorrect dialog presentation and path/browse interaction; later persistence commits changed this area, so recheck before closing it. |
 
 ## Mandatory persistence pass pattern
@@ -344,13 +344,26 @@ Manual focus: normal autosave, failed/blocked write, out-of-sync cause display, 
 
 Coverage: `8.5a-8.5c`. Record chapter/scene/manuscript words/task/note/world/timeline counts before Save and compare after refresh/Open/Save As. Lazy/chunked hydration must not collapse totals merely because only an active body is loaded.
 
-### 8.6 Scrivener project port — P0 — **`Broken`**
+### 8.6 Scrivener project import — P0 — **`Fix in progress`**
 
 Coverage: `8.6a-8.6i` plus cross-feature `1.5k`.
 
-Required manual pass after repair: File menu action visibly starts import; choose a real `.scriv`; binder order/chapter grouping and manuscript text import; custom metadata and scene metadata survive activation; Research/WorldBuilding references become catalogue entities; comments/footnotes populate generated Metadata Console folders with anchors where resolvable; RTF paragraph/Unicode/dash fidelity is preserved; compatible editor font preference maps; original `.scriv` remains untouched; normal ABE Save As follows import and the resulting package reopens correctly.
+Required manual pass after repair: choose **Import Scrivener Project...** and select a real `.scriv`; confirm source selection/conversion does not replace the currently active project yet; confirm the existing project-package form opens with the imported title, editable project/folder name, read-only Scrivener source, and the same Location/Browse controls used by New Project; choose a destination and press **Import Project**; require the normal staged New Project package writer to create/verify/publish a folder-backed package before activation; confirm Project location immediately shows that package root and no legacy `.abe-project.json` download is used on the supported desktop path.
 
-Known symptom: current manual test reports that `Port Scrivener` does nothing.
+Then verify binder order/chapter grouping and manuscript text; custom metadata and scene metadata; Research/WorldBuilding catalogue entities; comments/footnotes and resolvable anchors; RTF paragraph/Unicode/dash fidelity; compatible editor font preference; source provenance; and that the original `.scriv` remains untouched. Save, refresh, close/reopen, Save As to package B, reopen B, and open unrelated package C to verify isolation. Finally create another New Project and confirm the imported project does not leave the no-durable-destination/autosave block behind.
+
+Regression 2026-09-04
+- Status: Fix in progress
+- Reproduction: import a known Scrivener project on desktop; after conversion inspect File -> Project location, then attempt New Project.
+- Expected: import is a project-creation workflow. The converted candidate remains transient until a named folder package is staged, verified and published; only that published package becomes active authority.
+- Actual: source conversion now succeeds, but the legacy route activates the imported snapshot first and falls through to single-file/download Save As, leaving `No package selected`; subsequent New Project can be refused because the active imported project has dirty/blocked cache-only state with no durable destination.
+- Suspected boundary: project lifecycle / package authority / activation ordering.
+- Debug reference: `fix/persistence-scrivener-import-package-lifecycle`; `test/scrivener-import-package-lifecycle.test.mjs`.
+- Recheck: import -> choose project name/folder/location -> publish -> Project location populated -> Save -> refresh -> reopen -> Save As B -> reopen B -> New Project succeeds -> unrelated C has no imported state.
+
+The transition guard itself is not the regression: it correctly refuses to abandon dirty/cache-only work. The repair must prevent a new Scrivener import from becoming that cache-only active project in the first place. A project created by the older broken import path should be salvaged with Save As before switching projects rather than weakening the guard.
+
+Disk-level lazy scene loading is a separate persistence task. Scrivener conversion necessarily reads the source once; after publication, the imported project must use the same chunked package/runtime behavior as a natively created project. Do not combine a desktop package lazy-loader rewrite into this repair.
 
 ## Feature 09 - External Music Integration
 
@@ -430,7 +443,7 @@ This regression sweep is complete only when:
 
 - every implemented workflow above is `Working` or `Rechecked`;
 - `1.6b` scene drag/drop is repaired and manually rechecked;
-- `8.6` Scrivener port is repaired and manually rechecked;
+- `8.6` Scrivener import is repaired and manually rechecked;
 - package-dialog interaction is rechecked after the recent lifecycle changes;
 - every P0 durable workflow survives Save, refresh, package reopen and relevant Save As;
 - package B asset-owning workflows work with package A unavailable;
