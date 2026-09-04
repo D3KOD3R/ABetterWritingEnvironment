@@ -1471,6 +1471,7 @@ function normalizeMetadataNoteAnchor(candidate: unknown): Record<string, any> | 
   };
 }
 
+// Intent: metadata-note extensions are semantic project data; only sidecar coordinates and the migrated anchor alias are noncanonical.
 function normalizeMetadataFolderNoteRecord(candidate: unknown, index = 0): Record<string, any> | null {
   if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
     return null;
@@ -1478,7 +1479,8 @@ function normalizeMetadataFolderNoteRecord(candidate: unknown, index = 0): Recor
 
   const source = candidate as Record<string, any>;
   const title = normalizeMetadataTitle(source.title, "Note");
-  return {
+  const normalized = {
+    ...cloneValue(source),
     id: normalizeMetadataFolderNoteId(source.id) || createMetadataFolderNoteIdFromTitle(`${title}-${index + 1}`),
     title,
     body: typeof source.body === "string" ? source.body : "",
@@ -1486,6 +1488,10 @@ function normalizeMetadataFolderNoteRecord(candidate: unknown, index = 0): Recor
     updatedAt: normalizeMetadataText(source.updatedAt),
     anchor: normalizeMetadataNoteAnchor(source.anchor ?? source.manuscriptAnchor),
   };
+  delete normalized.groupId;
+  delete normalized.folderId;
+  delete normalized.manuscriptAnchor;
+  return normalized;
 }
 
 function normalizeMetadataFolderRecord(candidate: unknown, index = 0, parentGroupId = ""): Record<string, any> | null {

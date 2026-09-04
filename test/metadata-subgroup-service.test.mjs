@@ -102,6 +102,35 @@ export function runMetadataSubgroupServiceTest() {
     title: "Drop me",
   }], supportedGroupIds), []);
 
+  const [normalizedExtensionFolder] = normalizeMetadataSubgroups([{
+    id: "metadata-folder-imported",
+    groupId: "research",
+    title: "Imported notes",
+    notes: [{
+      id: "metadata-folder-note-imported",
+      title: "Imported comment",
+      body: "Preserve importer provenance.",
+      createdAt: "2026-07-15T01:25:00.000Z",
+      updatedAt: "2026-07-15T01:30:00.000Z",
+      anchor: null,
+      sourceDocumentId: "scene-one",
+      sourceCommentId: "COMMENT-1",
+      sourceKind: "comment",
+      extensionPayload: { labels: ["imported", "review"] },
+      groupId: "storage-group",
+      folderId: "storage-folder",
+      manuscriptAnchor: { sceneId: "legacy-scene" },
+    }],
+  }], supportedGroupIds);
+  const [normalizedExtensionNote] = normalizedExtensionFolder.notes;
+  assert.equal(normalizedExtensionNote.sourceDocumentId, "scene-one");
+  assert.equal(normalizedExtensionNote.sourceCommentId, "COMMENT-1");
+  assert.equal(normalizedExtensionNote.sourceKind, "comment");
+  assert.deepEqual(normalizedExtensionNote.extensionPayload, { labels: ["imported", "review"] });
+  assert.equal(Object.hasOwn(normalizedExtensionNote, "groupId"), false);
+  assert.equal(Object.hasOwn(normalizedExtensionNote, "folderId"), false);
+  assert.equal(Object.hasOwn(normalizedExtensionNote, "manuscriptAnchor"), false);
+
   const markup = renderMetadataSubgroupPanelHTML({
     groupId: "research",
     subgroups: childNote.subgroups,

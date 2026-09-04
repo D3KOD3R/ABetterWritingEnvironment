@@ -159,8 +159,14 @@ export async function runScrivenerImportServiceTest() {
   assert.equal(record.metadataSubgroups[0].notes.length, 2);
   assert.equal(record.metadataSubgroups[0].notes[0].anchor.selectedText, "anchored phrase");
   assert.equal(record.metadataSubgroups[0].notes[0].anchor.startOffset, 34);
+  assert.equal(record.metadataSubgroups[0].notes[0].sourceDocumentId, "scene-one");
+  assert.equal(record.metadataSubgroups[0].notes[0].sourceCommentId, "COMMENT-1");
+  assert.equal(record.metadataSubgroups[0].notes[0].sourceKind, "comment");
   assert.equal(record.metadataSubgroups[0].notes[1].anchor.selectedText, "gate");
   assert.match(record.metadataSubgroups[0].notes[1].body, /Imported footnote body/);
+  assert.equal(record.metadataSubgroups[0].notes[1].sourceDocumentId, "scene-one");
+  assert.equal(record.metadataSubgroups[0].notes[1].sourceCommentId, "FOOT-1");
+  assert.equal(record.metadataSubgroups[0].notes[1].sourceKind, "footnote");
   assert.equal(record.workspace.project.stats.chapterCount, 1);
   assert.equal(record.workspace.project.stats.sceneCount, 2);
   assert.equal(record.workspace.project.lines.some((line) => line.text.includes("Research")), false);

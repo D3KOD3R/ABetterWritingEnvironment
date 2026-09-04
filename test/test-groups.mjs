@@ -3,13 +3,13 @@ const prefixes = (...values) => ({ prefixes: values });
 
 export const TEST_GROUPS = {
   editor: prefixes("anchored-", "editor-", "manuscript-", "scene-", "task-", "passage-", "revision-", "user-highlight-", "top-panel-", "keyboard-", "custom-metadata-", "metadata-", "progress-tracker", "delete-confirmation-dialog", "milestone-sound-effects-service", "spotify-music-service", "writing-goals-state-service"),
-  project: prefixes("project-", "editor-storage", "scrivener-import-service"),
+  project: prefixes("project-", "editor-storage", "scrivener-import-"),
   narration: prefixes("narration-", "audio-service", "realtime-speech-"),
   voice: prefixes("voice-"),
   world: prefixes("world-", "worldbuilding-", "ManuScriptInfographicLane-"),
   localAi: prefixes("local-ai-", "analysis-service"),
   language: prefixes("dictionary-", "spellcheck", "grammar-", "draft-proofing-"),
-  desktop: prefixes("desktop-application", "developer-logger", "runtime-portability-guardrails"),
+  desktop: prefixes("desktop-", "developer-logger", "runtime-portability-guardrails"),
   schemas: prefixes("audiobook-schema", "manuscript-schema", "world-schema"),
   harness: prefixes("application-syntax-smoke", "test-harness-registration", "repo-supervisor"),
 };

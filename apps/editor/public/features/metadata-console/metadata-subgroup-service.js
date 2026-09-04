@@ -401,6 +401,7 @@ function normalizeMetadataSubgroupNotes(candidate = [], context = {}) {
   return notes;
 }
 
+// Intent: metadata-note extensions are semantic project data; only sidecar coordinates and the migrated anchor alias are noncanonical.
 function normalizeMetadataSubgroupNote(note, context = {}) {
   if (!note || typeof note !== "object") {
     return null;
@@ -409,7 +410,8 @@ function normalizeMetadataSubgroupNote(note, context = {}) {
   const id = normalizeMetadataSubgroupNoteId(note.id) || `metadata-folder-note-${createRandomIdSuffix()}`;
   const title = normalizeMetadataSubgroupTitle(note.title) || "Note";
   const body = String(note.body ?? "");
-  return {
+  const normalized = {
+    ...cloneValue(note),
     id,
     title,
     body,
@@ -417,6 +419,10 @@ function normalizeMetadataSubgroupNote(note, context = {}) {
     updatedAt: normalizeTimestamp(note.updatedAt),
     anchor: normalizeMetadataSubgroupNoteAnchor(note.anchor ?? note.manuscriptAnchor),
   };
+  delete normalized.groupId;
+  delete normalized.folderId;
+  delete normalized.manuscriptAnchor;
+  return normalized;
 }
 
 export function normalizeMetadataSubgroupNoteAnchor(candidate = null) {
