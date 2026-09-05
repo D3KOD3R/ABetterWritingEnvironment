@@ -427,6 +427,69 @@ export function isSupportedPassageNoteType(noteType) {
     CUSTOM_METADATA_NOTE_TYPE_PATTERN.test(normalizedNoteType);
 }
 
+// Intent: allocate generated scene placeholders by the highest existing generated number in one chapter.
+export function resolveNextUntitledSceneTitle(sceneRecords = [], chapterId = "") {
+  const normalizedChapterId = String(chapterId ?? "").trim();
+  let highestSceneNumber = 0;
+
+  for (const scene of Array.isArray(sceneRecords) ? sceneRecords : []) {
+    if (String(scene?.chapterId ?? "").trim() !== normalizedChapterId) {
+      continue;
+    }
+
+    const match = String(scene?.sceneTitle ?? "").trim().match(/^Untitled Scene ([1-9]\d*)$/);
+    if (!match) {
+      continue;
+    }
+
+    const sceneNumber = Number(match[1]);
+    if (Number.isSafeInteger(sceneNumber)) {
+      highestSceneNumber = Math.max(highestSceneNumber, sceneNumber);
+    }
+  }
+
+  return `Untitled Scene ${highestSceneNumber + 1}`;
+}
+
+function isLegacyGeneratedSceneTitle(value) {
+  return /^New Scene(?: [1-9]\d*)?$/.test(String(value ?? "").trim());
+}
+
+// Intent: translate the legacy first-scene placeholder for a freshly drafted chapter at the scene-model boundary.
+function normalizeGeneratedFirstSceneTitles(sceneRecords = [], structureDrafts = {}) {
+  const generatedFirstSceneIds = new Set(
+    (Array.isArray(structureDrafts?.scenes) ? structureDrafts.scenes : [])
+      .filter((scene) => (
+        String(scene?.sceneId ?? "").startsWith("draft-scene-") &&
+        String(scene?.chapterId ?? "").startsWith("draft-chapter-") &&
+        String(scene?.sceneTitle ?? "").trim() === "New Scene"
+      ))
+      .map((scene) => String(scene.sceneId)),
+  );
+
+  if (!generatedFirstSceneIds.size) {
+    return sceneRecords;
+  }
+
+  const normalizedScenes = [...sceneRecords];
+  for (let index = 0; index < normalizedScenes.length; index += 1) {
+    const scene = normalizedScenes[index];
+    if (
+      !generatedFirstSceneIds.has(String(scene?.sceneId ?? "")) ||
+      String(scene?.sceneTitle ?? "").trim() !== "New Scene"
+    ) {
+      continue;
+    }
+
+    normalizedScenes[index] = {
+      ...scene,
+      sceneTitle: resolveNextUntitledSceneTitle(normalizedScenes, scene.chapterId),
+    };
+  }
+
+  return normalizedScenes;
+}
+
 // Intent: keep binder ordering deterministic when draft-only scenes need to sit between persisted manuscript scenes.
 function getOrderedStructureSceneIds(structureDrafts = {}) {
   const explicitSceneOrder = Array.isArray(structureDrafts?.sceneOrder)
@@ -638,7 +701,10 @@ export function buildSceneRecords(workspace, sceneDrafts = {}, structureDrafts =
     };
   });
 
-  return orderSceneRecordsByStructureDrafts(sceneRecords, structureDrafts);
+  return orderSceneRecordsByStructureDrafts(
+    normalizeGeneratedFirstSceneTitles(sceneRecords, structureDrafts),
+    structureDrafts,
+  );
 }
 
 export function createSceneDraft(scene) {
@@ -741,9 +807,17 @@ export function insertStructureSceneDraftAfterAnchor(
   newSceneDraft = {},
   anchorSceneId = "",
 ) {
-  const newSceneId = typeof newSceneDraft?.sceneId === "string" ? newSceneDraft.sceneId.trim() : "";
+  const normalizedNewSceneDraft = cloneValue(newSceneDraft ?? {});
+  const newSceneId = typeof normalizedNewSceneDraft?.sceneId === "string" ? normalizedNewSceneDraft.sceneId.trim() : "";
   if (!newSceneId) {
     return cloneValue(structureDrafts ?? createStructureDrafts());
+  }
+
+  if (isLegacyGeneratedSceneTitle(normalizedNewSceneDraft.sceneTitle)) {
+    normalizedNewSceneDraft.sceneTitle = resolveNextUntitledSceneTitle(
+      sceneRecords,
+      normalizedNewSceneDraft.chapterId,
+    );
   }
 
   const normalizedAnchorSceneId = typeof anchorSceneId === "string" ? anchorSceneId.trim() : "";
@@ -782,7 +856,7 @@ export function insertStructureSceneDraftAfterAnchor(
     ? existingDraftScenes.findIndex((scene) => scene.sceneId === normalizedAnchorSceneId)
     : -1;
   const draftSceneInsertIndex = draftAnchorIndex >= 0 ? draftAnchorIndex + 1 : existingDraftScenes.length;
-  existingDraftScenes.splice(draftSceneInsertIndex, 0, cloneValue(newSceneDraft));
+  existingDraftScenes.splice(draftSceneInsertIndex, 0, cloneValue(normalizedNewSceneDraft));
 
   return {
     ...cloneValue(structureDrafts ?? createStructureDrafts()),
