@@ -1,8 +1,8 @@
 # Persistence Cross-Feature Regression Checklist
 
 Status: Active manual verification contract
-Date: 2026-09-04
-Branch: `feature/persistence-portability-harness`
+Date: 2026-09-05
+Branch: `wip/persistence-project-transition-isolation`
 Related authority: `docs/implementation/active/desktop-project-package-lifecycle.md`
 Canonical feature definitions: `features.md`
 
@@ -10,7 +10,7 @@ Canonical feature definitions: `features.md`
 
 ### Goal
 
-Prove that the persistence/package refactor has not broken existing author-facing workflows. Work through every currently implemented numbered workflow in `features.md`, reproduce and debug failures one at a time, and keep this checklist active until the application has completed a manual cross-feature regression pass.
+Prove that the persistence/package refactor has not broken existing author-facing workflows. Work through every currently implemented numbered workflow in `features.md`, record reproduced failures for focused follow-up, and keep this checklist active until the application has completed a manual cross-feature regression pass.
 
 This checklist does **not** duplicate the lettered acceptance definitions from `features.md`. A workflow may be marked `Working` only when every currently implemented lettered check under that workflow has either been exercised successfully or explicitly recorded as not applicable to the current build.
 
@@ -65,6 +65,16 @@ When the user confirms `Feature working`, follow `agents/FeatureWorkAgent.md` an
 - Do not use the real Serva Vitae package as disposable regression output; use a copy or dedicated test package.
 - Do not create generated test/media/log artifacts in the repository worktree.
 
+## Current sweep baseline
+
+The accepted Scrivener implementation for this sweep is `72527bfec2b7d7f731270407178c986279f77a73` on `wip/persistence-project-transition-isolation`. The user manually tested the Scrivener workflow and considers it working; Feature `8.6` is Rechecked. This SHA identifies the current sweep baseline, not a permanent implementation requirement.
+
+- Automated baseline: focused Scrivener/persistence tests passing; full `npm test` **128/130**.
+- Known unrelated failures: `desktop-application` and `project-source`, each with a fixture containing 4 chapters while the test expects 5 (`4 !== 5`).
+- Every manual result must record the tested branch and SHA.
+- Distinguish **Fresh** packages created on the tested build from **Legacy/pre-fix** packages; record cohorts separately.
+- Cold-start the intended desktop worktree/build before GUI testing, rather than relying on an already running host process.
+
 ## Regression priority
 
 `P0` means a failure can cause data loss, cross-project contamination, package relocation failure, or break a core authoring workflow. `P1` means important author-facing behavior or project preference regression. `P2` means lower-risk optional/local-runtime behavior.
@@ -74,8 +84,36 @@ Known manual failures at the start of this sweep:
 | Feature | Priority | Status | Known symptom |
 | --- | --- | --- | --- |
 | `1.6b` Scene drag/drop reorder | P0 | **Broken** | Manuscript binder scene drag/drop no longer reorders scenes. |
-| `8.6` Scrivener project import | P0 | **Fix in progress** | Source selection/conversion works, but the imported project is activated without folder-package authority, reports `No package selected`, can fall back to a downloaded `.abe-project.json`, and can leave the next New Project transition blocked by the no-durable-destination guard. |
+| `8.6` Scrivener project import | P0 | **Rechecked** | Historical regression: source selection/conversion worked, but activation lacked folder-package authority, reported `No package selected`, could download `.abe-project.json` and block New Project. Rechecked: transactional package creation and activation after verification work; immediate Save/autosave, scene metadata/comments and source-path portability are fixed; repeated same-source imports have independent ABE IDs. |
+| `8.2e` Recent-project activation | P0 | **Broken** | After using a Scrivener-backed package and creating a correct blank package, selecting an older normal project from Recent Projects appears to use the wrong physical path and displays the Scrivener-backed manuscript/folder structure. General activation/path regression; root cause undetermined. |
 | `8.2d` Package dialog workflow | P0 | Needs recheck | Recent manual testing found weak/incorrect dialog presentation and path/browse interaction; later persistence commits changed this area, so recheck before closing it. |
+
+## Recommended manual execution order
+
+Run the next sweep by potential impact while retaining the canonical feature matrix order below:
+
+1. `8.2` Project package lifecycle / recent-project activation
+2. `8.3` Disposable browser cache policy
+3. `8.4` Autosave and dirty-state control
+4. `8.5` Project metrics
+5. `1.6` Binder scene/chapter management
+6. `1.2` Context-aware scene insertion
+7. `1.5` Tasks/notes/custom metadata
+8. `6.3` World Spine
+9. `1.10` Inline formatting
+10. `1.9` Revisions
+11. Narration / project-owned assets
+12. Remaining P1/P2 workflows
+
+Normally record a discovered regression and continue testing unrelated features. Repair before continuing when the defect risks data loss or invalidates later test results; every bug need not be repaired immediately.
+
+## Astra/code-audit support
+
+Automated/static code review may identify potential regressions, map findings to checklist feature IDs, suggest focused tests and flag persistence invariants.
+
+It may not mark an Unchecked manual feature Working, replace GUI/manual acceptance, or trigger broad refactors without a reproduced or strongly evidenced defect.
+
+Prioritize data loss, project identity/path ownership, cross-project contamination, cache ownership, Save/Save As authority, autosave concurrency, portable DTO leakage and project-owned asset paths.
 
 ## Mandatory persistence pass pattern
 
@@ -320,13 +358,28 @@ Coverage: `7.3a-7.3e`. Confirm suggestion cards/labels/evidence plus durable Wor
 
 Coverage: `8.1a-8.1d`. Load supported source/legacy project input, verify provenance, hierarchy and project metrics, and keep the source untouched. Scrivener-specific acceptance is gated by `8.6`.
 
-### 8.2 Project persistence service boundary / package lifecycle — P0 — `Needs recheck`
+### 8.2 Project persistence service boundary / package lifecycle — P0 — `Broken` because `8.2e` fails
 
 Coverage: `8.2a-8.2i`.
 
 Manual focus: New/Open/Save/Save As, read-only active location, recent-project activation, semantic readback verification, transactional authority adoption, portable DTO exclusions, safe runtime service-shell reconstruction, cancellation/failure behavior and package path selection. Test package dialog typing, Enter, parent/child navigation, Browse/native directory picker, Escape/Cancel, invalid destinations and light/dark presentation.
 
 Required authority sequence: Project A active -> attempt/fail Save As B -> A must remain authoritative -> normal Save must still target A. Successful Save As B -> B becomes authoritative only after verified commit. New/Open transitions must refuse unsafe dirty/cache-only replacement where required.
+
+Regression 2026-09-05 — `8.2e` Recent Projects
+
+- Status: Broken — P0
+- Test build: user-reported current implementation, `wip/persistence-project-transition-isolation` / `72527bfec2b7d7f731270407178c986279f77a73`; cold-start and record the actual build for the next reproduction.
+- Package cohort: Fresh blank package plus older normal package (Legacy/pre-fix; originating build not recorded).
+- Automated coverage: existing `test/project-persistence-service.test.mjs` and `test/project-library-state.test.mjs` cover related boundaries; no automated reproduction of this observed GUI failure is established.
+- Reproduction: import/open a Scrivener-backed ABE package; create another normal blank ABE package (fresh New Project itself appears correct); later choose an older normal project from Recent Projects.
+- Expected: clicked recent-project row -> exact intended project record -> exact intended project ID -> exact recorded package root -> exact corresponding rendered manuscript. No other package's path, content or cache may be substituted.
+- Actual: the selected row appears associated with the wrong physical package path, and the GUI displays manuscript/folder structure belonging to the Scrivener-backed package.
+- Suspected boundary: recent-project activation / projectFilePath authority / project-library identity / possibly browser cache. Exact root cause is not known.
+- Debug reference: user-observed general persistence regression; cross-project scenario D below. Investigation is deferred.
+- Recheck: cold-start the intended build; repeat the steps and scenario D, verifying row identity, recorded destination and rendered manuscript at every switch and after restart.
+
+This is not currently classified as a Scrivener conversion failure. Feature `8.3` remains a separate Unchecked cache-isolation test; this observation alone does not establish cache participation.
 
 ### 8.3 Disposable browser cache policy — P0 — `Unchecked`
 
@@ -344,11 +397,11 @@ Manual focus: normal autosave, failed/blocked write, out-of-sync cause display, 
 
 Coverage: `8.5a-8.5c`. Record chapter/scene/manuscript words/task/note/world/timeline counts before Save and compare after refresh/Open/Save As. Lazy/chunked hydration must not collapse totals merely because only an active body is loaded.
 
-### 8.6 Scrivener project import — P0 — **`Fix in progress`**
+### 8.6 Scrivener project import — P0 — **`Rechecked`**
 
-Coverage: `8.6a-8.6i` plus cross-feature `1.5k`.
+Coverage: `8.6a-8.6j` plus cross-feature `1.5k`.
 
-Required manual pass after repair: choose **Import Scrivener Project...** and select a real `.scriv`; confirm source selection/conversion does not replace the currently active project yet; confirm the existing project-package form opens with the imported title, editable project/folder name, read-only Scrivener source, and the same Location/Browse controls used by New Project; choose a destination and press **Import Project**; require the normal staged New Project package writer to create/verify/publish a folder-backed package before activation; confirm Project location immediately shows that package root and no legacy `.abe-project.json` download is used on the supported desktop path.
+Repeatable manual coverage for future sweeps: choose **Import Scrivener Project...** and select a real `.scriv`; confirm source selection/conversion does not replace the currently active project yet; confirm the existing project-package form opens with the imported title, editable project/folder name, read-only Scrivener source, and the same Location/Browse controls used by New Project; choose a destination and press **Import Project**; require the normal staged New Project package writer to create/verify/publish a folder-backed package before activation; confirm Project location immediately shows that package root and no legacy `.abe-project.json` download is used on the supported desktop path.
 
 Then verify binder order/chapter grouping and manuscript text; custom metadata and scene metadata; Research/WorldBuilding catalogue entities; comments/footnotes and resolvable anchors; RTF paragraph/Unicode/dash fidelity; compatible editor font preference; source provenance; and that the original `.scriv` remains untouched. Save, refresh, close/reopen, Save As to package B, reopen B, and open unrelated package C to verify isolation. Finally create another New Project and confirm the imported project does not leave the no-durable-destination/autosave block behind.
 
@@ -360,6 +413,16 @@ Regression 2026-09-04
 - Suspected boundary: project lifecycle / package authority / activation ordering.
 - Debug reference: `fix/persistence-scrivener-import-package-lifecycle`; `test/scrivener-import-package-lifecycle.test.mjs`.
 - Recheck: import -> choose project name/folder/location -> publish -> Project location populated -> Save -> refresh -> reopen -> Save As B -> reopen B -> New Project succeeds -> unrelated C has no imported state.
+
+Recheck result 2026-09-05
+
+- Status: Rechecked — user manual acceptance of the current Scrivener import workflow.
+- Test build: `wip/persistence-project-transition-isolation` / `72527bfec2b7d7f731270407178c986279f77a73`.
+- Package cohort: Fresh imports accepted; Legacy/pre-fix packages must remain a separately recorded cohort in the next sweep.
+- Result: transactional folder-package creation works and activation follows strict semantic verification. Immediate Save/autosave works; scene Scrivener metadata, comments/footnotes and their provenance survive. Absolute import-report source paths are removed at the portable boundary while relative provenance remains. Metadata-note semantic titles retain their full value independently of filename limits. Repeated same-source imports receive independent ABE project IDs and package ownership.
+- Automated coverage: passing `test/scrivener-import-service.test.mjs`, `test/scrivener-import-package-lifecycle.test.mjs`, `test/scrivener-import-metadata-runtime-hydration.test.mjs`, `test/scrivener-import-portability.test.mjs`, `test/project-snapshot-scrivener-metadata-regression.test.mjs`, `test/metadata-note-package-roundtrip.test.mjs` and focused package/persistence tests; full baseline 128/130 with the two unrelated fixture-count failures.
+- Debug reference: `docs/implementation/archive/scrivener-import-package-lifecycle.md`.
+- Recheck: accepted by the user. Future sweeps should repeat import/Save/autosave/reopen and duplicate-source isolation, recording build and package cohort. The general Recent Projects failure remains separately open under `8.2e`.
 
 The transition guard itself is not the regression: it correctly refuses to abandon dirty/cache-only work. The repair must prevent a new Scrivener import from becoming that cache-only active project in the first place. A project created by the older broken import path should be salvaged with Save As before switching projects rather than weakening the guard.
 
@@ -411,6 +474,14 @@ These scenarios are required in addition to the workflow rows because they exerc
 4. Confirm A's semantic data and project-scoped preferences do not leak into B.
 5. Confirm machine-local settings that are intentionally global/local (for example Local AI model root or Spotify account state) remain outside external package snapshots.
 
+Recent Projects scenario for `8.2e`:
+
+1. Create/open packages A and B at visibly different package roots and Save both.
+2. Switch A -> B -> A through Recent Projects.
+3. At every switch verify title, project ID where observable/logged, Project location, scene/chapter structure and package root against the clicked row's intended record and recorded destination.
+4. Restart the app on the intended build and repeat one switch, checking the same values.
+5. No row may activate another row's package destination.
+
 ## E. Transition/concurrency
 
 1. Start a save for A.
@@ -427,6 +498,9 @@ When a regression is found, replace only the affected workflow status and append
 ```text
 Regression YYYY-MM-DD
 - Status: Broken | Fix in progress | Fixed - needs recheck | Rechecked
+- Test build: branch + SHA
+- Package cohort: Fresh | Legacy/pre-fix
+- Automated coverage: existing/new test reference or none
 - Reproduction: shortest deterministic author steps
 - Expected: product behavior from features.md
 - Actual: observed failure
@@ -443,7 +517,8 @@ This regression sweep is complete only when:
 
 - every implemented workflow above is `Working` or `Rechecked`;
 - `1.6b` scene drag/drop is repaired and manually rechecked;
-- `8.6` Scrivener import is repaired and manually rechecked;
+- `8.2e` recent-project activation/path regression is repaired and manually rechecked; it is an explicit unresolved P0 completion blocker;
+- `8.6` Scrivener import remains Rechecked at the accepted baseline; it is no longer an unresolved blocker;
 - package-dialog interaction is rechecked after the recent lifecycle changes;
 - every P0 durable workflow survives Save, refresh, package reopen and relevant Save As;
 - package B asset-owning workflows work with package A unavailable;

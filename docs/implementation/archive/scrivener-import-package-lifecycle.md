@@ -115,4 +115,4 @@ Existing Scrivener parser/RTF/comment/metadata tests remain responsible for conv
 13. Open unrelated package C and verify imported state does not leak.
 14. Confirm the original `.scriv` source is untouched.
 
-Only after this manual sequence passes should Feature `8.6` move from `Fix in progress` to `Rechecked` and the canonical `features.md` implementation notes be rewritten from the legacy Port/Save-As flow to the package-import flow.
+Acceptance recorded 2026-09-05: the user manually tested the current Scrivener import workflow and considers it working at `72527bfec2b7d7f731270407178c986279f77a73` on `wip/persistence-project-transition-isolation`. Feature `8.6` is Rechecked, and its canonical definition/index now describe the folder-package import flow. The active regression checklist owns subsequent sweep results, including the separate unresolved `8.2e` Recent Projects activation/path regression; this completed Scrivener record remains archived.
