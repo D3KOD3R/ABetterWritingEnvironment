@@ -67,9 +67,11 @@ When the user confirms `Feature working`, follow `agents/FeatureWorkAgent.md` an
 
 ## Current sweep baseline
 
-The accepted Scrivener implementation for this sweep is `72527bfec2b7d7f731270407178c986279f77a73` on `wip/persistence-project-transition-isolation`. The user manually tested the Scrivener workflow and considers it working; Feature `8.6` is Rechecked. This SHA identifies the current sweep baseline, not a permanent implementation requirement.
+Branch: `feature/persistence-portability-harness`.
 
-- Automated baseline: focused Scrivener/persistence tests passing; full `npm test` **128/130**.
+Tested code baseline (`CODE_BASELINE_SHA`): `d9f74e627446280af020b33e919f5715d8a7735b`. This commit contains the accepted Scrivener history and integrated untitled-scene, single-scene deletion and binder drag/drop fixes, including test registration. The separate documentation-only commit recording this baseline is not the tested code SHA. The user manually accepted the Scrivener workflow; Feature `8.6` remains Rechecked.
+
+- Automated verification: focused editor-model, untitled-scene, binder, single-scene deletion, registration and persistence/package checks pass. Full repository supervisor **132/134 passed, 2 failed**; separate `npm test` **132/134 passed, 2 failed**. All four newly integrated regression tests execute in both full runs. Supervisor verification was repeated on the committed code baseline.
 - Known unrelated failures: `desktop-application` and `project-source`, each with a fixture containing 4 chapters while the test expects 5 (`4 !== 5`).
 - Every manual result must record the tested branch and SHA.
 - Distinguish **Fresh** packages created on the tested build from **Legacy/pre-fix** packages; record cohorts separately.
@@ -83,7 +85,7 @@ Known manual failures at the start of this sweep:
 
 | Feature | Priority | Status | Known symptom |
 | --- | --- | --- | --- |
-| `1.6b` Scene drag/drop reorder | P0 | **Broken** | Manuscript binder scene drag/drop no longer reorders scenes. |
+| `1.6b` Scene drag/drop reorder | P0 | **Fixed - needs recheck** | Movable draft/portable scene drop targets are integrated and automated coverage passes; manual GUI recheck is pending. |
 | `8.6` Scrivener project import | P0 | **Rechecked** | Historical regression: source selection/conversion worked, but activation lacked folder-package authority, reported `No package selected`, could download `.abe-project.json` and block New Project. Rechecked: transactional package creation and activation after verification work; immediate Save/autosave, scene metadata/comments and source-path portability are fixed; repeated same-source imports have independent ABE IDs. |
 | `8.2e` Recent-project activation | P0 | **Broken** | After using a Scrivener-backed package and creating a correct blank package, selecting an older normal project from Recent Projects appears to use the wrong physical path and displays the Scrivener-backed manuscript/folder structure. General activation/path regression; root cause undetermined. |
 | `8.2d` Package dialog workflow | P0 | Needs recheck | Recent manual testing found weak/incorrect dialog presentation and path/browse interaction; later persistence commits changed this area, so recheck before closing it. |
@@ -148,6 +150,8 @@ Coverage: `1.2a-1.2c`.
 
 Manual focus: activate scene X through click/focus/typing, create New Scene, confirm insertion at X+1 in the same chapter and immediate selection, then Save/refresh/reopen and verify exact order.
 
+Automated integration: generated scene titles advance deterministically within the chapter (`Untitled Scene 1`, `Untitled Scene 2`, ...); sequencing and first-persistence fallback tests pass. Ordinary authored/imported placeholder-like titles and scene IDs are covered. Manual acceptance remains pending; this workflow stays Unchecked.
+
 ### 1.3 Manuscript spellcheck, grammar panel, project dictionary, dictionary lookup — P1 — `Unchecked`
 
 Coverage: `1.3a-1.3k`.
@@ -166,13 +170,13 @@ Coverage: `1.5a-1.5k`.
 
 Manual focus: create task/inspiration/research/custom metadata from selected text; navigate both directions; edit before the anchor and test drift recovery; hide/restore console tabs without deleting records; create custom metadata definitions and image icons; create nested metadata folders and project-only notes; drag a loose anchored note into a folder; verify infographic markers and visibility preference; Save/reopen/Save As. For folder packages, confirm metadata files remain inside the active package. Scrivener comment/footnote coverage is also gated by `8.6`.
 
-### 1.6 Binder scene and chapter management — P0 — `Broken` because `1.6b` fails
+### 1.6 Binder scene and chapter management — P0 — `Fixed - needs recheck`
 
 Coverage: `1.6a-1.6e`.
 
 Manual focus: edit chapter/scene titles; drag scenes upward/downward and between positions; delete a scene and verify linked task/note/narration/voice/selection cleanup; trim whitespace; use next-scene footer navigation. Save/reload must preserve structure and linked-record integrity.
 
-Regression note: `1.6b` is a currently known failure. Do not mark the parent workflow Working until binder drag/drop is repaired and rechecked.
+Regression note: `1.6b` movable scene drop targets and single-scene deletion preserving sibling drafts are integrated with passing automated regressions. Both fixes need manual recheck; do not mark the parent workflow Working or Rechecked from automated results alone.
 
 ### 1.7 Scene editor focus, viewport and line-aware navigation — P1 — `Unchecked`
 
@@ -324,7 +328,7 @@ Coverage: every currently implemented lettered check under `6.3` in `features.md
 
 Manual focus must include: scene metadata forms; side-panel profiles/focus mode; manuscript infographic earth markers; Dream Scaping catalogue/studio interactions; event-draft placement; scene-block drag reorder; scene beats; chapter anchor; Ctrl-wheel zoom and Shift-wheel tier scroll; location rows; catalogue assignment; Passages/Section/Cards modes; custom categories; location filtering; row naming; inserted-event manuscript scene shells; row images; child locations; Unplaced events dock; active World-pane persistence.
 
-High-risk persistence sequence: move several events between named rows quickly, rename/delete rows, trigger overlapping saves, Save/refresh, then verify **all row placements and all manuscript scene bodies** survive. Also drag a primary World Spine scene before/after another and confirm Manuscript binder order matches after reload. This shares the currently broken scene-order path and must be rechecked after `1.6b` is fixed.
+High-risk persistence sequence: move several events between named rows quickly, rename/delete rows, trigger overlapping saves, Save/refresh, then verify **all row placements and all manuscript scene bodies** survive. Also drag a primary World Spine scene before/after another and confirm Manuscript binder order matches after reload. This shares the scene-order path and still requires manual recheck after the automated `1.6b` fix.
 
 ### 6.4 Cross-spine causality links — P0 — `Unchecked`
 
