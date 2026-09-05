@@ -2,7 +2,7 @@
 const prefixes = (...values) => ({ prefixes: values });
 
 export const TEST_GROUPS = {
-  editor: prefixes("anchored-", "editor-", "manuscript-", "scene-", "task-", "passage-", "revision-", "user-highlight-", "top-panel-", "keyboard-", "custom-metadata-", "metadata-", "progress-tracker", "delete-confirmation-dialog", "milestone-sound-effects-service", "spotify-music-service", "writing-goals-state-service"),
+  editor: prefixes("anchored-", "binder-", "editor-", "manuscript-", "scene-", "untitled-", "task-", "passage-", "revision-", "user-highlight-", "top-panel-", "keyboard-", "custom-metadata-", "metadata-", "progress-tracker", "delete-confirmation-dialog", "milestone-sound-effects-service", "spotify-music-service", "writing-goals-state-service"),
   project: prefixes("project-", "editor-storage", "scrivener-import-"),
   narration: prefixes("narration-", "audio-service", "realtime-speech-"),
   voice: prefixes("voice-"),

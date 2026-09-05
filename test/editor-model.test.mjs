@@ -141,7 +141,8 @@ export function runEditorModelTest() {
   assert.equal(scenes[0].locationScope, "planetary");
   assert.equal(scenes[0].worldSpineMetadata.location, "Halcyon Station Dock");
   assert.deepEqual(scenes[0].worldSpineMetadata.criticalEvents, ["Docking burn fails"]);
-  assert.equal(scenes[1].sceneTitle, "New Scene");
+  // A generated first scene in a draft chapter receives the numbered placeholder used by New Chapter.
+  assert.equal(scenes[1].sceneTitle, "Untitled Scene 1");
   assert.equal(scenes[1].blocks[0].text, "A blank route opens for a new scene.");
   assert.equal(scenes[1].editorText, "A blank route opens for a new scene.");
   assert.equal(scenes.filter((scene) => scene.sceneId === "scene-1").length, 1);

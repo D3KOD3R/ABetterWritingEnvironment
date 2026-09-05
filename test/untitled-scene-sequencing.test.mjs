@@ -79,6 +79,24 @@ export function runUntitledSceneSequencingTest() {
     },
   );
   assert.equal(newChapterScenes[0]?.sceneTitle, "Untitled Scene 1");
+  assert.equal(newChapterScenes[0]?.sceneId, "draft-scene-100");
+  assert.equal(newChapterScenes[0]?.chapterId, "draft-chapter-100");
+
+  // Placeholder-like authored/imported titles alone must not trigger first-scene normalization.
+  const authoredScenes = [
+    { sceneId: "imported-scene-1", chapterId: "imported-chapter-1", sceneTitle: "New Scene" },
+    { sceneId: "imported-scene-2", chapterId: "imported-chapter-1", sceneTitle: "New Scene 7" },
+    { sceneId: "imported-scene-3", chapterId: "imported-chapter-1", sceneTitle: "Untitled Scene 12" },
+    { sceneId: "draft-scene-authored", chapterId: "chapter-existing", sceneTitle: "New Scene" },
+    { sceneId: "imported-scene-4", chapterId: "draft-chapter-100", sceneTitle: "New Scene" },
+  ];
+  const authoredRecords = buildSceneRecords(
+    { project: { lines: [] } }, {}, { scenes: authoredScenes },
+  );
+  assert.deepEqual(
+    authoredRecords.map(({ sceneId, chapterId, sceneTitle }) => ({ sceneId, chapterId, sceneTitle })),
+    authoredScenes,
+  );
 
   const renamedNewChapterScene = buildSceneRecords(
     { project: { lines: [] } },
