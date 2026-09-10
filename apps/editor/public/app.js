@@ -242,6 +242,7 @@ import {
 } from "./features/manuscript-anchors/manuscript-edit-transaction-service.js";
 import { escapeHtml, formatDisplayNumber } from "./shared/ui-utils.js";
 import { createDeveloperLogger } from "./shared/developer-logger.js";
+import { readRegressionLogSession, regressionLogStorageOptions, configureRegressionLogSources, observeRegressionLogSettings, regressionLogBaseUrls, regressionLogHeaders } from "./shared/regression-log-session.js";
 import {
   getProjectRecordFilePath,
   getSuggestedProjectFileName as getSuggestedProjectFileNameFromTitle,
@@ -1169,7 +1170,9 @@ const anchoredRecordNavigationController = createAnchoredRecordNavigationControl
 });
 
 // Intent: central developer observability service for cross-module diagnostics and separate log-window streaming.
+const regressionLogSession = readRegressionLogSession(document);
 const developerLogger = createDeveloperLogger({
+  ...regressionLogStorageOptions(regressionLogSession),
   windowRef: window,
   storageAdapter: browserStorageAdapter,
   mirrorConsole: false,
@@ -1178,6 +1181,10 @@ const developerLogger = createDeveloperLogger({
     void postDeveloperLogEntryToDesktopHost(entry);
   },
 });
+configureRegressionLogSources(developerLogger, regressionLogSession);
+observeRegressionLogSettings(developerLogger, regressionLogSession, (body) => fetch("/api/log/session", {
+  method: "POST", headers: { "Content-Type": "application/json", ...regressionLogHeaders(regressionLogSession) }, body: JSON.stringify(body),
+}));
 const autosaveCoordinatorLog = developerLogger.createSource("AutosaveCoordinator");
 const projectPersistenceLog = developerLogger.createSource("ProjectPersistenceService");
 const sceneStorageLog = developerLogger.createSource("SceneStorageService");
@@ -26202,6 +26209,7 @@ function writeStoredJson(storageKey, value) {
 // Intent: expose one stable runtime bridge so the separate Developer Logs window can control and observe the live logger directly.
 function registerDeveloperLogRuntimeBridge() {
   window[DEVELOPER_LOG_RUNTIME_BRIDGE_KEY] = {
+    regressionRunId: regressionLogSession?.runId ?? null,
     getEntries: () => developerLogger.getEntries(),
     getSettings: () => developerLogger.getSettings(),
     setGlobalEnabled: (enabled) => developerLogger.setGlobalEnabled(enabled === true),
@@ -26293,7 +26301,8 @@ async function postDeveloperLogEntryToDesktopHost(entry) {
     return false;
   }
 
-  const baseUrls = getDesktopApiBaseUrls();
+  // A run's evidence must not fall back to a different worktree's host.
+  const baseUrls = regressionLogBaseUrls(regressionLogSession, window.location.origin, getDesktopApiBaseUrls());
   const payload = {
     level: entry.level,
     scope: String(entry.source ?? "browser"),
@@ -26318,6 +26327,7 @@ async function postDeveloperLogEntryToDesktopHost(entry) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...regressionLogHeaders(regressionLogSession),
         },
         body,
         keepalive: true,
@@ -26368,7 +26378,9 @@ function resolveDeveloperLogCategory(scope) {
 }
 
 async function postJsonToDesktopHost(pathname, payload, options = {}) {
-  const baseUrls = getDesktopApiBaseUrls();
+  const baseUrls = pathname === "/api/log"
+    ? regressionLogBaseUrls(regressionLogSession, window.location.origin, getDesktopApiBaseUrls())
+    : getDesktopApiBaseUrls();
   const body = JSON.stringify(payload);
   const failedOrigins = [];
   const shouldLogTransport = options.logTransport !== false && pathname !== "/api/log";
@@ -26386,6 +26398,7 @@ async function postJsonToDesktopHost(pathname, payload, options = {}) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...(pathname === "/api/log" ? regressionLogHeaders(regressionLogSession) : {}),
         },
         body,
         keepalive: true,

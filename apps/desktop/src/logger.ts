@@ -14,6 +14,7 @@ export interface DesktopLogEntry {
 }
 
 const LOG_PATH = process.env.ABE_LOG_PATH ?? path.join(process.cwd(), "logs", "desktop.log");
+const appendLog = createDesktopLogWriter(LOG_PATH);
 
 export function logDesktopInfo(scope: string, message: string, context?: DesktopLogContext) {
   appendDesktopLog({
@@ -43,16 +44,38 @@ export function logDesktopError(scope: string, message: string, context?: Deskto
 }
 
 function appendDesktopLog(entry: DesktopLogEntry) {
-  try {
-    mkdirSync(path.dirname(LOG_PATH), { recursive: true });
-    appendFileSync(LOG_PATH, `${JSON.stringify({
-      timestamp: new Date().toISOString(),
-      ...entry,
-      context: sanitizeLogContext(entry.context),
-    })}\n`, "utf8");
-  } catch {
-    // Logging must not break the host process.
-  }
+  appendLog(entry);
+}
+
+// Intent: avoid repeated directory syscalls while retaining immediate, ordered crash-adjacent diagnostics.
+// No deferred queue means callers and process shutdown keep the existing synchronous contract.
+export function createDesktopLogWriter(filePath: string, io = { mkdirSync, appendFileSync }) {
+  let directoryReady = false;
+  return (entry: DesktopLogEntry) => {
+    try {
+      if (!directoryReady) {
+        io.mkdirSync(path.dirname(filePath), { recursive: true });
+        directoryReady = true;
+      }
+      const line = `${JSON.stringify({
+        timestamp: new Date().toISOString(),
+        ...entry,
+        context: sanitizeLogContext(entry.context),
+      })}\n`;
+      try {
+        io.appendFileSync(filePath, line, "utf8");
+      } catch (error) {
+        // A removed directory must not lose the first subsequent diagnostic; retry ENOENT once.
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        io.mkdirSync(path.dirname(filePath), { recursive: true });
+        io.appendFileSync(filePath, line, "utf8");
+      }
+    } catch {
+      // Retry directory setup on the next event if the destination disappeared or was unavailable.
+      // Logging remains best-effort and must never break the host process.
+      directoryReady = false;
+    }
+  };
 }
 
 function sanitizeLogContext(context?: DesktopLogContext) {

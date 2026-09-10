@@ -1,13 +1,15 @@
 import { createDeveloperLogClient } from "./shared/developer-logger.js";
 import { createBrowserStorageAdapter } from "./adapters/storage/browser-storage-adapter.js";
+import { readRegressionLogSession, regressionLogStorageOptions, regressionLogBaseUrls, regressionLogHeaders, regressionLogBridgeMatches } from "./shared/regression-log-session.js";
 
 const LOG_RUNTIME_BRIDGE_KEY = "__ABE_DEVELOPER_LOG_RUNTIME__";
+const regressionLogSession = readRegressionLogSession(document);
 
 function resolveRuntimeBridge() {
   try {
     if (window.opener && !window.opener.closed) {
       const bridge = window.opener[LOG_RUNTIME_BRIDGE_KEY];
-      if (bridge && typeof bridge === "object") {
+      if (bridge && typeof bridge === "object" && regressionLogBridgeMatches(regressionLogSession, bridge)) {
         return bridge;
       }
     }
@@ -129,6 +131,7 @@ const storageAdapter = createBrowserStorageAdapter({
   reportBrowserLog: () => {},
 });
 const storageClient = createDeveloperLogClient({
+  ...regressionLogStorageOptions(regressionLogSession),
   windowRef: window,
   storageAdapter,
 });
@@ -155,7 +158,7 @@ const state = {
 };
 
 async function postDesktopApi(pathname, payload) {
-  const baseUrls = ["http://127.0.0.1:4310", "http://localhost:4310"];
+  const baseUrls = regressionLogBaseUrls(regressionLogSession, window.location.origin, ["http://127.0.0.1:4310", "http://localhost:4310"]);
   const body = JSON.stringify(payload ?? {});
   for (const baseUrl of baseUrls) {
     try {
@@ -163,6 +166,7 @@ async function postDesktopApi(pathname, payload) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...regressionLogHeaders(regressionLogSession),
         },
         body,
       });
@@ -177,7 +181,7 @@ async function postDesktopApi(pathname, payload) {
 }
 
 async function postDesktopApiJson(pathname, payload) {
-  const baseUrls = ["http://127.0.0.1:4310", "http://localhost:4310"];
+  const baseUrls = regressionLogBaseUrls(regressionLogSession, window.location.origin, ["http://127.0.0.1:4310", "http://localhost:4310"]);
   const body = JSON.stringify(payload ?? {});
   for (const baseUrl of baseUrls) {
     try {
@@ -185,6 +189,7 @@ async function postDesktopApiJson(pathname, payload) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...regressionLogHeaders(regressionLogSession),
         },
         body,
       });

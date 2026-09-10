@@ -7,6 +7,7 @@ import { dirname, extname, isAbsolute, join, relative, resolve as resolvePath, s
 import { fileURLToPath } from "node:url";
 
 import { createDesktopSettingsSnapshot, updateDesktopSettingsSnapshot } from "./settings.ts";
+import { getRegressionLogConfiguration, recordRegressionLogSession } from "./regression-log-session.ts";
 import {
   createDesktopWorkspaceSnapshot,
   createServaVitaeProjectLibrarySeed,
@@ -295,9 +296,16 @@ export async function createDesktopResponseForRequest(
   }
 
   if (method === "POST" && request.pathname === "/api/log/session") {
-    const sessionState = await ensureDeveloperRuntimeLogSessionState();
+    let sessionState: DeveloperRuntimeLogSessionState;
+    try {
+      sessionState = await ensureDeveloperRuntimeLogSessionState();
+      recordRegressionLogSession(sessionState, parseJsonBody(request.body));
+    } catch (error) {
+      return jsonResponse(400, { ok: false, message: error instanceof Error ? error.message : "Invalid log session metadata." }, apiCorsHeaders());
+    }
     return jsonResponse(200, {
       ok: true,
+      regressionRun: getRegressionLogConfiguration(),
       filePath: sessionState.filePath,
       fileName: sessionState.fileName,
       sessionNumber: sessionState.sessionNumber,
@@ -1272,13 +1280,15 @@ async function ensureDeveloperRuntimeLogSessionState(): Promise<DeveloperRuntime
       });
     }
 
-    return {
+    const sessionState = {
       logDirectory: DEVELOPER_RUNTIME_LOG_DIR,
       fileName,
       filePath,
       sessionNumber: nextSessionNumber,
       startedAt: new Date().toISOString(),
     };
+    recordRegressionLogSession(sessionState);
+    return sessionState;
   })();
 
   return developerRuntimeLogSessionStatePromise;

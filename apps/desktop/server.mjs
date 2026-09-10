@@ -1,5 +1,6 @@
 // Intent: launch the local desktop HTTP host used by the browser editor and service adapters.
 import http from "node:http";
+import { getRegressionLogConfiguration, regressionLogConfigurationHtml } from "./src/regression-log-session.ts";
 
 import { createDesktopResponseForRequest } from "./src/http-app.ts";
 import {
@@ -14,6 +15,14 @@ const port = Number(process.env.PORT ?? 4310);
 const server = http.createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://${host}:${port}`);
   const body = await readRequestBody(request);
+
+  if (url.pathname === "/api/log" || url.pathname.startsWith("/api/log/")) {
+    const requestedRun = request.headers["x-abe-regression-run"] ?? null;
+    if (requestedRun !== (getRegressionLogConfiguration()?.runId ?? null)) {
+      writeJsonResponse(response, 409, { ok: false, message: "Logging request belongs to a different run. Reload from the current host." });
+      return;
+    }
+  }
 
   // Intent: keep native UI capabilities at the desktop-host edge rather than inside project persistence.
   if ((request.method ?? "GET").toUpperCase() === "POST" && url.pathname === "/api/platform/pick-directory") {
@@ -86,6 +95,11 @@ const server = http.createServer(async (request, response) => {
     body,
   });
 
+  // Run configuration is inert JSON shared by the editor and its existing Developer Logs window.
+  if (typeof result.body === "string" && result.headers["Content-Type"]?.startsWith("text/html")) {
+    result.body = result.body.replace("<head>", `<head>${regressionLogConfigurationHtml()}`);
+  }
+
   // Intent: give browser-side adapters a synchronous host-capability marker without probing an API and losing user activation.
   if (
     (url.pathname === "/" || url.pathname === "/index.html")
@@ -105,8 +119,18 @@ const server = http.createServer(async (request, response) => {
 });
 
 server.listen(port, host, () => {
-  console.log(`Desktop host running at http://${host}:${port}`);
+  const actualPort = server.address().port;
+  console.log(`Desktop host running at http://${host}:${actualPort}`);
+  if (process.send) process.send({ type: "abe-host-ready", port: actualPort });
 });
+
+// The controller owns only its forked host. IPC allows a portable graceful stop without killing another run.
+process.on("message", (message) => {
+  if (message?.type === "abe-regression-stop") server.close(() => process.exit(0));
+});
+if (process.env.ABE_REGRESSION_RUN_MANIFEST && process.connected) {
+  process.once("disconnect", () => server.close(() => process.exit(1)));
+}
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, () => {
