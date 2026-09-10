@@ -1,10 +1,16 @@
 # Regression workspace logging prototype
 
+Status: the bounded infrastructure is integrated into `feature/persistence-portability-harness`. Use the task-designated worktree/build containing this integration; the original infra branch/baseline below is historical implementation provenance, not the current operating starting point.
+
 ## Execution contract
 
-Goal: prepare and exercise one attributable ABE regression RUN using the existing developer logging system. The prototype starts from persistence harness `42dd764be05ed75224249015df73c4da70e92953` on the dedicated `infra/regression-workspace-logging` branch.
+Goal: prepare and exercise one attributable ABE regression RUN using the existing developer logging system. CASE meaning and acceptance come from the caller's applicable checklist/feature definition; the persistence checklist is one such caller, not a prerequisite for every CASE.
 
-Initial bounded reads: root `AGENTS.md`, the execution contract in `persistence-cross-feature-regression-checklist.md`, this document, then the relevant logging/controller source and focused tests below.
+Initial bounded reads: root `AGENTS.md`, `agents/RepositoryWorkspaceAgent.md`, applicable external workspace constraints and the caller's CASE definition, then this document's External CASE input contract, Operator workflow and layout, and relevant limits. Read implementation source/tests only when changing or diagnosing those mechanisms.
+
+## Historical implementation contract
+
+The original prototype started from persistence harness `42dd764be05ed75224249015df73c4da70e92953` on `infra/regression-workspace-logging`. The outcomes and verification gates below record that implementation/integration task; they are not mandatory steps for routine tool use or documentation-only changes.
 
 Required outcome: fresh external sandbox and evidence paths, captured source identity, explicitly configured developer-log gates, an attributable existing host log session, and two harmless smoke runs proving isolation.
 

@@ -30,6 +30,6 @@ Read `docs/architecture/project-storage-contract.md` before changing durable beh
 - For asset replacement/delete, preserve durability ordering: write new bytes, save new relative reference, then remove/garbage-collect the superseded asset.
 - At the enforcement point, comment non-obvious persistence authority, forbidden fallbacks, containment, ordering/concurrency, and compatibility assumptions; name the invariant or failure being prevented rather than narrating the operation.
 - Durable schema/path changes require normalization/migration and focused tests. File-backed features need round-trip + containment; portable assets need Save As/relocation; concurrency changes need overlap/transition tests.
-- Use the supervisor's affected route before broad verification.
+- Use the supervisor's AFFECTED level before broad verification; `agents/RepositoryWorkspaceAgent.md` owns supervisor command selection and evidence handling.
 
 Do not load this agent merely because a feature reads an existing persistence API without changing durable semantics. Do load it whenever a feature creates new durable project state, a project-scoped preference, a project-owned file, or a new path/save policy.

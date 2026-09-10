@@ -11,12 +11,14 @@ This repository is a local-first, open-source authoring environment: a writer's 
 - When substantially modifying a function or test, make a bounded pass for missing or stale intent comments in the affected code. Improve directly relevant nearby comments only; do not create repository-wide comment churn.
 - Keep routine narration terse. Use targeted searches, diffs, symbols, and bounded reads. Do not broadly read `features.md`, `apps/editor/public/app.js`, architecture roadmaps, logs, or project data unless a specific task requires a bounded section.
 - For tasks with a matching `docs/implementation/active/` spec, read its execution contract first and expand into deeper diagnostic sections only when needed. Do not read `docs/implementation/archive/` during ordinary implementation; archived specs are opt-in historical evidence.
-- Use deterministic Git and the repository supervisor as authority for changed-file state, test selection, pass/fail, and verification freshness. Escalate evidence in this order: supervisor handoff → compact report → failure excerpt → relevant diff → relevant source/test region → full log or broad source only as a last resort.
+- Use native Git/shared repository utilities for repository/source facts and the repository supervisor for automated verification. Follow the scoped workspace route below for operating policy.
 - Keep author-facing behaviour location-aware and durable where it affects structured project data. Keep UI rendering and model/provider mechanics behind the appropriate service, schema, or adapter boundaries.
 
 ## Scoped instruction routing
 
 Read only the narrowest agent file for the responsibility being **modified**. Add another agent only when that responsibility also changes. Do not read unrelated agent files pre-emptively, and do not load an agent merely because code calls or reads that domain.
+
+For repository/worktree operations, normal tool/test selection, controlled RUN execution, or workspace/RUN provenance interpretation, read `agents/RepositoryWorkspaceAgent.md`. Do not load it solely for ordinary read-only product/domain work.
 
 | Responsibility being modified | Read |
 | --- | --- |
