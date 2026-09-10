@@ -76,8 +76,9 @@ async function atomicJson(filePath, value) {
   await rename(temporary, filePath);
 }
 
-export async function prepareRun({ workspaceRoot, caseId, worktree = toolWorktree, enabledSources = DEFAULT_SOURCES, allowDirty = false, externalLogRoot } = {}) {
+export async function prepareRun({ workspaceRoot, caseId, expectedRegressionInvariant = null, worktree = toolWorktree, enabledSources = DEFAULT_SOURCES, allowDirty = false, externalLogRoot } = {}) {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$/.test(caseId ?? "")) throw new Error("A path-safe case identifier is required.");
+  if (expectedRegressionInvariant !== null && typeof expectedRegressionInvariant !== "string") throw new Error("Expected regression invariant must be a string or null.");
   if (!workspaceRoot) throw new Error("An explicit external workspace root is required.");
   if (!Array.isArray(enabledSources) || enabledSources.length > 100 || enabledSources.some((source) => !/^[A-Za-z][A-Za-z0-9._-]{0,99}$/.test(source))) throw new Error("Invalid developer log sources.");
   worktree = await realpath(worktree);
@@ -123,9 +124,11 @@ export async function prepareRun({ workspaceRoot, caseId, worktree = toolWorktre
     logging: { externalLogRoot: logRoot, desktopLogPath: path.join(runtimeLogDirectory, "desktop.log"), runtimeLogDirectory, enabledSources: [...new Set(enabledSources)].sort() },
     runtime: { applicationName: packageInfo.name, applicationVersion: packageInfo.version ?? null, nodeVersion: process.version, platform: process.platform },
     workspaceInvariant: "Source provenance, allocated project locations, initialized project folders and logs must remain attributable to this run.",
-    expectedRegressionInvariant: caseId.includes("8.2e") ? "A selected Recent Projects record must resolve to the intended logical project and currently authoritative project folder; subsequent Save/autosave must target that folder and non-selected project folders must remain unchanged. Save As may preserve logical identity while changing folder authority." : null,
+    // CASE meaning belongs to external input/checklists; the controller only preserves supplied data.
+    expectedRegressionInvariant,
     knownEnvironmentLimitations: [
       "Desktop state remains module-relative at apps/desktop/.desktop-state.json; it is not isolated by this controller.",
+      "Host cwd is the source worktree, matching npm run desktop. Speech scratch files under .tmp/realtime-speech and sidecar resources retain normal application locations; only controller-owned logs/evidence and allocated project locations are isolated.",
       "Browser project content/cache is not isolated by namespaced developer-log settings. Record and control the browser starting environment separately.",
       "Supervisor authority remains worktree-local under .tools/reports; this controller does not move or replace those reports.",
       "Source identity excludes ignored runtime files and external inputs. Log/source identity is recorded, not protected by filesystem permissions.",
@@ -163,9 +166,13 @@ export async function startRun(manifestPath, { port = 0, mode = "manual" } = {})
   manifest.runStatus = "running";
   manifest.startedAt = startedAt;
   manifest.executionMode = mode;
+  manifest.runtime.launchCwd = manifest.sourceWorktreePath;
+  manifest.runtime.requestedPort = port;
   await atomicJson(manifestPath, manifest);
   const child = fork(path.join(manifest.sourceWorktreePath, "apps/desktop/server.mjs"), [], {
-    cwd: manifest.sandboxRoot, execArgv: ["--experimental-strip-types"], windowsHide: true,
+    // Preserve repo-local runtime/model discovery and relative-path semantics of npm run desktop.
+    // Existing environment overrides isolate logs without repurposing cwd as an output destination.
+    cwd: manifest.sourceWorktreePath, execArgv: ["--experimental-strip-types"], windowsHide: true,
     env: { ...process.env, PORT: String(port), ABE_LOG_PATH: manifest.logging.desktopLogPath, ABE_DEVELOPER_RUNTIME_LOG_DIR: manifest.logging.runtimeLogDirectory, ABE_REGRESSION_RUN_MANIFEST: manifestPath },
     stdio: ["ignore", "pipe", "pipe", "ipc"],
   });
@@ -219,6 +226,7 @@ export async function startRun(manifestPath, { port = 0, mode = "manual" } = {})
     const session = await request("/api/log/session");
     if (session.regressionRun?.runId !== manifest.runId) throw new Error("ABE responded with the wrong run identity.");
     manifest.hostUrl = baseUrl;
+    manifest.runtime.boundPort = actualPort;
     manifest.processId = child.pid;
     manifest.runtimeLogFilePath = session.filePath;
     await atomicJson(manifestPath, manifest);
@@ -277,7 +285,7 @@ async function main(args) {
   for (let i = 0; i < args.length; i += 1) {
     const flag = args[i];
     if (flag === "--allow-dirty") { flags.allowDirty = true; continue; }
-    const names = { "--workspace": "workspaceRoot", "--case": "caseId", "--worktree": "worktree", "--sources": "sources", "--external-log-root": "externalLogRoot", "--manifest": "manifest", "--port": "port" };
+    const names = { "--workspace": "workspaceRoot", "--case": "caseId", "--expected-invariant": "expectedRegressionInvariant", "--worktree": "worktree", "--sources": "sources", "--external-log-root": "externalLogRoot", "--manifest": "manifest", "--port": "port" };
     if (!names[flag] || !args[i + 1] || args[i + 1].startsWith("--")) throw new Error(`Unknown or incomplete option: ${flag}`);
     flags[names[flag]] = args[++i];
   }
@@ -286,12 +294,12 @@ async function main(args) {
   else if (command === "smoke") console.log(json(await smokeRun({ ...flags, caseId: flags.caseId ?? "infra-logging-smoke" })));
   else if (command === "start") {
     if (!flags.manifest) throw new Error("--manifest is required.");
-    const run = await startRun(flags.manifest, { port: Number(flags.port ?? 4310) });
+    const run = await startRun(flags.manifest, { port: Number(flags.port ?? 0) });
     console.log(json({ runId: run.manifest.runId, url: run.baseUrl, manifestPath: path.resolve(flags.manifest) }));
     for (const signal of ["SIGINT", "SIGTERM"]) process.once(signal, () => { void run.stop(); });
     const result = await run.finished;
     if (result.runStatus !== "completed") process.exitCode = 1;
-  } else throw new Error("Usage: node --experimental-strip-types tools/regression-workspace/regression-run-controller.mjs <prepare|start|smoke> --workspace <absolute-path> --case <case-id> [--allow-dirty] [--sources SourceA,SourceB]; start uses --manifest <path> [--port 4310].");
+  } else throw new Error("Usage: node --experimental-strip-types tools/regression-workspace/regression-run-controller.mjs <prepare|start|smoke> --workspace <absolute-path> --case <case-id> [--expected-invariant <text>] [--allow-dirty] [--sources SourceA,SourceB]; start uses --manifest <path> [--port <0-65535>] (default: 0, OS-assigned).");
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {

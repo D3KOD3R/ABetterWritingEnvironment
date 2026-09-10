@@ -49,6 +49,7 @@ export function recordRegressionLogSession(session: { filePath: string; startedA
       architecture: process.arch,
       runtimeStartedAt,
       runtimeWorktreePath: path.resolve(hostWorktree),
+      runtimeCwd: process.cwd(),
       desktopLogPath: manifest.logging.desktopLogPath,
       runtimeLogFilePath: session.filePath,
       logSessionStartedAt: session.startedAt,

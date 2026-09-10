@@ -12,6 +12,8 @@ Non-goals: diagnose 8.2e; change persistence or browser project-cache semantics;
 
 Verification route: focused `desktop-logger`, `developer-logger-regression-session`, and `desktop-regression-workspace` tests; `npm run repo -- test --changed --base HEAD`; `npm test` when routing requires FULL; two retained external smoke runs. Supervisor reports remain authoritative under `.tools/reports`. The harness already has two failing full-suite tests (`desktop-application`, `project-source`, chapter count `4 !== 5`); compare failures with that baseline rather than diagnosing persistence here.
 
+For the final integration candidate, rerun focused tests before committing, then run the FULL supervisor and `npm test` once on the final commit SHA and compare with those known baseline failures.
+
 ## Existing infrastructure and actual gaps
 
 | Existing component | Available behavior / reuse |
@@ -35,9 +37,9 @@ The Regression Run Controller (`tools/regression-workspace/regression-run-contro
 
 | Location | Information |
 | --- | --- |
-| `run-manifest.json` | `schemaVersion: 2`, CASE/RUN, repository/worktree, branch/HEAD, clean state, supervisor fingerprint, full source-delta hash and source identity hash, sandbox and `allocatedProjectLocations`, log destinations, requested gates, app/Node/platform version, preparation/start/end status and times, PID/URL/session path, source check at shutdown, known environment limits. |
+| `run-manifest.json` | `schemaVersion: 2`, CASE/RUN, repository/worktree, branch/HEAD, clean state, supervisor fingerprint, full source-delta hash and source identity hash, sandbox and `allocatedProjectLocations`, caller-supplied `expectedRegressionInvariant` (or null), log destinations, requested gates, app/Node/platform version, preparation/start/end status and times, PID/URL/session path, `runtime.launchCwd`, `runtime.requestedPort` and actual `runtime.boundPort`, source check at shutdown, known environment limits. |
 | `source-changes.json` | Binary-capable tracked diff against HEAD plus base64 contents of non-ignored untracked files. This preserves the uncommitted implementation used by an explicitly allowed dirty run. Source delta is limited to 8 MiB. It does not preserve Git index arrangement, ignored state or external inputs. |
-| `runtime-logs/log-session.json` | Run/manifest linkage, source identity hash and HEAD, actual runtime worktree, process/runtime identity, desktop and runtime session file paths/number/time, requested gates and observed gate configurations. Gate history is bounded to 100 observations with an omitted count. |
+| `runtime-logs/log-session.json` | Run/manifest linkage, source identity hash and HEAD, actual runtime worktree and `runtimeCwd`, process/runtime identity, desktop and runtime session file paths/number/time, requested gates and observed gate configurations. Gate history is bounded to 100 observations with an omitted count. |
 | Existing event lines | Existing operation identity, context, time and IDs. No repeated branch, HEAD or path manifest is added to every event. |
 | HTTP transport | `X-ABE-Regression-Run` is checked before log write/read/clear/prune/session operations. It prevents stale tabs from affecting a later host even when a port is reused; it is not stored in event lines. |
 
@@ -48,6 +50,38 @@ Run format revision: the original prototype used `schemaVersion: 1` with `projec
 The desktop serves inert run JSON to both editor and Developer Logs pages. A small shared adapter namespaces existing log storage keys/channels per RUN, initializes requested gates before source registration, preserves UI changes on refresh within that RUN, and records changed enabled-gate settings. Both browser logging transports use only their current origin in regression mode. Opener bridges must match the page's run. Normal launches retain their existing log configuration and event contracts.
 
 Preparation rejects conflicts and dirty builds unless `--allow-dirty` is explicit. It rejects destinations inside or containing any linked worktree, resolving existing ancestors/junctions before allocation. Start checks source identity and the saved delta hash again, requires empty unredirected runtime-log directories, and creates an exclusive start receipt. A completed or already-started RUN cannot be reused. Shutdown checks source identity again; source change, abnormal exit or failed smoke marks the run failed. An IPC disconnect closes the owned host if its controller disappears; the interrupted manifest can remain `running` and must be treated as incomplete.
+
+## External CASE input contract
+
+The controller treats `caseId` as an opaque, path-safe attribution/layout identifier. It never interprets a checklist number, title or substring and has no CASE map, switch or registry. A caller supplies optional `expectedRegressionInvariant` text to `prepareRun`; the controller validates string-or-null shape and preserves the value unchanged in the manifest through launch and finalization. Omission records null. The CLI exposes the same input as `--expected-invariant <text>`. The authoritative checklist or caller owns what the CASE means and which log sources it needs.
+
+```js
+await prepareRun({
+  caseId: "new-case-from-external-input",
+  expectedRegressionInvariant: "Caller-defined acceptance condition.",
+  workspaceRoot,
+  worktree,
+  enabledSources,
+});
+```
+
+External CASE identity/invariant and worktree/logging inputs flow into the existing RUN lifecycle, which outputs source provenance, allocated project locations, evidence and log/session manifests, host allocation and lifecycle status. Adding a new CASE requires new input data, not controller source changes. This interface does not add a case-definition framework. For persistence 8.2e, obtain any supplied invariant from the active persistence regression checklist; passing that identifier alone derives no semantics.
+
+## Launch-directory audit
+
+The normal development entry point is `npm run desktop` in the selected worktree's package root (`package.json` launches `apps/desktop/server.mjs`). The initial prototype instead forked with the sandbox as cwd. The bounded production audit found material differences beyond redirected logging:
+
+| Runtime path | Cwd dependency and consequence |
+| --- | --- |
+| `apps/desktop/src/realtime-speech-bridge.ts`: `createDesktopRealtimeSpeechBridge`, `createDefaultModelRoots`, `detectWhisperCppRuntime`, `createWhisperCppCapability` | Defaults derive from `process.cwd()`. Whisper searches `.tools/whisper`; Sherpa searches repo-local roots and has existing sibling fallback paths. Changing cwd can change available providers/models. The audit inspected those path expressions, not unrelated sibling directory contents. |
+| Same speech bridge: sidecar launch and scratch output | The sidecar inherits the resolved repo cwd. Audio scratch uses `.tmp/realtime-speech`, including word timings. A sandbox cwd changes both launch context and scratch locations. |
+| `project-source.ts:resolveProjectSourcePath`; legacy package/media helpers in `http-app.ts`; `services/local-ai/model-library.ts:normalizeModelRoot` | Relative caller paths pass through `path.resolve`; a changed cwd changes their meaning. Existing absolute-root/containment guards in newer project routes remain unchanged. No persistence operations were exercised or modified for this audit. |
+| Editor assets in `http-app.ts`, bundled workspace sources in `workspace.ts`, desktop settings in `settings.ts` | Module-relative URL resolution makes these independent of cwd. Moving cwd does not isolate desktop state. |
+| Desktop logger and developer-runtime session directory | Both have cwd-based defaults, but existing absolute `ABE_LOG_PATH` and `ABE_DEVELOPER_RUNTIME_LOG_DIR` overrides already keep these logs in the current run. |
+
+The controller now explicitly forks from `sourceWorktreePath`, preserving normal development launch semantics even when the CLI itself is invoked elsewhere. It records that choice in `runtime.launchCwd`; host session metadata independently records actual `runtimeCwd`. Absolute run log overrides, evidence paths and allocated project locations remain external. No production path-resolution or persistence logic was changed.
+
+This isolates controller-owned outputs, not all application resources. Speech scratch files and sidecar resources retain their normal worktree/runtime locations, and desktop state remains module-relative. Record those inputs/resources when a future CASE uses them; this task adds no scratch-directory migration or sidecar allocator. The focused test checks actual host cwd and the read-only `/api/whisper-cpp/capability` root, so a successful HTML/log smoke cannot conceal a changed model-discovery root.
 
 ## Synchronous writer decision
 
@@ -75,10 +109,10 @@ Run from the implementation worktree with Node 24+. Replace the example absolute
 ```powershell
 node --experimental-strip-types tools/regression-workspace/regression-run-controller.mjs prepare --workspace C:/path/ABE-Workspace --case 8.2e-recent-project-activation
 # Preparation prints manifestPath. Start it only when ready to execute that new RUN:
-node --experimental-strip-types tools/regression-workspace/regression-run-controller.mjs start --manifest C:/path/to/run-manifest.json --port 4310
+node --experimental-strip-types tools/regression-workspace/regression-run-controller.mjs start --manifest C:/path/to/run-manifest.json
 ```
 
-`prepare` only allocates and records. Add `--allow-dirty` to capture an uncommitted build explicitly; otherwise a dirty checkout is rejected. Source changes after preparation require a fresh RUN. `start` prints the owned host URL; open that URL manually and stop the controller with Ctrl+C when finished. Use `--port 0` for an allocated port. `completed` describes successful host shutdown with unchanged source, not regression acceptance; record actual acceptance in `manual-test-results`.
+`prepare` only allocates and records. Add `--allow-dirty` to capture an uncommitted build explicitly; otherwise a dirty checkout is rejected. Source changes after preparation require a fresh RUN. `start` prints the owned host URL; open that URL manually and stop the controller with Ctrl+C when finished. Both programmatic and CLI `start` default to port `0`, letting the OS assign an available HTTP port. The printed URL contains the bound port. Use `--port 4310` (or another explicit port) only when a CASE needs that exact origin; an occupied explicit port fails rather than reusing another host. Port allocation does not allocate sidecar resources or guarantee that a released port is never reused. Record browser starting state for the selected origin. `completed` describes successful host shutdown with unchanged source, not regression acceptance; record actual acceptance in `manual-test-results`.
 
 For a harmless logging exercise:
 
@@ -116,4 +150,4 @@ Source identity is provenance-aware, not OS-immutable. Before/after checks canno
 
 Desktop state still lives at module-relative `apps/desktop/.desktop-state.json`; browser project library/cache remains shared for its origin. Log settings namespacing does not isolate those product states. Control and record them before a future manual regression; do not infer clean project state from a fresh log session. Browser gate observations are best-effort metadata and may be absent if the browser cannot reach the host. The smoke supplies them through the shared logger exercise and makes no claim to GUI testing.
 
-Next, prepare a fresh `8.2e-recent-project-activation` RUN from the chosen integrated source build, record the desktop/browser starting environment, initialize only its intended project folders using real ABE operations, then follow the active persistence checklist. Record logical IDs, selected PROJECT LIBRARY RECORD, active folder authority, and checkpoint file changes using existing events and captures. The earlier manually prepared baseline RUN and campaign remain untouched. This infrastructure task does not mark 8.2e Working, Fixed or Rechecked.
+Next, prepare a fresh `8.2e-recent-project-activation` RUN from the chosen integrated source build, supply any expected invariant explicitly from the checklist, record the desktop/browser starting environment, initialize only its intended project folders using real ABE operations, then follow the active persistence checklist. Record logical IDs, selected PROJECT LIBRARY RECORD, active folder authority, and checkpoint file changes using existing events and captures. The earlier manually prepared baseline RUN and campaign remain untouched. This infrastructure task does not mark 8.2e Working, Fixed or Rechecked.
