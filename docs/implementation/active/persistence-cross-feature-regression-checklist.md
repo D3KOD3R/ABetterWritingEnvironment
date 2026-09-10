@@ -2,7 +2,7 @@
 
 Status: Active manual verification contract
 Date: 2026-09-05
-Branch: `wip/persistence-project-transition-isolation`
+Branch: `feature/persistence-portability-harness`
 Related authority: `docs/implementation/active/desktop-project-package-lifecycle.md`
 Canonical feature definitions: `features.md`
 
@@ -69,13 +69,23 @@ When the user confirms `Feature working`, follow `agents/FeatureWorkAgent.md` an
 
 Branch: `feature/persistence-portability-harness`.
 
-Tested code baseline (`CODE_BASELINE_SHA`): `d9f74e627446280af020b33e919f5715d8a7735b`. This commit contains the accepted Scrivener history and integrated untitled-scene, single-scene deletion and binder drag/drop fixes, including test registration. The separate documentation-only commit recording this baseline is not the tested code SHA. The user manually accepted the Scrivener workflow; Feature `8.6` remains Rechecked.
+Previously tested persistence code baseline: `d9f74e627446280af020b33e919f5715d8a7735b`. This commit contains the accepted Scrivener history and integrated untitled-scene, single-scene deletion and binder drag/drop fixes, including test registration. The separate documentation-only commit recording this baseline is not the tested code SHA. The user manually accepted the Scrivener workflow; Feature `8.6` remains Rechecked.
 
 - Automated verification: focused editor-model, untitled-scene, binder, single-scene deletion, registration and persistence/package checks pass. Full repository supervisor **132/134 passed, 2 failed**; separate `npm test` **132/134 passed, 2 failed**. All four newly integrated regression tests execute in both full runs. Supervisor verification was repeated on the committed code baseline.
 - Known unrelated failures: `desktop-application` and `project-source`, each with a fixture containing 4 chapters while the test expects 5 (`4 !== 5`).
 - Every manual result must record the tested branch and SHA.
 - Distinguish **Fresh** packages created on the tested build from **Legacy/pre-fix** packages; record cohorts separately.
 - Cold-start the intended desktop worktree/build before GUI testing, rather than relying on an already running host process.
+
+### Accepted regression infrastructure integration — 2026-09-10
+
+Current integrated code baseline (`CODE_BASELINE_SHA`): `604eb4db77402a62902b56d486d2f7362097816d`. The clean authoritative harness fast-forwarded from `42dd764be05ed75224249015df73c4da70e92953`, preserving exactly the externally reviewed commits `dbb1735b7b3814804bedb25c67781372aa8168e5` and `604eb4db77402a62902b56d486d2f7362097816d`. No squash or merge commit was needed. The subsequent documentation-only integration record changes no application, controller or test source.
+
+- Integrated capability: the [Regression Run Controller operating guide](regression-workspace-logging.md) defines generic external CASE input, provenance and run isolation, source-worktree launch cwd and OS-assigned host ports. Existing ABE logging remains the event system.
+- Fresh focused verification in the `persistence-portability-harness` worktree on `604eb4d`: **3/3 passed** — `desktop-logger` (report `20260910T041211-17bd`), `developer-logger-regression-session` (`20260910T041213-26f8`), and `desktop-regression-workspace` (`20260910T041230-a8be`). Reports remain under this worktree's `.tools/reports/<report-id>/report.json`; none of these focused routes required FULL escalation.
+- Prior FULL provenance, not a new integration run: on `604eb4d` in the `regression-workspace-logging` worktree, the FULL supervisor and separate `npm test` each produced **135/137 passed, 2 failed**. The supervisor completed at `2026-09-10T04:03:27.674Z`; its authoritative report remains in that worktree at `.tools/reports/20260910T040327-3e33/report.json`. Both failures are the known `desktop-application` and `project-source` assertions (`4 !== 5`).
+- The fast-forward had the exact reviewed Git tree; this record is the only later documentation change. FULL was not rerun for integration because executable/test source is unchanged and focused routing did not require it. The three added logging/workspace tests account for the increase from the previous 134-test suite to 137 tests.
+- Infrastructure acceptance changes no manual regression verdict. `8.2e` remains Broken with root cause undetermined; no diagnosis or execution began. Same-RUN restart, multi-run coordination/scheduling and desktop/browser state isolation remain follow-on concerns.
 
 ## Regression priority
 
