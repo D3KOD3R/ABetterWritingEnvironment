@@ -225,12 +225,18 @@ export async function startRun(manifestPath, { port = 0, mode = "manual" } = {})
     };
     const session = await request("/api/log/session");
     if (session.regressionRun?.runId !== manifest.runId) throw new Error("ABE responded with the wrong run identity.");
+    // Presentation only: keep the transport origin separate and derive labels from existing RUN facts.
+    // Neither the host nor browser session binding reads these query parameters as authority.
+    const launchUrl = new URL("/", baseUrl);
+    launchUrl.searchParams.set("abe-case", manifest.caseId);
+    launchUrl.searchParams.set("abe-run", manifest.runId.slice(-8));
     manifest.hostUrl = baseUrl;
+    manifest.launchUrl = launchUrl.href;
     manifest.runtime.boundPort = actualPort;
     manifest.processId = child.pid;
     manifest.runtimeLogFilePath = session.filePath;
     await atomicJson(manifestPath, manifest);
-    return { manifest, baseUrl, request, stop, finished };
+    return { manifest, baseUrl, launchUrl: launchUrl.href, request, stop, finished };
   } catch (error) { await stop("failed"); throw error; }
 }
 
@@ -240,7 +246,7 @@ export async function smokeRun(options) {
   const prepared = await prepareRun(options);
   const running = await startRun(prepared.manifestPath, { mode: "logging-smoke" });
   try {
-    const html = await (await fetch(running.baseUrl, { signal: AbortSignal.timeout(5000) })).text();
+    const html = await (await fetch(running.launchUrl, { signal: AbortSignal.timeout(5000) })).text();
     if (!html.includes('id="abe-regression-log-session"') || !html.includes(running.manifest.runId)) throw new Error("Editor lacks run logging configuration.");
     const logsHtml = await (await fetch(`${running.baseUrl}/developer-logs.html`, { signal: AbortSignal.timeout(5000) })).text();
     if (!logsHtml.includes(running.manifest.runId)) throw new Error("Developer Logs window lacks run logging configuration.");
@@ -295,7 +301,7 @@ async function main(args) {
   else if (command === "start") {
     if (!flags.manifest) throw new Error("--manifest is required.");
     const run = await startRun(flags.manifest, { port: Number(flags.port ?? 0) });
-    console.log(json({ runId: run.manifest.runId, url: run.baseUrl, manifestPath: path.resolve(flags.manifest) }));
+    console.log(json({ runId: run.manifest.runId, url: run.launchUrl, manifestPath: path.resolve(flags.manifest) }));
     for (const signal of ["SIGINT", "SIGTERM"]) process.once(signal, () => { void run.stop(); });
     const result = await run.finished;
     if (result.runStatus !== "completed") process.exitCode = 1;

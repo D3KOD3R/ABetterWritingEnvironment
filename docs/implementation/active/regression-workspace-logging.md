@@ -120,6 +120,10 @@ node --experimental-strip-types tools/regression-workspace/regression-run-contro
 
 `prepare` only allocates and records. Add `--allow-dirty` to capture an uncommitted build explicitly; otherwise a dirty checkout is rejected. Source changes after preparation require a fresh RUN. `start` prints the owned host URL; open that URL manually and stop the controller with Ctrl+C when finished. Both programmatic and CLI `start` default to port `0`, letting the OS assign an available HTTP port. The printed URL contains the bound port. Use `--port 4310` (or another explicit port) only when a CASE needs that exact origin; an occupied explicit port fails rather than reusing another host. Port allocation does not allocate sidecar resources or guarantee that a released port is never reused. Record browser starting state for the selected origin. `completed` describes successful host shutdown with unchanged source, not regression acceptance; record actual acceptance in `manual-test-results`.
 
+Controlled `start` reports a human-facing URL such as `http://127.0.0.1:51827/?abe-case=outline-cards&abe-run=a31f92bc`. The opaque CASE is shown verbatim via URL encoding; the RUN label is the existing `runId`'s final eight characters (its random suffix), not a new identity. `startRun` returns this as `launchUrl`, and the manifest records the derived URL under the same name for operator reference. Existing `hostUrl`/`baseUrl` remain the bare transport origin. The labels are presentation only: editing or removing them cannot select source, sandbox, evidence or logging destinations, establish runtime identity, or grant authorization. Injected session metadata and existing RUN-header validation remain authoritative.
+
+Ordinary editor interactions and refresh preserve the query labels; no browser routing changes were added. Spotify's external authorization redirect deliberately drops query/fragment context, and opening the separate Developer Logs page does not copy the editor query. Reopen the reported launch URL if needed. Normal launches remain unchanged; the controller still does not open a browser.
+
 For a harmless logging exercise:
 
 ```powershell
