@@ -300,6 +300,7 @@ import {
   updateProjectPackageDialogField,
 } from "./features/project-lifecycle/project-package-dialog.js";
 import { createNewProjectCandidateBuilder } from "./features/project-lifecycle/new-project-candidate.js";
+import { confirmProjectDiscard } from "./features/project-lifecycle/project-discard-dialog.js";
 import { createProjectSourceService } from "./adapters/storage/project-source-service.js";
 import {
   createProjectLibraryStateService,
@@ -16936,10 +16937,8 @@ async function confirmProjectPackageDialog() {
         parentPath: dialog.locationPath,
         folderName: dialog.folderName,
         buildCandidateSnapshot: () => buildNewProjectCandidateSnapshot(title),
-        // Reuse native destructive-action confirmation; the persistence guard decides when it is needed.
-        confirmDiscardUnsaved: () => window.confirm(
-          "Discard current unsaved changes and create the new project?\n\nChoose OK to discard the current unsaved project after the new project is successfully created, or Cancel to keep it.",
-        ),
+        // The persistence guard decides when this application confirmation is needed.
+        confirmDiscardUnsaved: confirmProjectDiscard,
       });
       if (result.status === "cancelled") {
         state.projectPackageDialog = { ...dialog, busy: false, errorMessage: "" };

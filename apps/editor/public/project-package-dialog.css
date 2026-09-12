@@ -28,6 +28,19 @@
   box-shadow: var(--project-package-dialog-shadow);
 }
 
+.project-discard-dialog {
+  margin: auto;
+  max-width: min(560px, calc(100vw - 40px));
+}
+
+.project-discard-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.project-discard-dialog footer {
+  flex-wrap: wrap;
+}
+
 .project-package-dialog__browser {
   border: 1px solid var(--project-package-dialog-border);
   background: var(--project-package-dialog-browser-background);

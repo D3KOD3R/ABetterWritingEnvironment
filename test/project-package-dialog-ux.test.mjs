@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
+import { confirmProjectDiscard } from "../apps/editor/public/features/project-lifecycle/project-discard-dialog.js";
 
 const TEST_ROOT = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(TEST_ROOT, "..");
@@ -13,7 +14,7 @@ async function readRepoFile(relativePath) {
 }
 
 export async function runProjectPackageDialogUxTest() {
-  // Execute the actual shell handler: a native Cancel must retain the filled creation dialog,
+  // Execute the actual shell handler: application Cancel must retain the filled creation dialog,
   // while confirmed creation closes it. Filesystem/guard behavior is covered by the real-host regression.
   const appSource = await readRepoFile("apps/editor/public/app.js");
   const handlerStart = appSource.indexOf("async function confirmProjectPackageDialog()");
@@ -32,10 +33,10 @@ export async function runProjectPackageDialogUxTest() {
     render: () => { fullRenders += 1; },
     buildNewProjectCandidateSnapshot: () => ({}),
     projectPersistenceLog: { info: () => {} },
-    window: { confirm: (message) => { prompts += 1; assert.match(message, /Discard current unsaved changes and create the new project/); return accepted; } },
+    confirmProjectDiscard: async () => { prompts += 1; return accepted; },
     projectPersistenceService: { createDesktopProjectPackage: async (options) => {
       assert.equal(options.parentPath, dialog.locationPath);
-      return { status: options.confirmDiscardUnsaved() ? "created" : "cancelled" };
+      return { status: await options.confirmDiscardUnsaved() ? "created" : "cancelled" };
     } },
   });
   vm.runInContext(appSource.slice(handlerStart, handlerEnd), context);
@@ -50,6 +51,47 @@ export async function runProjectPackageDialogUxTest() {
   assert.equal(prompts, 2);
   assert.equal(state.projectPackageDialog, null);
   assert.equal(fullRenders, 1);
+
+  // Exercise the actual modal's asynchronous decision and cleanup, including Escape.
+  for (const action of ["cancel", "confirm", "escape"]) {
+    const listeners = {};
+    const buttons = {};
+    let focused = "";
+    let removed = false;
+    let shown = false;
+    let resolved = false;
+    const modal = {
+      setAttribute: () => {},
+      querySelector: (selector) => buttons[selector] ??= {
+        addEventListener: (type, callback) => { listeners[selector] = callback; },
+        focus: () => { focused = selector; },
+      },
+      addEventListener: (type, callback) => { listeners[type] = callback; },
+      showModal: () => { shown = true; },
+      close: () => {},
+      remove: () => { removed = true; },
+    };
+    const decision = confirmProjectDiscard({
+      activeElement: { focus: () => { focused = "previous"; } },
+      createElement: (tag) => { assert.equal(tag, "dialog"); return modal; },
+      body: { append: () => {} },
+    }).then((value) => { resolved = true; return value; });
+    await Promise.resolve();
+    assert.equal(resolved, false, "creation must wait for an explicit decision");
+    assert.equal(shown, true);
+    assert.equal(focused, "[data-discard-cancel]");
+    assert.match(modal.innerHTML, /Discard Changes and Create Project/);
+    if (action === "escape") {
+      let prevented = false;
+      listeners.cancel({ preventDefault: () => { prevented = true; } });
+      assert.equal(prevented, true);
+    } else {
+      listeners[`[data-discard-${action}]`]();
+    }
+    assert.equal(await decision, action === "confirm");
+    assert.equal(removed, true);
+    assert.equal(focused, "previous");
+  }
 
   const [
     indexHtml,
