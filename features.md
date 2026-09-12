@@ -888,6 +888,8 @@ The desktop project lifecycle lets the author choose a named folder package for 
 
 8.2 Project persistence service boundary
 
+   Process update (2026-09-12): New Project uses the existing native confirmation mechanism to offer explicit discard when unsaved content has no durable destination. `ProjectPersistenceService` owns eligibility and preserves the old content until verified package creation succeeds; Cancel retains the project and creation dialog. Projects with a durable destination still require the existing save barrier.
+
    All project save, load, autosave, import, export, restore, and canonical mutation behavior must route through `ProjectPersistenceService`. The code centralizes persistence so UI features do not write directly to browser storage, file handles, or ad hoc JSON blobs.
    8.2a Editor save/load commands call `ProjectPersistenceService`.
    8.2b Canonical project mutations go through the persistence boundary.

@@ -1717,7 +1717,7 @@ export function createProjectPersistenceService({
   }
 
   // Intent: close the autosave gap before replacing runtime state with a loaded project snapshot.
-  async function preserveActiveProjectBeforeLoad(source = "project-load") {
+  async function preserveActiveProjectBeforeLoad(source = "project-load", { confirmDiscardUnsaved } = {}) {
     commitCanonicalProjectMutation({
       domain: "project",
       dirtyReason: "before-project-load",
@@ -1725,10 +1725,21 @@ export function createProjectPersistenceService({
       markWorkingState: false,
     });
 
-    if (state.projectFileAutosaveDirty !== true) return;
+    if (state.projectFileAutosaveDirty !== true) return true;
 
-    // Browser cache is recovery only: replacing the active project requires the external target to be current.
+    // Browser cache is recovery only. Without explicit discard consent, replacement requires durable saving.
     if (!hasProjectSaveDestination()) {
+      if (typeof confirmDiscardUnsaved === "function") {
+        const projectId = state.activeProjectId;
+        const revision = state.projectFileAutosaveRevision;
+        // New Project alone supplies this explicit confirmation. Do not clear dirty state or recovery
+        // content: cancellation or failed publication must leave the old project available unchanged.
+        if (await confirmDiscardUnsaved() !== true) return false;
+        if (state.activeProjectId !== projectId || state.projectFileAutosaveRevision !== revision || hasProjectSaveDestination()) {
+          throw new Error("The current project changed while confirming discard. Try creating the new project again.");
+        }
+        return true;
+      }
       throw new Error("The current project has unsaved changes and no durable destination. Use Save As, or explicitly discard the changes, before continuing.");
     }
     if (state.projectFileAutosaveBlocked) {
@@ -1795,11 +1806,14 @@ export function createProjectPersistenceService({
     parentPath,
     folderName,
     buildCandidateSnapshot,
+    confirmDiscardUnsaved,
   } = {}) {
     if (typeof buildCandidateSnapshot !== "function") {
       throw new Error("New Project requires a candidate snapshot builder.");
     }
-    await preserveActiveProjectBeforeLoad("create-desktop-project-package");
+    if (await preserveActiveProjectBeforeLoad("create-desktop-project-package", { confirmDiscardUnsaved }) === false) {
+      return { status: "cancelled" };
+    }
     const candidateSnapshot = await buildCandidateSnapshot();
     const portableSnapshot = buildPortableExternalProjectSnapshot(candidateSnapshot);
     state.projectFileBusy = true;

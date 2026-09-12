@@ -16932,11 +16932,20 @@ async function confirmProjectPackageDialog() {
   try {
     if (dialog.mode === PROJECT_PACKAGE_DIALOG_MODES.NEW) {
       const title = dialog.projectName.trim() || "Untitled Project";
-      await projectPersistenceService.createDesktopProjectPackage({
+      const result = await projectPersistenceService.createDesktopProjectPackage({
         parentPath: dialog.locationPath,
         folderName: dialog.folderName,
         buildCandidateSnapshot: () => buildNewProjectCandidateSnapshot(title),
+        // Reuse native destructive-action confirmation; the persistence guard decides when it is needed.
+        confirmDiscardUnsaved: () => window.confirm(
+          "Discard current unsaved changes and create the new project?\n\nChoose OK to discard the current unsaved project after the new project is successfully created, or Cancel to keep it.",
+        ),
       });
+      if (result.status === "cancelled") {
+        state.projectPackageDialog = { ...dialog, busy: false, errorMessage: "" };
+        renderProjectPackageDialog();
+        return;
+      }
       projectPersistenceLog.info("state-change", "project.create", "Created and activated a verified project package.", {
         projectId: state.activeProjectId,
         title: state.projectTitle,

@@ -154,6 +154,40 @@ async function runChild() {
   assert.equal(calls.some(({ pathname }) => /\/api\/project-(?:file|package)\/(?:save|create)/.test(pathname)), false);
   assert.equal(existsSync(path.join(worktree, "project-serva-vitae.abe-project")), false);
 
+  // Destinationless bootstrap cannot be replaced without a fresh, explicit user decision.
+  const newRoot = path.join(temporaryRoot, "Explicit New");
+  const newOptions = { parentPath: temporaryRoot, folderName: "Explicit New", buildCandidateSnapshot: createManuscriptSnapshot };
+  await assert.rejects(() => seed.service.createDesktopProjectPackage(newOptions), /no durable destination/);
+  const bootstrapBeforeCancel = structuredClone(seed.state);
+  let confirmations = 0;
+  const cancelled = await seed.service.createDesktopProjectPackage({ ...newOptions,
+    confirmDiscardUnsaved: () => { confirmations += 1; return false; },
+    buildCandidateSnapshot: () => assert.fail("Cancel must not construct a new project."),
+  });
+  assert.equal(cancelled.status, "cancelled");
+  assert.equal(confirmations, 1);
+  assert.deepEqual(seed.state, bootstrapBeforeCancel);
+  assert.equal(existsSync(newRoot), false);
+  // Discard consent authorizes replacement only after successful publication; failure retains the bootstrap.
+  await assert.rejects(() => seed.service.createDesktopProjectPackage({ ...newOptions,
+    parentPath: path.join(temporaryRoot, "missing-parent"), confirmDiscardUnsaved: () => true,
+  }));
+  assert.equal(seed.state.activeProjectId, bootstrapBeforeCancel.activeProjectId);
+  assert.deepEqual(seed.state.workspace, bootstrapBeforeCancel.workspace);
+  assert.equal(seed.state.projectFileAutosaveDirty, true);
+  assert.equal(seed.state.projectFilePath, "");
+  const created = await seed.service.createDesktopProjectPackage({ ...newOptions,
+    confirmDiscardUnsaved: () => { confirmations += 1; return true; },
+  });
+  assert.equal(created.status, "created");
+  assert.equal(confirmations, 2);
+  assert.equal(seed.state.projectFilePath, newRoot);
+  assert.equal(seed.state.projectFileStorageMode, "desktop-package");
+  assert.equal(seed.state.activeProjectId, "legacy-novel");
+  assert.equal(existsSync(path.join(newRoot, "project.json")), true);
+  assert.equal(seed.state.projectFileAutosaveDirty, false);
+  assert.equal(existsSync(path.join(worktree, "project-serva-vitae.abe-project")), false);
+
   const legacyPath = path.join(temporaryRoot, "legacy-novel.abe-project.json");
   const legacySnapshot = createManuscriptSnapshot();
   writeFileSync(legacyPath, JSON.stringify(legacySnapshot, null, 2));
@@ -207,6 +241,7 @@ async function runChild() {
   await assert.rejects(() => legacy.service.createDesktopProjectPackage({
     parentPath: temporaryRoot, folderName: "Blocked New",
     buildCandidateSnapshot: () => assert.fail("A failed durable save must block candidate construction."),
+    confirmDiscardUnsaved: () => assert.fail("A saved project's failed durability must not offer destinationless discard."),
   }), /durable save is blocked|could not be durably saved/);
   assert.equal(legacy.state.projectFilePath, legacyPath);
   assert.equal(existsSync(path.join(temporaryRoot, "Blocked New")), false);

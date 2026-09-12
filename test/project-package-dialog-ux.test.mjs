@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import vm from "node:vm";
 
 const TEST_ROOT = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(TEST_ROOT, "..");
@@ -12,6 +13,44 @@ async function readRepoFile(relativePath) {
 }
 
 export async function runProjectPackageDialogUxTest() {
+  // Execute the actual shell handler: a native Cancel must retain the filled creation dialog,
+  // while confirmed creation closes it. Filesystem/guard behavior is covered by the real-host regression.
+  const appSource = await readRepoFile("apps/editor/public/app.js");
+  const handlerStart = appSource.indexOf("async function confirmProjectPackageDialog()");
+  const handlerEnd = appSource.indexOf("\nasync function loadProjectSource()", handlerStart);
+  assert.ok(handlerStart >= 0 && handlerEnd > handlerStart);
+  let accepted = false;
+  let prompts = 0;
+  let fullRenders = 0;
+  const dialog = { mode: "new", projectName: "Explicit New", folderName: "Explicit New", locationPath: "C:\\External\\Acceptance" };
+  const state = { projectPackageDialog: dialog };
+  const context = vm.createContext({
+    state,
+    PROJECT_PACKAGE_DIALOG_MODES: { NEW: "new", OPEN: "open" },
+    canConfirmProjectPackageDialog: () => true,
+    renderProjectPackageDialog: () => {},
+    render: () => { fullRenders += 1; },
+    buildNewProjectCandidateSnapshot: () => ({}),
+    projectPersistenceLog: { info: () => {} },
+    window: { confirm: (message) => { prompts += 1; assert.match(message, /Discard current unsaved changes and create the new project/); return accepted; } },
+    projectPersistenceService: { createDesktopProjectPackage: async (options) => {
+      assert.equal(options.parentPath, dialog.locationPath);
+      return { status: options.confirmDiscardUnsaved() ? "created" : "cancelled" };
+    } },
+  });
+  vm.runInContext(appSource.slice(handlerStart, handlerEnd), context);
+  await context.confirmProjectPackageDialog();
+  assert.equal(prompts, 1);
+  assert.equal(state.projectPackageDialog.locationPath, dialog.locationPath);
+  assert.equal(state.projectPackageDialog.projectName, dialog.projectName);
+  assert.equal(state.projectPackageDialog.busy, false);
+  assert.equal(fullRenders, 0);
+  accepted = true;
+  await context.confirmProjectPackageDialog();
+  assert.equal(prompts, 2);
+  assert.equal(state.projectPackageDialog, null);
+  assert.equal(fullRenders, 1);
+
   const [
     indexHtml,
     dialogCss,
