@@ -23,11 +23,17 @@ export async function runProjectPackageDialogUxTest() {
   let accepted = false;
   let prompts = 0;
   let fullRenders = 0;
+  let saveAsOpened = 0;
   const dialog = { mode: "new", projectName: "Explicit New", folderName: "Explicit New", locationPath: "C:\\External\\Acceptance" };
   const state = { projectPackageDialog: dialog };
   const context = vm.createContext({
     state,
-    PROJECT_PACKAGE_DIALOG_MODES: { NEW: "new", OPEN: "open" },
+    PROJECT_PACKAGE_DIALOG_MODES: { NEW: "new", OPEN: "open", SAVE_AS: "save-as" },
+    openProjectPackageDialog: (mode) => {
+      assert.equal(mode, "save-as");
+      saveAsOpened += 1;
+      state.projectPackageDialog = { mode };
+    },
     canConfirmProjectPackageDialog: () => true,
     renderProjectPackageDialog: () => {},
     render: () => { fullRenders += 1; },
@@ -52,8 +58,16 @@ export async function runProjectPackageDialogUxTest() {
   assert.equal(state.projectPackageDialog, null);
   assert.equal(fullRenders, 1);
 
+  // Save As cancels creation before routing to the existing current-project save flow.
+  state.projectPackageDialog = dialog;
+  accepted = "save-as";
+  await context.confirmProjectPackageDialog();
+  assert.equal(saveAsOpened, 1);
+  assert.equal(state.projectPackageDialog.mode, "save-as");
+  assert.equal(fullRenders, 1, "Save As must not activate a new project");
+
   // Exercise the actual modal's asynchronous decision and cleanup, including Escape.
-  for (const action of ["cancel", "confirm", "escape"]) {
+  for (const action of ["cancel", "confirm", "escape", "save-as"]) {
     const listeners = {};
     const buttons = {};
     let focused = "";
@@ -81,6 +95,7 @@ export async function runProjectPackageDialogUxTest() {
     assert.equal(shown, true);
     assert.equal(focused, "[data-discard-cancel]");
     assert.match(modal.innerHTML, /Discard Changes and Create Project/);
+    assert.match(modal.innerHTML, /data-discard-save-as>Save As/);
     if (action === "escape") {
       let prevented = false;
       listeners.cancel({ preventDefault: () => { prevented = true; } });
@@ -88,7 +103,7 @@ export async function runProjectPackageDialogUxTest() {
     } else {
       listeners[`[data-discard-${action}]`]();
     }
-    assert.equal(await decision, action === "confirm");
+    assert.equal(await decision, action === "save-as" ? "save-as" : action === "confirm");
     assert.equal(removed, true);
     assert.equal(focused, "previous");
   }

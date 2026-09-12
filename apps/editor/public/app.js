@@ -16933,14 +16933,24 @@ async function confirmProjectPackageDialog() {
   try {
     if (dialog.mode === PROJECT_PACKAGE_DIALOG_MODES.NEW) {
       const title = dialog.projectName.trim() || "Untitled Project";
+      let unsavedChoice = false;
       const result = await projectPersistenceService.createDesktopProjectPackage({
         parentPath: dialog.locationPath,
         folderName: dialog.folderName,
         buildCandidateSnapshot: () => buildNewProjectCandidateSnapshot(title),
         // The persistence guard decides when this application confirmation is needed.
-        confirmDiscardUnsaved: confirmProjectDiscard,
+        confirmDiscardUnsaved: async () => {
+          unsavedChoice = await confirmProjectDiscard();
+          return unsavedChoice === true;
+        },
       });
       if (result.status === "cancelled") {
+        // End the create operation before opening Save As for the still-active current project.
+        // A Save As choice must never count as permission to discard or activate the candidate.
+        if (unsavedChoice === "save-as") {
+          openProjectPackageDialog(PROJECT_PACKAGE_DIALOG_MODES.SAVE_AS);
+          return;
+        }
         state.projectPackageDialog = { ...dialog, busy: false, errorMessage: "" };
         renderProjectPackageDialog();
         return;

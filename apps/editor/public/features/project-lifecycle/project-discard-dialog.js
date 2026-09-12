@@ -7,9 +7,10 @@ export function confirmProjectDiscard(documentRoot = document) {
   dialog.setAttribute("aria-describedby", "project-discard-description");
   dialog.innerHTML = `
     <header><h2 id="project-discard-title">Discard unsaved changes?</h2></header>
-    <p id="project-discard-description">Discard current unsaved changes and create the new project? Your current content will be replaced only after the new project is successfully created.</p>
+    <p id="project-discard-description">The current project has unsaved changes and no save path. Choose Save As to save it first, or discard the changes and create the new project. Discard replaces your current content only after the new project is successfully created.</p>
     <footer>
       <button type="button" data-discard-cancel autofocus>Cancel</button>
+      <button type="button" data-discard-save-as>Save As…</button>
       <button type="button" class="primary" data-discard-confirm>Discard Changes and Create Project</button>
     </footer>
   `;
@@ -25,6 +26,7 @@ export function confirmProjectDiscard(documentRoot = document) {
     };
     dialog.querySelector("[data-discard-cancel]").addEventListener("click", () => finish(false));
     dialog.querySelector("[data-discard-confirm]").addEventListener("click", () => finish(true));
+    dialog.querySelector("[data-discard-save-as]").addEventListener("click", () => finish("save-as"));
     dialog.addEventListener("cancel", (event) => {
       event.preventDefault();
       finish(false);
