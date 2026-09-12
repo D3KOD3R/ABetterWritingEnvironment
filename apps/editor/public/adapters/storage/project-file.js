@@ -368,6 +368,9 @@ export async function writeProjectLibraryToDesktopPath(filePath, snapshot, {
     body: {
       filePath: resolvedPath,
       snapshot,
+      // Carry single-file authority explicitly, including when the destination needs to be recreated.
+      // Package saves and conversion use the staged package lifecycle instead.
+      storageMode: "desktop-path",
     },
   });
 

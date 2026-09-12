@@ -1,9 +1,9 @@
 // Intent: expose the desktop HTTP surface that serves the editor, workspace data, settings, and local services.
 import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { appendFile, copyFile, lstat, mkdir, readFile, readdir, realpath, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
+import { appendFile, copyFile, lstat, mkdir, open, readFile, readdir, realpath, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, extname, isAbsolute, join, relative, resolve as resolvePath, sep as pathSeparator } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve as resolvePath, sep as pathSeparator } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { createDesktopSettingsSnapshot, updateDesktopSettingsSnapshot } from "./settings.ts";
@@ -478,7 +478,7 @@ export async function createDesktopResponseForRequest(
     }
 
     try {
-      const resolvedPath = await writeProjectPackage(filePath, body.snapshot);
+      const resolvedPath = await writeProjectFile(filePath, body.snapshot, body.storageMode);
       logDesktopInfo("project-file", "Saved a project file.", {
         filePath: resolvedPath,
       });
@@ -2573,25 +2573,6 @@ async function pathExists(targetPath: string) {
   }
 }
 
-async function resolveWritableProjectRoot(filePath: string) {
-  const resolvedPath = resolvePath(filePath);
-  if (!(await pathExists(resolvedPath))) {
-    return resolvedPath;
-  }
-
-  const stats = await stat(resolvedPath);
-  if (stats.isDirectory()) {
-    return resolvedPath;
-  }
-
-  if (stats.isFile()) {
-    const suffix = resolvedPath.toLowerCase().endsWith(".json") ? "" : ".package";
-    return `${resolvedPath.replace(/\.json$/i, "")}${suffix}`;
-  }
-
-  return resolvedPath;
-}
-
 async function readSceneStoreFromManifest(
   projectRoot: string,
   manifestProjects: Array<Record<string, any>>,
@@ -2692,7 +2673,8 @@ async function readProjectPackage(
 
   const fileContent = await readFile(resolvedPath, "utf8");
   const parsed = parseJsonText(fileContent) as Record<string, any>;
-  if (resolvedPath.toLowerCase().endsWith("project.json")) {
+  // A legacy *.abe-project.json file contains its scenes inline; it is not a package manifest.
+  if (basename(resolvedPath).toLowerCase() === "project.json") {
     const rootPath = dirname(resolvedPath);
     const manifestSnapshot = normalizeProjectLibrarySnapshotCandidate(parsed);
     const projects = await hydrateProjectMetadataFoldersFromPackage(rootPath, manifestSnapshot.projects);
@@ -2959,10 +2941,53 @@ async function discardStagedProjectPackageSave(operationTokenValue: unknown) {
   stagedProjectPackageSaves.delete(operationToken);
 }
 
-// Intent: retain legacy path inference only for compatibility callers using the old project-file route.
-async function writeProjectPackage(filePath: string, snapshot: unknown): Promise<string> {
-  const projectRoot = await resolveWritableProjectRoot(filePath);
-  return writeProjectPackageAtRoot(projectRoot, snapshot);
+// Save retains single-file authority. Conversion belongs to staged Save As, never an inferred sibling.
+async function writeLegacyProjectFile(filePath: string, snapshot: unknown): Promise<string> {
+  const resolvedPath = normalizeAbsoluteDesktopPath(filePath, "Project file path");
+  if (basename(resolvedPath).toLowerCase() === "project.json") {
+    throw new Error("Select the project package folder to save its manifest and sidecars together.");
+  }
+  if (await pathExists(resolvedPath)) {
+    const fileStats = await lstat(resolvedPath);
+    if (!fileStats.isFile() || fileStats.isSymbolicLink()) {
+      throw new Error("A legacy project destination must be a regular JSON file.");
+    }
+  }
+  validateStrictPackageManifest(normalizeProjectLibrarySnapshotCandidate(snapshot));
+  const content = JSON.stringify(snapshot, null, 2);
+  // Verify the exact JSON bytes before atomic replacement; failures leave the previous file intact.
+  // The persistence service also verifies durable readback before clearing dirty state or adopting authority.
+  const temporaryPath = join(dirname(resolvedPath), `.abe-project-file-${randomUUID()}.tmp`);
+  const temporaryFile = await open(temporaryPath, "wx");
+  try {
+    try {
+      await temporaryFile.writeFile(content, "utf8");
+    } finally {
+      await temporaryFile.close();
+    }
+    if (await readFile(temporaryPath, "utf8") !== content) {
+      throw new Error("Project file verification failed before replacement.");
+    }
+    await rename(temporaryPath, resolvedPath);
+  } finally {
+    await rm(temporaryPath, { force: true });
+  }
+  return resolvedPath;
+}
+
+async function writeProjectFile(filePath: string, snapshot: unknown, storageMode?: unknown): Promise<string> {
+  const resolvedPath = normalizeAbsoluteDesktopPath(filePath, "Project destination");
+  if (storageMode === "desktop-path") return writeLegacyProjectFile(resolvedPath, snapshot);
+  if (storageMode !== undefined && storageMode !== "desktop-package") {
+    throw new Error("Unsupported project file storage mode.");
+  }
+  // Older transport callers can select a folder, even one named *.json. Existing files stay files.
+  // Runtime package saves use staged save/readback/commit; this compatibility route does not migrate files.
+  if (await pathExists(resolvedPath) && (await lstat(resolvedPath)).isFile()) {
+    if (storageMode === "desktop-package") throw new Error("Project package root must be a directory.");
+    return writeLegacyProjectFile(resolvedPath, snapshot);
+  }
+  return writeProjectPackageAtRoot(resolvedPath, snapshot);
 }
 
 async function writeBinaryFile(filePath: string, content: Buffer): Promise<string> {

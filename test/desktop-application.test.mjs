@@ -139,7 +139,7 @@ export async function runDesktopApplicationTest() {
   assert.equal(typeof projectLibrary.projects[0].projectSettings, "object");
   assert.equal(
     projectLibrary.projects[0].projectSettings.projectFilePath,
-    path.join(repoRoot, "project-serva-vitae.abe-project.json"),
+    "",
   );
   assert.equal(projectLibrary.projects[0].projectSettings.writingTargetViewMode, "month");
   assert.equal(projectLibrary.projects[0].projectSettings.consoleDockCollapsed, false);

@@ -397,18 +397,10 @@ function loadBundledServaVitaeProjectLibrarySeed(): ProjectLibrarySeedSnapshot {
   }
 }
 
-// Intent: use the real loaded JSON file as the project-file authority before falling back to generated browser seed data.
+// The checked JSON supplies bootstrap content; reading it is not an explicit Open Project action.
 function loadServaVitaeProjectFileSeed(): ProjectLibrarySeedSnapshot {
   const payload = JSON.parse(readFileSync(SERVA_VITAE_PROJECT_FILE_PATH, "utf8")) as ProjectLibrarySeedSnapshot;
-  const normalizedProjects = payload.projects.map((project) =>
-    normalizeProjectLibrarySeedRecord({
-      ...project,
-      projectSettings: {
-        ...(project.projectSettings ?? {}),
-        projectFilePath: SERVA_VITAE_PROJECT_FILE_PATH,
-      },
-    }),
-  );
+  const normalizedProjects = payload.projects.map((project) => normalizeProjectLibrarySeedRecord(project));
 
   return {
     schemaVersion: payload.schemaVersion,
@@ -444,11 +436,16 @@ function normalizeProjectLibrarySeedRecord(
 ): ProjectLibrarySeedRecord {
   const generatedAt = project.updatedAt || project.createdAt;
   const defaultProjectSettings = createDefaultProjectSettingsSnapshot(generatedAt);
+  // Neither bundled source may promote a fixture or an embedded machine path into writable authority.
+  // Explicit file loading establishes its selected destination separately in ProjectPersistenceService.
+  const seedContent: ProjectLibrarySeedRecord & { projectFilePath?: unknown } = { ...project };
+  delete seedContent.projectFilePath;
   return {
-    ...project,
+    ...seedContent,
     projectSettings: {
       ...defaultProjectSettings,
       ...(project.projectSettings ?? {}),
+      projectFilePath: "",
     },
     editorPrefs: project.editorPrefs ?? {},
     localAiPrefs: project.localAiPrefs ?? { enabled: true },
