@@ -1233,7 +1233,7 @@ export function createProjectPersistenceService({
   function persistProjectSnapshotToBrowserCache(snapshot, context = {}) {
     try {
       const snapshotProjects = Array.isArray(snapshot?.projects) ? snapshot.projects.filter(Boolean) : [];
-      const persistedLibrary = projectService.saveProjectLibrarySnapshot({
+      const persistedLibrary = projectService.upsertProjectSnapshot({
         schemaVersion: snapshot?.schemaVersion ?? projectSchemaVersion,
         activeProjectId: snapshot?.activeProjectId ?? snapshotProjects[0]?.id ?? state.activeProjectId ?? null,
         projects: snapshotProjects,
@@ -1853,6 +1853,61 @@ export function createProjectPersistenceService({
     }
   }
 
+  let recentActivationPending = false;
+
+  // A Recent row selects a destination, not cached manuscript authority. Capture it before
+  // draining the outgoing project, then use the normal authoritative load/activation boundary.
+  async function activateRecentProject(projectId) {
+    const record = state.projectLibrary.find(project => project.id === projectId);
+    if (!record) throw new Error("The selected Recent project is no longer available.");
+    if (recentActivationPending || state.projectFileBusy) throw new Error("A project operation is already in progress.");
+    const destination = normalizeProjectFilePath(getProjectRecordFilePath(record));
+    recentActivationPending = true;
+    try {
+      await preserveActiveProjectBeforeLoad("recent-project");
+      let snapshot, mode = "", fileHandle = null;
+      if (hasProjectFilePath(destination)) {
+        try {
+          snapshot = (await loadProjectPackageFromDesktop({ rootPath: destination }, { fetchJsonFromDesktopApi })).snapshot;
+          mode = "desktop-package";
+        } catch (error) {
+          // Only a host-confirmed non-directory may use legacy file semantics. Missing or
+          // invalid packages must fail instead of substituting cached content or guessing by suffix.
+          if (!/Project package root must be a real directory/.test(toErrorMessage(error))) throw error;
+          snapshot = await readProjectLibraryFromDesktopPath(destination, { fetchJsonFromDesktopApi });
+          mode = "desktop-path";
+        }
+      } else if (destination) {
+        const reference = await loadProjectFileHandleReference({ windowRef, projectId: record.id });
+        fileHandle = reference?.fileHandle;
+        if (!fileHandle) throw new Error("This Recent file needs to be selected again with Open Project.");
+        snapshot = await readProjectLibraryFromBrowserHandle(fileHandle);
+        mode = "browser-handle";
+      } else {
+        // Unsaved/cache-only projects retain their existing recovery workflow.
+        activateLoadedProjectRecord({ projectRecord: record, reason: "recent-project" });
+        primeProjectAutosaveTarget();
+        return;
+      }
+      const loadedId = snapshot?.activeProjectId ?? snapshot?.projects?.[0]?.id;
+      if (loadedId !== record.id) throw new Error("The selected Recent destination contains a different project.");
+      await preserveActiveProjectBeforeLoad("recent-project-loaded");
+      state.projectFileBusy = true;
+      await hydrateProjectLibraryFromLoadedSnapshot(snapshot, {
+        filePath: hasProjectFilePath(destination) ? destination : "",
+        fileName: fileHandle ? destination : "", fileHandle, mode,
+        preserveProjectIdentity: true, reason: "recent-project", sourceLabel: "Recent project",
+      });
+    } catch (error) {
+      state.projectFileStatus = `Recent project could not be opened: ${toErrorMessage(error)}`;
+      throw error;
+    } finally {
+      recentActivationPending = false;
+      state.projectFileBusy = false;
+      renderHeader();
+    }
+  }
+
   // Intent: validate a folder package before draining and replacing the current active project.
   async function openDesktopProjectPackage({ rootPath } = {}) {
     state.projectFileStatus = "Reading project package...";
@@ -2003,12 +2058,10 @@ export function createProjectPersistenceService({
         mode: options.mode ?? "unknown",
       });
     }
-    const persistedLibrary = projectService.saveProjectLibrarySnapshot({
+    const persistedLibrary = projectService.upsertProjectSnapshot({
       activeProjectId,
       projects: importedProjects,
       sceneStore: importedSceneStoreByProject,
-    }, {
-      replaceExistingCache: true,
     });
     // Intent: activate from the in-memory load result so localStorage quota failures cannot resurrect stale project chunks.
     state.projectLibrary = Array.isArray(persistedLibrary.projects) ? persistedLibrary.projects : importedProjects;
@@ -3013,6 +3066,7 @@ export function createProjectPersistenceService({
     getProjectFileDisplayState,
     hasProjectSaveDestination,
     hydrateProjectLibraryFromLoadedSnapshot,
+    activateRecentProject,
     loadProjectSnapshotFromBrowserFile,
     loadProjectSnapshotFromBrowserHandle,
     loadProjectSnapshotFromFile,

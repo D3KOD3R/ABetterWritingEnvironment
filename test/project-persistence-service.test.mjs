@@ -1771,7 +1771,7 @@ function createFakeProjectService(projectRecord, loadedRecord, browserCacheWrite
       }
       return { librarySnapshot: nextSnapshot };
     },
-    saveProjectLibrarySnapshot(snapshot) {
+    upsertProjectSnapshot(snapshot) {
       browserCacheWrites.push(snapshot);
       lastHydratedSnapshot = snapshot;
       return {

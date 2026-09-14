@@ -331,6 +331,10 @@ async function runLifecycleChild() {
       /not semantically equivalent/,
     );
   };
+  const { assertRecentPackageRoundTrip } = await import("./helpers/recent-project-persistence.mjs");
+  const recentRoot = path.join(lifecycleRoot, "Recent regression");
+  mkdirSync(recentRoot);
+  await assertRecentPackageRoundTrip({ root: recentRoot, sendJson });
   // Intent: physical success must expose the final root only after staged readback verification.
   const stageLoadVerifyAndCommit = async ({ pathname, body, expectedSnapshot, operation }) => {
     const staged = await sendJson(pathname, body);

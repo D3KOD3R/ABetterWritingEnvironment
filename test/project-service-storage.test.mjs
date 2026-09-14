@@ -10,6 +10,7 @@ import { buildSceneRecords } from "../apps/editor/public/editor-model.js";
 import { buildWorldSpineTimelineModel } from "../apps/editor/public/features/world-spine/world-spine-panel.js";
 
 export async function runProjectServiceStorageTest() {
+  assertProjectRefreshAndChapterRename();
   const memoryWindow = createMemoryWindow();
   const storageAdapter = createBrowserStorageAdapter({
     windowRef: memoryWindow,
@@ -814,6 +815,51 @@ function createProjectRecord() {
       enabled: true,
     },
   };
+}
+
+
+function assertProjectRefreshAndChapterRename() {
+  const memoryWindow = createMemoryWindow();
+  const adapter = createBrowserStorageAdapter({ windowRef: memoryWindow });
+  const repository = createProjectRepository({ storageAdapter: adapter });
+  const service = createProjectService({ projectRepository: repository, preferencesRepository: createPreferencesRepository({ storageAdapter: adapter }) });
+  const original = createProjectRecord();
+  service.saveProjectLibrarySnapshot({ activeProjectId: original.id, projects: [original] });
+  const renamed = structuredClone(service.loadProjectLibrarySnapshot().projects[0]);
+  const chapterId = renamed.workspace.project.lines[0].chapterId;
+  const sceneId = renamed.workspace.project.lines[0].sceneId;
+  // Match the real chapter command: workspace and structure metadata are edited,
+  // while the hydrated scene body still carries the previous chapter label.
+  for (const line of renamed.workspace.project.lines) if (line.chapterId === chapterId) line.chapterTitle = "B CHAPTER";
+  for (const scene of renamed.structureDrafts.scenes) if (scene.chapterId === chapterId) scene.chapterTitle = "B CHAPTER";
+  const saved = service.saveProject({ projectRecord: renamed, persist: true }).librarySnapshot.projects[0];
+  const rendered = buildSceneRecords(saved.workspace, saved.sceneDrafts, saved.structureDrafts);
+  assert.equal(rendered.find(scene => scene.sceneId === sceneId).chapterTitle, "B CHAPTER", "chunk metadata must not undo an authored chapter rename");
+  const reopened = service.loadProjectLibrarySnapshot().projects[0];
+  assert.equal(buildSceneRecords(reopened.workspace, reopened.sceneDrafts, reopened.structureDrafts).find(scene => scene.sceneId === sceneId).chapterTitle, "B CHAPTER");
+  const explicitSceneSave = service.saveProject({ projectRecord: renamed, persist: true, changedSceneIds: [sceneId] }).librarySnapshot.projects[0];
+  assert.equal(buildSceneRecords(explicitSceneSave.workspace, explicitSceneSave.sceneDrafts, explicitSceneSave.structureDrafts).find(scene => scene.sceneId === sceneId).chapterTitle, "B CHAPTER");
+
+  const other = { ...structuredClone(original), id: "other-project", title: "Other" };
+  service.saveProject({ projectRecord: other, persist: true });
+  const otherChunkKey = "abe-project-library-v1:scene:other-project:" + sceneId;
+  const beforeOtherChunk = memoryWindow.localStorage.getItem(otherChunkKey);
+  repository.saveScene(original.id, "orphan-scene", { sceneId: "orphan-scene", editorText: "STALE orphan" });
+  const incoming = structuredClone(original);
+  // An explicitly blank durable scene must not borrow its old cached body.
+  for (const line of incoming.workspace.project.lines) line.text = "";
+  for (const draft of Object.values(incoming.sceneDrafts)) { draft.editorText = ""; draft.blocks = []; }
+  const refreshed = service.upsertProjectSnapshot({ activeProjectId: incoming.id, projects: [incoming] });
+  assert.equal(refreshed.projects.length, 2);
+  assert.equal(repository.loadScene(original.id, "orphan-scene"), null);
+  assert.equal(repository.loadScene(original.id, sceneId).editorText, "");
+  assert.equal(memoryWindow.localStorage.getItem(otherChunkKey), beforeOtherChunk);
+  // Cache failure still returns the incoming content, never a stale selected-project body.
+  const failingRepository = createProjectRepository({ storageAdapter: { ...adapter, writeJson: () => false, remove: () => false } });
+  const failed = failingRepository.upsertProjectSnapshot({ activeProjectId: incoming.id, projects: [incoming] });
+  assert.equal(failed.storagePersisted, false);
+  assert.equal(failed.projects.find(project => project.id === incoming.id).sceneDrafts[sceneId].editorText, "");
+  assert.equal(failed.projects.length, 2);
 }
 
 function createMemoryWindow() {

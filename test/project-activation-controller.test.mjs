@@ -211,8 +211,8 @@ async function assertProjectActivationDestinationBoundary() {
           projects: [...librarySnapshot.projects.filter(record => record.id !== projectRecord.id), projectRecord],
         } };
       },
-      saveProjectLibrarySnapshot(snapshot) {
-        // Keep the other Recent record, as the real library does during file hydration.
+      upsertProjectSnapshot(snapshot) {
+        // Model the explicit project-scoped API; the physical lifecycle test uses the real repository.
         return {
           ...structuredClone(snapshot),
           projects: [...state.projectLibrary.filter(record => !snapshot.projects.some(incoming => incoming.id === record.id)), ...structuredClone(snapshot.projects)],
