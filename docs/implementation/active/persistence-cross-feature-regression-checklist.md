@@ -394,6 +394,14 @@ Manual focus: New/Open/Save/Save As, read-only active location, recent-project a
 
 Required authority sequence: Project A active -> attempt/fail Save As B -> A must remain authoritative -> normal Save must still target A. Successful Save As B -> B becomes authoritative only after verified commit. New/Open transitions must refuse unsafe dirty/cache-only replacement where required.
 
+#### Fresh manual round trip — 2026-09-15 (Perth) — `8.2e` — **Fixed - needs recheck / P0**
+
+- Tested `test/recent-project-activation-regression` at `95ab204c22a6b96f250f714d3a3ac7342e0b46f1`, CASE `recent-project-activation`, fresh RUN `20260914T131026Z-recent-project-activation-0108afdb`. Both packages were created and saved through normal UI on this build, using a fresh browser profile. The author completed Recent A -> B -> A; the read-only observer captured both switches and subsequent saves.
+- **This round trip passed:** B and A each loaded from the intended durable package with matching logical identity, project title, chapter, scene, manuscript, path and desktop-package mode. Both Recent records remained present throughout. B's autosave wrote `location-b/RECENT B`; after the return, A's autosave wrote `location-a/RECENT A`. Package inventories prove A was byte-for-byte unchanged across B's autosave and B was byte-for-byte unchanged across A's final autosave. Outgoing saves completed against their own destinations before each activation.
+- The author did not append `B CHECK`; B's actual autosave is nevertheless present in the runtime log. The author subsequently appended `A CHECK`, which was verified in A's authoritative scene file at `17:40:07Z` UTC. Both chapter labels (`A CHAPTER`, `B CHAPTER`) and scene labels survived; A retained ALPHA and B retained BRAVO. The source fixture hash remained unchanged.
+- Evidence: this RUN's `manual-test-results/2026-09-14T17-41-10-821Z-round-trip-assessment.json`, `manual-observer.jsonl`, referenced screenshot/storage/package captures, and runtime events. The first B-switch observer poll read the log before the new prime arrived; the timestamped runtime stream confirms B's matching prime/load. The observer's cached `lastPrime` field alone is not an activation-state measurement.
+- RUN closed with exit 0 and `sourceIdentityUnchanged: true`; the dedicated browser and observer were stopped. Keep **Fixed - needs recheck**: the required restart/reopen switch has not yet been exercised. Broader 8.2 remains unresolved and 8.3 remains Unchecked. No integration or push was performed.
+
 #### Activation-boundary fix — 2026-09-14 — `8.2e` — **Fixed - needs recheck / P0**
 
 Follow-up on `77419f6a7b5613311dffbcd55fa39861355641e2`, CASE `recent-project-activation`, RUN `20260914T070005Z-recent-project-activation-e524f1dc`:
