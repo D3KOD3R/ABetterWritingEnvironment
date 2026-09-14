@@ -1,7 +1,7 @@
 # Persistence Cross-Feature Regression Checklist
 
 Status: Active manual verification contract
-Date: 2026-09-05
+Date: 2026-09-14
 Branch: `feature/persistence-portability-harness`
 Related authority: `docs/implementation/active/desktop-project-package-lifecycle.md`
 Canonical feature definitions: `features.md`
@@ -69,6 +69,20 @@ When the user confirms `Feature working`, follow `agents/FeatureWorkAgent.md` an
 
 Branch: `feature/persistence-portability-harness`.
 
+Current accepted persistence baseline: `0e5ad0ed8bbf53493d0295f466c913c4e6387363`. Live origin fetch on 2026-09-14 confirmed the authoritative branch and origin at this SHA, ahead/behind `0/0`, with a clean persistence worktree. The older baselines below are historical verification provenance.
+
+### Accepted save-persistence / New Project integration — recorded 2026-09-14
+
+- Integrated through `0e5ad0e`: bootstrap seed content is separate from legacy-file authority (`8dd5e4c`); destinationless New Project has an explicit discard barrier (`e996ae1`), an application-owned confirmation (`3e1d810`), and a Save As choice (`0e5ad0e`).
+- Prior manual acceptance on this same code, in `fix/default-seed-legacy-project-save`: **Cancel, Save As, and explicit Discard passed**. Cancel retained the current content and filled creation form. Save As published/verified the current package before activation; New Project subsequently created an independent package. Saved edits and healthy autosave survived explicit reopen; explicit Discard created the intended empty package. This acceptance is carried forward, not rerun today.
+- Evidence: external workspace `ABE-Workspace/manual-product-acceptance/20260912T132531Z-save-as-choice/evidence/` captures `cancel-pass-20260912T133311Z`, `save-as-pass-20260912T133450Z`, `reopen-pass-20260912T134705Z`, and `new-project-reopen-pass-20260912T135059Z`; explicit Discard is under `20260912T135205Z-explicit-discard/evidence/discard-pass-20260912T135618Z`. Captures record clean Git status, unchanged source-fixture SHA-256 `F727282142BDA6F5C66E5CB60210D3E6ACCF9B8511E4101361DCE457FD6C0C8B`, and no unintended source-tree package. The earlier autosave marker checkpoint was provisional; the later user-confirmed reopen captures establish acceptance.
+- Earlier Browse / Failed-to-fetch observations no longer reproduce in the accepted run (user-provided campaign handoff); they are not presently classified as an active product defect. This does **not** close the full `8.2d` dialog scope.
+- Fresh focused supervisor verification on `0e5ad0e`, in `recent-project-activation-regression`: **5/5 passed**, no FULL escalation. Reports under that worktree's `.tools/reports/<id>/report.json`: `project-default-seed-legacy-save` (`20260914T014802-f189`), `project-persistence-service` (`20260914T014803-0dc3`), `project-package-lifecycle` (`20260914T014806-0c11`), `project-library-state` (`20260914T014807-892f`), and `project-activation-controller` (`20260914T014809-311f`). No full-suite or repeated New Project manual acceptance was performed.
+- Next recheck: branch `test/recent-project-activation-regression`, based directly on the accepted persistence HEAD; CASE `recent-project-activation`. Fresh A/B creation, Recent A -> B -> A, restart and normal Save targeting remain **pending manual execution**. Exact launch SHA, RUN IDs, package identities and checkpoint evidence belong in the `8.2e` result below once observed. Legacy/pre-fix is a separate, later cohort, pending Fresh success and a safe disposable example.
+- `8.2` remains unresolved; historical `8.2e` stays Broken pending current recheck, `8.2d` retains its broader recheck, and `8.3` remains Unchecked. No migration campaign or lazy-hydration work is included.
+
+### Historical application baseline
+
 Previously tested persistence code baseline: `d9f74e627446280af020b33e919f5715d8a7735b`. This commit contains the accepted Scrivener history and integrated untitled-scene, single-scene deletion and binder drag/drop fixes, including test registration. The separate documentation-only commit recording this baseline is not the tested code SHA. The user manually accepted the Scrivener workflow; Feature `8.6` remains Rechecked.
 
 - Automated verification: focused editor-model, untitled-scene, binder, single-scene deletion, registration and persistence/package checks pass. Full repository supervisor **132/134 passed, 2 failed**; separate `npm test` **132/134 passed, 2 failed**. All four newly integrated regression tests execute in both full runs. Supervisor verification was repeated on the committed code baseline.
@@ -97,8 +111,8 @@ Known manual failures at the start of this sweep:
 | --- | --- | --- | --- |
 | `1.6b` Scene drag/drop reorder | P0 | **Fixed - needs recheck** | Movable draft/portable scene drop targets are integrated and automated coverage passes; manual GUI recheck is pending. |
 | `8.6` Scrivener project import | P0 | **Rechecked** | Historical regression: source selection/conversion worked, but activation lacked folder-package authority, reported `No package selected`, could download `.abe-project.json` and block New Project. Rechecked: transactional package creation and activation after verification work; immediate Save/autosave, scene metadata/comments and source-path portability are fixed; repeated same-source imports have independent ABE IDs. |
-| `8.2e` Recent-project activation | P0 | **Broken** | After using a Scrivener-backed package and creating a correct blank package, selecting an older normal project from Recent Projects appears to use the wrong physical path and displays the Scrivener-backed manuscript/folder structure. General activation/path regression; root cause undetermined. |
-| `8.2d` Package dialog workflow | P0 | Needs recheck | Recent manual testing found weak/incorrect dialog presentation and path/browse interaction; later persistence commits changed this area, so recheck before closing it. |
+| `8.2e` Recent-project activation | P0 | **Broken** (historical; current recheck pending) | Earlier mixed Fresh/Legacy scenario appeared to load the wrong path and manuscript. Root cause undetermined; fresh current-build A/B must be checked first. |
+| `8.2d` Package dialog workflow | P0 | Needs recheck | New Project Cancel / Save As / explicit Discard are accepted. Earlier Browse / Failed-to-fetch observations no longer reproduce; the remaining full dialog scope is not closed. |
 
 ## Recommended manual execution order
 
@@ -372,7 +386,7 @@ Coverage: `7.3a-7.3e`. Confirm suggestion cards/labels/evidence plus durable Wor
 
 Coverage: `8.1a-8.1d`. Load supported source/legacy project input, verify provenance, hierarchy and project metrics, and keep the source untouched. Scrivener-specific acceptance is gated by `8.6`.
 
-### 8.2 Project persistence service boundary / package lifecycle — P0 — `Broken` because `8.2e` fails
+### 8.2 Project persistence service boundary / package lifecycle — P0 — `Broken` (historical `8.2e`; current recheck pending)
 
 Coverage: `8.2a-8.2i`.
 
@@ -382,7 +396,7 @@ Required authority sequence: Project A active -> attempt/fail Save As B -> A mus
 
 Regression 2026-09-05 — `8.2e` Recent Projects
 
-- Status: Broken — P0
+- Status: Broken — P0 (historical observation; not yet reproduced or cleared on `0e5ad0e`).
 - Test build: user-reported current implementation, `wip/persistence-project-transition-isolation` / `72527bfec2b7d7f731270407178c986279f77a73`; cold-start and record the actual build for the next reproduction.
 - Package cohort: Fresh blank package plus older normal package (Legacy/pre-fix; originating build not recorded).
 - Automated coverage: existing `test/project-persistence-service.test.mjs` and `test/project-library-state.test.mjs` cover related boundaries; no automated reproduction of this observed GUI failure is established.
