@@ -832,9 +832,14 @@ function assertProjectRefreshAndChapterRename() {
   // while the hydrated scene body still carries the previous chapter label.
   for (const line of renamed.workspace.project.lines) if (line.chapterId === chapterId) line.chapterTitle = "B CHAPTER";
   for (const scene of renamed.structureDrafts.scenes) if (scene.chapterId === chapterId) scene.chapterTitle = "B CHAPTER";
+  // Scene title/synopsis commands, unlike chapter commands, author the scene draft itself.
+  renamed.sceneDrafts[sceneId].sceneTitle = "B SCENE";
+  renamed.sceneDrafts[sceneId].sceneSynopsis = "Edited synopsis";
   const saved = service.saveProject({ projectRecord: renamed, persist: true }).librarySnapshot.projects[0];
   const rendered = buildSceneRecords(saved.workspace, saved.sceneDrafts, saved.structureDrafts);
   assert.equal(rendered.find(scene => scene.sceneId === sceneId).chapterTitle, "B CHAPTER", "chunk metadata must not undo an authored chapter rename");
+  assert.equal(rendered.find(scene => scene.sceneId === sceneId).sceneTitle, "B SCENE");
+  assert.equal(rendered.find(scene => scene.sceneId === sceneId).sceneSynopsis, "Edited synopsis");
   const reopened = service.loadProjectLibrarySnapshot().projects[0];
   assert.equal(buildSceneRecords(reopened.workspace, reopened.sceneDrafts, reopened.structureDrafts).find(scene => scene.sceneId === sceneId).chapterTitle, "B CHAPTER");
   const explicitSceneSave = service.saveProject({ projectRecord: renamed, persist: true, changedSceneIds: [sceneId] }).librarySnapshot.projects[0];

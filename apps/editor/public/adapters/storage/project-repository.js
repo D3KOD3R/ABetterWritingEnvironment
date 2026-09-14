@@ -825,8 +825,17 @@ export function createProjectRepository({
       for (const metadata of [...(project.workspace?.project?.lines ?? []), ...(project.structureDrafts?.scenes ?? [])]) {
         const scene = sceneMap.get(normalizeSceneId(metadata?.sceneId));
         if (!scene) continue;
-        for (const field of ["chapterId", "chapterTitle", "sceneTitle", "sceneSynopsis"]) {
+        for (const field of ["chapterId", "chapterTitle"]) {
           if (typeof metadata[field] === "string") scene[field] = metadata[field];
+        }
+      }
+      // Scene title/synopsis edits live in scene drafts; buildSceneRecords gives them
+      // precedence. Only chapter placement/labels belong to the structure overlay above.
+      for (const [sceneId, draft] of Object.entries(project.sceneDrafts ?? {})) {
+        const scene = sceneMap.get(sceneId);
+        if (!scene) continue;
+        for (const field of ["sceneTitle", "sceneSynopsis"]) {
+          if (typeof draft?.[field] === "string") scene[field] = draft[field];
         }
       }
       const sceneIdsToWrite = changedSceneIds
