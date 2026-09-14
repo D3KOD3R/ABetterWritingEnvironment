@@ -1437,9 +1437,11 @@ const projectPersistenceService = createProjectPersistenceService({
   resolveActiveProjectId,
   activateLoadedProjectRecord: ({
     projectRecord,
+    projectFileDestination,
     reason,
   }) => {
     activateProjectRecord(projectRecord, {
+      projectFileDestination,
       reason: reason ?? "load-project-file",
       logLoadCheckpoint: true,
       renderAfter: true,
@@ -1862,7 +1864,7 @@ writingGoalsStateLogHooks.buildWritingTargetDebugTerminalSummary = buildWritingT
 const projectActivationController = createProjectActivationController({
   state,
   clone: cloneValue,
-  applyProjectRecordToState: (record) => projectActivationStateService.applyProjectRecordToState(record),
+  applyProjectRecordToState: (record, options) => projectActivationStateService.applyProjectRecordToState(record, options),
   persistActiveProjectId: (projectId) => projectPersistenceService.persistActiveProjectId(projectId),
   saveWritingTargetState,
   clearWritingTargetDraft,

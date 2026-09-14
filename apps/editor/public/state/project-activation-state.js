@@ -1,6 +1,7 @@
 // Intent: hydrate live editor state from an activated project record without owning shell effects.
 
 import { normalizeWorkspacePaneId } from "./editor-ui-state.js";
+import { normalizeProjectFilePath } from "../shared/project-file-path.js";
 
 function cloneValue(value) {
   if (typeof globalThis.structuredClone === "function") {
@@ -126,15 +127,41 @@ export function createProjectActivationStateService({
     }
   }
 
-  // Intent: project activation should replace runtime-owned durable state in one explicit assignment path.
-  function applyProjectRecordToState(record) {
+  // Prepare the target before changing runtime authority. No persistence callback may observe
+  // the incoming identity/content paired with the outgoing package path or browser handle.
+  function applyProjectRecordToState(record, { projectFileDestination = null } = {}) {
     if (!record?.workspace?.project) {
       throw new Error("Unable to load a saved project.");
     }
 
+    const workspace = hydrateRuntimeWorkspace(record.workspace, { clone });
+    const projectSettings = normalizeProjectSettingsSnapshot(
+      buildProjectSettingsCandidate(record),
+      record.id,
+      getProjectRecordWordCountForSettings(record),
+      new Date(),
+    );
+    const projectFilePath = normalizeProjectFilePath(projectFileDestination
+      ? projectFileDestination.filePath
+      : projectSettings.projectFilePath ?? record.projectSettings?.projectFilePath ?? record.projectFilePath);
+    const retainCurrentHandle = !projectFileDestination && state.activeProjectId === record.id
+      && normalizeProjectFilePath(state.projectFilePath) === projectFilePath;
+    const projectFileHandle = projectFileDestination
+      ? projectFileDestination.fileHandle ?? null
+      : retainCurrentHandle ? state.projectFileHandle ?? null : null;
+    const handlePermission = projectFileHandle
+      ? projectFileDestination?.handlePermission ?? (retainCurrentHandle ? state.projectFileHandlePermission : "prompt")
+      : "";
+
+    // This synchronous assignment block is the activation boundary; effects run only after it.
+    state.projectFilePath = projectFilePath;
+    state.projectFileHandle = projectFileHandle;
+    state.projectFileHandlePermission = handlePermission;
+    if (projectFileDestination) state.projectFileStorageMode = projectFileDestination.storageMode ?? "";
+    else if (!projectFilePath && !projectFileHandle) state.projectFileStorageMode = "";
     state.activeProjectId = record.id;
     state.projectLibrarySelectionId = record.id;
-    state.workspace = hydrateRuntimeWorkspace(record.workspace, { clone });
+    state.workspace = workspace;
     state.projectTitle = record.title ?? state.workspace.project.title;
     state.workspace.project.title = state.projectTitle;
     state.sceneDrafts = clone(record.sceneDrafts ?? {});
@@ -196,12 +223,6 @@ export function createProjectActivationStateService({
     };
     state.localAiTitleStatus = {};
 
-    const projectSettings = normalizeProjectSettingsSnapshot(
-      buildProjectSettingsCandidate(record),
-      record.id,
-      getProjectRecordWordCountForSettings(record),
-      new Date(),
-    );
     state.activePane = normalizeWorkspacePaneId(projectSettings.activePane);
     state.editorPrefs = clone(projectSettings.editorPrefs);
     state.localAiPrefs = clone(projectSettings.localAiPrefs);

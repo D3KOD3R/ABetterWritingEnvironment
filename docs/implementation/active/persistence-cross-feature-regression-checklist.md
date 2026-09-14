@@ -78,7 +78,7 @@ Current accepted persistence baseline: `0e5ad0ed8bbf53493d0295f466c913c4e6387363
 - Evidence: external workspace `ABE-Workspace/manual-product-acceptance/20260912T132531Z-save-as-choice/evidence/` captures `cancel-pass-20260912T133311Z`, `save-as-pass-20260912T133450Z`, `reopen-pass-20260912T134705Z`, and `new-project-reopen-pass-20260912T135059Z`; explicit Discard is under `20260912T135205Z-explicit-discard/evidence/discard-pass-20260912T135618Z`. Captures record clean Git status, unchanged source-fixture SHA-256 `F727282142BDA6F5C66E5CB60210D3E6ACCF9B8511E4101361DCE457FD6C0C8B`, and no unintended source-tree package. The earlier autosave marker checkpoint was provisional; the later user-confirmed reopen captures establish acceptance.
 - Earlier Browse / Failed-to-fetch observations no longer reproduce in the accepted run (user-provided campaign handoff); they are not presently classified as an active product defect. This does **not** close the full `8.2d` dialog scope.
 - Fresh focused supervisor verification on `0e5ad0e`, in `recent-project-activation-regression`: **5/5 passed**, no FULL escalation. Reports under that worktree's `.tools/reports/<id>/report.json`: `project-default-seed-legacy-save` (`20260914T014802-f189`), `project-persistence-service` (`20260914T014803-0dc3`), `project-package-lifecycle` (`20260914T014806-0c11`), `project-library-state` (`20260914T014807-892f`), and `project-activation-controller` (`20260914T014809-311f`). No full-suite or repeated New Project manual acceptance was performed.
-- Current `8.2e` recheck: **Broken on Fresh packages**, branch `test/recent-project-activation-regression`, tested SHA `579e69fc526e9e6bcfa442fa3f8f87825a6ba280` (accepted persistence code plus this checklist's baseline update). CASE `recent-project-activation`, RUN `20260914T015023Z-recent-project-activation-d02b3c2d`. Clicking Recent B activates B's identity/content with A's package location and autosave target; see the current result under `8.2`.
+- Current `8.2e` status: **Fixed - needs recheck** on `test/recent-project-activation-regression`. The activation-boundary fix and automated regression follow the Fresh failure on tested SHA `579e69fc526e9e6bcfa442fa3f8f87825a6ba280`, CASE `recent-project-activation`, RUN `20260914T015023Z-recent-project-activation-d02b3c2d`. That failure remains recorded below; a fresh manual A -> B -> A run is pending.
 - `8.2` remains unresolved; `8.2d` retains its broader recheck, and `8.3` remains Unchecked. The first Fresh failure stops the sequence, restart, post-activation Save and Legacy/pre-fix cohort. No migration campaign or lazy-hydration work is included.
 
 ### Historical application baseline
@@ -111,7 +111,7 @@ Known manual failures at the start of this sweep:
 | --- | --- | --- | --- |
 | `1.6b` Scene drag/drop reorder | P0 | **Fixed - needs recheck** | Movable draft/portable scene drop targets are integrated and automated coverage passes; manual GUI recheck is pending. |
 | `8.6` Scrivener project import | P0 | **Rechecked** | Historical regression: source selection/conversion worked, but activation lacked folder-package authority, reported `No package selected`, could download `.abe-project.json` and block New Project. Rechecked: transactional package creation and activation after verification work; immediate Save/autosave, scene metadata/comments and source-path portability are fixed; repeated same-source imports have independent ABE IDs. |
-| `8.2e` Recent-project activation | P0 | **Broken** (Fresh, 2026-09-14) | After Open A from saved B, B's recent record adopts A's path. A manual Recent B click loads B's ID/title/BRAVO but uses A's Project location and autosave target. Fresh packages are affected; wrong manuscript display and an actual overwrite were not observed. |
+| `8.2e` Recent-project activation | P0 | **Fixed - needs recheck** (2026-09-14) | Activation now switches identity/content/destination before incoming persistence callbacks and keeps outgoing callbacks under the outgoing project. Automated A -> B -> A and Open A from B coverage passes; fresh manual acceptance is pending. |
 | `8.2d` Package dialog workflow | P0 | Needs recheck | New Project Cancel / Save As / explicit Discard are accepted. Earlier Browse / Failed-to-fetch observations no longer reproduce; the remaining full dialog scope is not closed. |
 
 ## Recommended manual execution order
@@ -386,7 +386,7 @@ Coverage: `7.3a-7.3e`. Confirm suggestion cards/labels/evidence plus durable Wor
 
 Coverage: `8.1a-8.1d`. Load supported source/legacy project input, verify provenance, hierarchy and project metrics, and keep the source untouched. Scrivener-specific acceptance is gated by `8.6`.
 
-### 8.2 Project persistence service boundary / package lifecycle — P0 — `Broken` (`8.2e` reproduced on Fresh packages)
+### 8.2 Project persistence service boundary / package lifecycle — P0 — `Fixed - needs recheck` (`8.2e`; broader scope unresolved)
 
 Coverage: `8.2a-8.2i`.
 
@@ -394,7 +394,15 @@ Manual focus: New/Open/Save/Save As, read-only active location, recent-project a
 
 Required authority sequence: Project A active -> attempt/fail Save As B -> A must remain authoritative -> normal Save must still target A. Successful Save As B -> B becomes authoritative only after verified commit. New/Open transitions must refuse unsafe dirty/cache-only replacement where required.
 
-#### Current recheck — 2026-09-14 — `8.2e` Recent Projects — **Broken / P0**
+#### Activation-boundary fix — 2026-09-14 — `8.2e` — **Fixed - needs recheck / P0**
+
+- Owners: `state/project-activation-state.js` installs target identity/content/path/handle synchronously; `state/project-activation-controller.js` finishes outgoing callbacks before that handoff; `ProjectPersistenceService` passes loaded destinations through activation before publishing their machine/cache references. Recent Projects keeps its existing workflow.
+- Regression: real activation and persistence services cover A -> B -> A content, destination, and autosave target at persistence/render callbacks, plus Open A from B followed by the round trip. The original implementation fails the new test with B identity/A path; changing state hydration alone still fails the Open prerequisite with mismatched identity/content.
+- Focused supervisor checks: **7/7 passed**. Worktree-local reports: activation state `20260914T065331-e438`, activation controller `20260914T065333-03c4`, persistence service `20260914T065335-a44e`, default seed/legacy save `20260914T065337-fe3d`, package lifecycle `20260914T065341-1e01`, file storage adapters `20260914T065343-8664`, refresh persistence `20260914T065345-8054`.
+- Required changed/AFFECTED selection escalated to FULL for editor-shell wiring and focused-test edits: **136/138 passed**, report `20260914T065833-6e57`. Canonical `npm test` confirms the same two existing fixture failures: `desktop-application.test.mjs:1691` and `project-source.test.mjs:29`, each expecting 5 chapters but receiving 4. No unrelated fixture repair is included.
+- Manual verdict remains pending. Use a new controller RUN, fresh browser profile, and newly created A/B packages; record exact committed source and check both content and destination/autosave for A -> B -> A. Do not reuse the failed RUN or treat its completion status as acceptance. The accepted persistence baseline remains unchanged.
+
+#### Reproduced failure — 2026-09-14 — `8.2e` Recent Projects — **Broken / P0**
 
 - Tested branch / exact SHA: `test/recent-project-activation-regression` / `579e69fc526e9e6bcfa442fa3f8f87825a6ba280`, directly based on accepted persistence `0e5ad0ed8bbf53493d0295f466c913c4e6387363`. The intervening commit changes only this checklist; product/test source is identical. Source worktree: linked worktree `recent-project-activation-regression`.
 - CASE / RUN: `recent-project-activation` / `20260914T015023Z-recent-project-activation-d02b3c2d`. Controller launched from that worktree, requested port `0`, bound `60478`; host PID `2612`. Manifest and log session agree on worktree, cwd, SHA and all six requested logging gates.

@@ -127,7 +127,7 @@ export function createProjectActivationController({
   }
 
   // Intent: replace the active project and run required teardown/persistence effects once.
-  function applyProjectRecord(record) {
+  function applyProjectRecord(record, { projectFileDestination = null } = {}) {
     if (!record) {
       throw new Error("Unable to load a saved project.");
     }
@@ -135,6 +135,8 @@ export function createProjectActivationController({
       projectId: record.id,
       title: record.title,
     });
+    // Outgoing callbacks must finish while identity, content and destination still belong
+    // to the old project. Loaded destinations are passed to hydration, never pre-adopted.
     saveWritingTargetState({
       skipProjectFileAutosave: true,
     });
@@ -142,7 +144,7 @@ export function createProjectActivationController({
     clearWritingTargetSnapshotTimer();
     clearProjectAutosaveState();
     stopProjectScopedMedia();
-    applyProjectRecordToState(record);
+    applyProjectRecordToState(record, { projectFileDestination });
     persistActiveProjectId(record.id);
     clearBinderTitleClickState();
     persistActivatedProjectCompatibilityState(record);
@@ -166,6 +168,7 @@ export function createProjectActivationController({
   // Intent: provide the shared activation path used by project switching, creation, and loaded snapshots.
   function activateProjectRecord(record, {
     reason = "",
+    projectFileDestination = null,
     refreshSessionLifecycle = false,
     logLoadCheckpoint = false,
     beforeRender = null,
@@ -173,7 +176,7 @@ export function createProjectActivationController({
     afterRender = null,
     recordSnapshot = false,
   } = {}) {
-    applyProjectRecord(record);
+    applyProjectRecord(record, { projectFileDestination });
     refreshScenes();
     restoreSelectionFromWorkspaceDefaults();
     syncWritingTargetState({ forceReload: true });

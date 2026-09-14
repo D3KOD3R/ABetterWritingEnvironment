@@ -195,5 +195,37 @@ export function runProjectActivationStateTest() {
   });
   assert.equal(state.draftProofMarksVisible, false);
 
+  // A different record must never inherit the old package path or a live browser handle.
+  state.projectFilePath = "C:\\Regression\\RECENT A";
+  state.projectFileHandle = { name: "A.abe-project.json" };
+  state.projectFileHandlePermission = "granted";
+  service.applyProjectRecordToState({
+    id: "project-B", title: "RECENT B", workspace: { project: { id: "project-B" } },
+    projectSettings: { projectFilePath: "  C:\\Regression\\RECENT B  " },
+  });
+  assert.equal(state.activeProjectId, "project-B");
+  assert.equal(state.projectFilePath, "C:\\Regression\\RECENT B");
+  assert.equal(state.projectFileHandle, null);
+  assert.equal(state.projectFileHandlePermission, "");
+
+  // A load supplies its verified transient handle separately from portable project data.
+  const loadedHandle = { name: "loaded-B.abe-project.json" };
+  service.applyProjectRecordToState({
+    id: "project-B", title: "RECENT B", workspace: { project: { id: "project-B" } },
+    projectSettings: { projectFilePath: "C:\\Stale\\B" },
+  }, { projectFileDestination: {
+    filePath: loadedHandle.name, fileHandle: loadedHandle, handlePermission: "granted", storageMode: "browser-handle",
+  } });
+  assert.equal(state.projectFilePath, loadedHandle.name);
+  assert.equal(state.projectFileHandle, loadedHandle);
+  assert.equal(state.projectFileHandlePermission, "granted");
+  assert.equal(state.projectFileStorageMode, "browser-handle");
+
+  service.applyProjectRecordToState({ id: "destinationless", workspace: { project: { id: "destinationless" } } });
+  assert.equal(state.projectFilePath, "");
+  assert.equal(state.projectFileHandle, null);
+  assert.equal(state.projectFileHandlePermission, "");
+  assert.equal(state.projectFileStorageMode, "");
+
   assert.throws(() => service.applyProjectRecordToState(null), /Unable to load a saved project/);
 }

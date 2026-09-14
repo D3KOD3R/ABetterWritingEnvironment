@@ -123,9 +123,17 @@ async function runChild() {
       normalizeProjectLibrarySnapshot: (candidate) => candidate,
       normalizeProjectRecord: (candidate) => candidate,
       resolveActiveProjectId: (candidate, snapshot) => candidate ?? snapshot.projects[0]?.id,
-      activateLoadedProjectRecord: ({ projectRecord }) => {
+      activateLoadedProjectRecord: ({ projectRecord, projectFileDestination }) => {
+        // Loaded authority is adopted by activation after outgoing preservation completes.
+        Object.assign(state, {
+          activeProjectId: projectRecord.id, projectLibrarySelectionId: projectRecord.id,
+          projectFilePath: projectFileDestination.filePath, projectFileHandle: projectFileDestination.fileHandle,
+          projectFileHandlePermission: projectFileDestination.handlePermission,
+          projectFileStorageMode: projectFileDestination.storageMode,
+        });
         state.workspace = structuredClone(projectRecord.workspace);
         state.projectTitle = projectRecord.title;
+        service.persistActiveProjectId(projectRecord.id);
       },
     });
     return { state, service, active, memory };

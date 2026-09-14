@@ -2012,11 +2012,9 @@ export function createProjectPersistenceService({
     });
     // Intent: activate from the in-memory load result so localStorage quota failures cannot resurrect stale project chunks.
     state.projectLibrary = Array.isArray(persistedLibrary.projects) ? persistedLibrary.projects : importedProjects;
-    state.activeProjectId = persistedLibrary.activeProjectId ?? activeProjectId;
-    state.projectLibrarySelectionId = state.activeProjectId;
-    persistActiveProjectId(state.activeProjectId);
-
-    const projectRecord = state.projectLibrary.find((project) => project?.id === state.activeProjectId) ?? state.projectLibrary[0] ?? null;
+    // Keep outgoing runtime identity and destination intact until its activation callbacks
+    // finish. Publishing the incoming library is not permission to retarget that runtime.
+    const projectRecord = state.projectLibrary.find((project) => project?.id === activeProjectId) ?? state.projectLibrary[0] ?? null;
     if (!projectRecord) {
       throw new Error("Unable to activate the loaded project file.");
     }
@@ -2032,14 +2030,10 @@ export function createProjectPersistenceService({
       : "";
     clearProjectAutosaveState();
     clearEditorWorkingDirtyState("project-load");
-    await setActiveProjectFileDestination(loadedDestination.filePath, loadedDestination.fileHandle, {
-      skipProjectFileAutosave: true,
-      skipProjectRecordPersistence: true,
+    const projectFileDestination = {
+      filePath: loadedDestination.filePath,
+      fileHandle: loadedDestination.fileHandle,
       handlePermission: loadedHandlePermission,
-      persistBrowserFileHandle: Boolean(loadedDestination.fileHandle),
-      persistDesktopProjectFilePath: loadedDestination.isDurablePath,
-      clearDesktopProjectFilePath: !loadedDestination.isDurablePath,
-      clearBrowserFileHandle: !loadedDestination.fileHandle && loadedDestination.isDurablePath,
       storageMode: options.mode === "desktop-package"
         ? "desktop-package"
         : options.mode === "desktop-path"
@@ -2047,15 +2041,27 @@ export function createProjectPersistenceService({
           : loadedDestination.fileHandle
             ? "browser-handle"
             : "",
-      source: "hydrateProjectLibraryFromLoadedSnapshot",
-    });
+    };
     activateLoadedProjectRecord({
       projectRecord,
+      projectFileDestination,
       reason: options.reason ?? "load-project-file",
       mode: options.mode ?? "unknown",
       sourceLabel: options.sourceLabel ?? "file",
       loadedProjectCount: importedProjects.length,
       filePath: options.filePath ?? "",
+    });
+    // Activation installs the destination with the target identity/content before callbacks.
+    // Persist machine/cache references afterward, with the same target owning their effects.
+    await setActiveProjectFileDestination(projectFileDestination.filePath, projectFileDestination.fileHandle, {
+      ...projectFileDestination,
+      skipProjectFileAutosave: true,
+      skipProjectRecordPersistence: true,
+      persistBrowserFileHandle: Boolean(loadedDestination.fileHandle),
+      persistDesktopProjectFilePath: loadedDestination.isDurablePath,
+      clearDesktopProjectFilePath: !loadedDestination.isDurablePath,
+      clearBrowserFileHandle: !loadedDestination.fileHandle && loadedDestination.isDurablePath,
+      source: "hydrateProjectLibraryFromLoadedSnapshot",
     });
     primeProjectAutosaveTarget();
     state.projectFileStatus = `Loaded ${importedProjects.length} project${importedProjects.length === 1 ? "" : "s"} from ${options.sourceLabel ?? "file"}`;
@@ -2908,23 +2914,18 @@ export function createProjectPersistenceService({
     const resolvedPath = hasProjectFilePath(recordFilePath)
       ? resolveProjectFilePath(recordFilePath)
       : rawRecordPath;
-    if (!resolvedPath) {
-      return "";
-    }
-
     const isDurablePath = hasProjectFilePath(resolvedPath);
     const retainedHandle = isDurablePath ? null : state.projectFileHandle;
     const retainedHandlePermission = retainedHandle ? state.projectFileHandlePermission : "";
-    if (resolvedPath === state.projectFilePath && state.projectFileHandle === retainedHandle) {
-      return resolvedPath;
-    }
-
+    // State hydration already installed this path atomically with the project. Still publish
+    // its machine/cache references; a destinationless target must also clear the old pointer.
     setActiveProjectFileDestination(resolvedPath, retainedHandle, {
       skipProjectFileAutosave: true,
       skipProjectRecordPersistence: true,
       handlePermission: retainedHandlePermission,
       persistBrowserFileHandle: false,
       persistDesktopProjectFilePath: isDurablePath && options.persistDesktopProjectFilePath === true,
+      clearDesktopProjectFilePath: !isDurablePath && options.persistDesktopProjectFilePath === true,
       clearBrowserFileHandle: isDurablePath,
       source: options.source ?? "syncActiveProjectFileDestinationFromRecord",
       dirtyReason: options.dirtyReason ?? "project-file-destination-sync",
