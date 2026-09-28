@@ -1,7 +1,7 @@
 # Persistence Cross-Feature Regression Checklist
 
 Status: Active manual verification contract
-Date: 2026-09-05
+Date: 2026-09-28
 Branch: `feature/persistence-portability-harness`
 Related authority: `docs/implementation/active/desktop-project-package-lifecycle.md`
 Canonical feature definitions: `features.md`
@@ -91,7 +91,7 @@ Current integrated code baseline (`CODE_BASELINE_SHA`): `604eb4db77402a62902b56d
 
 `P0` means a failure can cause data loss, cross-project contamination, package relocation failure, or break a core authoring workflow. `P1` means important author-facing behavior or project preference regression. `P2` means lower-risk optional/local-runtime behavior.
 
-Known manual failures at the start of this sweep:
+Known manual failures and staged P0 investigations at the start of this sweep:
 
 | Feature | Priority | Status | Known symptom |
 | --- | --- | --- | --- |
@@ -99,23 +99,25 @@ Known manual failures at the start of this sweep:
 | `8.6` Scrivener project import | P0 | **Rechecked** | Historical regression: source selection/conversion worked, but activation lacked folder-package authority, reported `No package selected`, could download `.abe-project.json` and block New Project. Rechecked: transactional package creation and activation after verification work; immediate Save/autosave, scene metadata/comments and source-path portability are fixed; repeated same-source imports have independent ABE IDs. |
 | `8.2e` Recent-project activation | P0 | **Broken** | After using a Scrivener-backed package and creating a correct blank package, selecting an older normal project from Recent Projects appears to use the wrong physical path and displays the Scrivener-backed manuscript/folder structure. General activation/path regression; root cause undetermined. |
 | `8.2d` Package dialog workflow | P0 | Needs recheck | Recent manual testing found weak/incorrect dialog presentation and path/browse interaction; later persistence commits changed this area, so recheck before closing it. |
+| `8.4` / `1.10` Manuscript undo/redo autosave durability | P0 | **Unchecked (staged CASE)** | Code review found a possible browser-host boundary where Ctrl+Z/Ctrl+Y depends on browser input events to re-enter canonical state/autosave. No defect is claimed yet. Run the dedicated `manuscript-undo-redo-autosave-durability` CASE before broader autosave/formatting acceptance. |
 
 ## Recommended manual execution order
 
 Run the next sweep by potential impact while retaining the canonical feature matrix order below:
 
 1. `8.2` Project package lifecycle / recent-project activation
-2. `8.3` Disposable browser cache policy
-3. `8.4` Autosave and dirty-state control
-4. `8.5` Project metrics
-5. `1.6` Binder scene/chapter management
-6. `1.2` Context-aware scene insertion
-7. `1.5` Tasks/notes/custom metadata
-8. `6.3` World Spine
-9. `1.10` Inline formatting
-10. `1.9` Revisions
-11. Narration / project-owned assets
-12. Remaining P1/P2 workflows
+2. `8.4` focused CASE — manuscript undo/redo autosave durability
+3. `8.3` Disposable browser cache policy
+4. `8.4` remaining autosave and dirty-state control
+5. `8.5` Project metrics
+6. `1.6` Binder scene/chapter management
+7. `1.2` Context-aware scene insertion
+8. `1.5` Tasks/notes/custom metadata
+9. `6.3` World Spine
+10. `1.10` Inline formatting / app-owned decoration history
+11. `1.9` Revisions
+12. Narration / project-owned assets
+13. Remaining P1/P2 workflows
 
 Normally record a discovered regression and continue testing unrelated features. Repair before continuing when the defect risks data loss or invalidates later test results; every bug need not be repaired immediately.
 
@@ -211,6 +213,8 @@ Manual focus: create a revision session/baseline, generate events, stage/inspect
 Coverage: all currently implemented checks `1.10a-1.10i` and `1.10k-1.10p`; `1.10j` remains the planned ProseMirror migration note and is not a current parity test.
 
 Manual focus: selected/caret Bold, Italic, Underline, Strikethrough, Highlight, pending typed formatting, stacked paint, Clear Decorations, custom recent colours, app-owned undo/redo, viewport preservation, and typing over selected text. Save/reopen/Save As must keep marks attached to the intended text.
+
+Plain-text Ctrl+Z/Ctrl+Y durability is a separate browser-host boundary and is staged under the focused `8.4` CASE below. Do not use passing app-owned Bold/Highlight history as evidence that ordinary text undo/redo reaches canonical state and autosave.
 
 ### 1.11 Anchor-aware decoration drift pipeline — P0 — `Unchecked`
 
@@ -407,6 +411,20 @@ Coverage: `8.4a-8.4g`.
 
 Manual focus: normal autosave, failed/blocked write, out-of-sync cause display, no retry loop, metadata-only scene mutation without body collapse, atomic generation/manifest swap, edits arriving while a save is in flight, and transition drain. Dirty state must clear only after durable verified success.
 
+#### Focused staged CASE — manuscript undo/redo autosave durability — P0 — `Unchecked`
+
+CASE: `manuscript-undo-redo-autosave-durability`.
+
+Detailed execution contract: [Manuscript Undo/Redo Autosave Durability Regression](manuscript-undo-redo-autosave-regression.md).
+
+Code review identified a possible boundary risk, not a confirmed defect: ordinary manuscript text Ctrl+Z/Ctrl+Y currently falls back to browser-owned text history, while ABE durability depends on the resulting text re-entering the manuscript input/canonical mutation path. The focused CASE must prove visible editor text, canonical scene text, autosave dirty/revision state, durable package text and restart/reopen text converge after undo and redo.
+
+Run this CASE in stages rather than immediately combining 1,000 saves with 1,000 undo/redo operations. First prove one edit/autosave/undo/autosave/restart and redo equivalent; then measure browser history depth/grouping and memory without per-action saves; then stress repeated edit/save/undo/save/redo/save cycles; then measure editor-host rerender, scene-switch and refresh boundaries. Keep package-generation/hash churn separate from browser-history measurements.
+
+Cross-feature observations belong to their owners: `1.10` app-owned decoration history does not prove ordinary text undo durability; `1.11` anchors, `1.9` revisions and `1.8` writing metrics must remain consistent with the final canonical manuscript.
+
+Priority ordering: after the active `8.2` package-authority/recent-project blocker, run this focused CASE before `8.3` and before the remainder of `8.4`. A reproduced visible/canonical/durable mismatch could invalidate later persistence regression evidence.
+
 ### 8.5 Project metrics derivation — P0 — `Unchecked`
 
 Coverage: `8.5a-8.5c`. Record chapter/scene/manuscript words/task/note/world/timeline counts before Save and compare after refresh/Open/Save As. Lazy/chunked hydration must not collapse totals merely because only an active body is loaded.
@@ -534,6 +552,7 @@ This regression sweep is complete only when:
 - `8.2e` recent-project activation/path regression is repaired and manually rechecked; it is an explicit unresolved P0 completion blocker;
 - `8.6` Scrivener import remains Rechecked at the accepted baseline; it is no longer an unresolved blocker;
 - package-dialog interaction is rechecked after the recent lifecycle changes;
+- the focused `8.4` `manuscript-undo-redo-autosave-durability` CASE has a recorded result, and any reproduced P0 durability defect is repaired and manually rechecked before completion;
 - every P0 durable workflow survives Save, refresh, package reopen and relevant Save As;
 - package B asset-owning workflows work with package A unavailable;
 - cross-project isolation is manually demonstrated;
