@@ -8,7 +8,7 @@ export const ROUTING_RULES = [
   { pattern: /^apps\/editor\/public\/(?:state\/project-|adapters\/storage\/(?:project-|editor-storage|scrivener-import-service)|shared\/project-|serva-vitae-project-library)/, classification: "source", groups: ["editor", "project"] },
   { pattern: /^apps\/editor\/public\/features\/narration\//, classification: "source", groups: ["narration"] },
   { pattern: /^apps\/editor\/public\/features\/voice\//, classification: "source", groups: ["voice"] },
-  { pattern: /^apps\/editor\/public\/(?:features\/(?:world-spine|worldbuilding)\/|state\/worldbuilding-)/, classification: "source", groups: ["world"] },
+  { pattern: /^apps\/editor\/public\/(?:features\/(?:world-spine|worldbuilding|visual-studio)\/|state\/worldbuilding-)/, classification: "source", groups: ["world"] },
   { pattern: /^apps\/editor\/public\/features\/local-ai\//, classification: "source", groups: ["localAi"] },
   { pattern: /^apps\/editor\/public\/(?:features\/(?:spellcheck|draft-proofing)\/|spellcheck(?:\/|\.js$)|state\/grammar-check-)/, classification: "source", groups: ["language"] },
   { pattern: /^apps\/editor\//, classification: "source", groups: ["editor"] },

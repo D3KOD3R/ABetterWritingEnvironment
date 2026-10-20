@@ -6,7 +6,7 @@ export const TEST_GROUPS = {
   project: prefixes("project-", "editor-storage", "scrivener-import-"),
   narration: prefixes("narration-", "audio-service", "realtime-speech-"),
   voice: prefixes("voice-"),
-  world: prefixes("world-", "worldbuilding-", "ManuScriptInfographicLane-"),
+  world: prefixes("world-", "worldbuilding-", "visual-asset-", "ManuScriptInfographicLane-"),
   localAi: prefixes("local-ai-", "analysis-service"),
   language: prefixes("dictionary-", "spellcheck", "grammar-", "draft-proofing-"),
   desktop: prefixes("desktop-", "developer-logger", "runtime-portability-guardrails"),
