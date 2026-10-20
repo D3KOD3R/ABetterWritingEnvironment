@@ -132,3 +132,24 @@ Test 1080p, 4K, thumbnails, varied aspect ratios, orientation, transparent PNG, 
 ## Intended first real author trial
 
 Open the copied/backup Serva Vitae project in the new feature worktree; view legacy character/location images, filter them, inspect a sample imported 4K costume image, link it to Shai's existing World entity ID and a scene, save/reload, then Save As to a fresh folder and reopen without the source package. Optionally link an external art folder, unplug it and relink it, proving owned and external semantics do not mix. Avoid placing user art in the Git repo.
+
+
+## GitHub issue / Codex handoff index
+
+All changes target `feature/visual-asset-library-foundation`; do not modify other branches. Issue creation is not equivalent to starting a Codex run.
+
+| Issue | Work item | Dependency | Review focus |
+| --- | --- | --- | --- |
+| [#3](https://github.com/D3KOD3R/ABetterWritingEnvironment/issues/3) | Secure World Spine + Visual Studio resolver | None | Existing images load; unsafe reads rejected |
+| [#2](https://github.com/D3KOD3R/ABetterWritingEnvironment/issues/2) | Grid Gallery and workspace shell | #3 before file-preview activation | Search/filter/selection; no dirty project |
+| [#4](https://github.com/D3KOD3R/ABetterWritingEnvironment/issues/4) | Project image package and durable import | #3 | 4K import, Save As, move/reopen |
+| [#5](https://github.com/D3KOD3R/ABetterWritingEnvironment/issues/5) | External folder/file links and Relink | #3, #4 | External originals untouched, broken root recovery |
+| [#6](https://github.com/D3KOD3R/ABetterWritingEnvironment/issues/6) | Asset Inspector | #2, #3, #4 | Metadata, World/scene associations |
+| [#7](https://github.com/D3KOD3R/ABetterWritingEnvironment/issues/7) | Costume Comparison and Visual Canon | #6 | Four-up comparisons, deliberate approval |
+| [#8](https://github.com/D3KOD3R/ABetterWritingEnvironment/issues/8) | Manuscript Scene Board | #6 | Scene assets, passage navigation, no text edits |
+| [#9](https://github.com/D3KOD3R/ABetterWritingEnvironment/issues/9) | Visual Timeline | #7 | In-world chronology and uncertainty |
+| [#10](https://github.com/D3KOD3R/ABetterWritingEnvironment/issues/10) | 4K and cross-feature QA | Starts alongside #2 | App screenshots, portability and performance |
+
+### First Codex assignment
+
+Start #3 (secure shared media path/resolver audit) and #2 (read-only gallery wiring). UI scaffolding and safe resolver work may be separated by worktree only when a coordinator preserves uncommitted work and uses the dedicated feature branch. Do NOT enable mutable uploads before #3 and package authority are complete. Run tests in the actual checkout and report findings.
