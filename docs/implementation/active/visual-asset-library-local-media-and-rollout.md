@@ -153,3 +153,16 @@ All changes target `feature/visual-asset-library-foundation`; do not modify othe
 ### First Codex assignment
 
 Start #3 (secure shared media path/resolver audit) and #2 (read-only gallery wiring). UI scaffolding and safe resolver work may be separated by worktree only when a coordinator preserves uncommitted work and uses the dedicated feature branch. Do NOT enable mutable uploads before #3 and package authority are complete. Run tests in the actual checkout and report findings.
+
+
+## CURRENT AUTHOR PRIORITY OVERRIDE — 20 October 2026
+
+**Author priority P0 is ARTWORK GENERATION, not UI testing, integration or package refactoring.** See [issue #11](https://github.com/D3KOD3R/ABetterWritingEnvironment/issues/11). This section supersedes any earlier "first Codex assignment" ordering in this document, and no tickets #2–#10 should block initial art generation.
+
+1. Inspect the existing reference art/PDFs under `C:\\Users\\ASUS\\Desktop\\Repos\\ProjectServaVitaeProduction` and the Design Bible workbook `Project_Serva_Vitae_World_Art_Design_Bible.xlsx`. Build a compact persistent catalogue of what exists; then move promptly into actual new image creation.
+2. Establish separate local folders under `assets/images/generated/{characters,ships,weapons,costumes,environments,scenes,technology}` outside the Git checkout and outside the original reference folder. These **full-resolution image files themselves** are the deliverable.
+3. Generate and store concept images with available built-in imagegen capabilities (up to 4K as supported), append filename/prompt/model/reference provenance and a basic version/identity index. Images remain useful regardless of whether a future app interface succeeds. Do not overwrite originals, commit raster assets to Git, or incur separate API charges without authorisation.
+4. If creating a valid ABE `project.json` package would delay output, preserve the **conventional image folder structure and metadata manifests now** and integrate later. Do not fabricate incompatible project files or bypass persistence to claim a formal working package exists.
+5. Work through a bounded generation batch, preserve progress and generation queue, and report actual created images. Do not spend this phase debugging panel interfaces, doing regression suites, or implementing Save As/externals; defer those to subsequent tickets.
+
+The author is unavailable for feature testing right now. Codex should use reasonable artistic defaults grounded in the supplied references, flag uncertain canon, and **generate real images** rather than only preparing prompts or plans.
