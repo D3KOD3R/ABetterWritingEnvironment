@@ -6,6 +6,7 @@
 // - Create source wrappers (`ProjectPersistenceService`, `AutosaveCoordinator`, `ProjectLoadGate`, `ProjectSaveGate`, `DesktopFileSystemAdapter`).
 // - Keep log context focused on IDs, file paths, and operation state; avoid dumping full manuscript text.
 import { createProjectFileAutosaveController } from "./autosave.js";
+import { projectReplacementSaveBlocked } from "../../shared/project-transition-error.js";
 import { canonicalizeJsonPersistenceValue } from "./json-persistence-boundary.js";
 import { buildPortableProjectSnapshot } from "./project-portable-snapshot.js";
 import { resolveProjectFileDisplayState } from "./project-file-display.js";
@@ -1717,7 +1718,7 @@ export function createProjectPersistenceService({
   }
 
   // Intent: close the autosave gap before replacing runtime state with a loaded project snapshot.
-  async function preserveActiveProjectBeforeLoad(source = "project-load", { confirmDiscardUnsaved } = {}) {
+  async function preserveActiveProjectBeforeLoad(source = "project-load", { confirmDiscardUnsaved, discardBlockedChanges = false } = {}) {
     commitCanonicalProjectMutation({
       domain: "project",
       dirtyReason: "before-project-load",
@@ -1727,28 +1728,39 @@ export function createProjectPersistenceService({
 
     if (state.projectFileAutosaveDirty !== true) return true;
 
+    // Consent applies to this exact project/revision/destination, never a replacement activated while a prompt is open.
+    async function confirmDiscard() {
+      const projectId = state.activeProjectId;
+      const revision = state.projectFileAutosaveRevision;
+      const filePath = state.projectFilePath;
+      const fileHandle = state.projectFileHandle;
+      const storageMode = state.projectFileStorageMode;
+      if (await confirmDiscardUnsaved() !== true) return false;
+      if (state.activeProjectId !== projectId || state.projectFileAutosaveRevision !== revision
+        || state.projectFilePath !== filePath || state.projectFileHandle !== fileHandle
+        || state.projectFileStorageMode !== storageMode || state.projectFileBusy) {
+        throw new Error("The current project changed while confirming discard. Try creating the new project again.");
+      }
+      // Do not erase recovery data or clear dirty state: failed publication must retain the outgoing project.
+      return true;
+    }
+
     // Browser cache is recovery only. Without explicit discard consent, replacement requires durable saving.
     if (!hasProjectSaveDestination()) {
       if (typeof confirmDiscardUnsaved === "function") {
-        const projectId = state.activeProjectId;
-        const revision = state.projectFileAutosaveRevision;
-        // New Project alone supplies this explicit confirmation. Do not clear dirty state or recovery
-        // content: cancellation or failed publication must leave the old project available unchanged.
-        if (await confirmDiscardUnsaved() !== true) return false;
-        if (state.activeProjectId !== projectId || state.projectFileAutosaveRevision !== revision || hasProjectSaveDestination()) {
-          throw new Error("The current project changed while confirming discard. Try creating the new project again.");
-        }
-        return true;
+        return confirmDiscard();
       }
       throw new Error("The current project has unsaved changes and no durable destination. Use Save As, or explicitly discard the changes, before continuing.");
     }
     if (state.projectFileAutosaveBlocked) {
-      throw new Error("The current project has unsaved changes because its durable save is blocked. Resolve the save, use Save As, or explicitly discard the changes before continuing.");
+      if (discardBlockedChanges === true && typeof confirmDiscardUnsaved === "function") return confirmDiscard();
+      throw projectReplacementSaveBlocked("The current project has unsaved changes because its durable save is blocked. Resolve the save, use Save As, or explicitly discard the changes before continuing.");
     }
 
     await autosaveController.drain();
     if (state.projectFileAutosaveDirty === true || state.projectFileAutosaveBlocked) {
-      throw new Error("The current project could not be durably saved. Resolve the save, use Save As, or explicitly discard the changes before continuing.");
+      if (discardBlockedChanges === true && typeof confirmDiscardUnsaved === "function") return confirmDiscard();
+      throw projectReplacementSaveBlocked("The current project could not be durably saved. Resolve the save, use Save As, or explicitly discard the changes before continuing.");
     }
   }
 
@@ -1807,11 +1819,12 @@ export function createProjectPersistenceService({
     folderName,
     buildCandidateSnapshot,
     confirmDiscardUnsaved,
+    discardBlockedChanges = false,
   } = {}) {
     if (typeof buildCandidateSnapshot !== "function") {
       throw new Error("New Project requires a candidate snapshot builder.");
     }
-    if (await preserveActiveProjectBeforeLoad("create-desktop-project-package", { confirmDiscardUnsaved }) === false) {
+    if (await preserveActiveProjectBeforeLoad("create-desktop-project-package", { confirmDiscardUnsaved, discardBlockedChanges }) === false) {
       return { status: "cancelled" };
     }
     const candidateSnapshot = await buildCandidateSnapshot();

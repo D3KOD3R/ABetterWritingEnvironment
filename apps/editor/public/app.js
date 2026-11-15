@@ -294,6 +294,7 @@ import { createProjectPersistenceService } from "./adapters/storage/project-pers
 import {
   PROJECT_PACKAGE_DIALOG_MODES,
   applyProjectPackageBrowseResult,
+  applyProjectPackageDialogError,
   canConfirmProjectPackageDialog,
   createProjectPackageDialogState,
   renderProjectPackageDialogHTML,
@@ -2432,6 +2433,11 @@ function wireEvents() {
 
     if (action === "confirm-project-package-dialog") {
       void confirmProjectPackageDialog();
+      return;
+    }
+
+    if (action === "discard-and-confirm-project-package-dialog") {
+      void confirmProjectPackageDialog({ discardCurrentProject: true });
       return;
     }
 
@@ -16875,9 +16881,10 @@ function createProject() {
   openProjectPackageDialog(PROJECT_PACKAGE_DIALOG_MODES.NEW);
 }
 
-async function confirmProjectPackageDialog() {
+async function confirmProjectPackageDialog({ discardCurrentProject = false } = {}) {
   const dialog = state.projectPackageDialog;
   if (!dialog || !canConfirmProjectPackageDialog(dialog)) return;
+  if (discardCurrentProject && (dialog.mode !== PROJECT_PACKAGE_DIALOG_MODES.NEW || !dialog.canDiscardCurrentProject)) return;
   state.projectPackageDialog = { ...dialog, busy: true, errorMessage: "" };
   renderProjectPackageDialog();
   try {
@@ -16888,8 +16895,11 @@ async function confirmProjectPackageDialog() {
         parentPath: dialog.locationPath,
         folderName: dialog.folderName,
         buildCandidateSnapshot: () => buildNewProjectCandidateSnapshot(title),
+        discardBlockedChanges: discardCurrentProject,
         // The persistence guard decides when this application confirmation is needed.
         confirmDiscardUnsaved: async () => {
+          // The labelled recovery button is the explicit decision for this attempt only.
+          if (discardCurrentProject) return true;
           unsavedChoice = await confirmProjectDiscard();
           return unsavedChoice === true;
         },
@@ -16922,11 +16932,7 @@ async function confirmProjectPackageDialog() {
     state.projectPackageDialog = null;
     render();
   } catch (error) {
-    state.projectPackageDialog = {
-      ...dialog,
-      busy: false,
-      errorMessage: error instanceof Error ? error.message : String(error),
-    };
+    state.projectPackageDialog = applyProjectPackageDialogError(dialog, error);
     renderProjectPackageDialog();
   }
 }
