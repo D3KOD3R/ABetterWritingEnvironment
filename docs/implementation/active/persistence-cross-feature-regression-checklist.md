@@ -1,7 +1,7 @@
 # Persistence Cross-Feature Regression Checklist
 
 Status: Active manual verification contract
-Date: 2026-09-05
+Date: 2026-11-21
 Branch: `feature/persistence-portability-harness`
 Related authority: `docs/implementation/active/desktop-project-package-lifecycle.md`
 Canonical feature definitions: `features.md`
@@ -69,6 +69,46 @@ When the user confirms `Feature working`, follow `agents/FeatureWorkAgent.md` an
 
 Branch: `feature/persistence-portability-harness`.
 
+Last accepted committed persistence baseline: `0e5ad0ed8bbf53493d0295f466c913c4e6387363`. The 2026-09-14 origin comparison below is historical, not current branch authority. On 2026-11-21 this worktree retains that HEAD with uncommitted integration of the persistence fixes through `df32703e7987423a3f5587d39e44f96d5661d799`, the two remote harness documentation commits through `2b60fe74ce8c5f08cdf40bac305b3b2981db187f`, and corrected fixture expectations. This describes the pre-publication test snapshot; the finalisation below supersedes its Git status.
+
+### Publication contract — 2026-11-21
+
+The publication candidate consolidates the fixes through `df32703e7987423a3f5587d39e44f96d5661d799`, both existing remote documentation commits through `2b60fe74ce8c5f08cdf40bac305b3b2981db187f`, fixture-count repairs and the reusable browser process. The older `integration/persistence-regression-baseline` is historical; `feature/persistence-portability-harness` is the current consolidation source. Already-integrated source histories are recorded as merge parents while retaining the reviewed tree. No manuscript data or generated evidence belongs in publication.
+
+Publication is gated on FULL supervisor, canonical `npm test`, and a fresh clean-HEAD browser campaign (100 history actions, three autosave cycles). Exact committed identity and results are recorded by the worktree-local supervisor reports and external RUN manifests, and reported at handoff. The wider active specifications remain open; bounded Fresh-package acceptance does not close their deferred investigations.
+
+### Pre-publication reliability checks — 2026-11-21
+
+- Initial clean-HEAD supervisor run `20261121T080621-cba4`: **136/138 passed**. Both failures were stale fixture assertions: the tracked active Serva Vitae record contains four chapters and 29 scenes, while the tests expected five and 30. Fixed numeric expectations retain detection of wrong-project/fallback loads; no fixture or product behavior was changed for this repair.
+- Integrated changed/AFFECTED verification escalated to FULL: **138/138 passed**, report `20261121T080853-b3ef`. This tested HEAD `0e5ad0e` plus the captured uncommitted integration/test changes, not an exact committed baseline. Later checklist-only edits record provenance; use the report's change summary/fingerprint for tested-source scope.
+- Separate canonical `npm test`: **138/138 passed**, retained in `.tools/reports/reliability-closeout-canonical-20261121.log`; same executable/test source as the passing supervisor run.
+- Controlled logging smoke RUN `20261121T080954Z-reliability-closeout-logging-smo-add22564` completed against the dirty integration snapshot with source identity unchanged. Evidence remains external under the `reliability-closeout-logging-smoke` CASE. This verifies logging/provenance infrastructure only, not browser or product acceptance.
+- Passing coverage includes real desktop package IO, Recent A -> B -> A, stale-cache rejection, unrelated-project isolation, scene-label retention, and blocked-import discard cancellation/failure/success. These service/host tests do not prove real browser keyboard or restart behavior.
+- `features.md` records author acceptance of blocked-import discard on 2026-11-15. Preserve that narrow historical acceptance; the subsequent integrated browser results are recorded below.
+- The initial browser-connection blocker was resolved by explicitly authorized Playwright automation using installed headless Chrome. See the browser campaign below; no synthetic input dispatch substitutes for native undo/redo.
+
+### Automated browser closeout — 2026-11-21 (Perth)
+
+- Use the **Automated manual test process** in [the regression workspace guide](regression-workspace-logging.md) and `tools/regression-workspace/browser-acceptance.mjs` to repeat this workflow. The scenario is supplementary to supervisor verification; all results below use HEAD `0e5ad0e` plus uncommitted integration/tooling changes, not a new accepted commit.
+- Interactive controlled RUN `20261121T082326Z-reliability-browser-closeout-ee90771d` completed with unchanged source. Fresh A/B Recent and cold restart, 1,000 native insert transactions, 1,000 undo and 1,000 redo operations retained canonical equality; final 5,909-character text matched the durable scene. Blocked-import Cancel retained unsaved edits; explicit discard published the synthetic Scrivener import without overwriting the outgoing durable manuscript. The earlier RUN `20261121T081711Z-reliability-browser-closeout-6888b57e` was interrupted and is partial evidence only.
+- Sustained run `20261121T083517Z-reliability-browser-acceptance-65868403` passed all **50 cycles / 150 autosaves**. Independent inspection confirms every undo changed text and every redo restored it. The campaign then failed a driver-only checkpoint that incorrectly required a transient autosave target after a clean save; the campaign as a whole is not a pass. All three linked RUN manifests completed with unchanged source. The driver now distinguishes clean state from an in-flight target.
+- End-to-end rerun ending at `20261121T153449Z-reliability-browser-acceptance-5fd1cd60` passed native undo/redo, cold restart after undo, redo/restart, Fresh A/B Recent switching, 100 history actions, three autosave cycles, project-switch lifetime boundaries, browser refresh and blocked-import cancellation/explicit discard. Its `manual-test-results/browser-acceptance.json` links all phase manifests and records their source checks.
+- Final runner validation ending at `20261121T153756Z-reliability-browser-acceptance-b27ebe1f` passed the end-to-end scenario with one cycle after strengthening assertions for transient clean targets, text-changing undo, source-identity completion, SHA-256 text evidence and imported-package disk verification. All three linked RUNs completed with unchanged source; exact invocation/counts are available in the runner and result. This short validation supplements, rather than replaces, the retained 50-cycle evidence.
+- Final changed/AFFECTED supervisor run escalated to FULL: **138/138 passed**, report `20261121T153918-030b`. Separate canonical `npm test`: **138/138 passed**, log `.tools/reports/reliability-browser-closeout-canonical-20261121.log`. Both ran after browser shutdown; later checklist-only recording does not change executable/test source.
+- These are Fresh-package results. Legacy/pre-fix cohorts, native Windows picker UX, renderer/process-memory characterization, 100-cycle escalation and anchor-specific cross-feature checks are not accepted by this campaign. Do not mark the entire persistence sweep or full undo/redo characterization complete. No product durability defect was reproduced in these bounded browser checks.
+
+### Accepted save-persistence / New Project integration — recorded 2026-09-14
+
+- Integrated through `0e5ad0e`: bootstrap seed content is separate from legacy-file authority (`8dd5e4c`); destinationless New Project has an explicit discard barrier (`e996ae1`), an application-owned confirmation (`3e1d810`), and a Save As choice (`0e5ad0e`).
+- Prior manual acceptance on this same code, in `fix/default-seed-legacy-project-save`: **Cancel, Save As, and explicit Discard passed**. Cancel retained the current content and filled creation form. Save As published/verified the current package before activation; New Project subsequently created an independent package. Saved edits and healthy autosave survived explicit reopen; explicit Discard created the intended empty package. This acceptance is carried forward, not rerun today.
+- Evidence: external workspace `ABE-Workspace/manual-product-acceptance/20260912T132531Z-save-as-choice/evidence/` captures `cancel-pass-20260912T133311Z`, `save-as-pass-20260912T133450Z`, `reopen-pass-20260912T134705Z`, and `new-project-reopen-pass-20260912T135059Z`; explicit Discard is under `20260912T135205Z-explicit-discard/evidence/discard-pass-20260912T135618Z`. Captures record clean Git status, unchanged source-fixture SHA-256 `F727282142BDA6F5C66E5CB60210D3E6ACCF9B8511E4101361DCE457FD6C0C8B`, and no unintended source-tree package. The earlier autosave marker checkpoint was provisional; the later user-confirmed reopen captures establish acceptance.
+- Earlier Browse / Failed-to-fetch observations no longer reproduce in the accepted run (user-provided campaign handoff); they are not presently classified as an active product defect. This does **not** close the full `8.2d` dialog scope.
+- Fresh focused supervisor verification on `0e5ad0e`, in `recent-project-activation-regression`: **5/5 passed**, no FULL escalation. Reports under that worktree's `.tools/reports/<id>/report.json`: `project-default-seed-legacy-save` (`20260914T014802-f189`), `project-persistence-service` (`20260914T014803-0dc3`), `project-package-lifecycle` (`20260914T014806-0c11`), `project-library-state` (`20260914T014807-892f`), and `project-activation-controller` (`20260914T014809-311f`). No full-suite or repeated New Project manual acceptance was performed.
+- Current `8.2e` status: **Fixed - needs recheck** on `test/recent-project-activation-regression`. The activation-boundary fix and automated regression follow the Fresh failure on tested SHA `579e69fc526e9e6bcfa442fa3f8f87825a6ba280`, CASE `recent-project-activation`, RUN `20260914T015023Z-recent-project-activation-d02b3c2d`. That failure remains recorded below; a fresh manual A -> B -> A run is pending.
+- `8.2` remains unresolved; `8.2d` retains its broader recheck, and `8.3` remains Unchecked. The first Fresh failure stops the sequence, restart, post-activation Save and Legacy/pre-fix cohort. No migration campaign or lazy-hydration work is included.
+
+### Historical application baseline
+
 Previously tested persistence code baseline: `d9f74e627446280af020b33e919f5715d8a7735b`. This commit contains the accepted Scrivener history and integrated untitled-scene, single-scene deletion and binder drag/drop fixes, including test registration. The separate documentation-only commit recording this baseline is not the tested code SHA. The user manually accepted the Scrivener workflow; Feature `8.6` remains Rechecked.
 
 - Automated verification: focused editor-model, untitled-scene, binder, single-scene deletion, registration and persistence/package checks pass. Full repository supervisor **132/134 passed, 2 failed**; separate `npm test` **132/134 passed, 2 failed**. All four newly integrated regression tests execute in both full runs. Supervisor verification was repeated on the committed code baseline.
@@ -97,25 +137,27 @@ Known manual failures at the start of this sweep:
 | --- | --- | --- | --- |
 | `1.6b` Scene drag/drop reorder | P0 | **Fixed - needs recheck** | Movable draft/portable scene drop targets are integrated and automated coverage passes; manual GUI recheck is pending. |
 | `8.6` Scrivener project import | P0 | **Rechecked** | Historical regression: source selection/conversion worked, but activation lacked folder-package authority, reported `No package selected`, could download `.abe-project.json` and block New Project. Rechecked: transactional package creation and activation after verification work; immediate Save/autosave, scene metadata/comments and source-path portability are fixed; repeated same-source imports have independent ABE IDs. |
-| `8.2e` Recent-project activation | P0 | **Broken** | After using a Scrivener-backed package and creating a correct blank package, selecting an older normal project from Recent Projects appears to use the wrong physical path and displays the Scrivener-backed manuscript/folder structure. General activation/path regression; root cause undetermined. |
-| `8.2d` Package dialog workflow | P0 | Needs recheck | Recent manual testing found weak/incorrect dialog presentation and path/browse interaction; later persistence commits changed this area, so recheck before closing it. |
+| `8.2e` Recent-project activation | P0 | **Fixed - needs recheck** (2026-09-14) | Activation now switches identity/content/destination before incoming persistence callbacks and keeps outgoing callbacks under the outgoing project. Automated A -> B -> A and Open A from B coverage passes; fresh manual acceptance is pending. |
+| `8.2d` Package dialog workflow | P0 | Needs recheck | New Project Cancel / Save As / explicit Discard are accepted. Earlier Browse / Failed-to-fetch observations no longer reproduce; the remaining full dialog scope is not closed. |
+| `8.4` / `1.10` Manuscript undo/redo autosave durability | P0 | **Unchecked (staged CASE)** | Code review found a possible browser-host boundary where Ctrl+Z/Ctrl+Y depends on browser input events to re-enter canonical state/autosave. No defect is claimed yet. Run the dedicated `manuscript-undo-redo-autosave-durability` CASE before broader autosave/formatting acceptance. |
 
 ## Recommended manual execution order
 
 Run the next sweep by potential impact while retaining the canonical feature matrix order below:
 
 1. `8.2` Project package lifecycle / recent-project activation
-2. `8.3` Disposable browser cache policy
-3. `8.4` Autosave and dirty-state control
-4. `8.5` Project metrics
-5. `1.6` Binder scene/chapter management
-6. `1.2` Context-aware scene insertion
-7. `1.5` Tasks/notes/custom metadata
-8. `6.3` World Spine
-9. `1.10` Inline formatting
-10. `1.9` Revisions
-11. Narration / project-owned assets
-12. Remaining P1/P2 workflows
+2. `8.4` focused CASE â€” manuscript undo/redo autosave durability
+3. `8.3` Disposable browser cache policy
+4. `8.4` remaining autosave and dirty-state control
+5. `8.5` Project metrics
+6. `1.6` Binder scene/chapter management
+7. `1.2` Context-aware scene insertion
+8. `1.5` Tasks/notes/custom metadata
+9. `6.3` World Spine
+10. `1.10` Inline formatting / app-owned decoration history
+11. `1.9` Revisions
+12. Narration / project-owned assets
+13. Remaining P1/P2 workflows
 
 Normally record a discovered regression and continue testing unrelated features. Repair before continuing when the defect risks data loss or invalidates later test results; every bug need not be repaired immediately.
 
@@ -372,7 +414,7 @@ Coverage: `7.3a-7.3e`. Confirm suggestion cards/labels/evidence plus durable Wor
 
 Coverage: `8.1a-8.1d`. Load supported source/legacy project input, verify provenance, hierarchy and project metrics, and keep the source untouched. Scrivener-specific acceptance is gated by `8.6`.
 
-### 8.2 Project persistence service boundary / package lifecycle — P0 — `Broken` because `8.2e` fails
+### 8.2 Project persistence service boundary / package lifecycle — P0 — `Fixed - needs recheck` (`8.2e`; broader scope unresolved)
 
 Coverage: `8.2a-8.2i`.
 
@@ -380,9 +422,68 @@ Manual focus: New/Open/Save/Save As, read-only active location, recent-project a
 
 Required authority sequence: Project A active -> attempt/fail Save As B -> A must remain authoritative -> normal Save must still target A. Successful Save As B -> B becomes authoritative only after verified commit. New/Open transitions must refuse unsafe dirty/cache-only replacement where required.
 
-Regression 2026-09-05 — `8.2e` Recent Projects
+#### Fresh manual round trip — 2026-09-15 (Perth) — `8.2e` — **Fixed - needs recheck / P0**
 
-- Status: Broken — P0
+- Tested `test/recent-project-activation-regression` at `95ab204c22a6b96f250f714d3a3ac7342e0b46f1`, CASE `recent-project-activation`, fresh RUN `20260914T131026Z-recent-project-activation-0108afdb`. Both packages were created and saved through normal UI on this build, using a fresh browser profile. The author completed Recent A -> B -> A; the read-only observer captured both switches and subsequent saves.
+- **This round trip passed:** B and A each loaded from the intended durable package with matching logical identity, project title, chapter, scene, manuscript, path and desktop-package mode. Both Recent records remained present throughout. B's autosave wrote `location-b/RECENT B`; after the return, A's autosave wrote `location-a/RECENT A`. Package inventories prove A was byte-for-byte unchanged across B's autosave and B was byte-for-byte unchanged across A's final autosave. Outgoing saves completed against their own destinations before each activation.
+- The author did not append `B CHECK`; B's actual autosave is nevertheless present in the runtime log. The author subsequently appended `A CHECK`, which was verified in A's authoritative scene file at `17:40:07Z` UTC. Both chapter labels (`A CHAPTER`, `B CHAPTER`) and scene labels survived; A retained ALPHA and B retained BRAVO. The source fixture hash remained unchanged.
+- Evidence: this RUN's `manual-test-results/2026-09-14T17-41-10-821Z-round-trip-assessment.json`, `manual-observer.jsonl`, referenced screenshot/storage/package captures, and runtime events. The first B-switch observer poll read the log before the new prime arrived; the timestamped runtime stream confirms B's matching prime/load. The observer's cached `lastPrime` field alone is not an activation-state measurement.
+- RUN closed with exit 0 and `sourceIdentityUnchanged: true`; the dedicated browser and observer were stopped. At that checkpoint the restart/reopen switch had not yet been exercised; the later restart assessment below supersedes that limitation without granting full acceptance. Keep **Fixed - needs recheck**. Broader 8.2 remains unresolved and 8.3 remains Unchecked. No integration or push was performed.
+
+#### Later restart assessment — 2026-09-15 (Perth), reconciled 2026-11-21
+
+RUN `20260914T174656Z-recent-project-activation-c60ab31c` used clean `94908e8c5447cd98691a4d20902f8d61c1a3bb3c` and completed with unchanged source. Its `manual-test-results/restart-assessment.json` records surviving Recent entries, correct A/B identities, manuscript and autosave destinations, retained `A CHECK`, and no writes into the non-selected package. Authoritative scene content remained semantically unchanged. The assessment stopped for review of whole-package hash changes caused by outgoing saves, new generation references and metadata; it did not identify an identity/content/destination mismatch. This is historical evidence, not acceptance of today's integrated source. Keep **Fixed - needs recheck** until a fresh integrated run records its verdict.
+
+#### Activation-boundary fix — 2026-09-14 — `8.2e` — **Fixed - needs recheck / P0**
+
+Follow-up on `77419f6a7b5613311dffbcd55fa39861355641e2`, CASE `recent-project-activation`, RUN `20260914T070005Z-recent-project-activation-e524f1dc`:
+
+- A -> B selected B's ID, BRAVO manuscript, B SCENE, location and primed autosave destination correctly; package hashes were unchanged at the activation capture. B's later autosave wrote B's folder correctly, but A disappeared from both the menu and stored library. A's physical package remained unchanged. B -> A could not be executed, so **8.2e is not passed**.
+- First destructive code boundary: `persistProjectSnapshotToBrowserCache` passed a one-project save snapshot to `saveProjectLibrarySnapshot`; the repository removed omitted projects' chunks, wrote a B-only manifest, and persistence assigned that result to the runtime library. The preserved capture at `07:10:11Z` still contains A/B; autosave at `07:13:36Z` precedes the B-only capture at `07:15:00Z`. A real-repository regression reproduces the loss on `77419f6`.
+- The hypothesis that Recent already reloaded a package is disproved: that handler activated its cached record synchronously. Thus “disk loaded before activation” was not a boundary in that manual click. Hydration/activation/compatibility persistence retained A in the captured result; the first subsequent full-library save-cache replacement removed it. Explicit Open separately used `replaceExistingCache: true`, which cleared the entire registry; ordinary `saveProject` upserted into the supplied library and was not itself a one-project replacement.
+- Follow-up implementation: Recent uses the persistence service's authoritative disk load and existing activation boundary. New/Open/Save cache updates use `upsertProjectSnapshot`, retaining unrelated manifests/chunks while replacing only incoming project caches, including orphan chunks. Existing explicit whole-library replacement semantics remain available. Blank incoming scenes and failed cache writes must not rehydrate old selected-project bodies.
+- Chapter root cause: the real rename updates workspace and structure metadata, but repository manifest construction favored an old chapter label in the hydrated scene chunk. That label rebuilt the structure/index and rendered as “Untitled chapter” after activation. The repository now applies workspace/structure placement and titles after body merging; focused coverage reproduces and fixes rename -> save -> reload projection. This was not solely inconsistent test setup.
+- Evidence remains in the completed RUN above: `manual-test-results/recent-a-to-b-checked.json`, `recent-a-missing-after-b-autosave.json`, referenced captures and runtime logs. Host shutdown reports source unchanged and exit 0; lifecycle completion does not imply acceptance. A fresh run is required for the follow-up; keep **Fixed - needs recheck**, broader 8.2 unresolved, 8.3 Unchecked.
+- Follow-up automated verification: focused storage/service/activation/default-seed/package/library/refresh tests **8/8 passed** (reports `20260914T125609-e4b9`, `125611-036f`, `125613-7457`, `125614-0338`, `125617-94de`, `125620-5fd0`, `125622-84ec`, `125624-63c3`; all date prefixes 20260914T). Expanded missing/mismatched-destination package coverage passed in `20260914T125853-1e92`. Changed/AFFECTED escalated to FULL: final report `20260914T130054-cb58`, **136/138 passed**. Canonical `npm test` has the same two `4 !== 5` fixture failures (`desktop-application`, `project-source`): **baseline-equivalent, not fully passing**. The obsolete shell-only Recent assertion was updated to require persistence delegation; fixture assertions remain unchanged.
+- Preparation on local follow-up `9b24bd5`, RUN `20260914T130134Z-recent-project-activation-01e8eb5b`, stopped before author acceptance: opening fresh A exposed scene-title precedence that was too broad. The correction follows the actual editor projection: workspace/structure owns chapter placement/title, while scene drafts own scene title/synopsis. Expanded rename coverage fails on that intermediate commit, then passes in `20260914T130516-61a7`; physical package coverage passes in `20260914T130518-b923`. The intermediate run and its `setup-reopen-scene-title-failure` capture are retained; neither intermediate run is acceptance evidence for the final correction.
+- Final metadata correction validation: changed/AFFECTED escalated to FULL, report `20260914T130557-cb54`, **136/138 passed**; canonical `npm test` agrees. Both remaining failures are the established `desktop-application` and `project-source` chapter-count assertions (`4 !== 5`). This is baseline-equivalent; manual acceptance remains pending.
+
+- Owners: `state/project-activation-state.js` installs target identity/content/path/handle synchronously; `state/project-activation-controller.js` finishes outgoing callbacks before that handoff; `ProjectPersistenceService` passes loaded destinations through activation before publishing their machine/cache references. Recent Projects keeps its existing workflow.
+- Regression: real activation and persistence services cover A -> B -> A content, destination, and autosave target at persistence/render callbacks, plus Open A from B followed by the round trip. The original implementation fails the new test with B identity/A path; changing state hydration alone still fails the Open prerequisite with mismatched identity/content.
+- Focused supervisor checks: **7/7 passed**. Worktree-local reports: activation state `20260914T065331-e438`, activation controller `20260914T065333-03c4`, persistence service `20260914T065335-a44e`, default seed/legacy save `20260914T065337-fe3d`, package lifecycle `20260914T065341-1e01`, file storage adapters `20260914T065343-8664`, refresh persistence `20260914T065345-8054`.
+- Required changed/AFFECTED selection escalated to FULL for editor-shell wiring and focused-test edits: **136/138 passed**, report `20260914T065833-6e57`. Canonical `npm test` confirms the same two existing fixture failures: `desktop-application.test.mjs:1691` and `project-source.test.mjs:29`, each expecting 5 chapters but receiving 4. No unrelated fixture repair is included.
+- Manual verdict remains pending. Use a new controller RUN, fresh browser profile, and newly created A/B packages; record exact committed source and check both content and destination/autosave for A -> B -> A. Do not reuse the failed RUN or treat its completion status as acceptance. The accepted persistence baseline remains unchanged.
+
+#### Reproduced failure — 2026-09-14 — `8.2e` Recent Projects — **Broken / P0**
+
+- Tested branch / exact SHA: `test/recent-project-activation-regression` / `579e69fc526e9e6bcfa442fa3f8f87825a6ba280`, directly based on accepted persistence `0e5ad0ed8bbf53493d0295f466c913c4e6387363`. The intervening commit changes only this checklist; product/test source is identical. Source worktree: linked worktree `recent-project-activation-regression`.
+- CASE / RUN: `recent-project-activation` / `20260914T015023Z-recent-project-activation-d02b3c2d`. Controller launched from that worktree, requested port `0`, bound `60478`; host PID `2612`. Manifest and log session agree on worktree, cwd, SHA and all six requested logging gates.
+- Cohort: **Fresh**. Both packages were created through New Project on this exact host/build and durably verified before the Recent click. A was created in another author browser session after the chat link was opened. B creation, Open A from B, and the decisive manual Recent B click were captured in the dedicated fresh Chrome profile. The separate profile's bootstrap initially blocked Open through the existing destinationless guard; this setup observation is preserved separately, and no guard was bypassed.
+
+Package roots below are relative to `ABE-Workspace/sandboxes/recent-project-activation/20260914T015023Z-recent-project-activation-d02b3c2d/project-locations/` (external to all source worktrees).
+
+| Package | Title / identity | Physical package root | Verified structure / manuscript |
+| --- | --- | --- | --- |
+| A | `RECENT A` / `project-da394454-3e70-4a76-b4de-0614110511f2` | `location-a/RECENT A` | `A CHAPTER`, `A SCENE`; `ALPHA: the red lighthouse belongs only to RECENT A.` |
+| B | `RECENT B` / `project-11f96774-c739-4176-8db8-31e29be0a061` | `location-b/RECENT B` | `B CHAPTER`, `B SCENE`; `BRAVO: the blue observatory belongs only to RECENT B.` |
+
+Reproduction and observed authority:
+
+1. Save B: its UI, active ID, recent record, package index and referenced scene body agree on B and `location-b/RECENT B`; normal Save/autosave succeed. A's files remain unchanged during B creation.
+2. Open the already saved A through the normal Open Project dialog from B. A activates correctly. Before any Recent click, B's library record `projectSettings.projectFilePath` and RECENT B row have changed from B's root to `location-a/RECENT A`, while B's title/ID remain B.
+3. Author clicks **RECENT B** and reports BRAVO. Capture confirms B's active ID/title, `B CHAPTER`, `B SCENE`, and BRAVO; Project location is **A's root**. At `2026-09-14T02:18:03.251Z`, `autosave.prime` explicitly pairs B's ID with A's root. `project.load.begin` (`02:18:03.222Z`) and `project.load.completed` (`02:18:03.257Z`) both identify B.
+
+- Result: the required A -> B -> A sequence **fails at A -> B on package authority**. Matching text alone does not pass `8.2e`; B has the wrong durable destination. The wrong-manuscript variant was not observed at this checkpoint, and the failure is not limited to legacy records.
+- Save after Recent activation: **not executed after the failure**. Wrong autosave authority is directly observed; neither package's files changed across the failing click. No actual overwrite is claimed. B -> A, complete restart/reopen and Legacy/pre-fix are not run because Fresh failed; they remain follow-up checks after a focused repair.
+- Narrow likely ownership boundary (static lead, no repair): `ProjectPersistenceService.hydrateProjectLibraryFromLoadedSnapshot` adopts loaded active ID/destination before `activateLoadedProjectRecord` (`project-persistence-service.js:2015`, `:2035`, `:2052`). `ProjectActivationController.applyProjectRecord` invokes the outgoing `saveWritingTargetState` before replacing workspace state (`project-activation-controller.js:138`). A persistence callback across that partially adopted transition can combine outgoing B state with incoming A destination. The observed B record changes during Open A; the subsequent `loadSelectedProject` restores its already-wrong record path and primes autosave (`app.js:16769`, `:16811`). Confirm this callback ordering in the focused fix; preserve the transactional publication and transition guards.
+- Evidence root: `ABE-Workspace/regression-evidence/ABetterNovelAuthoringEnvironment/recent-project-activation-regression/recent-project-activation/20260914T015023Z-recent-project-activation-d02b3c2d/`. Provenance: `run-manifest.json`, `runtime-logs/log-session.json`; existing events: `runtime-logs/desktop.log` and `developer-runtime-session-0001-2026-09-14T01-50-54-594Z.txt`. Local evidence only; `source-changes.json` was not uploaded.
+- Checkpoint evidence under `manual-test-results/`: `a-saved-inspection.json`, `b-saved-inspection.json`, `fresh-recent-b-row-path-mismatch.json`, `fresh-8.2e-broken.json`; captures `2026-09-14T02-15-24-200Z-b-saved-identity`, `2026-09-14T02-15-57-161Z-fresh-a-starting-recent-sequence`, and `2026-09-14T02-18-33-535Z-recent-a-to-b-author-click` retain screenshots, DOM/library records, package copies/hashes and logs. `a-reopen-and-b-preparation.json` explains the earlier browser-session mismatch; attempted capture names do not establish acceptance.
+- Shutdown: controller completed at `2026-09-14T02:20:17.773Z`, exit `0`, `sourceIdentityUnchanged: true`; this is lifecycle completion, **not** regression acceptance. The owned host and dedicated Chrome are stopped. The source fixture retains SHA-256 `F727282142BDA6F5C66E5CB60210D3E6ACCF9B8511E4101361DCE457FD6C0C8B`; no unintended source-tree package was created. No product behavior, safety guard, main checkout, or prior branch was changed.
+- Follow-up: a focused Open/activation destination-ownership repair, then a new RUN for Fresh A -> B -> A, restart and Save targeting. Keep Legacy/pre-fix separate. Do not advance `8.3`, migration or lazy-loading work from this result.
+
+#### Historical observation — 2026-09-05 — `8.2e` Recent Projects
+
+- Status: Broken — P0 (historical mixed-cohort observation; the current Fresh path-authority reproduction is recorded above).
 - Test build: user-reported current implementation, `wip/persistence-project-transition-isolation` / `72527bfec2b7d7f731270407178c986279f77a73`; cold-start and record the actual build for the next reproduction.
 - Package cohort: Fresh blank package plus older normal package (Legacy/pre-fix; originating build not recorded).
 - Automated coverage: existing `test/project-persistence-service.test.mjs` and `test/project-library-state.test.mjs` cover related boundaries; no automated reproduction of this observed GUI failure is established.
@@ -406,6 +507,20 @@ Manual focus: open A, edit/save; open B; refresh; return to A. No scene body, ta
 Coverage: `8.4a-8.4g`.
 
 Manual focus: normal autosave, failed/blocked write, out-of-sync cause display, no retry loop, metadata-only scene mutation without body collapse, atomic generation/manifest swap, edits arriving while a save is in flight, and transition drain. Dirty state must clear only after durable verified success.
+
+#### Focused staged CASE â€” manuscript undo/redo autosave durability â€” P0 â€” `Unchecked`
+
+CASE: `manuscript-undo-redo-autosave-durability`.
+
+Detailed execution contract: [Manuscript Undo/Redo Autosave Durability Regression](manuscript-undo-redo-autosave-regression.md).
+
+Code review identified a possible boundary risk, not a confirmed defect: ordinary manuscript text Ctrl+Z/Ctrl+Y currently falls back to browser-owned text history, while ABE durability depends on the resulting text re-entering the manuscript input/canonical mutation path. The focused CASE must prove visible editor text, canonical scene text, autosave dirty/revision state, durable package text and restart/reopen text converge after undo and redo.
+
+Run this CASE in stages rather than immediately combining 1,000 saves with 1,000 undo/redo operations. First prove one edit/autosave/undo/autosave/restart and redo equivalent; then measure browser history depth/grouping and memory without per-action saves; then stress repeated edit/save/undo/save/redo/save cycles; then measure editor-host rerender, scene-switch and refresh boundaries. Keep package-generation/hash churn separate from browser-history measurements.
+
+Cross-feature observations belong to their owners: `1.10` app-owned decoration history does not prove ordinary text undo durability; `1.11` anchors, `1.9` revisions and `1.8` writing metrics must remain consistent with the final canonical manuscript.
+
+Priority ordering: after the active `8.2` package-authority/recent-project blocker, run this focused CASE before `8.3` and before the remainder of `8.4`. A reproduced visible/canonical/durable mismatch could invalidate later persistence regression evidence.
 
 ### 8.5 Project metrics derivation — P0 — `Unchecked`
 

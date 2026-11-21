@@ -1523,13 +1523,12 @@ export async function runDesktopApplicationTest() {
   assert.match(styles.body, /\.project-recent-menu__item/);
   const loadSelectedProjectBody = appScript.body.slice(
     appScript.body.indexOf("function loadSelectedProject"),
-    appScript.body.indexOf("// Intent: expose project-file labels"),
+    appScript.body.indexOf("function getSuggestedProjectFileName"),
   );
   assert.match(loadSelectedProjectBody, /function loadSelectedProject\(requestedProjectId = null\)/);
-  assert.ok(
-    loadSelectedProjectBody.indexOf("const selectedProjectId") < loadSelectedProjectBody.indexOf("persistCurrentProjectRecord"),
-  );
-  assert.match(loadSelectedProjectBody, /state\.projectLibrarySelectionId = selectedProjectId/);
+  // Recent commands must enter the same persistence-owned disk-load/save barrier as Open.
+  assert.match(loadSelectedProjectBody, /await projectPersistenceService\.activateRecentProject\(projectId\)/);
+  assert.doesNotMatch(loadSelectedProjectBody, /activateProjectRecord\(/);
   assert.match(styles.body, /--dark-selected-inner-bg: var\(--theme-control\)/);
   assert.match(styles.body, /--dark-selected-edge-shadow:/);
   assert.match(
@@ -1688,8 +1687,9 @@ export async function runDesktopApplicationTest() {
     ?? importedProjectLibrary.projects[0];
   assert.equal(importedProjectLibrary.projects.length >= 1, true);
   assert.equal(importedProject.source, "project-file");
-  assert.equal(importedProject.workspace.project.stats.chapterCount, 5);
-  assert.equal(importedProject.workspace.project.stats.sceneCount, 30);
+  // Match the tracked save fixture, not the older five-chapter/30-scene snapshot.
+  assert.equal(importedProject.workspace.project.stats.chapterCount, 4);
+  assert.equal(importedProject.workspace.project.stats.sceneCount, 29);
   assert.equal(importedProject.workspace.world.templates.length, 7);
 
   const projectLibraryCors = await createDesktopResponseForRequest({

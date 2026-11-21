@@ -6,6 +6,7 @@
 // - Create source wrappers (`ProjectPersistenceService`, `AutosaveCoordinator`, `ProjectLoadGate`, `ProjectSaveGate`, `DesktopFileSystemAdapter`).
 // - Keep log context focused on IDs, file paths, and operation state; avoid dumping full manuscript text.
 import { createProjectFileAutosaveController } from "./autosave.js";
+import { projectReplacementSaveBlocked } from "../../shared/project-transition-error.js";
 import { canonicalizeJsonPersistenceValue } from "./json-persistence-boundary.js";
 import { buildPortableProjectSnapshot } from "./project-portable-snapshot.js";
 import { resolveProjectFileDisplayState } from "./project-file-display.js";
@@ -1233,7 +1234,7 @@ export function createProjectPersistenceService({
   function persistProjectSnapshotToBrowserCache(snapshot, context = {}) {
     try {
       const snapshotProjects = Array.isArray(snapshot?.projects) ? snapshot.projects.filter(Boolean) : [];
-      const persistedLibrary = projectService.saveProjectLibrarySnapshot({
+      const persistedLibrary = projectService.upsertProjectSnapshot({
         schemaVersion: snapshot?.schemaVersion ?? projectSchemaVersion,
         activeProjectId: snapshot?.activeProjectId ?? snapshotProjects[0]?.id ?? state.activeProjectId ?? null,
         projects: snapshotProjects,
@@ -1717,7 +1718,7 @@ export function createProjectPersistenceService({
   }
 
   // Intent: close the autosave gap before replacing runtime state with a loaded project snapshot.
-  async function preserveActiveProjectBeforeLoad(source = "project-load", { confirmDiscardUnsaved } = {}) {
+  async function preserveActiveProjectBeforeLoad(source = "project-load", { confirmDiscardUnsaved, discardBlockedChanges = false } = {}) {
     commitCanonicalProjectMutation({
       domain: "project",
       dirtyReason: "before-project-load",
@@ -1727,28 +1728,39 @@ export function createProjectPersistenceService({
 
     if (state.projectFileAutosaveDirty !== true) return true;
 
+    // Consent applies to this exact project/revision/destination, never a replacement activated while a prompt is open.
+    async function confirmDiscard() {
+      const projectId = state.activeProjectId;
+      const revision = state.projectFileAutosaveRevision;
+      const filePath = state.projectFilePath;
+      const fileHandle = state.projectFileHandle;
+      const storageMode = state.projectFileStorageMode;
+      if (await confirmDiscardUnsaved() !== true) return false;
+      if (state.activeProjectId !== projectId || state.projectFileAutosaveRevision !== revision
+        || state.projectFilePath !== filePath || state.projectFileHandle !== fileHandle
+        || state.projectFileStorageMode !== storageMode || state.projectFileBusy) {
+        throw new Error("The current project changed while confirming discard. Try creating the new project again.");
+      }
+      // Do not erase recovery data or clear dirty state: failed publication must retain the outgoing project.
+      return true;
+    }
+
     // Browser cache is recovery only. Without explicit discard consent, replacement requires durable saving.
     if (!hasProjectSaveDestination()) {
       if (typeof confirmDiscardUnsaved === "function") {
-        const projectId = state.activeProjectId;
-        const revision = state.projectFileAutosaveRevision;
-        // New Project alone supplies this explicit confirmation. Do not clear dirty state or recovery
-        // content: cancellation or failed publication must leave the old project available unchanged.
-        if (await confirmDiscardUnsaved() !== true) return false;
-        if (state.activeProjectId !== projectId || state.projectFileAutosaveRevision !== revision || hasProjectSaveDestination()) {
-          throw new Error("The current project changed while confirming discard. Try creating the new project again.");
-        }
-        return true;
+        return confirmDiscard();
       }
       throw new Error("The current project has unsaved changes and no durable destination. Use Save As, or explicitly discard the changes, before continuing.");
     }
     if (state.projectFileAutosaveBlocked) {
-      throw new Error("The current project has unsaved changes because its durable save is blocked. Resolve the save, use Save As, or explicitly discard the changes before continuing.");
+      if (discardBlockedChanges === true && typeof confirmDiscardUnsaved === "function") return confirmDiscard();
+      throw projectReplacementSaveBlocked("The current project has unsaved changes because its durable save is blocked. Resolve the save, use Save As, or explicitly discard the changes before continuing.");
     }
 
     await autosaveController.drain();
     if (state.projectFileAutosaveDirty === true || state.projectFileAutosaveBlocked) {
-      throw new Error("The current project could not be durably saved. Resolve the save, use Save As, or explicitly discard the changes before continuing.");
+      if (discardBlockedChanges === true && typeof confirmDiscardUnsaved === "function") return confirmDiscard();
+      throw projectReplacementSaveBlocked("The current project could not be durably saved. Resolve the save, use Save As, or explicitly discard the changes before continuing.");
     }
   }
 
@@ -1807,11 +1819,12 @@ export function createProjectPersistenceService({
     folderName,
     buildCandidateSnapshot,
     confirmDiscardUnsaved,
+    discardBlockedChanges = false,
   } = {}) {
     if (typeof buildCandidateSnapshot !== "function") {
       throw new Error("New Project requires a candidate snapshot builder.");
     }
-    if (await preserveActiveProjectBeforeLoad("create-desktop-project-package", { confirmDiscardUnsaved }) === false) {
+    if (await preserveActiveProjectBeforeLoad("create-desktop-project-package", { confirmDiscardUnsaved, discardBlockedChanges }) === false) {
       return { status: "cancelled" };
     }
     const candidateSnapshot = await buildCandidateSnapshot();
@@ -1848,6 +1861,61 @@ export function createProjectPersistenceService({
       renderHeader();
       throw error;
     } finally {
+      state.projectFileBusy = false;
+      renderHeader();
+    }
+  }
+
+  let recentActivationPending = false;
+
+  // A Recent row selects a destination, not cached manuscript authority. Capture it before
+  // draining the outgoing project, then use the normal authoritative load/activation boundary.
+  async function activateRecentProject(projectId) {
+    const record = state.projectLibrary.find(project => project.id === projectId);
+    if (!record) throw new Error("The selected Recent project is no longer available.");
+    if (recentActivationPending || state.projectFileBusy) throw new Error("A project operation is already in progress.");
+    const destination = normalizeProjectFilePath(getProjectRecordFilePath(record));
+    recentActivationPending = true;
+    try {
+      await preserveActiveProjectBeforeLoad("recent-project");
+      let snapshot, mode = "", fileHandle = null;
+      if (hasProjectFilePath(destination)) {
+        try {
+          snapshot = (await loadProjectPackageFromDesktop({ rootPath: destination }, { fetchJsonFromDesktopApi })).snapshot;
+          mode = "desktop-package";
+        } catch (error) {
+          // Only a host-confirmed non-directory may use legacy file semantics. Missing or
+          // invalid packages must fail instead of substituting cached content or guessing by suffix.
+          if (!/Project package root must be a real directory/.test(toErrorMessage(error))) throw error;
+          snapshot = await readProjectLibraryFromDesktopPath(destination, { fetchJsonFromDesktopApi });
+          mode = "desktop-path";
+        }
+      } else if (destination) {
+        const reference = await loadProjectFileHandleReference({ windowRef, projectId: record.id });
+        fileHandle = reference?.fileHandle;
+        if (!fileHandle) throw new Error("This Recent file needs to be selected again with Open Project.");
+        snapshot = await readProjectLibraryFromBrowserHandle(fileHandle);
+        mode = "browser-handle";
+      } else {
+        // Unsaved/cache-only projects retain their existing recovery workflow.
+        activateLoadedProjectRecord({ projectRecord: record, reason: "recent-project" });
+        primeProjectAutosaveTarget();
+        return;
+      }
+      const loadedId = snapshot?.activeProjectId ?? snapshot?.projects?.[0]?.id;
+      if (loadedId !== record.id) throw new Error("The selected Recent destination contains a different project.");
+      await preserveActiveProjectBeforeLoad("recent-project-loaded");
+      state.projectFileBusy = true;
+      await hydrateProjectLibraryFromLoadedSnapshot(snapshot, {
+        filePath: hasProjectFilePath(destination) ? destination : "",
+        fileName: fileHandle ? destination : "", fileHandle, mode,
+        preserveProjectIdentity: true, reason: "recent-project", sourceLabel: "Recent project",
+      });
+    } catch (error) {
+      state.projectFileStatus = `Recent project could not be opened: ${toErrorMessage(error)}`;
+      throw error;
+    } finally {
+      recentActivationPending = false;
       state.projectFileBusy = false;
       renderHeader();
     }
@@ -2003,20 +2071,16 @@ export function createProjectPersistenceService({
         mode: options.mode ?? "unknown",
       });
     }
-    const persistedLibrary = projectService.saveProjectLibrarySnapshot({
+    const persistedLibrary = projectService.upsertProjectSnapshot({
       activeProjectId,
       projects: importedProjects,
       sceneStore: importedSceneStoreByProject,
-    }, {
-      replaceExistingCache: true,
     });
     // Intent: activate from the in-memory load result so localStorage quota failures cannot resurrect stale project chunks.
     state.projectLibrary = Array.isArray(persistedLibrary.projects) ? persistedLibrary.projects : importedProjects;
-    state.activeProjectId = persistedLibrary.activeProjectId ?? activeProjectId;
-    state.projectLibrarySelectionId = state.activeProjectId;
-    persistActiveProjectId(state.activeProjectId);
-
-    const projectRecord = state.projectLibrary.find((project) => project?.id === state.activeProjectId) ?? state.projectLibrary[0] ?? null;
+    // Keep outgoing runtime identity and destination intact until its activation callbacks
+    // finish. Publishing the incoming library is not permission to retarget that runtime.
+    const projectRecord = state.projectLibrary.find((project) => project?.id === activeProjectId) ?? state.projectLibrary[0] ?? null;
     if (!projectRecord) {
       throw new Error("Unable to activate the loaded project file.");
     }
@@ -2032,14 +2096,10 @@ export function createProjectPersistenceService({
       : "";
     clearProjectAutosaveState();
     clearEditorWorkingDirtyState("project-load");
-    await setActiveProjectFileDestination(loadedDestination.filePath, loadedDestination.fileHandle, {
-      skipProjectFileAutosave: true,
-      skipProjectRecordPersistence: true,
+    const projectFileDestination = {
+      filePath: loadedDestination.filePath,
+      fileHandle: loadedDestination.fileHandle,
       handlePermission: loadedHandlePermission,
-      persistBrowserFileHandle: Boolean(loadedDestination.fileHandle),
-      persistDesktopProjectFilePath: loadedDestination.isDurablePath,
-      clearDesktopProjectFilePath: !loadedDestination.isDurablePath,
-      clearBrowserFileHandle: !loadedDestination.fileHandle && loadedDestination.isDurablePath,
       storageMode: options.mode === "desktop-package"
         ? "desktop-package"
         : options.mode === "desktop-path"
@@ -2047,15 +2107,27 @@ export function createProjectPersistenceService({
           : loadedDestination.fileHandle
             ? "browser-handle"
             : "",
-      source: "hydrateProjectLibraryFromLoadedSnapshot",
-    });
+    };
     activateLoadedProjectRecord({
       projectRecord,
+      projectFileDestination,
       reason: options.reason ?? "load-project-file",
       mode: options.mode ?? "unknown",
       sourceLabel: options.sourceLabel ?? "file",
       loadedProjectCount: importedProjects.length,
       filePath: options.filePath ?? "",
+    });
+    // Activation installs the destination with the target identity/content before callbacks.
+    // Persist machine/cache references afterward, with the same target owning their effects.
+    await setActiveProjectFileDestination(projectFileDestination.filePath, projectFileDestination.fileHandle, {
+      ...projectFileDestination,
+      skipProjectFileAutosave: true,
+      skipProjectRecordPersistence: true,
+      persistBrowserFileHandle: Boolean(loadedDestination.fileHandle),
+      persistDesktopProjectFilePath: loadedDestination.isDurablePath,
+      clearDesktopProjectFilePath: !loadedDestination.isDurablePath,
+      clearBrowserFileHandle: !loadedDestination.fileHandle && loadedDestination.isDurablePath,
+      source: "hydrateProjectLibraryFromLoadedSnapshot",
     });
     primeProjectAutosaveTarget();
     state.projectFileStatus = `Loaded ${importedProjects.length} project${importedProjects.length === 1 ? "" : "s"} from ${options.sourceLabel ?? "file"}`;
@@ -2908,23 +2980,18 @@ export function createProjectPersistenceService({
     const resolvedPath = hasProjectFilePath(recordFilePath)
       ? resolveProjectFilePath(recordFilePath)
       : rawRecordPath;
-    if (!resolvedPath) {
-      return "";
-    }
-
     const isDurablePath = hasProjectFilePath(resolvedPath);
     const retainedHandle = isDurablePath ? null : state.projectFileHandle;
     const retainedHandlePermission = retainedHandle ? state.projectFileHandlePermission : "";
-    if (resolvedPath === state.projectFilePath && state.projectFileHandle === retainedHandle) {
-      return resolvedPath;
-    }
-
+    // State hydration already installed this path atomically with the project. Still publish
+    // its machine/cache references; a destinationless target must also clear the old pointer.
     setActiveProjectFileDestination(resolvedPath, retainedHandle, {
       skipProjectFileAutosave: true,
       skipProjectRecordPersistence: true,
       handlePermission: retainedHandlePermission,
       persistBrowserFileHandle: false,
       persistDesktopProjectFilePath: isDurablePath && options.persistDesktopProjectFilePath === true,
+      clearDesktopProjectFilePath: !isDurablePath && options.persistDesktopProjectFilePath === true,
       clearBrowserFileHandle: isDurablePath,
       source: options.source ?? "syncActiveProjectFileDestinationFromRecord",
       dirtyReason: options.dirtyReason ?? "project-file-destination-sync",
@@ -3012,6 +3079,7 @@ export function createProjectPersistenceService({
     getProjectFileDisplayState,
     hasProjectSaveDestination,
     hydrateProjectLibraryFromLoadedSnapshot,
+    activateRecentProject,
     loadProjectSnapshotFromBrowserFile,
     loadProjectSnapshotFromBrowserHandle,
     loadProjectSnapshotFromFile,

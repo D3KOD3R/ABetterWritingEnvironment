@@ -26,8 +26,10 @@ export function runProjectSourceTest() {
   assert.equal(project?.id, "project-serva-vitae");
   assert.equal(project.title, "Project Serva Vitae");
   assert.equal(project.source, "project-file");
-  assert.equal(project.workspace.project.stats.chapterCount, 5);
-  assert.equal(project.workspace.project.stats.sceneCount, 30);
+  // The tracked save fixture has four chapters and 29 scenes; retain fixed expectations
+  // so loading a fallback or a different project cannot silently satisfy this test.
+  assert.equal(project.workspace.project.stats.chapterCount, 4);
+  assert.equal(project.workspace.project.stats.sceneCount, 29);
   assert.equal(project.workspace.project.stats.lineCount, 855);
   assert.equal(project.workspace.world.templates.filter((template) => template.source === "source-template").length, 6);
   assert.equal(
@@ -97,8 +99,8 @@ export function runProjectSourceTest() {
     const data = JSON.parse(readFileSync(outputPath, "utf8"));
 
     assert.equal(summary.projectCount, library.projects.length);
-    assert.equal(summary.chapters, 5);
-    assert.equal(summary.scenes, 30);
+    assert.equal(summary.chapters, 4);
+    assert.equal(summary.scenes, 29);
     assert.equal(summary.blocks, 855);
     assert.equal(summary.tasks, 52);
     assert.equal(summary.passageNotes, 19);
@@ -108,8 +110,8 @@ export function runProjectSourceTest() {
     assert.equal(summary.archivedItems, 5);
 
     assert.equal(data.activeProjectId, "project-serva-vitae");
-    assert.equal(data.project.stats.chapterCount, 5);
-    assert.equal(data.project.stats.sceneCount, 30);
+    assert.equal(data.project.stats.chapterCount, 4);
+    assert.equal(data.project.stats.sceneCount, 29);
     assert.equal(data.project.stats.lineCount, 855);
     assert.equal(data.world.stats.templateCount, 7);
     assert.equal(data.world.stats.entityCount, 31);

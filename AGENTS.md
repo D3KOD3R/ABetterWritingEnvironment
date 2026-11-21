@@ -40,6 +40,8 @@ Do not load `TestSupervisorAgent.md` merely to use or run the existing superviso
 
 ## Special workflows
 
+- `use the automated manual test process`: read `agents/RepositoryWorkspaceAgent.md`, then the **Automated manual test process** section of `docs/implementation/active/regression-workspace-logging.md` and the requested CASE contract. Use the existing RUN controller and browser runner; preserve explicit limits and keep browser acceptance separate from supervisor results.
+
 - `fix issues`: read `voiceissues/VoiceIssuesAgent.md` before the active issue list and follow it.
 - `finalise work`: read `finalisework/FinaliseWorkAgent.md` before closeout and follow it.
 - `retrace steps on task ...`: read `agentContextRetrace.md` and follow its recovery procedure before continuing.

@@ -102,6 +102,10 @@
   opacity: 0.58;
 }
 
+.project-package-dialog footer {
+  flex-wrap: wrap;
+}
+
 .project-package-dialog__hint {
   color: var(--ink-soft);
 }

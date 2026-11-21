@@ -123,9 +123,17 @@ async function runChild() {
       normalizeProjectLibrarySnapshot: (candidate) => candidate,
       normalizeProjectRecord: (candidate) => candidate,
       resolveActiveProjectId: (candidate, snapshot) => candidate ?? snapshot.projects[0]?.id,
-      activateLoadedProjectRecord: ({ projectRecord }) => {
+      activateLoadedProjectRecord: ({ projectRecord, projectFileDestination }) => {
+        // Loaded authority is adopted by activation after outgoing preservation completes.
+        Object.assign(state, {
+          activeProjectId: projectRecord.id, projectLibrarySelectionId: projectRecord.id,
+          projectFilePath: projectFileDestination.filePath, projectFileHandle: projectFileDestination.fileHandle,
+          projectFileHandlePermission: projectFileDestination.handlePermission,
+          projectFileStorageMode: projectFileDestination.storageMode,
+        });
         state.workspace = structuredClone(projectRecord.workspace);
         state.projectTitle = projectRecord.title;
+        service.persistActiveProjectId(projectRecord.id);
       },
     });
     return { state, service, active, memory };
@@ -227,7 +235,7 @@ async function runChild() {
   assert.equal(reopened.state.projectFileStorageMode, "desktop-path");
   assert.equal((await reopened.service.saveProjectSnapshot({ reason: "manual-save" })).projectFilePersisted, true);
 
-  // A failed verification cannot adopt a different path; the genuine write failure still blocks New Project.
+  // A failed verification cannot adopt a different path; ordinary New/Import still requires durable preservation.
   const failedDestination = path.join(temporaryRoot, "unverified.abe-project.json");
   corruptReadback = true;
   await assert.rejects(() => legacy.service.saveProjectSnapshotToFilePath(failedDestination, saved), /verification failed/);
@@ -245,6 +253,53 @@ async function runChild() {
   }), /durable save is blocked|could not be durably saved/);
   assert.equal(legacy.state.projectFilePath, legacyPath);
   assert.equal(existsSync(path.join(temporaryRoot, "Blocked New")), false);
+
+  // Explicit discard releases only the replacement barrier. It must not write or erase the outgoing file,
+  // and cancellation/failed creation must retain the unsaved project for another recovery attempt.
+  const outgoingBytes = readFileSync(legacyPath, "utf8");
+  const outgoingWorkspace = structuredClone(legacy.state.workspace);
+  const replacementOptions = {
+    parentPath: temporaryRoot, folderName: "Imported Replacement", discardBlockedChanges: true,
+    buildCandidateSnapshot: () => JSON.parse(JSON.stringify(createManuscriptSnapshot()).replaceAll("legacy-novel", "imported-novel")),
+  };
+  await assert.rejects(() => legacy.service.createDesktopProjectPackage(replacementOptions),
+    (error) => error.code === "project-replacement-save-blocked");
+  const cancelledBlocked = await legacy.service.createDesktopProjectPackage({ ...replacementOptions,
+    confirmDiscardUnsaved: () => false,
+    buildCandidateSnapshot: () => assert.fail("Cancel must not construct a replacement."),
+  });
+  assert.equal(cancelledBlocked.status, "cancelled");
+  await assert.rejects(() => legacy.service.createDesktopProjectPackage({ ...replacementOptions,
+    confirmDiscardUnsaved: () => { legacy.state.projectFileAutosaveRevision += 1; return true; },
+    buildCandidateSnapshot: () => assert.fail("A changed project requires fresh discard consent."),
+  }), /changed while confirming discard/);
+  await assert.rejects(() => legacy.service.createDesktopProjectPackage({ ...replacementOptions,
+    parentPath: path.join(temporaryRoot, "missing-import-parent"), confirmDiscardUnsaved: () => true,
+  }));
+  assert.equal(legacy.state.activeProjectId, "legacy-novel");
+  assert.equal(legacy.state.projectFilePath, legacyPath);
+  assert.deepEqual(legacy.state.workspace, outgoingWorkspace);
+  assert.equal(legacy.state.projectFileAutosaveDirty, true);
+  assert.ok(legacy.state.projectFileAutosaveBlocked);
+  assert.equal(readFileSync(legacyPath, "utf8"), outgoingBytes);
+  assert.equal(existsSync(path.join(temporaryRoot, "Imported Replacement")), false);
+
+  const writesBeforeDiscard = calls.filter(({ pathname }) => pathname === "/api/project-file/save").length;
+  const replacement = await legacy.service.createDesktopProjectPackage({ ...replacementOptions,
+    confirmDiscardUnsaved: () => true,
+  });
+  assert.equal(replacement.status, "created");
+  assert.equal(legacy.state.activeProjectId, "imported-novel");
+  assert.equal(legacy.state.projectFilePath, path.join(temporaryRoot, "Imported Replacement"));
+  assert.equal(legacy.state.projectFileStorageMode, "desktop-package");
+  assert.equal(legacy.state.projectFileAutosaveDirty, false);
+  assert.equal(readFileSync(legacyPath, "utf8"), outgoingBytes);
+  assert.equal(calls.filter(({ pathname }) => pathname === "/api/project-file/save").length, writesBeforeDiscard);
+  const replacementOnDisk = await request("/api/project-package/load", {
+    method: "POST", body: { rootPath: legacy.state.projectFilePath },
+  });
+  assert.equal(replacementOnDisk.ok, true);
+  assert.equal(replacementOnDisk.value.snapshot.activeProjectId, "imported-novel");
   failWrite = false;
 
   // Invalid input fails before replacement, and explicit file authority cannot overwrite a directory/manifest.

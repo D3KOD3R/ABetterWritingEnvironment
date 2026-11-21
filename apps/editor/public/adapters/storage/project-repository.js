@@ -698,11 +698,10 @@ export function createProjectRepository({
       targetSchemaVersion: schemaVersion,
     });
     const currentManifest = loadStoredManifestSnapshot();
-    const shouldUseExistingSceneBodies = options.replaceExistingCache !== true;
+    const preserveUnrelatedProjects = options.preserveUnrelatedProjects === true;
+    const shouldUseExistingSceneBodies = options.replaceExistingCache !== true && options.replaceProjectCache !== true;
     // Intent: authoritative JSON/project imports must not rehydrate manuscript bodies from stale browser chunks.
-    const existingProjectsById = shouldUseExistingSceneBodies
-      ? new Map((currentManifest.projects ?? []).map((project) => [project.id, project]))
-      : new Map();
+    const existingProjectsById = new Map((currentManifest.projects ?? []).map((project) => [project.id, project]));
     const changedSceneIdsByProject = options.changedSceneIdsByProject && typeof options.changedSceneIdsByProject === "object"
       ? options.changedSceneIdsByProject
       : {};
@@ -715,10 +714,31 @@ export function createProjectRepository({
         .filter(Boolean),
     );
 
+    // A package refresh replaces only the selected projects' chunks. Never borrow their
+    // stale bodies (even after failed cache writes), or remove another Recent project's data.
+    if (options.replaceProjectCache === true) {
+      const keys = new Set();
+      for (const projectId of migratedProjectIds) {
+        for (const sceneId of loadSceneOrderFromManifest(existingProjectsById.get(projectId))) {
+          keys.add(getSceneStorageKey(libraryStorageKey, projectId, sceneId));
+        }
+        for (const key of storageAdapter.listKeys?.() ?? []) {
+          if (key.startsWith(`${libraryStorageKey}:scene:${projectId}:`)) keys.add(key);
+        }
+      }
+      for (const key of keys) {
+        if (storageAdapter.remove(key) !== true) storageWritesAvailable = false;
+      }
+    }
+    if (preserveUnrelatedProjects) {
+      // Retain raw manifests and chunks byte-for-byte; a selected package is not a registry export.
+      nextProjects.push(...(currentManifest.projects ?? []).filter(project => !migratedProjectIds.has(project.id)));
+    }
+
     // Intent: clear removed project scene chunks before writing the active cache so old manuscripts cannot crowd out the current one.
     for (const staleProject of existingProjectsById.values()) {
       const staleProjectId = normalizeProjectId(staleProject.id);
-      if (!staleProjectId || migratedProjectIds.has(staleProjectId)) {
+      if (preserveUnrelatedProjects || !staleProjectId || migratedProjectIds.has(staleProjectId)) {
         continue;
       }
 
@@ -800,6 +820,24 @@ export function createProjectRepository({
           }
         }
       }
+      // Scene chunks own bodies, not the latest binder rename/move. Match the editor's
+      // workspace -> structure precedence before rebuilding manifest/index metadata.
+      for (const metadata of [...(project.workspace?.project?.lines ?? []), ...(project.structureDrafts?.scenes ?? [])]) {
+        const scene = sceneMap.get(normalizeSceneId(metadata?.sceneId));
+        if (!scene) continue;
+        for (const field of ["chapterId", "chapterTitle"]) {
+          if (typeof metadata[field] === "string") scene[field] = metadata[field];
+        }
+      }
+      // Scene title/synopsis edits live in scene drafts; buildSceneRecords gives them
+      // precedence. Only chapter placement/labels belong to the structure overlay above.
+      for (const [sceneId, draft] of Object.entries(project.sceneDrafts ?? {})) {
+        const scene = sceneMap.get(sceneId);
+        if (!scene) continue;
+        for (const field of ["sceneTitle", "sceneSynopsis"]) {
+          if (typeof draft?.[field] === "string") scene[field] = draft[field];
+        }
+      }
       const sceneIdsToWrite = changedSceneIds
         ? sceneOrder.filter((sceneId) => changedSceneIds.has(sceneId))
         : sceneOrder;
@@ -837,7 +875,7 @@ export function createProjectRepository({
 
     for (const staleProject of existingProjectsById.values()) {
       const staleProjectId = normalizeProjectId(staleProject.id);
-      if (!staleProjectId || migratedProjectIds.has(staleProjectId)) {
+      if (preserveUnrelatedProjects || !staleProjectId || migratedProjectIds.has(staleProjectId)) {
         continue;
       }
       const staleSceneIds = loadSceneOrderFromManifest(staleProject);
@@ -884,6 +922,13 @@ export function createProjectRepository({
     };
   };
 
+  // Full-library replacement remains explicit. Ordinary package loads/saves upsert their
+  // own complete snapshots while preserving unrelated Recent records and scene caches.
+  const upsertProjectSnapshot = (snapshot) => saveProjectLibrarySnapshot(snapshot, {
+    preserveUnrelatedProjects: true,
+    replaceProjectCache: true,
+  });
+
   return {
     clearProjectLibraryCache,
     loadActiveProjectId,
@@ -892,6 +937,7 @@ export function createProjectRepository({
     loadScene,
     saveActiveProjectId,
     saveProjectLibrarySnapshot,
+    upsertProjectSnapshot,
     saveScene,
   };
 }

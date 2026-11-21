@@ -294,6 +294,7 @@ import { createProjectPersistenceService } from "./adapters/storage/project-pers
 import {
   PROJECT_PACKAGE_DIALOG_MODES,
   applyProjectPackageBrowseResult,
+  applyProjectPackageDialogError,
   canConfirmProjectPackageDialog,
   createProjectPackageDialogState,
   renderProjectPackageDialogHTML,
@@ -1437,9 +1438,11 @@ const projectPersistenceService = createProjectPersistenceService({
   resolveActiveProjectId,
   activateLoadedProjectRecord: ({
     projectRecord,
+    projectFileDestination,
     reason,
   }) => {
     activateProjectRecord(projectRecord, {
+      projectFileDestination,
       reason: reason ?? "load-project-file",
       logLoadCheckpoint: true,
       renderAfter: true,
@@ -1862,7 +1865,7 @@ writingGoalsStateLogHooks.buildWritingTargetDebugTerminalSummary = buildWritingT
 const projectActivationController = createProjectActivationController({
   state,
   clone: cloneValue,
-  applyProjectRecordToState: (record) => projectActivationStateService.applyProjectRecordToState(record),
+  applyProjectRecordToState: (record, options) => projectActivationStateService.applyProjectRecordToState(record, options),
   persistActiveProjectId: (projectId) => projectPersistenceService.persistActiveProjectId(projectId),
   saveWritingTargetState,
   clearWritingTargetDraft,
@@ -2430,6 +2433,11 @@ function wireEvents() {
 
     if (action === "confirm-project-package-dialog") {
       void confirmProjectPackageDialog();
+      return;
+    }
+
+    if (action === "discard-and-confirm-project-package-dialog") {
+      void confirmProjectPackageDialog({ discardCurrentProject: true });
       return;
     }
 
@@ -16766,68 +16774,16 @@ function validateNarrationAnchorsForProject({
   return { changedCount };
 }
 
-function loadSelectedProject(requestedProjectId = null) {
-  // Intent: keep a clicked recent-project target stable while the current project is saved before switching.
-  const requestedProjectIdValue = typeof requestedProjectId === "string" && requestedProjectId.trim()
+async function loadSelectedProject(requestedProjectId = null) {
+  // Keep the clicked identity stable while persistence drains and reloads its exact destination.
+  const projectId = typeof requestedProjectId === "string" && requestedProjectId.trim()
     ? requestedProjectId.trim()
-    : "";
-  const selectedProjectId = requestedProjectIdValue || state.projectLibrarySelectionId || state.activeProjectId || "";
-
-  persistCurrentProjectRecord({
-    domain: "project",
-    dirtyReason: "before-project-switch",
-    source: "loadSelectedProject",
-    markWorkingState: false,
-  });
-
-  if (selectedProjectId) {
-    state.projectLibrarySelectionId = selectedProjectId;
-  }
-
-  const record = selectedProjectId
-    ? state.projectLibrary.find((project) => project.id === selectedProjectId) ?? null
-    : state.projectLibrary[0] ?? null;
-  if (!record) {
-    projectLoadGateLog.warn("validation", "project.load.skipped", "No project record available to load from selection.", {
-      requestedProjectId: selectedProjectId,
-    });
-    return;
-  }
-
-  projectLoadGateLog.info("user-action", "project.load.begin", "Loading selected project.", {
-    projectId: record.id,
-    title: record.title,
-  });
-
-  logWritingTargetDebugEvent("info", "project.load-selected", "Loading selected project.", {
-    projectId: record.id,
-    title: record.title,
-  });
-  activateProjectRecord(record, {
-    reason: "load-project",
-    refreshSessionLifecycle: true,
-    logLoadCheckpoint: true,
-    beforeRender: () => {
-      projectPersistenceService.syncActiveProjectFileDestinationFromRecord({
-        persistDesktopProjectFilePath: true,
-        source: "loadSelectedProject",
-      });
-    },
-    renderAfter: true,
-    afterRender: () => primeProjectFileAutosave(),
-    recordSnapshot: true,
-  });
-  projectLoadGateLog.info("lifecycle", "project.load.completed", "Selected project loaded into editor.", {
-    projectId: record.id,
-    selectedSceneId: state.selectedSceneId ?? "",
-  });
-  if (state.workspace?.project?.stats) {
-    reportBrowserLog("info", "project-library", "Loaded saved project from library.", {
-      projectId: record.id,
-      title: record.title,
-      chapters: state.workspace.project.stats.chapterCount,
-      scenes: state.workspace.project.stats.sceneCount,
-      templates: state.workspace.world?.stats?.templateCount ?? 0,
+    : state.projectLibrarySelectionId || state.activeProjectId || "";
+  try {
+    await projectPersistenceService.activateRecentProject(projectId);
+  } catch (error) {
+    reportBrowserLog("error", "project-library", "Unable to open the selected Recent project.", {
+      projectId, error,
     });
   }
 }
@@ -16925,9 +16881,10 @@ function createProject() {
   openProjectPackageDialog(PROJECT_PACKAGE_DIALOG_MODES.NEW);
 }
 
-async function confirmProjectPackageDialog() {
+async function confirmProjectPackageDialog({ discardCurrentProject = false } = {}) {
   const dialog = state.projectPackageDialog;
   if (!dialog || !canConfirmProjectPackageDialog(dialog)) return;
+  if (discardCurrentProject && (dialog.mode !== PROJECT_PACKAGE_DIALOG_MODES.NEW || !dialog.canDiscardCurrentProject)) return;
   state.projectPackageDialog = { ...dialog, busy: true, errorMessage: "" };
   renderProjectPackageDialog();
   try {
@@ -16938,8 +16895,11 @@ async function confirmProjectPackageDialog() {
         parentPath: dialog.locationPath,
         folderName: dialog.folderName,
         buildCandidateSnapshot: () => buildNewProjectCandidateSnapshot(title),
+        discardBlockedChanges: discardCurrentProject,
         // The persistence guard decides when this application confirmation is needed.
         confirmDiscardUnsaved: async () => {
+          // The labelled recovery button is the explicit decision for this attempt only.
+          if (discardCurrentProject) return true;
           unsavedChoice = await confirmProjectDiscard();
           return unsavedChoice === true;
         },
@@ -16972,11 +16932,7 @@ async function confirmProjectPackageDialog() {
     state.projectPackageDialog = null;
     render();
   } catch (error) {
-    state.projectPackageDialog = {
-      ...dialog,
-      busy: false,
-      errorMessage: error instanceof Error ? error.message : String(error),
-    };
+    state.projectPackageDialog = applyProjectPackageDialogError(dialog, error);
     renderProjectPackageDialog();
   }
 }

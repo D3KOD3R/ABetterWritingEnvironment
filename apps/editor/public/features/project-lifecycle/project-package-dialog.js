@@ -1,5 +1,6 @@
 // Intent: own runtime-only project package dialog state and markup without persistence side effects.
 import { escapeHtml } from "../../shared/ui-utils.js";
+import { PROJECT_REPLACEMENT_SAVE_BLOCKED } from "../../shared/project-transition-error.js";
 import { peekProjectImportCandidate } from "../../state/project-import-candidate-store.js";
 import {
   renderDirectoryLocationFieldHTML,
@@ -63,6 +64,7 @@ export function createProjectPackageDialogState({
     directories: [],
     busy: false,
     errorMessage: "",
+    canDiscardCurrentProject: false,
   };
 }
 
@@ -78,12 +80,14 @@ export function updateProjectPackageDialogField(dialog, field, value) {
       isProjectPackage: false,
       directories: [],
       errorMessage: "",
+      canDiscardCurrentProject: false,
     };
   }
   return {
     ...dialog,
     [field]: normalizedValue,
     errorMessage: "",
+    canDiscardCurrentProject: false,
   };
 }
 
@@ -97,6 +101,18 @@ export function applyProjectPackageBrowseResult(dialog, result = {}) {
     directories: Array.isArray(result.directories) ? result.directories : [],
     busy: false,
     errorMessage: "",
+    canDiscardCurrentProject: false,
+  };
+}
+
+export function applyProjectPackageDialogError(dialog, error) {
+  return {
+    ...dialog,
+    busy: false,
+    errorMessage: error instanceof Error ? error.message : String(error),
+    // This is a one-attempt recovery action, not sticky consent or permission to bypass other failures.
+    canDiscardCurrentProject: dialog.mode === PROJECT_PACKAGE_DIALOG_MODES.NEW
+      && error?.code === PROJECT_REPLACEMENT_SAVE_BLOCKED,
   };
 }
 
@@ -212,6 +228,9 @@ export function renderProjectPackageDialogHTML(dialog) {
           : ""}
         <footer>
           <button type="button" data-action="cancel-project-package-dialog" ${disabled}>Cancel</button>
+          ${isNew && dialog.canDiscardCurrentProject ? `
+            <button type="button" data-action="discard-and-confirm-project-package-dialog" ${confirmDisabled}>${isScrivenerImport ? "Import Project" : "Create Project"} and Discard Current Project</button>
+          ` : ""}
           <button type="button" class="primary" data-action="confirm-project-package-dialog" ${confirmDisabled}>${dialog.busy ? "Working..." : escapeHtml(confirmLabel)}</button>
         </footer>
       </section>

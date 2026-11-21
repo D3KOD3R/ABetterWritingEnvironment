@@ -240,6 +240,8 @@ export function createProjectService({
   const saveProjectLibrarySnapshot = (snapshot, options = {}) =>
     projectRepository.saveProjectLibrarySnapshot(snapshot, options);
 
+  const upsertProjectSnapshot = (snapshot) => projectRepository.upsertProjectSnapshot(snapshot);
+
   // Intent: expose an explicit desktop-style project switch boundary without leaking repository storage details.
   const clearProjectLibraryCache = () => {
     if (typeof projectRepository.clearProjectLibraryCache !== "function") {
@@ -608,6 +610,7 @@ export function createProjectService({
     registerAsset,
     saveProject,
     saveProjectLibrarySnapshot,
+    upsertProjectSnapshot,
     saveScene,
     saveUserPreference,
     updateSceneMetadata,

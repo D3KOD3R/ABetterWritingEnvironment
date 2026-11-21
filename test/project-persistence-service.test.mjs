@@ -169,7 +169,14 @@ export async function runProjectPersistenceServiceTest() {
     normalizeProjectRecord: (candidate) => candidate ?? null,
     resolveActiveProjectId: (candidate, library) =>
       candidate ?? library?.projects?.[0]?.id ?? null,
-    activateLoadedProjectRecord: ({ projectRecord: record, reason }) => {
+    activateLoadedProjectRecord: ({ projectRecord: record, projectFileDestination, reason }) => {
+      // Model the activation callback's authority handoff, not a service pre-adoption.
+      Object.assign(state, {
+        activeProjectId: record.id, projectLibrarySelectionId: record.id,
+        projectFilePath: projectFileDestination.filePath, projectFileHandle: projectFileDestination.fileHandle,
+        projectFileHandlePermission: projectFileDestination.handlePermission,
+        projectFileStorageMode: projectFileDestination.storageMode,
+      });
       activationLog.push({
         projectId: record.id,
         reason,
@@ -179,6 +186,7 @@ export async function runProjectPersistenceServiceTest() {
       });
       state.workspace = record.workspace;
       state.projectTitle = record.title;
+      projectPersistenceService.persistActiveProjectId(record.id);
     },
     prepareProjectSnapshotForSave: () => {
       operationLog.push("prepare-save");
@@ -1385,10 +1393,17 @@ async function runDesktopPackageTransactionAssertions() {
     normalizeProjectLibrarySnapshot: (snapshot) => structuredClone(snapshot),
     normalizeProjectRecord: (candidate) => candidate,
     resolveActiveProjectId: (candidate, library) => candidate ?? library.projects[0]?.id ?? null,
-    activateLoadedProjectRecord: ({ projectRecord }) => {
+    activateLoadedProjectRecord: ({ projectRecord, projectFileDestination }) => {
+      Object.assign(state, {
+        activeProjectId: projectRecord.id, projectLibrarySelectionId: projectRecord.id,
+        projectFilePath: projectFileDestination.filePath, projectFileHandle: projectFileDestination.fileHandle,
+        projectFileHandlePermission: projectFileDestination.handlePermission,
+        projectFileStorageMode: projectFileDestination.storageMode,
+      });
       operationLog.push(`activate-record:${projectRecord.id}`);
       state.workspace = projectRecord.workspace;
       state.projectTitle = projectRecord.title;
+      service.persistActiveProjectId(projectRecord.id);
     },
     prepareProjectSnapshotForSave: () => {
       operationLog.push("prepare");
@@ -1756,7 +1771,7 @@ function createFakeProjectService(projectRecord, loadedRecord, browserCacheWrite
       }
       return { librarySnapshot: nextSnapshot };
     },
-    saveProjectLibrarySnapshot(snapshot) {
+    upsertProjectSnapshot(snapshot) {
       browserCacheWrites.push(snapshot);
       lastHydratedSnapshot = snapshot;
       return {

@@ -5,6 +5,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 import { confirmProjectDiscard } from "../apps/editor/public/features/project-lifecycle/project-discard-dialog.js";
+import {
+  applyProjectPackageDialogError,
+  canConfirmProjectPackageDialog,
+  createProjectPackageDialogState,
+  renderProjectPackageDialogHTML,
+  updateProjectPackageDialogField,
+} from "../apps/editor/public/features/project-lifecycle/project-package-dialog.js";
+import { projectReplacementSaveBlocked } from "../apps/editor/public/shared/project-transition-error.js";
 
 const TEST_ROOT = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(TEST_ROOT, "..");
@@ -17,7 +25,7 @@ export async function runProjectPackageDialogUxTest() {
   // Execute the actual shell handler: application Cancel must retain the filled creation dialog,
   // while confirmed creation closes it. Filesystem/guard behavior is covered by the real-host regression.
   const appSource = await readRepoFile("apps/editor/public/app.js");
-  const handlerStart = appSource.indexOf("async function confirmProjectPackageDialog()");
+  const handlerStart = appSource.indexOf("async function confirmProjectPackageDialog(");
   const handlerEnd = appSource.indexOf("\nasync function loadProjectSource()", handlerStart);
   assert.ok(handlerStart >= 0 && handlerEnd > handlerStart);
   let accepted = false;
@@ -35,6 +43,7 @@ export async function runProjectPackageDialogUxTest() {
       state.projectPackageDialog = { mode };
     },
     canConfirmProjectPackageDialog: () => true,
+    applyProjectPackageDialogError,
     renderProjectPackageDialog: () => {},
     render: () => { fullRenders += 1; },
     buildNewProjectCandidateSnapshot: () => ({}),
@@ -65,6 +74,63 @@ export async function runProjectPackageDialogUxTest() {
   assert.equal(saveAsOpened, 1);
   assert.equal(state.projectPackageDialog.mode, "save-as");
   assert.equal(fullRenders, 1, "Save As must not activate a new project");
+
+  // Only a typed preservation failure offers discard; retry keeps the converted import and entered destination.
+  const importDialog = {
+    ...createProjectPackageDialogState({ mode: "new" }), intent: "scrivener-import",
+    projectName: "Imported Novel", folderName: "Imported Novel", sourceRoot: "C:/source/Novel.scriv",
+    locationPath: "C:/Projects", validatedLocationPath: "C:/Projects",
+  };
+  state.projectPackageDialog = importDialog;
+  context.canConfirmProjectPackageDialog = canConfirmProjectPackageDialog;
+  let attempts = 0;
+  let importedTitle = "";
+  context.buildNewProjectCandidateSnapshot = (title) => { importedTitle = title; return { imported: true }; };
+  context.projectPersistenceService.createDesktopProjectPackage = async (options) => {
+    attempts += 1;
+    if (!options.discardBlockedChanges) throw projectReplacementSaveBlocked("Durable save blocked");
+    assert.equal(await options.confirmDiscardUnsaved(), true);
+    assert.equal(options.parentPath, importDialog.locationPath);
+    assert.equal(options.folderName, importDialog.folderName);
+    assert.deepEqual(options.buildCandidateSnapshot(), { imported: true });
+    return { status: "created" };
+  };
+  await context.confirmProjectPackageDialog({ discardCurrentProject: true });
+  assert.equal(attempts, 0, "Discard must not be available before the guard reports a blocked save.");
+  await context.confirmProjectPackageDialog();
+  const blockedDialog = state.projectPackageDialog;
+  assert.equal(blockedDialog.canDiscardCurrentProject, true);
+  assert.equal(blockedDialog.sourceRoot, importDialog.sourceRoot);
+  const blockedMarkup = renderProjectPackageDialogHTML(blockedDialog);
+  assert.match(blockedMarkup, />Import Project and Discard Current Project<\/button>/);
+  const footer = blockedMarkup.slice(blockedMarkup.indexOf("<footer>"));
+  assert.ok(footer.indexOf(">Cancel</button>") < footer.indexOf("Import Project and Discard Current Project"));
+  assert.ok(footer.indexOf("Import Project and Discard Current Project") < footer.indexOf('data-action="confirm-project-package-dialog"'));
+  const promptsBeforeDiscard = prompts;
+  await context.confirmProjectPackageDialog({ discardCurrentProject: true });
+  assert.equal(importedTitle, importDialog.projectName);
+  assert.equal(prompts, promptsBeforeDiscard, "The explicit recovery button does not need a second confirmation.");
+  assert.equal(state.projectPackageDialog, null);
+
+  for (const unavailable of [
+    importDialog,
+    applyProjectPackageDialogError(blockedDialog, new Error("Invalid folder")),
+    applyProjectPackageDialogError({ ...importDialog, mode: "save-as" }, projectReplacementSaveBlocked("Blocked")),
+    applyProjectPackageDialogError({ ...importDialog, mode: "open" }, projectReplacementSaveBlocked("Blocked")),
+    updateProjectPackageDialogField(blockedDialog, "locationPath", "C:/Other"),
+  ]) {
+    assert.doesNotMatch(renderProjectPackageDialogHTML(unavailable), /data-action="discard-and-confirm-project-package-dialog"/);
+  }
+  assert.match(renderProjectPackageDialogHTML({ ...blockedDialog, intent: "new-project" }), />Create Project and Discard Current Project<\/button>/);
+  assert.match(renderProjectPackageDialogHTML({ ...blockedDialog, busy: true }), /data-action="discard-and-confirm-project-package-dialog" disabled/);
+
+  // A failed import retains the form, but unrelated errors must revoke the discard recovery action.
+  state.projectPackageDialog = blockedDialog;
+  context.projectPersistenceService.createDesktopProjectPackage = async () => { throw new Error("Destination already exists"); };
+  await context.confirmProjectPackageDialog({ discardCurrentProject: true });
+  assert.equal(state.projectPackageDialog.projectName, importDialog.projectName);
+  assert.equal(state.projectPackageDialog.locationPath, importDialog.locationPath);
+  assert.equal(state.projectPackageDialog.canDiscardCurrentProject, false);
 
   // Exercise the actual modal's asynchronous decision and cleanup, including Escape.
   for (const action of ["cancel", "confirm", "escape", "save-as"]) {

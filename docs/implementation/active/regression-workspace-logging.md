@@ -161,3 +161,51 @@ Source identity is provenance-aware, not OS-immutable. Before/after checks canno
 Desktop state still lives at module-relative `apps/desktop/.desktop-state.json`; browser project library/cache remains shared for its origin. Log settings namespacing does not isolate those product states. Control and record them before a future manual regression; do not infer clean project state from a fresh log session. Browser gate observations are best-effort metadata and may be absent if the browser cannot reach the host. The smoke supplies them through the shared logger exercise and makes no claim to GUI testing.
 
 Next, prepare a fresh `8.2e-recent-project-activation` RUN from the chosen integrated source build, supply any expected invariant explicitly from the checklist, record the desktop/browser starting environment, initialize only its intended project folders using real ABE operations, then follow the active persistence checklist. Record logical IDs, selected PROJECT LIBRARY RECORD, active folder authority, and checkpoint file changes using existing events and captures. The earlier manually prepared baseline RUN and campaign remain untouched. This infrastructure task does not mark 8.2e Working, Fixed or Rechecked.
+
+
+## Automated manual test process
+
+Use this process when asked to "use the automated manual test process". It means browser-driven execution of author workflows, with real keyboard input and filesystem verification. It supplements, never replaces, repository supervisor checks and caller-owned CASE acceptance.
+
+### Execution contract
+
+Goal: exercise the requested author workflow in isolated Chrome and retain attributable source, browser, project and disk evidence. Read `AGENTS.md`, `agents/RepositoryWorkspaceAgent.md`, this guide, the external workspace's `WORKSPACE.md`, and the specific CASE/feature acceptance criteria. Load domain agents only for responsibilities being changed.
+
+Use `tools/regression-workspace/browser-acceptance.mjs` for the implemented reliability scenario. It covers native manuscript undo/redo, Recent A/B switching, cold host/browser restart, browser refresh, configurable history depth/autosave cycles, and blocked-import Cancel/explicit discard. Other requested workflows need a focused driver using the same RUN controller and evidence boundaries; do not claim that this scenario covers them.
+
+Non-goals: desktop mouse/keyboard control, real author-project testing, native Windows folder-picker acceptance, cloud upload, branch/commit/push, or modifying the RUN controller to encode CASE meaning.
+
+### Setup and invocation
+
+Node 24+ and installed Google Chrome are required. Install Playwright in an external tooling directory, not the product package. The driver uses Chrome headlessly with a separate browser context; it does not control the user's normal Chrome tabs or foreground keyboard.
+
+```powershell
+npm install --prefix <external-tooling-directory> playwright
+node --experimental-strip-types tools/regression-workspace/browser-acceptance.mjs --workspace <external-workspace> --playwright-root <external-tooling-directory> --allow-dirty --history-actions 100 --autosave-cycles 3
+```
+
+Use `--allow-dirty` only intentionally: each RUN captures HEAD plus local source delta. Omit it for a clean commit. Start with the small case; for measured history use `--history-actions 1000`; for the first sustained autosave stage use `--autosave-cycles 50`, then 100 if required by the CASE. Three cycles are a smoke test, not acceptance of the 50/100-cycle stage. Each edit/undo/redo waits for the real five-second autosave timer; 50 cycles take roughly 13 minutes plus setup/history/restart checks. Counts are bounded to 0–1000.
+
+Run the existing supervisor for source/test changes. Browser results are supplementary evidence with their own explicit verdict. Do not run another app instance or tests that modify this worktree's desktop settings concurrently.
+
+### Isolation and provenance
+
+The existing controller allocates every RUN, external sandbox/evidence directory, host and runtime logs. Restart allocates a new RUN and preserves the test browser storage state on the same host port. If that port is occupied, fail rather than connect to another host. The runner snapshots the worktree-local `.desktop-state.json`, clears its last-project pointer before initial boot, and restores its exact original bytes in `finally`. Never use the bundled/real manuscript as test input: replace the disposable bootstrap view with a newly created test package before editing.
+
+All projects are created by the normal app UI in external allocated locations. Old test packages are retained as explicit inputs for restart RUNs. A read-only function appended to the browser-served `app.js` exposes a cloned canonical/autosave state; repository production code is unchanged. Compare real textarea text, canonical scene text, project identity, autosave target, and `project.json`'s referenced scene file. Dirty state must remain true during pending saves. Physical generation/hash changes alone are not semantic corruption.
+
+The import scenario substitutes the native folder-picker HTTP response with the synthetic fixture path and injects HTTP 500 at the outgoing save-stage boundary. The real import parser, filesystem reads, staging, verification and commit run normally. Record these substitutions; this does not test the operating-system picker or a real device failure. Install the picker substitution before clicking Import so a native modal cannot take over the user's desktop.
+
+### Results and stop rules
+
+The runner prints PASS checkpoints and a final status/evidence directory. Inspect `manual-test-results/browser-acceptance.json`, all linked `run-manifest.json` files, and the corresponding `runtime-logs/log-session.json`. Require each completed RUN's `sourceIdentityUnchanged: true`. A controller's `completed` status alone does not mean CASE acceptance. Report exact counts and source identity, and distinguish clean commit from HEAD plus uncommitted delta.
+
+The runner records text checkpoints, history counts/JS heap samples, cycle results, screenshots and limits. Do not call JS heap measurements renderer-memory/leak acceptance; the full undo/redo CASE additionally owns renderer-memory characterization, editor-host/scene lifetime boundaries and anchor/revision/metrics checks. Stop and retain evidence on visible/canonical/durable mismatch, wrong destination, cross-project writes or unexpected replacement. Diagnose before continuing, and use a fresh RUN after any source change. Do not substitute JavaScript `input` dispatch or direct state mutation for native keyboard acceptance.
+
+Keep `source-changes.json`, browser storage snapshots and machine-state backups local. They are not ordinary shareable artifacts. Reconcile acceptance into the caller's existing checklist rather than creating competing status documents.
+
+### Interruption and recovery
+
+Do not edit source during a RUN. Prefer letting the runner finish so its `finally` closes browser/host and restores settings. A hard stop, tool timeout or killed parent may leave an incomplete RUN and settings backup; never label it completed or restart it in place. Inspect only the owned processes, preserve evidence, restore the exact backed-up worktree settings after the owned host stops, then allocate a fresh RUN. Do not kill unrelated browsers/hosts or clear the user's browser profile. Record a prior RUN's packages/storage as explicit restart inputs if reusing them.
+
+For interactive Playwright debugging, use bounded calls and save checkpoints after each operation. A REPL reset can close its browser contexts; reconnecting does not restore lost in-memory history. Rebind helpers after replacing a page/context. The standalone runner avoids REPL-lifetime dependence and uses graceful controller shutdown.
