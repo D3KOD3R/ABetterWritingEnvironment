@@ -1,10 +1,43 @@
 # ABE — Voice-to-Text and Speech Architecture
 
-**Status:** Grill Me concluded; requirements baseline for repository audit and implementation planning. Not authorisation to implement.  
+**Status:** Functional recording/transcript milestone authorised on 22 November 2026; automatic manuscript insertion remains gated. Historical decisions and Phase-0 instructions below are preserved.
 **Repository:** `D3KOD3R/ABetterWritingEnvironment`  
-**Revision:** 1.0 — 21 November 2026
+**Revision:** 1.1 — 22 November 2026
 
-## Execution contract — Phase 0 (planning only)
+## Active execution contract — functional Dictation checkpoint
+
+The user's revised functional-dictation authorization supersedes the earlier planning-only and infrastructure-only scope for this checkpoint. Continue through model installation, dedicated microphone capture, real local recognition, transcript/timing preview, project-owned retained audio, playback and reopen. This authorizes cohesive local commits, but not remote push or merge. Downloads remain explicit user actions; inference must be local with no browser/cloud fallback.
+
+- **Manuscript gate:** preview and explicit copy are permitted. Automatic insertion, D05 gestures and D12 history changes await the separately approved shared-history and durability implementation and Phase 3A, Phase 4 and Phase 3B integration gates. Provisional output never enters canonical text, exports or history.
+- **Isolation:** preserve Narration Follow's sherpa-onnx tracking, Whisper cleanup, recording and playback. Add only subpanel selection where needed. Keep domain/provider logic in the existing Node/TypeScript/audio service boundaries.
+- **Models:** prioritize official Moonshine Tiny Streaming English after runtime verification; whisper.cpp is the refinement candidate. Expose independent live/refinement assignments, no active narration-alignment assignment. Model presence and runtime readiness are separate facts. Pin revisions and verify authentic checksums; stage installs, support cancellation/retry and protect in-use managed files.
+- **Retention:** ordinary default remains delete-after-durable-text-save (D04), never delete-after-in-memory-transcript. Save Recording explicitly captures retain-until-manual-deletion for the session. Do not implement automatic cleanup before a reliable durability acknowledgement. FLAC mono 16 kHz normalized PCM16 remains the baseline; any temporary format requires an explicit proposal and honest encoding labels.
+- **Ownership:** installed models/runtime paths and microphone overrides are machine state; active capture/jobs are session state; completed session transcripts, timing metadata and recording references are semantic project data; recording bytes are project-owned assets. Route project mutation through ProjectPersistenceService, serialize relative references, and verify both bytes and durable registration. Save As/relocation must include the assets. No invented recording directory or package fallback.
+- **Timing:** retain source sample positions, capture epoch and frame sequence, resampling correspondence, stable utterance identity/revision/finality and model/runtime identity. Store only timing actually supplied or measured, with its source/granularity. Reject duplicate/stale results and never revise accepted finals.
+- **Acceptance:** deterministic offline tests plus actual local model inference are required. Mock results are not functional acceptance. Record real microphone, playback, reopen, offline, hardware and performance evidence only when exercised. Use controlled browser/persistence RUNs for project-durability claims.
+- **Stop conditions:** architectural decisions are required for breaking Follow, destructive migration, bypassing shared history, cloud inference, arbitrary external model code or significant deviation from D01–D26. Functional prototype completion does not authorize automatic manuscript editing.
+
+The completed **ABE VTT Implementation Plan — Phase 0 review**, supplied by the author on 22 November 2026, has been read. Its Phase 3A requires shared commands/history, revision integration, project/destination-generation receipts and source validation; Phase 4 requires verified FLAC publication, correspondence, safe retention and portability; Phase 3B integrates capture/gestures with those guarantees. This authorization advances only the independent recording/transcript checkpoint. None of those full manuscript integration gates is declared passed. The report's secure host boundary and schema-version protection apply before exposing new operations and durable speech data.
+
+### Decision scope overlay (historical tickets below remain unchanged)
+
+| Decisions | Current checkpoint / remaining gate |
+|---|---|
+| D01, D16–D19, D23 | Curated live/refinement installation, readiness and safe selection authorized; advanced imports, full update policy, project overrides and refinement scheduling remain deferred. |
+| D02, D04, D10, D11, D22, D24, D25 | Capture, final/provisional preview, safe stop, retained recordings and persistent session status authorized; automatic text insertion/deletion and full production chunk policy remain gated. |
+| D05, D06, D12 | Two-anchor gestures, viewport follow and shared chronological history deferred to manuscript-safety implementation. No speech-only undo. |
+| D07, D08 | Natural speech and truthful listening status in checkpoint; intelligent standby remains eventual default, continuous/silence-stop as subsequent capability if needed. |
+| D20, D21 | Add STT within Narration with contextual controls; preserve ordinary Manuscript and Follow. |
+| D03, D13–D15 | Refinement proposals, scopes, manual-edit protection and linked review remain later Phases 5–6. |
+| D09 | Worldbuilding/context vocabulary processing remains deferred. |
+| D26 | This checkpoint is authorized; major manuscript-history/persistence and subsequent workflow gates remain explicit. |
+
+Manual refinement remains the default; optional inactivity/background refinement retains the five-minute threshold. Refinement review chunks (default 1,000 words), natural utterances and independently published audio files (proposed three-minute target/four-minute maximum) remain separate boundaries. TTS, Translation and Narration Alignment are outside this checkpoint.
+
+## Historical execution contract — Phase 0 (planning only)
+
+The following contract records the original planning authorization; the active checkpoint above governs current work.
+
 
 **Goal:** audit the exact VTT source baseline and design the implementation of the 26 approved architectural decisions below. The initial task is a repository-specific plan, **not implementation**.
 

@@ -16093,3 +16093,27 @@ aside#binder-slot {
 :root[data-theme="dark"] .dictionary-lookup-window__source {
   border-top-color: rgba(243, 234, 220, 0.12);
 }
+
+/* Dictation stays usable in the central host when the contextual console is collapsed. */
+.dictation-tabs, .dictation-controls { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; }
+.dictation-tabs { padding: .5rem 1rem; }
+.dictation-panel { padding: 1rem; margin: .5rem; border: 1px solid currentColor; border-radius: .5rem; overflow-wrap: anywhere; }
+.dictation-panel h3, .dictation-panel h4 { margin: .4rem 0; }
+.dictation-panel label { display: inline-flex; gap: .4rem; align-items: center; flex-wrap: wrap; }
+.dictation-panel select { max-width: 22rem; width: min(100%, 22rem); }
+.dictation-panel input[type=number] { width: 4rem; }
+.dictation-panel button { padding: .4rem .65rem; margin: .2rem; }
+.dictation-partial { font-style: italic; opacity: .7; min-height: 1.5em; border-left: 3px dotted currentColor; padding-left: .6rem; }
+.dictation-model, .dictation-saved { border-top: 1px solid currentColor; padding: .6rem 0; }
+.dictation-panel audio { max-width: 100%; }
+
+/* Keep long previews inside the existing central pane instead of overlapping adjacent rails. */
+.manuscript-panel:has([data-dictation-panel]) { overflow-y: auto; }
+.scene-editor-shell:has(> [data-dictation-panel]) { flex: 0 0 auto; }
+.scene-editor-shell:has(> [data-dictation-panel]) > * { flex-shrink: 0; }
+
+@media (max-width: 1100px) {
+  /* The stacked shell must give Dictation a usable scroll viewport even with its RHS collapsed. */
+  .workspace-grid:has([data-dictation-panel]) { overflow-y: auto; }
+  .manuscript-panel:has([data-dictation-panel]) { min-height: 65vh; }
+}

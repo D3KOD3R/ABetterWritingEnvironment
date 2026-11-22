@@ -1,3 +1,4 @@
+import { normalizeSpeechState } from "../shared/speech-records.js";
 // Intent: own durable project-record construction and normalization apart from live editor runtime effects.
 
 function cloneValue(value) {
@@ -57,6 +58,7 @@ export function createProjectRecordStateService({
     }
 
     const workspace = clone(candidate.workspace ?? {});
+    if (workspace.speech) workspace.speech = normalizeSpeechState(workspace.speech);
     const workspaceProject = workspace?.project && typeof workspace.project === "object" ? workspace.project : null;
     if (!workspaceProject) {
       return null;

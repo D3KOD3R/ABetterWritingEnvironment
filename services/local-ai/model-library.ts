@@ -8,10 +8,11 @@ export type LocalAiModelCategory = "llm" | "embeddings" | "speech" | "voice";
 export type LocalAiModelRuntime =
   | "llama.cpp"
   | "whisper.cpp"
+  | "moonshine-voice"
   | "onnxruntime-web"
   | "transformers.js"
   | "unknown";
-export type LocalAiModelFormat = "gguf" | "onnx" | "bin" | "safetensors" | "unknown";
+export type LocalAiModelFormat = "gguf" | "onnx" | "ort" | "bin" | "safetensors" | "unknown";
 export type LocalAiModelStatus = "registered" | "unregistered" | "invalid";
 
 export interface LocalAiModelSource {
@@ -119,7 +120,7 @@ export const LOCAL_AI_MODEL_BROWSE_LINKS: LocalAiModelBrowseLink[] = [
   },
 ];
 
-const SUPPORTED_ARTIFACT_EXTENSIONS = new Set([".gguf", ".onnx", ".bin", ".safetensors"]);
+const SUPPORTED_ARTIFACT_EXTENSIONS = new Set([".gguf", ".onnx", ".ort", ".bin", ".safetensors"]);
 
 // Intent: expose a stable snapshot that the browser can render without filesystem access.
 export async function createLocalAiModelLibrarySnapshot(modelRoot: string): Promise<LocalAiModelLibrarySnapshot> {
@@ -270,10 +271,10 @@ function normalizeManifestDescriptor(
   const checksum = normalizeOptionalString(manifest?.checksum);
   const contextWindow = normalizeContextWindow(manifest?.contextWindow);
 
-  if (!tier) {
+  if (!tier && fallback.category !== "speech") {
     validationMessages.push("Missing model tier.");
   }
-  if (taskTypes.length === 0) {
+  if (taskTypes.length === 0 && fallback.category !== "speech") {
     validationMessages.push("Missing taskTypes.");
   }
   if (fallback.artifactPaths.length === 0) {
@@ -398,13 +399,13 @@ function normalizeSource(candidate: any): LocalAiModelSource {
 }
 
 function normalizeRuntime(candidate: unknown): LocalAiModelRuntime | "" {
-  return ["llama.cpp", "whisper.cpp", "onnxruntime-web", "transformers.js", "unknown"].includes(String(candidate))
+  return ["llama.cpp", "whisper.cpp", "moonshine-voice", "onnxruntime-web", "transformers.js", "unknown"].includes(String(candidate))
     ? String(candidate) as LocalAiModelRuntime
     : "";
 }
 
 function normalizeFormat(candidate: unknown): LocalAiModelFormat | "" {
-  return ["gguf", "onnx", "bin", "safetensors", "unknown"].includes(String(candidate))
+  return ["gguf", "onnx", "ort", "bin", "safetensors", "unknown"].includes(String(candidate))
     ? String(candidate) as LocalAiModelFormat
     : "";
 }

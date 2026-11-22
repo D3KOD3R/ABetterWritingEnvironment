@@ -1,3 +1,4 @@
+import { normalizeDictationRecord } from "../../shared/speech-records.js";
 // Intent: centralize project save/load/autosave/import/export persistence behind one service boundary.
 // Architecture guardrail:
 // - UI modules call ProjectPersistenceService methods.
@@ -684,6 +685,7 @@ export function createProjectPersistenceService({
   resolveActiveProjectId,
   activateLoadedProjectRecord,
   prepareProjectSnapshotForSave = () => {},
+  beforeProjectTransition = async () => {},
   reportBrowserLog = () => {},
   renderHeader = () => {},
   resolveSuggestedProjectFileName = () => getSuggestedProjectFileName(),
@@ -1719,6 +1721,7 @@ export function createProjectPersistenceService({
 
   // Intent: close the autosave gap before replacing runtime state with a loaded project snapshot.
   async function preserveActiveProjectBeforeLoad(source = "project-load", { confirmDiscardUnsaved, discardBlockedChanges = false } = {}) {
+    await beforeProjectTransition();
     commitCanonicalProjectMutation({
       domain: "project",
       dirtyReason: "before-project-load",
@@ -3061,6 +3064,30 @@ export function createProjectPersistenceService({
     await autosaveController.drain();
   }
 
+  async function saveDictationSession(record, expectedRoot) {
+    const normalized = normalizeDictationRecord(record);
+    const projectId = state.workspace?.project?.id;
+    if (normalized.projectId !== projectId || state.projectFilePath !== expectedRoot || state.projectFileStorageMode !== "desktop-package") {
+      throw new Error("Dictation belongs to the original saved package. Reopen that project to retry publication.");
+    }
+    // Drain prior saves before adding this semantic record. This is explicit preview publication,
+    // not a revision-bound manuscript receipt and never authorizes automatic audio deletion.
+    await drainProjectAutosave();
+    if (state.workspace?.project?.id !== projectId || state.projectFilePath !== expectedRoot) throw new Error("Project changed during dictation publication.");
+    const speech = state.workspace.speech ?? { schemaVersion: 1, sessions: [] };
+    state.workspace.speech = { schemaVersion: 1, sessions: [...speech.sessions.filter((entry) => entry.id !== normalized.id), normalized] };
+    commitCanonicalProjectMutation({ domain: "project", dirtyReason: "dictation-session-published", source: "Dictation", skipProjectFileAutosave: true });
+    const saved = await saveProjectSnapshot({ reason: "dictation-session" });
+    if (!saved?.projectFilePersisted || state.workspace?.project?.id !== projectId || state.projectFilePath !== expectedRoot) throw new Error("Recording bytes exist, but session metadata is not verified as saved. Retry Save.");
+    const loaded = await readProjectLibraryFromDesktopPath(expectedRoot, { fetchJsonFromDesktopApi });
+    const stored = loaded?.projects?.find((project) => project.id === projectId)?.workspace?.speech?.sessions?.find((entry) => entry.id === normalized.id);
+    if (JSON.stringify(stored) !== JSON.stringify(normalized)) {
+      // Canonical key ordering may differ after serialization; compare semantic JSON instead.
+      if (stableSerialize(stored) !== stableSerialize(normalized)) throw new Error("Dictation session failed package readback verification.");
+    }
+    return normalized;
+  }
+
   return {
     beginProjectAutosaveSuppression,
     browseDesktopProjectPackages,
@@ -3093,6 +3120,7 @@ export function createProjectPersistenceService({
     queueProjectAutosave,
     restoreLastOpenedProject,
     saveProjectSnapshot,
+    saveDictationSession,
     saveProjectSnapshotAs,
     saveProjectSnapshotAsPackage,
     saveProjectSnapshotToBrowserHandle,

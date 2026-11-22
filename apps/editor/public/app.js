@@ -1,3 +1,4 @@
+import { createDictationController } from "./features/narration/dictation-controller.js";
 // Intent: bootstrap and orchestrate the browser editor while refactor slices move feature logic outward.
 import {
   addRecentHighlightCustomColor,
@@ -1449,7 +1450,9 @@ const projectPersistenceService = createProjectPersistenceService({
       recordSnapshot: true,
     });
   },
-  prepareProjectSnapshotForSave: ({ reason }) => {
+  beforeProjectTransition: () => dictationController.stop(),
+  prepareProjectSnapshotForSave: async ({ reason }) => {
+    if (reason !== "dictation-session" && reason !== "autosave" && dictationController.isActive()) await dictationController.stop();
     logWritingTargetDebugEvent("info", "project.save", "Saving current project snapshot.", {
       reason: reason ?? "save-project",
       projectId: state.activeProjectId ?? state.workspace?.project?.id ?? "",
@@ -1545,6 +1548,10 @@ const anchoredRecordService = createAnchoredRecordService({
 const narrationMediaService = createNarrationMediaService({
   fetchJson: fetchJsonFromDesktopApi,
   getActiveProjectRoot: () => state.projectFilePath,
+});
+const dictationController = createDictationController({
+  state, persistence: projectPersistenceService, mediaService: narrationMediaService, render,
+  isFollowActive: () => Boolean(narrationRecordingRuntime),
 });
 const narrationRecordingTranscriptAlignmentService = createNarrationRecordingTranscriptAlignmentService({
   wordTimingProvider: createWhisperCppWordTimingProvider({
@@ -2220,7 +2227,7 @@ function wireEvents() {
     persistSpotifyMusicPlaybackSnapshot({ reason: "pagehide" });
   });
 
-  document.addEventListener("click", (event) => {
+  document.addEventListener("click", async (event) => {
     const clickTarget = event.target instanceof Element ? event.target : null;
     if (worldbuildingCatalogueSuppressNextClick) {
       worldbuildingCatalogueSuppressNextClick = false;
@@ -2367,6 +2374,11 @@ function wireEvents() {
     }
 
     const { action } = target.dataset;
+    if (action?.startsWith("dictation-")) { await dictationController.handle(action, target); return; }
+    // Drain the original capture before any shell action can switch scene/project/workflow.
+    if (dictationController.isActive()) {
+      try { await dictationController.stop(); } catch { return; }
+    }
     if (action) {
       const trackedUserActions = new Set([
         "load-project",
@@ -4362,6 +4374,9 @@ function wireEvents() {
   });
 
   document.addEventListener("change", (event) => {
+    if (event.target?.dataset?.dictationInput) void dictationController.change(event.target).catch((error) => { state.dictationView.status = error.message; });
+  });
+  document.addEventListener("change", (event) => {
     const target = event.target;
     if (
       (target instanceof HTMLInputElement || target instanceof HTMLSelectElement) &&
@@ -4984,6 +4999,7 @@ function refreshSceneEditorSelectionStateFromActiveTextarea() {
 
 // Intent: orchestrate slot rendering without letting individual panels own whole-app refresh order.
 function render() {
+  dictationController.syncContext();
   syncAppearanceMode({ reason: "render" });
 
   if (!state.shellReady) {
@@ -7763,6 +7779,7 @@ function getNarrationSavedTakeCountForSelectedScene() {
 }
 
 function renderNarrationMetadataSidePanel() {
+  if (state.narrationSubpanel === "stt") return dictationController.renderSidebar();
   // Intent: route narration workflow metadata into the right console while the text host stays script-focused.
   const scene = getNarrationMetadataScene();
   const selection = scene && state.narrationTakeSelection?.sceneId === scene.sceneId
@@ -11961,6 +11978,7 @@ function refreshNarrationRecordingSession() {
 }
 
 async function startNarrationRecording(sceneId = state.selectedSceneId) {
+  if (dictationController.isActive()) await dictationController.stop();
   resetNarrationFollowTrackingRuntime();
   await narrationRecordingCommandService.startRecording(sceneId);
 }

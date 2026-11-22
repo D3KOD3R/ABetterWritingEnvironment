@@ -5,7 +5,7 @@ import {
   collectChapterRecords,
 } from "./project-index.js";
 
-export const PROJECT_SCHEMA_VERSION = 2;
+export const PROJECT_SCHEMA_VERSION = 3;
 
 function requireSupportedSchemaVersion(candidateVersion, targetSchemaVersion, label) {
   const schemaVersion = Number(candidateVersion);

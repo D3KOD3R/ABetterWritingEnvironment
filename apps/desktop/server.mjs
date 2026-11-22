@@ -1,5 +1,6 @@
 // Intent: launch the local desktop HTTP host used by the browser editor and service adapters.
 import http from "node:http";
+import { randomBytes } from "node:crypto";
 import { getRegressionLogConfiguration, regressionLogConfigurationHtml } from "./src/regression-log-session.ts";
 
 import { createDesktopResponseForRequest } from "./src/http-app.ts";
@@ -9,11 +10,20 @@ import {
   readDesktopDirectoryFile,
 } from "./src/directory-picker.ts";
 
+const speechToken = randomBytes(32).toString("hex");
 const host = "127.0.0.1";
 const port = Number(process.env.PORT ?? 4310);
 
 const server = http.createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://${host}:${port}`);
+  const isSpeech = url.pathname.startsWith("/api/dictation/");
+  const expectedHost = `${host}:${server.address().port}`;
+  if (isSpeech && (request.headers.host !== expectedHost
+    || (request.headers.origin && request.headers.origin !== `http://${expectedHost}`)
+    || request.headers["x-abe-speech-session"] !== speechToken)) {
+    writeJsonResponse(response, 403, { ok: false, message: "Reload Dictation from this desktop host." });
+    return;
+  }
   const body = await readRequestBody(request);
 
   if (url.pathname === "/api/log" || url.pathname.startsWith("/api/log/")) {
@@ -92,6 +102,7 @@ const server = http.createServer(async (request, response) => {
   const result = await createDesktopResponseForRequest({
     method: request.method,
     pathname: url.pathname,
+    speechAuthorized: isSpeech,
     body,
   });
 
@@ -110,6 +121,7 @@ const server = http.createServer(async (request, response) => {
       "<head>",
       `<head>
     <meta name="abe-desktop-host" content="true" />
+    <meta name="abe-speech-session" content="${speechToken}" />
     <meta name="abe-native-directory-picker" content="${process.platform === "win32" ? "true" : "false"}" />`,
     );
   }

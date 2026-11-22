@@ -1,3 +1,4 @@
+import { renderNarrationSubpanels, renderDictationPanel } from "./narration/dictation-panel.js";
 // Intent: render the manuscript scene editor surface from editor state and feature-owned display inputs.
 import {
   areHighlightCustomColorsEqual,
@@ -360,7 +361,7 @@ export function renderSceneEditorHTML(scene, {
     scene.sceneId,
   );
   const nextScene = resolveSceneEditorNextScene(state, scene.sceneId);
-  const narrationDecorationControlHtml = mode === "narration"
+  const narrationDecorationControlHtml = mode === "narration" && state.narrationSubpanel !== "stt"
     ? renderNarrationDecorationToggles(state)
     : "";
 
@@ -377,6 +378,8 @@ export function renderSceneEditorHTML(scene, {
         grammarCheckSummary,
         narrationDecorationControlHtml,
       })}
+      ${mode === "narration" ? renderNarrationSubpanels(state) : ""}
+      ${mode === "narration" && state.narrationSubpanel === "stt" ? renderDictationPanel(state.dictationView, (state.workspace?.speech?.sessions || []).filter((record) => record.sceneId === scene.sceneId)) : ""}
       <div class="scene-editor-masthead">
         <input
           class="editor-title-input scene-editor-title-input"

@@ -235,6 +235,8 @@ export function renderLocalAiPanelHTML(options = {}) {
       </section>
 
       <section class="local-ai-panel__section">
+        <span class="local-ai-panel__label">Speech models</span>
+        <p>Open Narration / STT / Manage speech models to install verified local recognition models and assign Live or Refinement STT. Runtime readiness is checked separately.</p>
         <span class="local-ai-panel__label">Browse models</span>
         <div class="local-ai-panel__link-grid">
           ${model.browseLinks.map((link) => renderBrowseLink(link)).join("")}

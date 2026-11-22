@@ -31,6 +31,12 @@ function normalizeDesktopSettingsSnapshot(candidate: unknown): DesktopSettingsSn
   const hasAbsoluteProjectFilePath = Boolean(normalizedProjectFilePath) && /[\\/]/.test(normalizedProjectFilePath);
 
   return {
+    speech: {
+      liveModelId: typeof normalized.speech?.liveModelId === "string" ? normalized.speech.liveModelId : "",
+      refinementModelId: typeof normalized.speech?.refinementModelId === "string" ? normalized.speech.refinementModelId : "",
+      deviceId: typeof normalized.speech?.deviceId === "string" ? normalized.speech.deviceId : "",
+      channel: Number.isInteger(normalized.speech?.channel) && Number(normalized.speech?.channel) >= 0 ? normalized.speech!.channel : 0,
+    },
     executionMode: normalized.executionMode === "hybrid" ? "hybrid" : defaults.executionMode,
     modelRoot: typeof normalized.modelRoot === "string" && normalized.modelRoot.trim()
       ? normalized.modelRoot.trim()

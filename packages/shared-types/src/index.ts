@@ -28,6 +28,7 @@ export type ExecutionMode = "local-only" | "hybrid";
 export type ProviderAvailability = "ready" | "disabled";
 
 export interface DesktopSettingsSnapshot {
+  speech?: { liveModelId?: string; refinementModelId?: string; deviceId?: string; channel?: number };
   executionMode: ExecutionMode;
   modelRoot: string;
   assetRoot: string;
@@ -768,3 +769,5 @@ export function formatCharacterRecord(character: Character): CharacterRecord {
     notes: character.notes,
   };
 }
+
+export type { SpeechCaptureFrame, SpeechRecognitionEvent, DictationSessionRecord } from "./speech-events.ts";

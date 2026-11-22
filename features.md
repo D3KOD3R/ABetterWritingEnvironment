@@ -547,6 +547,17 @@ Narration follow tracks a live read-through against canonical manuscript spans, 
    4.5d Concurrent desktop/mobile edits or unresolved anchors produce reviewable insertion conflicts rather than silent text overwrites.
    4.5e Existing issue, task, target, narration, voice, and world workflows are adapted for phone screens where usable, with dense production surfaces remaining desktop/tablet-first initially.
 
+4.6 Local Dictation recording/transcript checkpoint
+
+   Process (2026-11-22): an author opens a saved project, selects Narration / STT, explicitly installs a verified curated model, chooses a microphone/channel and records into a transcript preview. Audio service adapters own capture/session/recognition semantics; Local AI owns managed model installation; ProjectPersistenceService and the desktop package boundary own completed session data and recording bytes.
+   4.6a Official Moonshine Tiny Streaming English runs locally on CPU through pinned moonshine-voice 0.1.6. Whisper Tiny q8 is offered independently for the deferred refinement role. No cloud recognition or automatic model download is used.
+   4.6b AudioWorklet capture supports system-default or explicit input, channel selection, level/clipping display, input testing, ordered bounded transport and explicit Stop. This checkpoint stops at four minutes; independently rotating production audio chunks remain deferred.
+   4.6c Finalized utterances have stable IDs/revisions and sample-addressed engine utterance timing. Provisional text stays outside canonical manuscript, exports and undo. Explicit Copy transfers finalized preview text to the clipboard; automatic insertion and D05 gestures remain gated by shared history/durability work.
+   4.6d Completed sessions are semantic project data under workspace.speech (subschema 1), explicitly normalized/serialized in project schema 3. Retained mono 16 kHz PCM16 audio is FLAC encoded, decoded to verify sample equality, checksummed and atomically published under assets/audio before session registration and package readback verification. Save As copies the owned audio tree; reopen uses relative references. Older builds reject schema 3 rather than stripping speech data.
+   4.6e Save Recording captures manual-deletion retention. With it disabled, source audio remains protected pending durable manuscript text; automatic deletion is intentionally unavailable until the separate receipt/history gates pass. Storage failures retain a retryable session and never claim durable registration from file bytes alone.
+   4.6f Narration Follow remains its existing workflow. The STT controls remain in the central host when the contextual RHS is collapsed. Machine model/device preferences remain outside portable project data.
+
+
 ### MobileFriendlyArchitecture Process Header (Planned)
 
 The mobile companion is a local-first, voice-first writing surface: the writer captures spoken prose through device capability adapters, optionally uses an addressable scene for context or placement, reviews the transcript as a proposed insertion, and deliberately commits accepted prose back to the canonical manuscript.
@@ -1045,6 +1056,14 @@ The writer manages a Spotify-backed writing soundtrack from the top chrome gap b
 This index is the code-map anchor for debugging, extraction work, and the future desktop port. Update it during `finalise work` when a feature or workflow is implemented, completed, meaningfully changed, or moved.
 
 Also update this index immediately when the user says `Feature working`; that confirmation is the trigger that the workflow should be recorded with its current implementation lines.
+
+- Feature: `Feature 4.6 - Local Dictation recording/transcript checkpoint`
+- Workflow: install local speech model, test/select input, Record, inspect final/provisional preview, Stop, replay and reopen retained project audio.
+- Status: `Partially Implemented` — functional recording preview; automatic manuscript insertion, shared history and full D04/D24 production retention remain gated.
+- Code locations: `services/local-ai/speech-model-store.ts:26` (verified staged installation and leases), `services/audio/src/dictation-engine.ts:102` (bounded local session), `apps/editor/public/features/narration/dictation-controller.js:5` (workflow), `apps/editor/public/adapters/storage/project-persistence-service.js` (`saveDictationSession`), `apps/desktop/src/dictation-host.ts:19` (host integration).
+- Execution flow: explicit STT action -> model lease and input capture -> ordered local recognition events -> transcript preview -> verified FLAC publication -> canonical session registration and package readback -> relative-path playback. Schema 3 protects the new semantic data from older writers.
+- Verification: deterministic installer, capture, event/finality and serialization tests; controlled browser RUNs exercised actual local inference, playback, reload, Save As, cold host/browser reopen and injected save failure/retry. Physical USB CODEC channels 1/2 and Logitech PRO X capture tested separately; spoken real-device accuracy and low-resource performance remain unverified.
+- Extraction/port notes: Follow tracking and cleanup adapters are unchanged; no speech-only history or automatic manuscript mutation is introduced.
 
 ### Entry Template
 

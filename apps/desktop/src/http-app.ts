@@ -1,11 +1,12 @@
 // Intent: expose the desktop HTTP surface that serves the editor, workspace data, settings, and local services.
 import { readFileSync } from "node:fs";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { appendFile, copyFile, lstat, mkdir, open, readFile, readdir, realpath, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve as resolvePath, sep as pathSeparator } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { dictationHost } from "./dictation-host.ts";
 import { createDesktopSettingsSnapshot, updateDesktopSettingsSnapshot } from "./settings.ts";
 import { getRegressionLogConfiguration, recordRegressionLogSession } from "./regression-log-session.ts";
 import {
@@ -52,7 +53,7 @@ const SESSION_TRACKER_FLAMING_PEN_SVG_PATH = fileURLToPath(
 );
 const METADATA_FOLDER_MANIFEST_FILE_NAME = "_folder.json";
 const METADATA_NOTE_FILE_STEM_MAX_LENGTH = 69;
-const SUPPORTED_PROJECT_SCHEMA_VERSION = 2;
+const SUPPORTED_PROJECT_SCHEMA_VERSION = 3;
 const APP_JS_PATH = fileURLToPath(new URL("../../editor/public/app.js", import.meta.url));
 const EDITOR_MODEL_JS_PATH = fileURLToPath(
   new URL("../../editor/public/editor-model.js", import.meta.url),
@@ -93,6 +94,7 @@ export interface DesktopHttpResponse {
 }
 
 export interface DesktopHttpRequest {
+  speechAuthorized?: boolean;
   method?: string;
   pathname: string;
   body?: string;
@@ -271,6 +273,36 @@ export async function createDesktopResponseForRequest(
 ): Promise<DesktopHttpResponse> {
   // Intent: handle mutating desktop bridge routes separately from static asset requests.
   const method = (request.method ?? "GET").toUpperCase();
+  if (request.pathname.startsWith("/api/dictation/")) {
+    if (!request.speechAuthorized) return jsonResponse(403, { ok: false, message: "Authenticated desktop session required." });
+    if (method !== "POST") return jsonResponse(405, { ok: false, message: "Dictation operations require POST." });
+    try {
+      const result = await dictationHost.handle(request.pathname.slice("/api/dictation/".length), parseJsonBody(request.body), {
+        async validatePackage(root, projectId) {
+          const context = await resolveProjectMediaRequestPath({ activeProjectRoot: root, projectRelativePath: "assets/audio/dictation-probe.flac" });
+          if (!context.filePath) throw new Error(context.error);
+          const manifest = JSON.parse(await readFile(join(root, "project.json"), "utf8"));
+          if (!manifest.projects?.some((project: any) => project.id === projectId)) throw new Error("Project identity does not match the active package.");
+        },
+        async publish(root, result) {
+          const recording = result.record.recording;
+          const context = await resolveProjectMediaRequestPath({ activeProjectRoot: root, projectRelativePath: recording.projectRelativePath });
+          if (!context.filePath) throw new Error(context.error);
+          const bytes = Buffer.from(result.contentBase64, "base64");
+          if (bytes.length !== recording.bytes || createHash("sha256").update(bytes).digest("hex") !== recording.sha256) throw new Error("Recording checksum mismatch.");
+          await mkdir(dirname(context.filePath), { recursive: true });
+          const staging = `${context.filePath}.${randomUUID()}.pending`;
+          await requireRealProjectPathContainment(root, staging);
+          const handle = await open(staging, "wx");
+          try { await handle.writeFile(bytes); await handle.sync(); } finally { await handle.close(); }
+          const readback = await readFile(staging);
+          if (!readback.equals(bytes)) throw new Error("Recording verification failed.");
+          await rename(staging, context.filePath);
+        },
+      });
+      return jsonResponse(200, { ok: true, ...result });
+    } catch (error) { return jsonResponse(400, { ok: false, message: error instanceof Error ? error.message : "Dictation failed." }); }
+  }
 
   if (method === "POST" && request.pathname === "/api/log") {
     const body = parseJsonBody(request.body);

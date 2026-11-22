@@ -1,3 +1,4 @@
+import { normalizeSpeechState } from "../../shared/speech-records.js";
 import { canonicalizeJsonPersistenceValue } from "./json-persistence-boundary.js";
 
 const PROJECT_RECORD_FIELDS = Object.freeze([
@@ -148,6 +149,7 @@ function selectFields(source, fieldNames) {
 
 function serializeWorkspace(workspace) {
   const portableWorkspace = selectFields(workspace, WORKSPACE_FIELDS);
+  if (workspace?.speech) portableWorkspace.speech = normalizeSpeechState(workspace.speech);
   if (workspace?.voice && typeof workspace.voice === "object" && !Array.isArray(workspace.voice)) {
     portableWorkspace.voice = selectFields(workspace.voice, ["profiles", "bindings", "recordings"]);
   }
