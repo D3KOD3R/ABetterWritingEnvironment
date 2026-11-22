@@ -632,7 +632,9 @@ There is no code requirement to install both models, but the panel presents live
 
 ### VTT-UX-03 — Guided first-use STT setup
 
-**Proposal, not an approved specification:** Offer a lightweight first-use setup when opening Narration → STT without a valid configuration:
+**Grill Me Round 2 · Decision 1 — APPROVED (23 November 2026): Option C, hybrid guided setup.** On first entry to Narration → STT when configuration is incomplete, display a compact **three-stage guided setup within the central STT panel** (microphone authorisation/test → live-model choice/readiness → ready to dictate). Keep microphone and model controls accessible in the contextual **right-hand sidebar (RHS)**, both during and after onboarding. When setup is valid, the guided flow disappears rather than interrupting subsequent visits; the author can deliberately reopen it from the RHS. Do not download models, activate the mic or start recording without explicit author action. This approves the **UX interaction direction**, not implementation, a full readiness definition or microphone-permission mechanics. The technical details remain open for the following Grill Me questions.
+
+**Original proposal (retained for traceability):** Offer a lightweight first-use setup when opening Narration → STT without a valid configuration:
 
 1. Welcome / Configure STT.
 2. Select and authorize a microphone.
@@ -645,7 +647,7 @@ There is no code requirement to install both models, but the panel presents live
 
 Recognize valid existing installations; do not require unrelated refinement models or repeatedly interrupt configured authors. Keep a Reopen setup action in the STT RHS console. No first-use wizard or persisted setup-completion mechanism currently exists: STT entry enumerates inputs, fetches model/runtime state and renders the panel. Current capability reporting covers the fixed CPU runtime and FLAC readiness, not hardware-based model recommendations.
 
-**Decisions needed:** Wizard versus inline checklist; skip/resume behaviour; definition of valid configuration; whether completion is derived from current readiness or stored, and ownership of any new preference; revalidation after device/runtime changes; explicit download consent and hardware advice; Finish versus a separate Record action. Preserve D01–D26 and local-only inference.
+**Decisions still needed:** Skip/resume behaviour; definition of valid configuration; whether completion is derived from current readiness or stored, and ownership of any new preference; revalidation after device/runtime changes; explicit download consent and hardware advice; Finish versus a separate Record action; microphone permission/testing mechanics and details of RHS control availability. Preserve D01–D26 and local-only inference.
 
 **Candidate acceptance after approval:** A fresh author can reach a working Moonshine-only session; valid existing configuration bypasses interruptions; failures have recoverable steps; setup can be reopened; no implicit model download or recording. Related decisions: D01, D16–D23, D25–D26.
 
