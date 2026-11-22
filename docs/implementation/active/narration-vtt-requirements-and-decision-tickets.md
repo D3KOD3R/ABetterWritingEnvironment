@@ -4,11 +4,40 @@
 **Repository:** `D3KOD3R/ABetterWritingEnvironment`  
 **Revision:** 1.2 — 23 November 2026
 
-## Current execution contract — publish and record acceptance findings (23 November 2026)
+## Current execution contract — implement approved Round 2 STT UX (23 November 2026)
 
-Publish the existing development snapshot to `feature/narration-vtt` by normal fast-forward push, audit the actual source and local model readiness, and record VTT-UX-01 through VTT-UX-03 below. Read the repository workspace/documentation instructions, the existing checkpoint report, and the bounded controller/capture/panel/model-host sources. Verify the implementation with the repository supervisor and distinguish runtime checks from author acceptance.
+**Authorization:** The author has explicitly requested Codex to **begin implementation** of Grill Me Round 2 Decisions **1–13**, documented in section 15 under `VTT-UX-01` through `VTT-UX-03`. This **supersedes the earlier publication-only prohibition for this bounded UX tranche**. Original D01–D26 requirements and the existing automatic-manuscript-insertion, shared-history, durable-audio-chunk and refinement gates remain intact. Decisions 14–18 have **not** been made and must not be treated as approved product requirements.
 
-The author has explicitly authorized publication for review. Stop if the remote advances unexpectedly or history rewriting would be needed. Preserve other worktrees, local settings, project data and logs. Do not merge into main. Do not implement a wizard, permission refactor, model-selection change or other proposed UX behaviour during this task. Stop after publication and documentation. The original D01–D26 decisions and manuscript safety gates remain unchanged; section 15 contains pending review proposals, not approved implementation instructions.
+**Goal:** Turn the approved UX decisions into a usable, honest, local-first Narration STT setup and control experience on `feature/narration-vtt`, without expanding the checkpoint into automatic manuscript editing or production refinement.
+
+**Initial bounded reads:** `AGENTS.md`, applicable `agents/FeatureWorkAgent.md`, `agents/AudioVoiceAgent.md`, `agents/RepositoryWorkspaceAgent.md` and scoped UI/settings/persistence instructions as needed; section 15 of this document; `docs/implementation/active/narration-vtt-functional-checkpoint-report.md`; the relevant `features.md` Feature 4.6 section and index only. Inspect `dictation-controller.js`, `dictation-panel.js`, `dictation-capture.js`, desktop `dictation-host.ts`/`settings.ts`, the local-AI model store, shared settings UI and targeted tests. Verify current Git ancestry and remote HEAD before editing.
+
+**Approved deliverables (traceability):**
+- **D1 / UX-03:** Inline **three-stage** first-use setup; STT RHS remains available with shared controls.
+- **D2 / UX-01:** Explicit microphone selection/setup requests permission when necessary; devices/labels refresh automatically after permission and device changes.
+- **D3 / UX-02:** Separate **Model Ready** from **Ready to Record**; show missing prerequisites with actionable recovery. At this checkpoint Ready to Record means local recording/transcript preview only.
+- **D4 / UX-02:** First successfully installed compatible Live STT model is selected when no live model is assigned. Never override an existing valid selection or silently fall back in a way the UI conceals.
+- **D5 / UX-02:** Distinct Live Dictation and optional Refinement model sections; only Live STT needed for onboarding. Never suggest that deferred Whisper refinement runs already.
+- **D6 / UX-02:** Expose model-library root, sizes and Open Model Folder; support root picker and **safe guided model-library relocation**, respecting shared Local AI ownership, checksum verification, staged copy, resource leases, rollback and non-destructive recovery. This is high-risk: do **not** auto-migrate the author's real library; stage/dry-run first, and if a genuinely unresolved destructive/conflict policy arises, stop that subfeature and report its proposed choices rather than guessing.
+- **D7 / UX-03:** Existing authors stay in normal STT; contextual repair for lost mic/model/runtime; wizard reopens only on request or unfinished first use.
+- **D8 / UX-01:** Explicit **Test Input / Stop Test** with live meter, clipping indicator and supported channel selection; no transcription or audio save; release capture on stop/navigation.
+- **D9 / UX-01:** Contextual STT RHS and **User Settings** share one authoritative mic/model/settings state; compact central Record/Stop, mic activity and readiness remain accessible with RHS collapsed.
+- **D10 / UX-01:** Lock device/channel/live-model selection in both surfaces **during recording**, including host-side checks; no hot swap or queued replacement.
+- **D11 / UX-03:** Final setup stage offers both **Finish Setup** (no mic) and **Start Dictating** (explicit, readiness-gated recording).
+- **D12 / UX-03:** Remember setup completion and incomplete progress per installation; actual readiness stays dynamic, never inferred from a completion flag; do not store machine state in portable projects.
+- **D13 / UX-03:** Guided, **explicitly consented** acquisition of a compatible live model and necessary supported local runtime/encoder dependencies. Show source, size/license when known and progress; verify integrity and compatibility, support cancel/retry, use controlled ABE-managed isolation where feasible, and **never silently mutate system-wide Python**. If trusted distributable/runtime packaging is not presently feasible, implement honest readiness and a bounded safe installer plan; do not introduce an unsafe executable downloader or claim one-click setup works.
+
+**Implementation sequence:** (1) shared readiness/settings contracts and truthful role categories; (2) permission/device discovery, explicit testing, mirrored RHS/User Settings and active-capture locking; (3) resumable inline onboarding and recoverable setup; (4) controlled, consent-based runtime installation and model storage-location/migration work, using non-destructive mocks/temporary roots until verified. Work may be committed incrementally on this VTT branch. Prefer safe, self-contained milestones; complete what is genuinely testable rather than pretending to finish every high-risk item.
+
+**Non-goals:** No automatic manuscript insertion, two-anchor dictation gestures, history/undo overhaul, audio-retention/deletion change, full refinement execution/review, new TTS/Translation, spoken commands or general Manuscript UI changes. Do not implement or invent UX Decisions 14–18. Do not change `main`, `feature/persistence-portability-harness`, unrelated worktrees, actual user projects or existing installed models. No automatic permission, model download, mic activation or recording at entry. No untrusted execution, cloud inference, force push or merge.
+
+**Verification:** Begin from the published 143/143 baseline. Add focused tests for permission grant/denial/devicechange, duplicate selection/races, Test Input stop/release and no recorded output, active capture settings lock, missing runtime/model/scene/project, wizard first-run/resume/reopen/recovery, role category distinction, User Settings/RHS synchronisation, install consent/cancel/retry and isolated storage copy/rollback. Run the repository supervisor for affected scope and a FULL run as appropriate; use actual user-device microphone tests only when available and with author consent. Verify existing Narration Follow and Manuscript regressions. Report commands, counts, artefacts and limitations accurately; do not equate mocks with human microphone acceptance.
+
+**Completion:** Update the matching bounded `features.md` index/section and section 15 ticket status with evidence; preserve historical audits. Commit verified implementation to `feature/narration-vtt` and publish via normal fast-forward push for review. Report exact SHA, changes, tests and incomplete risks, then **stop**. Any unsafe model-library cutover, third-party runtime execution approach without verified provenance, architectural conflict with existing shared services or expansion into another approval-gated phase requires a proposal before proceeding.
+
+## Historical execution contract — publish and record acceptance findings (completed 23 November 2026)
+
+The prior publication-only assignment was completed at `a73697f568ae15f3d481889df1c565497fd03a87`; its UX observations are preserved in section 15. The current UX implementation authorisation above now governs the next task.
 
 ## Active execution contract — functional Dictation checkpoint
 
