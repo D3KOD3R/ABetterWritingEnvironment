@@ -616,6 +616,8 @@ These findings are appended to the existing decision register without revising o
 
 ### VTT-UX-02 — Model installation, selection and readiness
 
+**Grill Me Round 2 · Decision 3 — APPROVED (23 November 2026): Option C, two-level readiness.** Distinguish **Model Ready** (the selected compatible local live model's files have been verified and its associated inference runtime is available/loadable) from **Ready to Record** (Model Ready plus a usable authorised microphone/channel, an applicable saved project package and selected scene, and no conflicting capture or pending unsaved session). Where any prerequisite is missing, display its specific reason and an actionable remedy rather than a misleading general Ready indicator. The live recording button's enabled state must reflect the applicable end-to-end preflight, while still handling permission revocation, disconnects and races gracefully at start time. At the current checkpoint, Ready to Record means local transcription/recording preview—not completed automatic manuscript insertion. This approves UX semantics, **not** an implementation change, a guarantee against asynchronous device failure, or a particular method or frequency for expensive model-load probing.
+
 **Reported observations:** The author installed Moonshine Tiny but not Whisper Tiny. It is unclear whether Moonshine alone is sufficient to begin local transcription.
 
 **Storage and machine audit:** `createSpeechModelStore()` in `services/local-ai/speech-model-store.ts` publishes under `<configured modelRoot>/speech/<model-id>-<pinned-revision>/`, using `abe-model.json`. Moonshine's installed directory is `moonshine_tiny_streaming_en-015f7269048251aff164cb60df02bfea76884c8f`. Required files are `frontend.ort`, `encoder.ort`, `adapter.ort`, `cross_kv.ort`, `decoder_kv.ort`, `streaming_config.json` and `tokenizer.bin` (51,441,771 artifact bytes), plus the managed manifest. The actual absolute machine path is reported in the completion response, deliberately not committed here.
@@ -630,7 +632,7 @@ There is no code requirement to install both models, but the panel presents live
 
 **Proposed states for review:** Not Installed, Installed, Selected, Loading, Ready, Incompatible and Error. Separate files, assignment and successful runtime readiness; make refinement visibly optional and explain each blocking prerequisite.
 
-**Decisions needed:** Whether installing the first live model should also select it, whether to retain implicit fallback, what Ready guarantees and when to probe/load, how to expose model location, and how optional refinement is presented. Candidate acceptance should exercise missing/corrupt model, incompatible runtime, absent ffmpeg, selected versus installed mismatch and a Moonshine-only successful start. Related decisions: D01, D16–D19, D23, D25.
+**Decisions still needed:** Whether installing the first live model should also select it, whether to retain implicit fallback, how and when to probe/load without excessive latency, how to expose model location, and how optional refinement is presented. The two-level meaning of Ready is settled above. Candidate acceptance should exercise missing/corrupt model, incompatible runtime, absent ffmpeg, selected versus installed mismatch and a Moonshine-only successful start. Related decisions: D01, D16–D19, D23, D25.
 
 ### VTT-UX-03 — Guided first-use STT setup
 
