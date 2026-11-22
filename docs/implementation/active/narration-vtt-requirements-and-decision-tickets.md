@@ -2,7 +2,13 @@
 
 **Status:** Functional recording/transcript milestone authorised on 22 November 2026; automatic manuscript insertion remains gated. Historical decisions and Phase-0 instructions below are preserved.
 **Repository:** `D3KOD3R/ABetterWritingEnvironment`  
-**Revision:** 1.1 — 22 November 2026
+**Revision:** 1.2 — 23 November 2026
+
+## Current execution contract — publish and record acceptance findings (23 November 2026)
+
+Publish the existing development snapshot to `feature/narration-vtt` by normal fast-forward push, audit the actual source and local model readiness, and record VTT-UX-01 through VTT-UX-03 below. Read the repository workspace/documentation instructions, the existing checkpoint report, and the bounded controller/capture/panel/model-host sources. Verify the implementation with the repository supervisor and distinguish runtime checks from author acceptance.
+
+The author has explicitly authorized publication for review. Stop if the remote advances unexpectedly or history rewriting would be needed. Preserve other worktrees, local settings, project data and logs. Do not merge into main. Do not implement a wizard, permission refactor, model-selection change or other proposed UX behaviour during this task. Stop after publication and documentation. The original D01–D26 decisions and manuscript safety gates remain unchanged; section 15 contains pending review proposals, not approved implementation instructions.
 
 ## Active execution contract — functional Dictation checkpoint
 
@@ -582,3 +588,75 @@ These tickets are branch-local requirement records, not GitHub Issues. All 26 de
 
 **Traceability:** Decision 26 in section 2; see detailed interaction, lifecycle, retention and test contracts in sections 3–11.
 
+
+## 15. Pending user-acceptance / UX review tickets — 23 November 2026
+
+These findings are appended to the existing decision register without revising or superseding VTT-D01–VTT-D26. All three tickets are **Pending Grill Me review — implementation not authorized**. Findings distinguish the author's field observations, source inspection and machine verification. The implementation is a development snapshot, not a finished interface.
+
+### VTT-UX-01 — Microphone configuration and permission lifecycle
+
+**Reported observations:** Microphone setup is not sufficiently integrated into the Narration STT right-hand console. Permission appears to be requested through Test Input; after permission is granted the author must manually select Refresh Inputs before the microphone options populate.
+
+**Source diagnosis:** `createDictationController.handle("dictation-stt")` in `apps/editor/public/features/narration/dictation-controller.js` calls `devices()` on entry, which calls `navigator.mediaDevices.enumerateDevices()` without first requesting access. Both Test Input (`start(true)`) and Record (`start(false)`) eventually call `startDictationCapture()` in `apps/editor/public/adapters/dictation-capture.js`; its `getUserMedia()` call is the permission-triggering boundary. Selecting the dropdown only changes the saved device preference. After capture permission succeeds, `beginStart()` stores deviceInfo and renders, but does not call `devices()` again. There is no permission-change/devicechange subscription. This leaves the pre-permission list/labels in view.devices until explicit Refresh Inputs or STT re-entry. Browser restrictions govern what that initial list exposes; the source gap explains the author's observed stale dropdown without claiming cross-browser reproduction.
+
+`renderDictationPanel()` owns microphone/channel controls, Test Input and the level meter in the central panel. `renderDictationSidebar()` currently supplies only status and directions to the central panel. Track-ended disconnect detection already exists in the capture adapter, but automatic device-list reconciliation does not.
+
+**Proposed behaviour for review:**
+
+- Provide microphone selection/setup directly in the contextual STT RHS console while preserving access with that console collapsed.
+- An explicit microphone setup/selection action should request permission when necessary, then automatically re-enumerate devices and refresh every affected dropdown.
+- Test Input should test the selected microphone, not be an obscure prerequisite for discovery.
+- Explain denied permission, unavailable devices, disconnection and browser-specific restrictions with actionable recovery. Never begin recording without an explicit author action.
+
+**Decisions needed:** Where controls belong when the RHS is collapsed; whether permission setup opens and immediately releases a temporary stream or continues into an explicitly requested test; denied/device-lost recovery; system-default versus explicit-device semantics and workflow overrides (D22).
+
+**Candidate acceptance after approval:** Fresh permission, existing permission, denied/revoked permission, no devices and disconnect cases; automatic list refresh with no manual workaround; chosen device used for Test Input; no unintended recording; keyboard access with RHS expanded/collapsed. Related decisions: D10, D20–D22, D25.
+
+### VTT-UX-02 — Model installation, selection and readiness
+
+**Reported observations:** The author installed Moonshine Tiny but not Whisper Tiny. It is unclear whether Moonshine alone is sufficient to begin local transcription.
+
+**Storage and machine audit:** `createSpeechModelStore()` in `services/local-ai/speech-model-store.ts` publishes under `<configured modelRoot>/speech/<model-id>-<pinned-revision>/`, using `abe-model.json`. Moonshine's installed directory is `moonshine_tiny_streaming_en-015f7269048251aff164cb60df02bfea76884c8f`. Required files are `frontend.ort`, `encoder.ort`, `adapter.ort`, `cross_kv.ort`, `decoder_kv.ort`, `streaming_config.json` and `tokenizer.bin` (51,441,771 artifact bytes), plus the managed manifest. The actual absolute machine path is reported in the completion response, deliberately not committed here.
+
+On 23 November 2026, read-only inspection verified all installed artifact sizes and SHA-256 values, the stored live assignment `moonshine_tiny_streaming_en`, and an empty refinement assignment. Whisper was absent. The official Transcriber successfully loaded this actual installed Moonshine directory and reported native version 30000. The runtime probe returned moonshine-voice 0.1.6, CPU ready, and recordingReady true after FLAC encode/decode verification. This audit opened no microphone, changed no settings, and did not rerun author-device speech accuracy tests.
+
+**Selection/runtime mapping:** `dictationHost.handle("settings")` in `apps/desktop/src/dictation-host.ts` validates compatible installed roles. Its start route resolves the stored liveModelId, falling back to Moonshine Tiny when empty; validates the saved package, probes the Python runtime/FLAC encoder, acquires a checksum-verified model lease and starts `createDictationEngine()`. The engine launches the fixed `moonshine_dictation.py` adapter, whose Transcriber explicitly uses `ModelArch.TINY_STREAMING` and the installed directory. Whisper is refinement-only and is **not required for basic live STT**; refinement execution is deferred. No new Narration Alignment assignment exists.
+
+**Current readiness gaps:** `renderDictationPanel()` enables Record when not busy, the Moonshine runtime and FLAC encoder report ready, and any installed catalogue model has the live role. This button check is not a complete preflight for the selected model, project, scene, microphone permission or usable channel. The controller separately requires Narration/STT, a saved folder package and no active Follow/session or unsaved pending session. The host then performs package identity, hash and actual model-load checks. Permission/capture can still fail after those checks. An enabled button therefore does not prove end-to-end readiness.
+
+There is no code requirement to install both models, but the panel presents live and refinement catalogue entries together without a guided minimum setup. It displays installed/not-installed, role assignment, install progress/errors, runtime and FLAC status, mostly inside Manage speech models. An empty assignment can still use the implicit Moonshine fallback while its button says Use for live STT. That mismatch and the absence of one consolidated readiness explanation warrant review. The author's current machine has no verified model/runtime blocker; the current browser project's saved-package/scene state and microphone permission remain separate prerequisites, not assumed verified by this audit.
+
+**Proposed states for review:** Not Installed, Installed, Selected, Loading, Ready, Incompatible and Error. Separate files, assignment and successful runtime readiness; make refinement visibly optional and explain each blocking prerequisite.
+
+**Decisions needed:** Whether installing the first live model should also select it, whether to retain implicit fallback, what Ready guarantees and when to probe/load, how to expose model location, and how optional refinement is presented. Candidate acceptance should exercise missing/corrupt model, incompatible runtime, absent ffmpeg, selected versus installed mismatch and a Moonshine-only successful start. Related decisions: D01, D16–D19, D23, D25.
+
+### VTT-UX-03 — Guided first-use STT setup
+
+**Proposal, not an approved specification:** Offer a lightweight first-use setup when opening Narration → STT without a valid configuration:
+
+1. Welcome / Configure STT.
+2. Select and authorize a microphone.
+3. Verify input using a live meter.
+4. Detect local hardware capabilities.
+5. Identify suitable locally available speech models.
+6. Select or explicitly download one compatible lightweight live STT model if necessary.
+7. Verify model and runtime readiness.
+8. Complete setup and begin dictating only through an explicit author action.
+
+Recognize valid existing installations; do not require unrelated refinement models or repeatedly interrupt configured authors. Keep a Reopen setup action in the STT RHS console. No first-use wizard or persisted setup-completion mechanism currently exists: STT entry enumerates inputs, fetches model/runtime state and renders the panel. Current capability reporting covers the fixed CPU runtime and FLAC readiness, not hardware-based model recommendations.
+
+**Decisions needed:** Wizard versus inline checklist; skip/resume behaviour; definition of valid configuration; whether completion is derived from current readiness or stored, and ownership of any new preference; revalidation after device/runtime changes; explicit download consent and hardware advice; Finish versus a separate Record action. Preserve D01–D26 and local-only inference.
+
+**Candidate acceptance after approval:** A fresh author can reach a working Moonshine-only session; valid existing configuration bypasses interruptions; failures have recoverable steps; setup can be reopened; no implicit model download or recording. Related decisions: D01, D16–D23, D25–D26.
+
+### Publication audit, phase status and verification
+
+The existing implementation and checkpoint report were first published by normal fast-forward push to `feature/narration-vtt`, ending at `56c6e9b33c5d0643d8f1112e3a28e33e9605a92e` (implementation commit `acc4461a66d27df87b9445345af20d9e4f16a3a3`). This acceptance appendix is a subsequent documentation-only commit. No proposed UX logic was implemented.
+
+Fresh repository-supervisor verification of the published source passed **143/143 FULL tests**; local report `.tools/reports/20261122T161208-aaa8/report.json` (RUN identifier is UTC; author-facing audit date is 23 November in Australia/Perth). No browser acceptance run or microphone capture was repeated while the author was testing. Earlier real inference, physical-input capture and controlled save/playback/reopen/Save As evidence, plus its limitations, remain in `narration-vtt-functional-checkpoint-report.md` sections 5–11.
+
+Phase 1 model infrastructure and Phase 2 STT shell are implemented only to checkpoint scope. Live capture/transcript preview and completed recording persistence provide a bounded vertical slice across later phases; they do not complete Phase 3A, Phase 4 or Phase 3B. Delivered portions cover D01 live/refinement separation, D10 stop barriers, D11 provisional/final separation, D16–D19 curated model management, D20–D22 STT shell/input controls, and partial D23–D25 lifecycle/storage/status. Full per-decision status remains in the checkpoint report section 13. The present UX findings qualify usability acceptance of those portions, not the historical decisions themselves.
+
+Automatic manuscript insertion, shared chronological history, two-anchor gestures, independently rotating audio chunks, durable-text-authorized deletion, full standby/hardware scheduling, refinement/review and broader workflow microphone profiles remain unfinished. Four-minute capture retains PCM in memory until Stop; there is no crash-recovery/zero-loss guarantee. Human speech accuracy on the author's microphone, an OS-wide offline test, exhaustive crash boundaries, multi-tab ownership and a fresh real-runtime Narration Follow read-through remain unverified. Existing automated Follow/Manuscript regressions pass. Earlier failure evidence is preserved in the checkpoint report; a rendering pass is not evidence that first-use UX is complete.
+
+**Recommended order after Grill Me approval:** Agree on the minimum readiness contract and live/refinement distinction (UX-02); repair permission/discovery and decide contextual control placement (UX-01); add the approved first-use flow on top of those shared readiness/capture services (UX-03); perform fresh real-device author acceptance. Separately approve Phase 3A history/receipt foundations, Phase 4 durable chunk/retention guarantees and then Phase 3B automatic insertion. This ordering is a recommendation, not new implementation authorization.
