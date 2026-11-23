@@ -8,6 +8,10 @@ import type { DesktopSettingsSnapshot } from "../../../packages/shared-types/src
 // Intent: keep the desktop host's persistent runtime state outside the browser cache.
 const DESKTOP_SETTINGS_STATE_PATH = fileURLToPath(new URL("../.desktop-state.json", import.meta.url));
 
+let speechSettingsLocked = (_patch: Partial<DesktopSettingsSnapshot>) => false;
+// All machine-settings writers share this guard, including the older Local AI routes.
+export function setSpeechSettingsLock(check: (patch: Partial<DesktopSettingsSnapshot>) => boolean) { const previous = speechSettingsLocked; speechSettingsLocked = check; return previous; }
+
 function createDefaultDesktopSettingsSnapshot(): DesktopSettingsSnapshot {
   return {
     executionMode: "local-only",
@@ -32,6 +36,8 @@ function normalizeDesktopSettingsSnapshot(candidate: unknown): DesktopSettingsSn
 
   return {
     speech: {
+      setupComplete: normalized.speech?.setupComplete === true,
+      setupStage: [1, 2, 3].includes(Number(normalized.speech?.setupStage)) ? Number(normalized.speech?.setupStage) : 1,
       liveModelId: typeof normalized.speech?.liveModelId === "string" ? normalized.speech.liveModelId : "",
       refinementModelId: typeof normalized.speech?.refinementModelId === "string" ? normalized.speech.refinementModelId : "",
       deviceId: typeof normalized.speech?.deviceId === "string" ? normalized.speech.deviceId : "",
@@ -79,6 +85,7 @@ export function createDesktopSettingsSnapshot(): DesktopSettingsSnapshot {
 
 // Intent: update only the desktop settings fields the browser is allowed to persist.
 export function updateDesktopSettingsSnapshot(patch: Partial<DesktopSettingsSnapshot>): DesktopSettingsSnapshot {
+  if (speechSettingsLocked(patch) && (patch.speech || patch.modelRoot)) throw new Error("Stop and finalize capture before changing speech or model-library settings.");
   const nextSnapshot = normalizeDesktopSettingsSnapshot({
     ...readDesktopSettingsState(),
     ...patch,

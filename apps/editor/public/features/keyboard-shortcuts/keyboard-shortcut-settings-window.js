@@ -66,7 +66,7 @@ export function renderKeyboardShortcutSettingsWindowHTML(options = {}) {
       <header class="keyboard-shortcut-settings-window__header">
         <div>
           <p class="keyboard-shortcut-settings-window__kicker">User Settings</p>
-          <h2>Shortcuts</h2>
+          <h2>${options.speechSettingsHtml ? "Speech and shortcuts" : "Shortcuts"}</h2>
         </div>
         <button
           class="keyboard-shortcut-settings-window__close"
@@ -82,11 +82,12 @@ export function renderKeyboardShortcutSettingsWindowHTML(options = {}) {
           class="tag-button panel-action-button"
           type="button"
           data-action="reset-all-keyboard-shortcuts"
-        >Reset all</button>
+        >${options.speechSettingsHtml ? "Reset shortcuts" : "Reset all"}</button>
         ${model.statusMessage ? `<p class="keyboard-shortcut-settings-window__status">${escapeHtml(model.statusMessage)}</p>` : ""}
       </div>
 
       <div class="keyboard-shortcut-settings-window__group-list">
+        ${options.speechSettingsHtml || ""}
         ${model.groups.map(renderKeyboardShortcutGroup).join("")}
       </div>
     </section>

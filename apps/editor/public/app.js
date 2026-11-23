@@ -2376,7 +2376,7 @@ function wireEvents() {
     const { action } = target.dataset;
     if (action?.startsWith("dictation-")) { await dictationController.handle(action, target); return; }
     // Drain the original capture before any shell action can switch scene/project/workflow.
-    if (dictationController.isActive()) {
+    if (dictationController.isActive() && !["toggle-project-settings-menu", "open-keyboard-shortcut-settings", "close-keyboard-shortcut-settings-window", "toggle-console-collapse"].includes(action)) {
       try { await dictationController.stop(); } catch { return; }
     }
     if (action) {
@@ -2483,6 +2483,7 @@ function wireEvents() {
     if (action === "open-keyboard-shortcut-settings") {
       hideProjectSettingsMenu();
       openKeyboardShortcutSettingsWindow();
+      void dictationController.refresh();
       return;
     }
 
@@ -2512,6 +2513,7 @@ function wireEvents() {
     }
 
     if (action === "close-keyboard-shortcut-settings-window") {
+      await dictationController.stopTest();
       closeKeyboardShortcutSettingsWindow();
       return;
     }
@@ -8266,6 +8268,7 @@ function renderKeyboardShortcutSettingsWindow() {
 
   slot.innerHTML = state.keyboardShortcutSettingsWindowOpen
     ? renderKeyboardShortcutSettingsWindowHTML({
+        speechSettingsHtml: dictationController.renderSettings(),
         settings: state.editorPrefs?.keyboardShortcuts,
         captureBehaviorId: state.keyboardShortcutCaptureBehaviorId,
         statusMessage: state.keyboardShortcutSettingsStatus,

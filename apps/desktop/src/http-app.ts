@@ -477,6 +477,7 @@ export async function createDesktopResponseForRequest(
       }, apiCorsHeaders());
     }
 
+    if (dictationHost.isActive() || (createDesktopSettingsSnapshot().speech?.liveModelId && modelRoot !== createDesktopSettingsSnapshot().modelRoot)) return jsonResponse(409, { ok: false, message: "Stop capture. Assigned speech models require a reviewed library relocation; use Speech settings to preview it." });
     const settings = updateDesktopSettingsSnapshot({
       executionMode,
       modelRoot,
@@ -955,6 +956,7 @@ export async function createDesktopResponseForRequest(
     const modelRoot = typeof body.modelRoot === "string" && body.modelRoot.trim()
       ? body.modelRoot.trim()
       : createDesktopSettingsSnapshot().modelRoot;
+    if (dictationHost.isActive() || (createDesktopSettingsSnapshot().speech?.liveModelId && modelRoot !== createDesktopSettingsSnapshot().modelRoot)) return jsonResponse(409, { ok: false, message: "Stop capture and preview model relocation in Speech settings before changing the shared root." });
     const snapshot = await ensureLocalAiModelLibraryFolders(modelRoot);
     const settings = updateDesktopSettingsSnapshot({ modelRoot: snapshot.modelRoot });
     logDesktopInfo("local-ai", "Ensured local AI model library folders.", {

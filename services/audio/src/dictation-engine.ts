@@ -38,6 +38,14 @@ function startAdapter(python: string, args: string[]) {
   return { ready: next(), async request(value: unknown) { const response = next(); child.stdin.write(JSON.stringify(value) + "\n", (error) => { if (error) fail(error); }); return response; }, close() { child.kill(); reader.close(); } };
 }
 
+// Load the actual pinned model without opening a microphone or persisting a session.
+export async function probeDictationModel(path: string, python = "python") {
+  const rpc = startAdapter(python, [path]);
+  try { await rpc.ready; return { ready: true, message: "Selected model verified and loadable." }; }
+  catch (error) { return { ready: false, message: (error as Error).message }; }
+  finally { rpc.close(); }
+}
+
 export async function probeDictationRuntime(python = "python") {
   const rpc = startAdapter(python, ["--probe"]);
   try {

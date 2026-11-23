@@ -10,14 +10,17 @@ export async function runNarrationDictationControllerTest() {
     let releaseStart, captureStopped = false, saved = false, finalized = 0;
     const state = { activePane: "narration", narrationSubpanel: "stt", projectFileStorageMode: "desktop-package", projectFilePath: "original-package", selectedSceneId: "scene", workspace: { project: { id: "project" } } };
     const controller = createDictationController({ state, render() {}, isFollowActive: () => false,
+      inputFactory: () => ({ refresh: async () => {}, state: {} }),
       persistence: { async saveDictationSession(record, root) { assert.equal(root, "original-package"); assert.equal(captureStopped, true); saved = true; return record; } },
       beginCapture: async () => ({ device: {}, stop: async () => { captureStopped = true; } }),
       request: async (action) => {
+        if (action === "acknowledge") return {};
         if (action === "start") return new Promise(resolve => { releaseStart = () => resolve({ sessionId: "session", projectId: "project", sceneId: "scene" }); });
         assert.equal(action, "stop"); finalized++;
         return { record: { sampleCount: 0, recording: { bytes: 42 } } };
       },
     });
+    Object.assign(state.dictationView, { model: { ready: true }, runtime: { ready: true, recordingReady: true }, settings: { liveModelId: "model" }, permission: "granted", devices: [{ deviceId: "default" }] });
     const recording = controller.handle("dictation-record", {});
     let navigationReleased = false;
     const transition = controller.stop().then(() => { navigationReleased = true; });
@@ -25,6 +28,13 @@ export async function runNarrationDictationControllerTest() {
     // A route change during runtime/permission startup cannot outrun capture release and publication.
     releaseStart(); await Promise.all([recording, transition]);
     assert.equal(captureStopped, true); assert.equal(saved, true); assert.equal(finalized, 1);
+    assert.equal(controller.isActive(), false);
+    captureStopped = false; saved = false;
+    await controller.handle("dictation-test", {});
+    assert.equal(state.dictationView.testing, true);
+    // Closing the settings surface releases a test without creating inference or saved output.
+    await controller.stopTest();
+    assert.equal(captureStopped, true); assert.equal(saved, false); assert.equal(finalized, 1);
     assert.equal(controller.isActive(), false);
     // Encoder/publication failures keep an explicit retry action available after the mic is released.
     assert.match(renderDictationPanel({ finalizationPending: true }), /data-action="dictation-stop" >Retry finalization/);

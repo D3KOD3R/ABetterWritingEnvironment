@@ -28,7 +28,7 @@ export type ExecutionMode = "local-only" | "hybrid";
 export type ProviderAvailability = "ready" | "disabled";
 
 export interface DesktopSettingsSnapshot {
-  speech?: { liveModelId?: string; refinementModelId?: string; deviceId?: string; channel?: number };
+  speech?: { setupComplete?: boolean; setupStage?: number; liveModelId?: string; refinementModelId?: string; deviceId?: string; channel?: number };
   executionMode: ExecutionMode;
   modelRoot: string;
   assetRoot: string;

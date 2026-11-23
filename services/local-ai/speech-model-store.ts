@@ -121,6 +121,7 @@ export function createSpeechModelStore({ modelRoot, fetchImpl = fetch, models = 
   }
   return {
     inspect, install,
+    isBusy: () => mutations.size > 0 || [...leases.values()].some(Boolean),
     async snapshot() { return Promise.all(models.map(async (model) => ({ ...model, ...await inspect(model.id), progress: jobs.get(model.id)?.progress ?? null, inUse: Boolean(leases.get(model.id)) }))); },
     async wait(id: string) { await jobs.get(id)?.done; return jobs.get(id)?.progress; },
     async cancel(id: string) { const job = jobs.get(id); if (job && mutations.has(id)) job.controller.abort(); await job?.done; },

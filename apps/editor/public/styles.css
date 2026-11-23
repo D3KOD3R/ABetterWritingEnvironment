@@ -16117,3 +16117,11 @@ aside#binder-slot {
   .workspace-grid:has([data-dictation-panel]) { overflow-y: auto; }
   .manuscript-panel:has([data-dictation-panel]) { min-height: 65vh; }
 }
+
+/* Mirrored speech controls must fit the narrow contextual console as well as User Settings. */
+.dictation-settings { min-width: 0; overflow-wrap: anywhere; }
+.dictation-settings select { max-width: 100%; }
+.dictation-settings .dictation-controls { align-items: flex-start; }
+.dictation-settings label { display: flex; flex-wrap: wrap; gap: .35rem; max-width: 100%; }
+.dictation-settings input[type=number] { width: 4rem; }
+.dictation-setup { padding: .75rem; border: 1px solid var(--ink-soft); border-radius: .5rem; }
