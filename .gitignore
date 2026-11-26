@@ -7,3 +7,4 @@ apps/desktop/.desktop-state.json
 logs/developer-runtime-session-*.txt
 **/__pycache__/
 *.pyc
+apps/desktop/.speech-runtime/

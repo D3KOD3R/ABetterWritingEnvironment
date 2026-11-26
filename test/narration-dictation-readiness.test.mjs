@@ -5,6 +5,7 @@ import { renderDictationModels, renderDictationSettings } from "../apps/editor/p
 import { setSpeechSettingsLock, updateDesktopSettingsSnapshot } from "../apps/desktop/src/settings.ts";
 export async function runNarrationDictationReadinessTest() {
   await assert.rejects(dictationHost.handle("install", { modelId: "moonshine_tiny_streaming_en", consent: false }, {}), /explicitly approve/);
+  await assert.rejects(dictationHost.handle("runtime-install", { consent: false }, {}), /explicitly approve/);
   const view = { model: { ready: true }, runtime: { ready: true, recordingReady: true }, settings: { liveModelId: "live", setupComplete: true }, permission: "granted", devices: [{ deviceId: "mic" }], deviceId: "mic", channel: 0, channels: 2 };
   const context = { saved: true, scene: "scene" };
   assert.equal(dictationReadiness(view, context).ready, true);

@@ -1,37 +1,53 @@
 import { selectFirstInstalledLive } from "../../../services/local-ai/speech-model-selection.ts";
 import { spawn } from "node:child_process";
-import { stat } from "node:fs/promises";
+import { stat, realpath } from "node:fs/promises";
 import { pickDesktopDirectory } from "./directory-picker.ts";
-import { planSpeechStorage } from "../../../services/local-ai/speech-storage-plan.ts";
+import { fileURLToPath } from "node:url";
+import { createSpeechStorageCopy } from "../../../services/local-ai/speech-storage-copy.ts";
+import { createSpeechRuntimeStore } from "../../../services/local-ai/speech-runtime-store.ts";
 // Host composition pins models and runtime commands; browser requests cannot supply executable code.
 import { createSpeechModelStore } from "../../../services/local-ai/speech-model-store.ts";
 import { createDictationEngine, probeDictationRuntime, probeDictationModel } from "../../../services/audio/src/dictation-engine.ts";
 import { createDesktopSettingsSnapshot, updateDesktopSettingsSnapshot, setSpeechSettingsLock } from "./settings.ts";
 
 const engine = createDictationEngine();
+const relocation = createSpeechStorageCopy();
+const runtimes = createSpeechRuntimeStore({
+  root: process.env.ABE_DICTATION_RUNTIME_ROOT || fileURLToPath(new URL("../.speech-runtime", import.meta.url)),
+  probe: python => probeDictationRuntime(python, true),
+});
+async function runtimeChoice() {
+  if (process.env.ABE_DICTATION_PYTHON) return { python: process.env.ABE_DICTATION_PYTHON, privateCodec: false };
+  const python = await runtimes.selected();
+  return { python: python || "python", privateCodec: Boolean(python) };
+}
 let starting = false, pendingPublication = false;
 let cachedProbe: any = null, probeKey = "", probeTime = 0;
-const locked = () => starting || engine.isActive() || pendingPublication;
+const locked = () => starting || engine.isActive() || pendingPublication || runtimes.isBusy() || relocation.isBusy();
 setSpeechSettingsLock(patch => locked() || Boolean(patch.modelRoot && store?.isBusy()));
 // Cache probes briefly and never reload an engine during capture; start always revalidates files.
 async function readiness(models: ReturnType<typeof createSpeechModelStore>) {
+  if (runtimes.isBusy() || relocation.isBusy()) return { runtime: { ready: false, message: "Wait for the setup operation to finish." }, model: { ready: false, message: "Model checks resume after setup." } };
   const settings = createDesktopSettingsSnapshot();
   const key = `${settings.modelRoot}/${settings.speech?.liveModelId}`;
   if (!cachedProbe || key !== probeKey || (!locked() && Date.now() - probeTime > 15000)) {
     probeKey = key; probeTime = Date.now();
     cachedProbe = (async () => {
-      const runtime = await probeDictationRuntime(process.env.ABE_DICTATION_PYTHON || "python");
+      let choice;
+      try { choice = await runtimeChoice(); }
+      catch (error) { return { runtime: { ready: false, message: (error as Error).message }, model: { ready: false } }; }
+      const runtime = await probeDictationRuntime(choice.python, choice.privateCodec);
       let model = { ready: false, message: "Select an installed Live Dictation model." };
       if (settings.speech?.liveModelId && runtime.ready) {
         let lease;
         try {
           lease = await models.acquire(settings.speech.liveModelId);
           if (!lease.model.roles.includes("live")) throw new Error("Selected model is not compatible with Live Dictation.");
-          model = await probeDictationModel(lease.path, process.env.ABE_DICTATION_PYTHON || "python");
+          model = await probeDictationModel(lease.path, choice.python);
         } catch (error) { model = { ready: false, message: (error as Error).message }; }
         finally { lease?.release(); }
       }
-      return { runtime, model };
+      return { runtime: { ...runtime, source: choice.privateCodec ? "ABE-managed private runtime" : "Existing local runtime" }, model };
     })();
   }
   return cachedProbe;
@@ -52,7 +68,24 @@ export const dictationHost = {
   isActive: locked,
   async handle(action: string, body: any, storage: { validatePackage: (root: string, projectId: string) => Promise<void>; publish: (root: string, result: any) => Promise<void> }) {
     const models = getStore();
-    if (action === "dependency-plan") return { message: "Live STT uses Moonshine Tiny (MIT, 51,441,771 model bytes from the pinned Hugging Face catalogue), moonshine-voice 0.1.6 and a compatible FLAC encoder. Existing local runtimes are checked first. Model downloads require the separate Approve download action. Automatic runtime installation is not yet available: the complete Windows/Python/NumPy/native dependency and encoder distribution needs pinned hashes, license review and an isolated versioned install/rollback design. No executable is downloaded, no system Python is changed. Use Check models and runtime after an existing supported installation is repaired." };
+    if (action === "dependency-plan") return runtimes.plan();
+    if (action === "runtime-cancel") { const result = await runtimes.cancel(); cachedProbe = null; return result; }
+    if (action === "storage-cancel") { const result = await relocation.cancel(); cachedProbe = null; return result; }
+    if (action === "runtime-install") {
+      if (locked() || models.isBusy()) throw new Error("Stop capture and wait for model operations before runtime installation.");
+      const result = await runtimes.install(body.consent);
+      void runtimes.wait().then(() => { cachedProbe = null; });
+      return result;
+    }
+    if (action === "storage-copy") {
+      if (locked() || models.isBusy()) throw new Error("Stop capture and wait for model operations before copying.");
+      if (await realpath(storeRoot) !== relocation.snapshot()?.source) throw new Error("Storage location changed. Choose and review a fresh preview.");
+      // Recheck after filesystem awaits so recording/root changes cannot slip into the copy lock.
+      if (locked() || models.isBusy() || storeRoot !== (process.env.ABE_DICTATION_TEST_MODEL_ROOT || createDesktopSettingsSnapshot().modelRoot)) throw new Error("Configuration changed. Stop operations and review relocation again.");
+      const result = await relocation.start(body.id, body.consent);
+      void relocation.wait().then(() => { cachedProbe = null; });
+      return result;
+    }
     if (action === "open-folder") {
       if (!(await stat(storeRoot)).isDirectory()) throw new Error("The model-library folder does not exist yet.");
       if (process.platform !== "win32") throw new Error(`Open this folder in your file manager: ${storeRoot}`);
@@ -63,11 +96,11 @@ export const dictationHost = {
       if (locked() || models.isBusy()) throw new Error("Stop capture and model operations before relocation planning.");
       const choice = await pickDesktopDirectory({ initialPath: storeRoot });
       if (choice.cancelled || !choice.path) return { message: "Relocation preview cancelled. Nothing changed." };
-      return planSpeechStorage(storeRoot, choice.path);
+      return relocation.plan(storeRoot, choice.path);
     }
     if (action === "models") {
       const capability = await readiness(models);
-      return { models: await models.snapshot(), ...capability, locked: locked(), modelRoot: storeRoot, settings: createDesktopSettingsSnapshot().speech ?? {} };
+      return { models: await models.snapshot(), ...capability, locked: locked(), modelRoot: storeRoot, settings: createDesktopSettingsSnapshot().speech ?? {}, runtimeInstall: runtimes.snapshot(), storageCopy: relocation.snapshot() };
     }
     if (action === "acknowledge") {
       if (!stopped || stopped.record.id !== body.sessionId) throw new Error("Unknown saved session.");
@@ -120,13 +153,14 @@ export const dictationHost = {
       try {
         if (!body.projectId || !body.sceneId) throw new Error("A saved project and scene are required.");
       await storage.validatePackage(body.activeProjectRoot, body.projectId);
-      const capability = await probeDictationRuntime(process.env.ABE_DICTATION_PYTHON || "python");
+      const choice = await runtimeChoice();
+      const capability = await probeDictationRuntime(choice.python, choice.privateCodec);
       if (!capability.ready || !capability.recordingReady) throw new Error(capability.message || capability.recordingMessage || "Install the speech runtime and FLAC encoder before recording.");
       const id = createDesktopSettingsSnapshot().speech?.liveModelId;
       if (!id) throw new Error("Select a Live Dictation model first.");
       const lease = await models.acquire(id);
       if (!lease.model.roles.includes("live")) { lease.release(); throw new Error("Selected model is not a live recognizer."); }
-      const result = await engine.start({ projectId: body.projectId, sceneId: body.sceneId, saveRecording: body.saveRecording === true, lease, python: process.env.ABE_DICTATION_PYTHON || "python" });
+      const result = await engine.start({ projectId: body.projectId, sceneId: body.sceneId, saveRecording: body.saveRecording === true, lease, ...choice });
       packageContext = { root: body.activeProjectRoot, projectId: body.projectId }; stopped = null;
       return result;
       } finally { starting = false; }

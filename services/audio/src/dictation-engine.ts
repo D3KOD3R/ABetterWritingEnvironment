@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import { randomUUID, createHash } from "node:crypto";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
+import { privateFlacCodec } from "./dictation-codec.ts";
 import { createDictationJournal } from "./dictation-journal.ts";
 import type { SpeechCaptureFrame, SpeechRecognitionEvent } from "../../../packages/shared-types/src/speech-events.ts";
 
@@ -10,7 +11,7 @@ const adapter = fileURLToPath(new URL("../sidecars/moonshine_dictation.py", impo
 export const DICTATION_MAX_SAMPLES = 16000 * 240;
 
 function startAdapter(python: string, args: string[]) {
-  const child = spawn(python, [adapter, ...args], { windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
+  const child = spawn(python, ["-B", adapter, ...args], { windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
   let pending: { resolve: (value: any) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> } | null = null;
   let failure: Error | null = null;
   let stderr = "";
@@ -46,13 +47,14 @@ export async function probeDictationModel(path: string, python = "python") {
   finally { rpc.close(); }
 }
 
-export async function probeDictationRuntime(python = "python") {
+export async function probeDictationRuntime(python = "python", privateCodec = false) {
   const rpc = startAdapter(python, ["--probe"]);
   try {
     const runtime = await rpc.ready;
     try {
       const samples = Buffer.alloc(320);
-      await verifyFlac(await encodeFlac(samples), samples);
+      const codec = privateCodec ? privateFlacCodec(python) : { encode: encodeFlac, verify: verifyFlac };
+      await codec.verify(await codec.encode(samples), samples);
       return { ...runtime, recordingReady: true, recordingEncoding: "flac" };
     } catch (error) { return { ...runtime, recordingReady: false, recordingMessage: (error as Error).message }; }
   }
@@ -93,14 +95,14 @@ export function createDictationEngine({ openAdapter = startAdapter, encodeRecord
   let starting = false;
   return {
     isActive: () => starting || Boolean(current),
-    async start({ projectId, sceneId, lease, python = "python", saveRecording = false }: any) {
+    async start({ projectId, sceneId, lease, python = "python", privateCodec = false, saveRecording = false }: any) {
       if (starting || current) { lease.release(); throw new Error("Dictation already owns capture."); }
       starting = true;
       const rpc = openAdapter(python, [lease.path]);
       try {
         const ready = await rpc.ready;
         const identity = { sessionId: randomUUID(), projectId, sceneId, captureEpoch: randomUUID() };
-        current = { ...identity, rpc, lease, runtimeVersion: `${ready.runtime}/native-${ready.nativeVersion}`, startedAt: new Date().toISOString(), saveRecording, sequence: 0, sampleCount: 0, sourceEnd: 0, sourceSampleRate: null, busy: false, pcm: [], journal: createDictationJournal(identity), failure: null };
+        current = { ...identity, rpc, lease, codec: privateCodec ? privateFlacCodec(python) : { encode: encodeRecording, verify: verifyRecording }, runtimeVersion: `${ready.runtime}/native-${ready.nativeVersion}`, startedAt: new Date().toISOString(), saveRecording, sequence: 0, sampleCount: 0, sourceEnd: 0, sourceSampleRate: null, busy: false, pcm: [], journal: createDictationJournal(identity), failure: null };
         return { ...identity, runtimeVersion: current.runtimeVersion, maxSamples: DICTATION_MAX_SAMPLES };
       } catch (error) { rpc.close(); lease.release(); throw error; }
       finally { starting = false; }
@@ -142,8 +144,8 @@ export function createDictationEngine({ openAdapter = startAdapter, encodeRecord
         session.finalized = true;
         session.rpc.close();
         const pcm = Buffer.concat(session.pcm);
-        const flac = await encodeRecording(pcm);
-        await verifyRecording(flac, pcm);
+        const flac = await session.codec.encode(pcm);
+        await session.codec.verify(flac, pcm);
         const record = { schemaVersion: 1, id: session.sessionId, projectId: session.projectId, sceneId: session.sceneId, captureEpoch: session.captureEpoch, startedAt: session.startedAt, endedAt: new Date().toISOString(), status: session.failure || captureFailure ? "failed" : "stopped", retention: session.saveRecording ? "manual-deletion" : "awaiting-durable-text", sampleRate: 16000, sampleCount: session.sampleCount, sourceSampleRate: session.sourceSampleRate, sourceSampleCount: session.sourceEnd, resampling: "capture-worklet-box-v1", modelId: session.lease.model.id, modelRevision: session.lease.model.revision, runtimeVersion: session.runtimeVersion, events: session.journal.snapshot(), recording: { projectRelativePath: `assets/audio/dictation-${session.sessionId}.flac`, encoding: "flac", bytes: flac.length, sha256: createHash("sha256").update(flac).digest("hex"), startSample: 0, endSample: session.sampleCount } };
         session.journal.close(); session.lease.release(); current = null;
         return { record, contentBase64: flac.toString("base64"), message: session.failure || captureFailure };

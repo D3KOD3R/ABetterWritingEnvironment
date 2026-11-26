@@ -69,22 +69,39 @@ export function renderDictationSettings(view = {}, surface = "sidebar") {
     <details ${view.manageOpen ? "open" : ""}><summary>Manage speech models</summary>${renderDictationModels(view)}</details>
     <p>Model library: ${e(view.modelRoot || "Checking…")}</p>
     <button data-action="dictation-open-folder">Open Model Folder</button>
-    <button data-action="dictation-storage-plan" ${locked ? "disabled" : ""}>Choose Storage Location / Preview relocation</button>
-    ${view.storagePlan ? `<p role="status">${e(view.storagePlan)}</p>` : ""}
-    <p>Runtime: ${e(view.runtime?.ready ? "Moonshine CPU ready" : view.runtime?.message || "Not checked")} · Encoder: ${view.runtime?.recordingReady ? "FLAC ready" : "Unavailable"}</p>
-    <button data-action="dictation-refresh" ${locked ? "disabled" : ""}>Check models and runtime</button><button data-action="dictation-dependencies">Review dependency plan</button>
-    ${view.dependencyPlan ? `<p role="status">${e(view.dependencyPlan)}</p>` : ""}
+    <button data-action="dictation-storage-plan" ${locked ? "disabled" : ""}>Choose Storage Location / Preview copy</button>
+    ${renderStorageCopy(view, locked)}
+    <p>Runtime: ${e(view.runtime?.ready ? `${view.runtime.source || "Moonshine CPU"} ready` : view.runtime?.message || "Not checked")} · Encoder: ${view.runtime?.recordingReady ? "FLAC ready" : "Unavailable"}</p>
+    <button data-action="dictation-refresh" ${locked ? "disabled" : ""}>Check models and runtime</button><button data-action="dictation-dependencies">Set up speech runtime</button>
+    ${renderRuntimeSetup(view, locked)}
     <button data-action="dictation-setup" ${locked ? "disabled" : ""}>Reopen Setup</button>
     <p data-dictation-status>${e(view.status || "Stopped")}</p></section>`;
 }
 export function renderSetup(view) {
   const stage = view.settings?.setupStage || 1;
   return `<section class="dictation-setup" aria-label="STT setup"><h4>Set up STT · Stage ${stage} of 3</h4>
-    ${stage === 1 ? `<p>Authorize your microphone, then explicitly test its input. Setup does not record audio.</p>${renderMicrophone(view)}` : stage === 2 ? renderDictationModels(view, true) : renderReadiness(view)}
+    ${stage === 1 ? `<p>Authorize your microphone, then explicitly test its input. Setup does not record audio.</p>${renderMicrophone(view)}` : stage === 2 ? `${renderDictationModels(view, true)}<button data-action="dictation-dependencies">Set up speech runtime</button>${renderRuntimeSetup(view, view.active || view.busy || view.locked)}` : renderReadiness(view)}
     ${stage > 1 ? '<button data-action="dictation-setup-back">Back</button>' : ""}
     ${stage < 3 ? `<button data-action="dictation-setup-next" ${view.active || view.busy || (stage === 1 ? !view.inputTested : !view.readiness?.modelReady) ? "disabled" : ""}>Next</button>` : `<button data-action="dictation-finish" ${!view.readiness?.modelReady || view.permission !== "granted" || view.active || view.busy ? "disabled" : ""}>Finish Setup</button><button data-action="dictation-start-setup" ${!view.readiness?.ready ? "disabled" : ""}>Start Dictating</button>`}
     <p>Finish Setup leaves the microphone off. Start Dictating begins a transcript preview only.</p></section>`;
 }
 export function renderDictationSidebar(view = {}) {
   return `<section data-dictation-sidebar>${renderDictationSettings(view)}</section>`;
+}
+
+export function renderRuntimeSetup(view, locked) {
+  const job = view.runtimeInstall, plan = view.dependencyPlan;
+  return `${job && job.state !== "idle" ? `<p role="status">Runtime ${e(job.state)} · ${Number(job.downloadedBytes).toLocaleString()} downloaded / ${Number(job.verifiedBytes).toLocaleString()} verified bytes · ${e(job.message)}</p>${job.busy ? '<button data-action="dictation-runtime-cancel">Cancel runtime installation</button>' : ""}` : ""}
+    ${plan ? `<div role="region" aria-label="Runtime installation consent"><p>${e(plan.message)}</p><p>Location: ${e(plan.root)}</p>
+    <details><summary>Sources, download sizes and licences</summary><ul>${(plan.artifacts || []).map(a => `<li><a href="${e(a.source)}" target="_blank" rel="noreferrer">${e(a.filename)}</a> · ${a.bytes.toLocaleString()} bytes · ${e(a.license)}</li>`).join("")}</ul><p>SoundFile includes libsndfile (LGPL-2.1-or-later). Bundled notices are retained.</p></details>
+    ${plan.supported ? `<button data-action="dictation-runtime-install" ${locked ? "disabled" : ""}>Approve download and install private runtime</button>` : '<p>Automatic installation is available on Windows x64 only.</p>'}
+    <button data-action="dictation-runtime-dismiss">Cancel</button></div>` : ""}`;
+}
+export function renderStorageCopy(view, locked) {
+  const copy = view.storageCopy;
+  if (!copy) return "";
+  return `<div role="status"><p>${e(copy.message)}</p>${copy.state ? `<p>${e(copy.state)} · ${Number(copy.copiedBytes || 0).toLocaleString()} / ${Number(copy.bytes || 0).toLocaleString()} bytes</p>` : ""}
+    ${copy.stage ? `<p>Staged copy: ${e(copy.stage)}</p>` : ""}
+    ${copy.state === "planned" ? `<button data-action="dictation-storage-copy" ${locked ? "disabled" : ""}>Approve staged copy (keep current library)</button>` : ""}
+    ${copy.busy ? '<button data-action="dictation-storage-cancel">Cancel library copy</button>' : ""}</div>`;
 }

@@ -1,0 +1,161 @@
+{
+  "id": "moonshine-0.1.6-python-3.14.10-win-x64-v1",
+  "platform": "win32",
+  "arch": "x64",
+  "pythonVersion": "3.14.10",
+  "artifacts": [
+    {
+      "filename": "python-3.14.10-embed-amd64.zip",
+      "url": "https://www.python.org/ftp/python/3.14.10/python-3.14.10-embed-amd64.zip",
+      "bytes": 12619664,
+      "sha256": "90905e64a840557d8c1bc4f5b74db3d7ee85e3ffb217611cac1c7813acea4159",
+      "license": "PSF-2.0",
+      "source": "https://www.python.org/downloads/release/python-31410/",
+      "kind": "python"
+    },
+    {
+      "filename": "certifi-2026.11.20-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/6d/39/5eec3296860b94ac20bb8ed807725b88f6adfab3f343df592afd975f5f86/certifi-2026.11.20-py3-none-any.whl",
+      "bytes": 127913,
+      "sha256": "7422df25243767b9877031a2248cb14d09ddac9beee846f4cef3d5c9191d488f",
+      "license": "MPL-2.0",
+      "source": "https://pypi.org/project/certifi/2026.11.20/",
+      "kind": "wheel"
+    },
+    {
+      "filename": "cffi-2.1.1-cp314-cp314-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/a7/06/1c3e01e3ba14c39f6d10bfbac52753b7e22259e38088e5cfe1d704918690/cffi-2.1.1-cp314-cp314-win_amd64.whl",
+      "bytes": 187949,
+      "sha256": "3222ba5d678f80a030e6afbcc33dc1ae5cb45facabb61cee2c7016b8432fde48",
+      "license": "MIT-0",
+      "source": "https://pypi.org/project/cffi/2.1.1/",
+      "kind": "wheel"
+    },
+    {
+      "filename": "charset_normalizer-3.5.3-cp314-cp314-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/a0/4e/0d31216be12c3146dd282b043957805d4dda8806cd7b99c90273d251f0f2/charset_normalizer-3.5.3-cp314-cp314-win_amd64.whl",
+      "bytes": 218705,
+      "sha256": "b66a0e045cf859d7418f26a554509b65f21ebb6d90a95152460781939e8264f4",
+      "license": "MIT",
+      "source": "https://pypi.org/project/charset_normalizer/3.5.3/",
+      "kind": "wheel"
+    },
+    {
+      "filename": "colorama-0.4.6-py2.py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/d1/d6/3965ed04c63042e047cb6a3e6ed1a63a35087b6a609aa3a15ed8ac56c221/colorama-0.4.6-py2.py3-none-any.whl",
+      "bytes": 25335,
+      "sha256": "4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6",
+      "license": "License :: OSI Approved :: BSD License",
+      "source": "https://pypi.org/project/colorama/0.4.6/",
+      "kind": "wheel"
+    },
+    {
+      "filename": "filelock-4.3.0-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/68/66/870b527908a06c7ec0e91239bd2c4d0bb22921efd4f915428b4e47d461a6/filelock-4.3.0-py3-none-any.whl",
+      "bytes": 244553,
+      "sha256": "f933f39f7e01249a4a49b9abab30edc6d4b874624c3de5dd0b0d137aa8adb979",
+      "license": "MIT",
+      "source": "https://pypi.org/project/filelock/4.3.0/",
+      "kind": "wheel"
+    },
+    {
+      "filename": "google_crc32c-1.9.0-cp314-cp314-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/d3/fd/81cefea6adae7bd92abb23d4567d199f6485a20ec0a305ca5fa04c52b9c5/google_crc32c-1.9.0-cp314-cp314-win_amd64.whl",
+      "bytes": 35535,
+      "sha256": "af73200fa9791ccd380f3598235dba8d82b8af0905df045b3dc60b59836e8ddd",
+      "license": "Apache-2.0",
+      "source": "https://pypi.org/project/google_crc32c/1.9.0/",
+      "kind": "wheel"
+    },
+    {
+      "filename": "idna-3.20-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/58/a2/bb081bab032533a855d44de1d56f8e8426114ff1ba5d1f07a438a0a654f8/idna-3.20-py3-none-any.whl",
+      "bytes": 69583,
+      "sha256": "ab7ae7122974553370f0bdb919e1a960b2cd1bc1ef0276416d896db81c14582c",
+      "license": "BSD-3-Clause",
+      "source": "https://pypi.org/project/idna/3.20/",
+      "kind": "wheel"
+    },
+    {
+      "filename": "moonshine_voice-0.1.6-py3-none-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/7f/07/aafde753e2819bc5dca333b45a90f3dad475a41da2c97ddd60ccc6e37479/moonshine_voice-0.1.6-py3-none-win_amd64.whl",
+      "bytes": 16616460,
+      "sha256": "29a54f9249d41735db62b1f97272905cf114554f293c166f0f4f81655a4a2cfc",
+      "license": "MIT",
+      "source": "https://pypi.org/project/moonshine_voice/0.1.6/",
+      "kind": "wheel"
+    },
+    {
+      "filename": "numpy-2.5.5-cp314-cp314-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/74/e2/494516771374b43060c1b778b371cba53d576abd3aee1275eecd73896e3b/numpy-2.5.5-cp314-cp314-win_amd64.whl",
+      "bytes": 12710543,
+      "sha256": "20145b11776d2f7570cd61351b156a51d3a341822282095baa819d87272bc710",
+      "license": "BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0",
+      "source": "https://pypi.org/project/numpy/2.5.5/",
+      "kind": "wheel"
+    },
+    {
+      "filename": "platformdirs-4.14.8-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/5b/be/373cc7341f53bfd3acba3e5db62433fd960a45fcf73ad64a5f4d27e74910/platformdirs-4.14.8-py3-none-any.whl",
+      "bytes": 94267,
+      "sha256": "1e34af590de4d978631b751eb2202f2fee4497537a17c1720b12fcf57b331392",
+      "license": "MIT",
+      "source": "https://pypi.org/project/platformdirs/4.14.8/",
+      "kind": "wheel"
+    },
+    {
+      "filename": "pycparser-3.12-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/b6/ae/315bbeee126a769cbde43cf4908acb4b40408d8bf8bbf334dd7368d8dadf/pycparser-3.12-py3-none-any.whl",
+      "bytes": 62600,
+      "sha256": "a076f3f489b39b43ed13563a1dafe42447445bec2e294154ec5c57fcdda4c85e",
+      "license": "BSD-3-Clause",
+      "source": "https://pypi.org/project/pycparser/3.12/",
+      "kind": "wheel"
+    },
+    {
+      "filename": "requests-2.34.2-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/a0/f4/c67b0b3f1b9245e8d266f0f112c500d50e5b4e83cb6f3b71b6528104182a/requests-2.34.2-py3-none-any.whl",
+      "bytes": 73075,
+      "sha256": "2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0",
+      "license": "Apache-2.0",
+      "source": "https://pypi.org/project/requests/2.34.2/",
+      "kind": "wheel"
+    },
+    {
+      "filename": "sounddevice-0.5.6-py3-none-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/8d/3e/cbc593c31a5f0d817b3fe97e64aa8461bd0f55cb07b67ce1b776296ae336/sounddevice-0.5.6-py3-none-win_amd64.whl",
+      "bytes": 1009630,
+      "sha256": "7f4162f514f007b0bf25a3ccfed3f1705bc2ec311888a90232729eec4f57a4f4",
+      "license": "MIT",
+      "source": "https://pypi.org/project/sounddevice/0.5.6/",
+      "kind": "wheel"
+    },
+    {
+      "filename": "soundfile-0.13.1-py2.py3-none-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/14/e9/6b761de83277f2f02ded7e7ea6f07828ec78e4b229b80e4ca55dd205b9dc/soundfile-0.13.1-py2.py3-none-win_amd64.whl",
+      "bytes": 1019162,
+      "sha256": "1e70a05a0626524a69e9f0f4dd2ec174b4e9567f4d8b6c11d38b5c289be36ee9",
+      "license": "BSD 3-Clause License",
+      "source": "https://pypi.org/project/soundfile/0.13.1/",
+      "kind": "wheel"
+    },
+    {
+      "filename": "tqdm-4.70.1-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/a7/03/921a3d3c75785aca9ebfbfcabfbc3a1be12e2ab5265deb026d55a5a3f83e/tqdm-4.70.1-py3-none-any.whl",
+      "bytes": 80199,
+      "sha256": "c293e525e6fef9c20e8728fd4612df02a0aa31bb5fe91ecd93e123b1b7bffa73",
+      "license": "MPL-2.0 AND MIT",
+      "source": "https://pypi.org/project/tqdm/4.70.1/",
+      "kind": "wheel"
+    },
+    {
+      "filename": "urllib3-2.8.0-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/92/9d/c4e665119135114480843e7ab388fa94d8480650450e6f8e26b70d323a4c/urllib3-2.8.0-py3-none-any.whl",
+      "bytes": 135717,
+      "sha256": "0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3",
+      "license": "MIT",
+      "source": "https://pypi.org/project/urllib3/2.8.0/",
+      "kind": "wheel"
+    }
+  ]
+}

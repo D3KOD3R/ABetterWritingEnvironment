@@ -41,10 +41,10 @@ export function createDictationController({ state, persistence, mediaService, re
     const finals = document.querySelector("[data-dictation-finals]"); if (finals) finals.innerHTML = renderEvents(view.events);
   }
   async function refresh() {
-    const signature = () => JSON.stringify([view.models, view.settings, view.model, view.runtime, view.locked, view.modelRoot]);
+    const signature = () => JSON.stringify([view.models, view.settings, view.model, view.runtime, view.locked, view.modelRoot, view.runtimeInstall, view.storageCopy]);
     const before = signature();
     const result = await request("models");
-    Object.assign(view, { models: result.models, runtime: result.runtime, model: result.model, locked: result.locked, modelRoot: result.modelRoot, settings: result.settings });
+    Object.assign(view, { models: result.models, runtime: result.runtime, model: result.model, locked: result.locked, modelRoot: result.modelRoot, settings: result.settings, runtimeInstall: result.runtimeInstall, storageCopy: result.storageCopy });
     view.deviceId = result.settings.deviceId || ""; view.channel = result.settings.channel || 0;
     const details = document.querySelector("[data-dictation-models]");
     if (details) { const open = details.open; details.innerHTML = `<summary>Manage speech models</summary>${renderDictationModels(view)}`; details.open = open; }
@@ -61,7 +61,7 @@ export function createDictationController({ state, persistence, mediaService, re
     return operation.finally(() => { if (starting === operation) starting = null; });
   }
   async function beginStart(test) {
-    if (view.active || view.busy || view.settingBusy || session || isFollowActive()) throw new Error("Stop the current microphone workflow first.");
+    if (view.active || view.busy || view.locked || view.settingBusy || session || isFollowActive()) throw new Error("Stop the current microphone workflow first.");
     if (view.pending) throw new Error("Save the previous session before starting another.");
     if (!test && (state.activePane !== "narration" || state.narrationSubpanel !== "stt")) throw new Error("Open Narration STT first.");
     if (!test && state.projectFileStorageMode !== "desktop-package") throw new Error("Save this project as a folder package before recording.");
@@ -139,9 +139,19 @@ export function createDictationController({ state, persistence, mediaService, re
         await request("settings", { setupComplete: true, setupStage: 3 }); view.setupOpen = false; await refresh();
         if (action === "dictation-start-setup") await start();
       }
-      else if (action === "dictation-dependencies") { view.dependencyPlan = (await request("dependency-plan")).message; panel(); }
+      else if (action === "dictation-dependencies") { view.dependencyPlan = await request("dependency-plan"); panel(); }
+      else if (action === "dictation-runtime-install") {
+        if (!view.dependencyPlan?.supported) throw new Error("Review the supported runtime before installing.");
+        await request("runtime-install", { consent: true }); view.dependencyPlan = null; await refresh();
+      }
+      else if (action === "dictation-runtime-dismiss") { view.dependencyPlan = null; panel(); }
+      else if (action === "dictation-runtime-cancel") { await request("runtime-cancel"); await refresh(); }
+      else if (action === "dictation-storage-copy") {
+        await request("storage-copy", { id: view.storageCopy?.id, consent: true }); await refresh();
+      }
+      else if (action === "dictation-storage-cancel") { await request("storage-cancel"); await refresh(); }
       else if (action === "dictation-open-folder") await request("open-folder");
-      else if (action === "dictation-storage-plan") { view.storagePlan = (await request("storage-plan")).message; panel(); }
+      else if (action === "dictation-storage-plan") { view.storageCopy = await request("storage-plan"); panel(); }
       else if (action === "dictation-install") { view.consentModel = target.dataset.modelId; view.manageOpen = true; panel(); }
       else if (action === "dictation-dismiss-consent") { view.consentModel = null; panel(); }
       else if (action === "dictation-confirm-install") {

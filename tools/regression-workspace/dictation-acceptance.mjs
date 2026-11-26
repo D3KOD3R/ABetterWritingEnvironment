@@ -10,16 +10,19 @@ const option=(key)=>args.includes(key)?args[args.indexOf(key)+1]:undefined;
 for(const key of ['--workspace','--playwright-root','--model-root','--audio-fixture']) if(!option(key)) throw new Error(`Required ${key}`);
 const root=fileURLToPath(new URL('../../',import.meta.url)),workspaceRoot=path.resolve(option('--workspace'));
 const modelRoot=path.resolve(option('--model-root')), audioFixture=path.resolve(option('--audio-fixture'));
+const runtimeRoot=option('--runtime-root') ? path.resolve(option('--runtime-root')) : null;
+if(args.includes('--install-runtime') && !runtimeRoot) throw new Error('--install-runtime requires an isolated --runtime-root');
+if(runtimeRoot) { process.env.ABE_DICTATION_RUNTIME_ROOT=runtimeRoot; delete process.env.ABE_DICTATION_PYTHON; }
 
 const {chromium}=createRequire(path.join(path.resolve(option('--playwright-root')),'package.json'))('playwright');
 const settingsPath=path.join(root,'apps/desktop/.desktop-state.json');
 const original=await readFile(settingsPath).catch(e=>{if(e.code==='ENOENT')return null;throw e});
-let run,browser,page,prepared,evidence;const result={checkpoints:[],errors:[]};
+let run,browser,page,prepared,evidence;const result={checkpoints:[],errors:[],runtimeRoot};
 try {
  prepared=await prepareRun({workspaceRoot,worktree:root,caseId:'vtt-functional-recording',allowDirty:args.includes('--allow-dirty'),expectedRegressionInvariant:'Real local recognition from sequenced microphone fixture, FLAC package bytes and transcript registration, playback, reopen and Save As without manuscript mutation.'});
  evidence=path.join(prepared.manifest.evidenceRoot,'manual-test-results');
  await writeFile(settingsPath,JSON.stringify({executionMode:'local-only',modelRoot,projectRoot:prepared.manifest.allocatedProjectLocations.locationA,lastProjectFilePath:'',lastProjectFilePathExplicit:false}));
- // Use the caller's installed runtime; tests do not install or rewrite runtime settings.
+ // Runtime installation is opt-in and confined to the caller's isolated runtime root.
  run=await startRun(prepared.manifestPath,{mode:'vtt-browser-acceptance'});
  browser=await chromium.launch({channel:'chrome',headless:true,args:['--use-fake-ui-for-media-stream','--use-fake-device-for-media-stream',`--use-file-for-fake-audio-capture=${audioFixture}`]});
  const context=await browser.newContext({viewport:{width:1450,height:1100},permissions:['microphone','clipboard-read','clipboard-write']});
@@ -43,6 +46,19 @@ try {
  await page.locator('[data-action="dictation-stt"]').click();
  await page.locator('[data-dictation-panel]').waitFor();
  await page.locator('[data-action="dictation-record"]').waitFor();
+ if(runtimeRoot) {
+   await page.locator('[data-dictation-sidebar] [data-action="dictation-dependencies"]').click();
+   await page.waitForFunction(()=>window.__VTT_READ__().view.dependencyPlan?.artifacts?.length>1);
+   assert.equal((await page.evaluate(()=>window.__VTT_READ__())).view.active,false);
+   await page.screenshot({path:path.join(evidence,'runtime-consent.png'),fullPage:true});
+   if(args.includes('--install-runtime')) {
+     await page.locator('[data-dictation-sidebar] [data-action="dictation-runtime-install"]').click();
+     await page.waitForFunction(()=>['installed','failed','cancelled'].includes(window.__VTT_READ__().view.runtimeInstall?.state),null,{timeout:180000});
+     const runtimeJob=(await page.evaluate(()=>window.__VTT_READ__())).view.runtimeInstall;
+     assert.equal(runtimeJob.state,'installed',runtimeJob.message);
+     result.checkpoints.push('Explicit runtime consent downloaded and verified the private distribution; no microphone activation');
+   } else await page.locator('[data-dictation-sidebar] [data-action="dictation-runtime-dismiss"]').click();
+ }
  await page.waitForFunction(()=>window.__VTT_READ__().view.runtime?.ready===true);
  // First-use setup uses only explicit fake-microphone actions; never touches physical inputs.
  await page.locator('[data-action="dictation-authorize"]').first().click();
