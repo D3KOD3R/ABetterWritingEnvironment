@@ -1,46 +1,44 @@
 import { escapeHtml as e } from "../../shared/ui-utils.js";
 
 export function renderNarrationSubpanels(state) {
-  return `<nav aria-label="Narration workflow" class="dictation-tabs"><button data-action="dictation-follow" aria-pressed="${state.narrationSubpanel !== "stt"}">Narration Follow</button><button data-action="dictation-stt" aria-pressed="${state.narrationSubpanel === "stt"}">STT · Dictation</button></nav>`;
+  return `<nav aria-label="Narration workflow" class="dictation-tabs"><button class="tag-button" data-action="dictation-follow" aria-pressed="${state.narrationSubpanel !== "stt"}">Narration Follow</button><button class="tag-button" data-action="dictation-stt" aria-pressed="${state.narrationSubpanel === "stt"}">STT · Dictation</button></nav>`;
 }
 export function renderDictationPanel(view = {}, sessions = []) {
-  const busy = view.active || view.busy;
-  return `<section data-dictation-panel class="dictation-panel" aria-label="Local Dictation">
-    <h3>Local Dictation <small>Transcript preview</small></h3>
-    <p>Final speech stays in this transcript. Automatic manuscript insertion awaits shared history and persistence verification.</p>
-    <p data-dictation-status role="status">${e(view.status || "Stopped. Select an installed model and test your microphone.")}</p>
-    <p>Live STT: ${e(view.models?.find((model) => model.id === view.settings?.liveModelId)?.displayName || "No live model selected")} · ${view.runtime?.ready ? "CPU runtime ready" : "runtime unavailable"} · utterance timing; word timing unavailable.</p>
-    ${renderReadiness(view)}
-    ${!view.settings?.setupComplete || view.setupOpen ? renderSetup(view) : ""}
-    <details><summary>Microphone and model settings</summary>${renderDictationSettings(view, "central")}</details>
-    <div class="dictation-controls">
-      <label><input type="checkbox" data-dictation-input="saveRecording" ${view.saveRecording ? "checked" : ""} ${busy ? "disabled" : ""}> Save Recording until manual deletion</label>
-      <button data-action="dictation-record" ${busy || !view.readiness?.ready ? "disabled" : ""}>Record</button>
-      <button data-action="dictation-stop" ${!busy && !view.finalizationPending ? "disabled" : ""}>${view.finalizationPending ? "Retry finalization" : "Stop"}</button>
-      <button data-action="dictation-copy">Copy finalized transcript</button>
-      ${view.pending ? '<button data-action="dictation-save">Retry session save</button>' : ""}
-    </div>
-    <p><span data-dictation-duration>${(Number(view.sampleCount || 0) / 16000).toFixed(2)}</span> seconds · mono 16 kHz PCM16 → FLAC · checkpoint limit: 4 minutes.</p>
-    <p>Without Save Recording, audio remains protected pending durable manuscript insertion. Automatic cleanup is not enabled in this preview checkpoint.</p>
-    <p data-dictation-partial class="dictation-partial" aria-label="Provisional transcription">${e((view.events || []).filter((x) => x.status === "partial").map((x) => x.text).join(" "))}</p>
-    <div data-dictation-finals>${renderEvents(view.events || [])}</div>
-
-    <h4>Transcribe recorded audio</h4>
-    <p>Select audio for the chosen Live STT model. Up to 4 minutes / 50 MB; browser-supported audio formats. No microphone access. The source stays unchanged; the transcript is a temporary preview—use Copy to keep it.</p>
-    <input type="file" aria-label="Audio to transcribe" accept="audio/*,.wav,.flac,.mp3,.m4a" data-dictation-input="audioFile" ${busy || view.locked || view.pending || view.finalizationPending || !view.model?.ready ? "disabled" : ""}>
-    ${view.importing ? '<button data-action="dictation-cancel-file">Cancel file transcription</button>' : ""}
-    <h4>Saved sessions</h4>
+  const busy = view.active || view.busy || view.locked;
+  return `<section data-dictation-recovery class="dictation-panel"><h4>Recordings and transcript recovery</h4>
+    <p>Recordings remain protected. Automatic audio deletion is not enabled.</p>
     <button data-action="dictation-recordings-folder">Open recordings folder</button>
-    ${sessions.length ? sessions.map((record) => `<article class="dictation-saved"><strong>${e(record.startedAt)}</strong><p>${(record.sampleCount / 16000).toFixed(2)} s · ${record.recording?.bytes?.toLocaleString() || 0} bytes · FLAC · ${e(record.retention)}</p><p>${e(record.recording?.projectRelativePath || "Recording unavailable")}</p>${renderEvents(record.events)}<button data-action="dictation-play" data-session-id="${e(record.id)}">Load recording for playback</button><div data-dictation-playback="${e(record.id)}"></div></article>`).join("") : "<p>No saved sessions for this scene.</p>"}
+    ${view.finalizationPending ? '<button data-action="dictation-stop" >Retry finalization</button>' : ""}
+    ${view.pending ? '<button data-action="dictation-save">Retry session save</button>' : ""}
+    <button data-action="dictation-copy">Copy finalized transcript</button>
+    <details><summary>Recovered / imported transcript</summary><p>${e((view.events || []).filter(x => x.status === "final").map(x => x.text).join(" "))}</p></details>
+    <h4>Transcribe recorded audio</h4><p>Preview only; Copy to retain. Up to 4 minutes / 50 MB. Source files stay unchanged.</p>
+    <input type="file" aria-label="Audio to transcribe" accept="audio/*,.wav,.flac,.mp3,.m4a" data-dictation-input="audioFile" ${busy || view.pending || view.finalizationPending || !view.model?.ready ? "disabled" : ""}>
+    ${view.importing ? '<button data-action="dictation-cancel-file">Cancel file transcription</button>' : ""}
+    ${sessions.map(record => `<article class="dictation-saved"><strong>${e(record.startedAt)}</strong><p>${(record.sampleCount / 16000).toFixed(1)} s · FLAC</p><button data-action="dictation-play" data-session-id="${e(record.id)}">Load recording for playback</button><div data-dictation-playback="${e(record.id)}"></div></article>`).join("")}
   </section>`;
 }
-export function renderEvents(events) {
-  return events.filter((x) => x.status === "final").map((x) => `<p><small>${(x.startSample / 16000).toFixed(2)}–${(x.endSample / 16000).toFixed(2)} s · ${e(x.timestampGranularity)} / ${e(x.timestampSource)}</small><br>${e(x.text)}</p>`).join("");
+export function dictationSetup(view = {}) {
+  const inputAvailable = view.devices?.length && (!view.deviceId || view.devices.some(d => d.deviceId === view.deviceId)) && (!view.channels || view.channel < view.channels);
+  const microphone = Boolean(inputAvailable && view.permission === "granted" && (view.inputTested || (view.settings?.setupStage || 1) > 1 || view.settings?.setupComplete));
+  const model = view.readiness?.modelReady && view.runtime?.recordingReady;
+  const refinement = view.refinementDeferred || view.settings?.setupStage === 3 || view.settings?.setupComplete;
+  const stage = !microphone ? 1 : !model ? 2 : 3;
+  return { stage, microphone, model, refinement, ready: Boolean(microphone && model && refinement && !view.active && !view.busy && !view.locked && !view.pending && !view.finalizationPending && !view.settingBusy) };
+}
+export function renderDictationTransport(view = {}) {
+  const active = view.active || view.busy || view.finalizationPending;
+  const ready = view.settings?.setupComplete && view.readiness?.ready && !view.setupOpen;
+  const retrySave = view.pending && !view.busy;
+  const message = view.pending || view.finalizationPending ? view.status : !active && !ready ? (view.readiness?.reasons || []).map(r => r.text).join(" ") || "Complete speech setup in Narration + Voice." : view.status || "Click in the manuscript, then record.";
+  const label = retrySave ? "Retry saving" : view.finalizationPending && !view.busy ? "Retry finalization" : active ? (view.active ? view.testing ? "Testing input · Stop" : "Recording · Stop" : "Preparing / finalizing…") : ready ? "Ready to record" : "Setup / readiness required";
+  return `<div data-dictation-transport><button class="dictation-microphone ${active ? "is-recording" : ready ? "is-ready" : ""}" data-action="${retrySave ? "dictation-save" : active ? "dictation-stop" : "dictation-record"}" ${!active && !ready && !retrySave ? "disabled" : ""} title="${e(message)}"><span aria-hidden="true">🎙</span> ${label}</button><small data-dictation-status>${e(message)}</small></div>`;
 }
 
 export function renderReadiness(view) {
-  return `<div data-dictation-readiness role="status"><strong>${view.readiness?.modelReady ? "Model Ready" : "Model not ready"} · ${view.readiness?.ready ? "Ready to Record · transcript preview" : "Not ready to record"}</strong>
-    ${(view.readiness?.reasons || []).map(r => `<p>${e(r.text)} ${r.action ? `<button data-action="${r.action}" ${view.active || view.busy ? "disabled" : ""}>${e(r.label)}</button>` : ""}</p>`).join("")}</div>`;
+  if (view.active || view.busy) return `<div data-dictation-readiness role="status"><strong>${view.testing ? "Testing microphone" : view.active ? "Recording" : "Preparing / finalizing"}</strong><p>Stop capture before editing the manuscript or changing speech configuration.</p></div>`;
+  return `<div data-dictation-readiness role="status"><strong>${view.readiness?.modelReady ? "Model Ready" : "Model not ready"} · ${view.readiness?.ready ? "Ready to Record" : "Not ready to record"}</strong>
+    ${(view.readiness?.reasons || []).map(r => `<p>${e(r.text)}</p>`).join("")}</div>`;
 }
 export function renderMicrophone(view) {
   const locked = view.active || view.busy || view.locked || view.pending || view.finalizationPending || view.settingBusy;
@@ -70,25 +68,32 @@ export function renderDictationModels(view, liveOnly = false) {
 }
 export function renderDictationSettings(view = {}, surface = "sidebar") {
   const locked = view.active || view.busy || view.locked || view.pending || view.finalizationPending;
-  return `<section data-dictation-settings="${surface}" class="dictation-settings"><h3>Speech settings · this installation</h3>${renderMicrophone(view)}
+  return `<section data-dictation-settings="${surface}" class="dictation-settings"><h3>Speech-to-Text</h3>${renderReadiness(view)}
+    <div data-dictation-guide="microphone" class="${(!view.settings?.setupComplete || view.setupOpen) && dictationSetup(view).stage === 1 ? "dictation-attention" : ""}">${renderMicrophone(view)}</div>
+    <div class="${(!view.settings?.setupComplete || view.setupOpen) && dictationSetup(view).stage === 2 ? "dictation-attention" : ""}">
+    <p>Live STT: ${e(view.models?.find(m => m.id === view.settings?.liveModelId)?.displayName || "Select a model")}</p>
+    <button data-action="dictation-manage-models">Select / manage speech model</button><button data-action="dictation-dependencies">Set up speech runtime</button></div>
+    <div class="${(!view.settings?.setupComplete || view.setupOpen) && dictationSetup(view).stage === 3 && !dictationSetup(view).refinement ? "dictation-attention" : ""}"><p>Refinement · optional · execution deferred</p><button data-action="dictation-defer-refinement" ${locked || dictationSetup(view).stage !== 3 ? "disabled" : ""}>${dictationSetup(view).refinement ? "Refinement deferred" : "Defer refinement (recommended)"}</button></div>
+    <label><input type="checkbox" data-dictation-input="saveRecording" ${view.saveRecording ? "checked" : ""} ${locked ? "disabled" : ""}> Save Recording until manual deletion</label>
     <details ${view.manageOpen ? "open" : ""}><summary>Manage speech models</summary>${renderDictationModels(view)}</details>
-    <p>Model library: ${e(view.modelRoot || "Checking…")}</p>
+    <details><summary>Runtime and model storage</summary><p>Model library: ${e(view.modelRoot || "Checking…")}</p>
     <button data-action="dictation-open-folder">Open Model Folder</button>
     <button data-action="dictation-storage-plan" ${locked ? "disabled" : ""}>Choose Storage Location / Preview copy</button>
     ${renderStorageCopy(view, locked)}
     <p>Runtime: ${e(view.runtime?.ready ? `${view.runtime.source || "Moonshine CPU"} ready` : view.runtime?.message || "Not checked")} · Encoder: ${view.runtime?.recordingReady ? "FLAC ready" : "Unavailable"}</p>
-    <button data-action="dictation-refresh" ${locked ? "disabled" : ""}>Check models and runtime</button><button data-action="dictation-dependencies">Set up speech runtime</button>
-    ${renderRuntimeSetup(view, locked)}
+    </details><button data-action="dictation-refresh" ${locked ? "disabled" : ""}>Check models and runtime</button>${renderRuntimeSetup(view, locked)}
     <button data-action="dictation-setup" ${locked ? "disabled" : ""}>Reopen Setup</button>
     <p data-dictation-status>${e(view.status || "Stopped")}</p></section>`;
 }
 export function renderSetup(view) {
-  const stage = view.settings?.setupStage || 1;
-  return `<section class="dictation-setup" aria-label="STT setup"><h4>Set up STT · Stage ${stage} of 3</h4>
-    ${stage === 1 ? `<p>Authorize your microphone, then explicitly test its input. Setup does not record audio.</p>${renderMicrophone(view)}` : stage === 2 ? `${renderDictationModels(view, true)}<button data-action="dictation-dependencies">Set up speech runtime</button>${renderRuntimeSetup(view, view.active || view.busy || view.locked)}` : renderReadiness(view)}
-    ${stage > 1 ? '<button data-action="dictation-setup-back">Back</button>' : ""}
-    ${stage < 3 ? `<button data-action="dictation-setup-next" ${view.active || view.busy || (stage === 1 ? !view.inputTested : !view.readiness?.modelReady) ? "disabled" : ""}>Next</button>` : `<button data-action="dictation-finish" ${!view.readiness?.modelReady || view.permission !== "granted" || view.active || view.busy ? "disabled" : ""}>Finish Setup</button><button data-action="dictation-start-setup" ${!view.readiness?.ready ? "disabled" : ""}>Start Dictating</button>`}
-    <p>Finish Setup leaves the microphone off. Start Dictating begins a transcript preview only.</p></section>`;
+  const setup = dictationSetup(view);
+  const downloading = view.models?.some(m => ["downloading", "verifying"].includes(m.progress?.state));
+  const status = view.testing ? "Speak into the selected microphone, then Stop Test" : !setup.microphone ? "Awaiting microphone setup and input test" : !setup.model ? (view.runtimeInstall?.busy ? "Installing speech runtime" : downloading ? "Downloading / verifying speech model" : view.settingBusy ? "Loading and verifying speech model" : "Awaiting a ready Live STT model") : !setup.refinement ? "Choose a refinement preference in the console" : "Ready to record";
+  return `<div data-dictation-wizard class="dictation-wizard-shade"><section class="dictation-wizard" role="region" aria-label="STT setup"><h2>Set up Speech-to-Text Dictation</h2><p>Follow the highlighted control in the Narration Console.</p>
+    ${setup.ready ? '<button class="dictation-wizard-close" data-action="dictation-finish" aria-label="Finish setup">×</button>' : ""}
+    <ol class="dictation-steps">${["Microphone", "Model", "Refinement"].map((name,i) => `<li class="${[setup.microphone,setup.model,setup.refinement][i] ? "is-complete" : setup.stage === i+1 ? "is-current" : ""}"><span>${[setup.microphone,setup.model,setup.refinement][i] ? "✓" : i+1}</span>${name}</li>`).join("")}</ol>
+    <p class="dictation-wizard-status ${setup.ready ? "is-ready" : ""}" role="status">● ${e(status)}</p><small>Closing setup leaves the microphone off. Click in the manuscript, then Record.</small>
+  </section></div>`;
 }
 export function renderDictationSidebar(view = {}) {
   return `<section data-dictation-sidebar>${renderDictationSettings(view)}</section>`;

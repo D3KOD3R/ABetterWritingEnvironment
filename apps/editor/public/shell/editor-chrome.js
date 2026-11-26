@@ -89,7 +89,7 @@ export function renderEditorChrome({
           <nav class="workspace-tabs" aria-label="Workspace panes">
             ${renderPaneTab("manuscript", "Manuscript", projectWorkspace?.settings?.executionMode ?? "local", activePane)}
             ${renderPaneTab("world", "World", "Spines and templates", activePane)}
-            ${renderPaneTab("narration", "Narration + Voice", "Whisper follow-track", activePane)}
+            ${renderPaneTab("narration", "Narration + Voice", "Dictation & narration", activePane)}
           </nav>
           ${renderSpotifyMusicChromeHTML({
             state: state?.spotifyMusic,

@@ -1,3 +1,4 @@
+import { createDictationManuscript } from "./features/narration/dictation-manuscript.js";
 import { createDictationController } from "./features/narration/dictation-controller.js";
 // Intent: bootstrap and orchestrate the browser editor while refactor slices move feature logic outward.
 import {
@@ -1551,7 +1552,9 @@ const narrationMediaService = createNarrationMediaService({
 });
 // VTT acceptance runs explicitly enable the existing file-backed diagnostic source.
 if (regressionLogSession?.caseId?.startsWith("vtt-")) developerLogger.setSourceEnabled("Dictation", true);
+const dictationManuscript = createDictationManuscript({ state, getText: sceneId => getScene(sceneId)?.editorText || "", beforeInput: editorSurface => manuscriptInputController.handleEditorTextBeforeInput({ sceneId: editorSurface.dataset.sceneId, editorSurface }) });
 const dictationController = createDictationController({
+  manuscript: dictationManuscript,
   log: developerLogger.createSource("Dictation"),
   state, persistence: projectPersistenceService, mediaService: narrationMediaService, render,
   isFollowActive: () => Boolean(narrationRecordingRuntime),
@@ -2046,6 +2049,7 @@ async function boot() {
     });
   }
   wireEvents();
+  void dictationController.refresh();
   syncSceneDocumentLayout();
 }
 
@@ -4720,9 +4724,9 @@ function cancelPendingFormatDragSelection(event = null) {
 function beginDraftProofSelectionGesture(textarea, event) {
   const activeRun = getActiveDraftProofRunRecord();
   if (
-    state.activePane !== "manuscript" ||
+    !(state.activePane === "manuscript" || state.activePane === "narration" && state.narrationSubpanel === "stt") ||
     !activeRun ||
-    !(textarea instanceof HTMLTextAreaElement) ||
+    !(textarea instanceof HTMLTextAreaElement) || textarea.readOnly ||
     !textarea.classList.contains("editor-document-input") ||
     event?.button !== 0
   ) {
@@ -5527,6 +5531,8 @@ function insertPastedTextWithUndoFallback(target, normalizedText) {
 }
 
 function handleGlobalKeyboardShortcut(event) {
+  const speechEditorLocked = dictationManuscript.isActive() || (state.activePane === "narration" && state.narrationSubpanel === "stt" && (!state.dictationView?.settings?.setupComplete || state.dictationView?.setupOpen));
+  if (speechEditorLocked && (event.ctrlKey || event.metaKey) && ["z", "y"].includes(event.key.toLowerCase())) { event.preventDefault(); return; }
   if (event.defaultPrevented || event.repeat || event.isComposing) {
     return;
   }
@@ -5601,6 +5607,11 @@ function handleGlobalKeyboardShortcut(event) {
   );
   if (!behaviorId) {
     return;
+  }
+
+  // Respect customized bindings as well as native undo while setup/capture owns manuscript access.
+  if (speechEditorLocked && (MANUSCRIPT_INLINE_FORMAT_SHORTCUT_BEHAVIORS[behaviorId] || behaviorId.startsWith("history.") || behaviorId === "manuscript.find")) {
+    event.preventDefault(); return;
   }
 
   if (behaviorId === "inlineNote.commit") {
@@ -5728,12 +5739,13 @@ function handleGlobalKeyboardShortcut(event) {
     event.preventDefault();
     hideFileMenu();
     closeKeyboardShortcutSettingsWindow();
-    selectWorkspacePane({
+    // Keyboard navigation must drain the same recording transaction as pointer navigation.
+    void dictationController.stop().then(() => selectWorkspacePane({
       "pane.manuscript": "manuscript",
       "pane.world": "world",
       "pane.narration": "narration",
       "pane.voice": "voice",
-    }[behaviorId]);
+    }[behaviorId])).catch(error => { state.dictationView.status = `Navigation paused: ${error.message}`; });
   }
 }
 
@@ -6741,6 +6753,7 @@ function renderManuscriptPanel() {
     return;
   }
 
+  if (dictationManuscript.isActive()) return; // Preserve the native textarea and its undo stack during a speech transaction.
   slot.innerHTML = renderManuscriptPanelHTML({
     state,
     selectedScene,
@@ -11157,6 +11170,8 @@ function getNarrationTakeSelectionForScene(sceneId) {
 }
 
 function updateNarrationTakeSelectionFromTextarea(textarea, inlinePosition = null) {
+  // STT uses the ordinary caret; Follow's passage selection rerenders would discard focus and native undo.
+  if (state.narrationSubpanel === "stt") return null;
   if (state.narrationTakeSession?.status === "recording") {
     return state.narrationTakeSelection;
   }
@@ -13909,14 +13924,14 @@ function syncManuScriptInfographicLane(editorHost, sceneId, {
 
 // Intent: centralize the narration-only overlay preference so post-render layer syncs match initial HTML rendering.
 function areNarrationManuscriptDecorationsSuppressed() {
-  return state.activePane === "narration" &&
+  return state.activePane === "narration" && state.narrationSubpanel !== "stt" &&
     state.narrationFollowSettings?.manuscriptDecorationsVisible === false;
 }
 
 // Intent: keep saved-take and live-follow paint controllable without suppressing manuscript diagnostics.
 function areNarrationDecorationsSuppressed() {
   return state.activePane === "narration" &&
-    state.narrationFollowSettings?.narrationDecorationsVisible === false;
+    (state.narrationSubpanel === "stt" || state.narrationFollowSettings?.narrationDecorationsVisible === false);
 }
 
 // Intent: rebuild draft proof-read coverage visuals from durable run coverage without persisting overlays.
@@ -13924,12 +13939,13 @@ function syncDraftProofLayer(editorHost, sceneId) {
   const scene = getScene(sceneId);
   const hasTextarea = editorHost?.textarea instanceof HTMLTextAreaElement;
   const marksVisible = state.draftProofMarksVisible === true;
-  if (state.activePane !== "manuscript" || !scene || !marksVisible || !hasTextarea) {
+  const authoring = state.activePane === "manuscript" || state.activePane === "narration" && state.narrationSubpanel === "stt";
+  if (!authoring || !scene || !marksVisible || !hasTextarea) {
     clearTextareaProjectionLayer(editorHost, MANUSCRIPT_PROJECTION_CHANNELS.DRAFT_PROOF);
     logDraftProofLayerSync({
       phase: "clear",
       sceneId,
-      reason: state.activePane !== "manuscript"
+      reason: !authoring
         ? "inactive-pane"
         : !scene
           ? "missing-scene"
@@ -25489,6 +25505,8 @@ function handleBinderSceneDragEnd() {
 }
 
 function updateFocusedLineCard() {
+  // STT settings do not depend on the caret. Rebuilding them on each utterance loses scroll and playback.
+  if (state.activePane === "narration" && state.narrationSubpanel === "stt") return;
   renderConsolePanel();
 }
 

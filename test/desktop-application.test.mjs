@@ -606,8 +606,10 @@ export async function runDesktopApplicationTest() {
   assert.match(localAiPanelScript.body, /Browse models/);
   assert.doesNotMatch(sceneEditorModuleScript, /data-action="toggle-draft-proof-run"/);
   assert.doesNotMatch(sceneEditorModuleScript, /data-action="complete-draft-proof-run"/);
-  assert.match(sceneEditorModuleScript, /const includeDraftProofing = mode === "manuscript" && state\.draftProofMarksVisible === true/);
-  assert.match(sceneEditorModuleScript, /const isDraftProofSelectionMode = mode === "manuscript" && hasActiveDraftProofRun\(state\.draftProofing\)/);
+  // STT is an authoring surface too; Follow remains the read-only script view.
+  assert.match(sceneEditorModuleScript, /const authoring = mode === "manuscript" \|\| state\.narrationSubpanel === "stt"/);
+  assert.match(sceneEditorModuleScript, /const includeDraftProofing = authoring && state\.draftProofMarksVisible === true/);
+  assert.match(sceneEditorModuleScript, /const isDraftProofSelectionMode = authoring && hasActiveDraftProofRun\(state\.draftProofing\)/);
   assert.match(sceneEditorModuleScript, /isDraftProofSelectionMode \? "is-draft-proofing" : ""/);
   assert.match(sceneEditorModuleScript, /draftProofBackdropColor: includeDraftProofing \? state\.draftProofing\?\.settings\?\.backdropColor/);
   assert.match(textareaEditorHostScript.body, /data-draft-proof-layer/);

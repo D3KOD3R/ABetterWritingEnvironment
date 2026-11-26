@@ -1,4 +1,4 @@
-import { renderNarrationSubpanels, renderDictationPanel } from "./narration/dictation-panel.js";
+import { renderNarrationSubpanels, renderSetup, renderDictationTransport } from "./narration/dictation-panel.js";
 // Intent: render the manuscript scene editor surface from editor state and feature-owned display inputs.
 import {
   areHighlightCustomColorsEqual,
@@ -235,6 +235,7 @@ function renderSceneEditorContext({
       <strong data-scene-editor-chapter-title="${escapeHtml(scene.chapterId)}">${escapeHtml(chapterTitle)}</strong>
       <div class="scene-editor-context__meta scene-editor-context__meta--right">
         <span class="scene-editor-context__count" data-scene-editor-chapter-word-count="${escapeHtml(scene.chapterId)}">${escapeHtml(`Chapter words: ${formatSceneEditorWordCount(chapterWordCount)}`)}</span>
+        ${((state.activePane === "narration" && state.narrationSubpanel === "stt") || (state.activePane === "manuscript" && state.dictationView?.settings?.setupComplete)) ? renderDictationTransport(state.dictationView) : ""}
       </div>
     </div>
   `;
@@ -298,6 +299,8 @@ export function renderSceneEditorHTML(scene, {
 }) {
   // Intent: keep manuscript and narration modes in one render surface while their controllers are extracted.
   const mode = editorMode === "narration" ? "narration" : "manuscript";
+  const authoring = mode === "manuscript" || state.narrationSubpanel === "stt";
+  const wizard = mode === "narration" && state.narrationSubpanel === "stt" && (!state.dictationView?.settings?.setupComplete || state.dictationView?.setupOpen);
   const hasDraft = Boolean(state.sceneDrafts[scene.sceneId]);
   const revisionStats = state.sceneDrafts?.[scene.sceneId]?.revisionStats ?? null;
   const revisionEditCount = Number(revisionStats?.editCount ?? 0);
@@ -308,12 +311,12 @@ export function renderSceneEditorHTML(scene, {
   );
   const localAiStatus = state.localAiTitleStatus[scene.sceneId];
   // Intent: let narration mode suppress manuscript and narration overlays independently without deleting anchored data.
-  const narrationManuscriptDecorationsVisible = mode !== "narration" ||
+  const narrationManuscriptDecorationsVisible = authoring ||
     state.narrationFollowSettings?.manuscriptDecorationsVisible !== false;
   const narrationDecorationsVisible = mode !== "narration" ||
     state.narrationFollowSettings?.narrationDecorationsVisible !== false;
   const narrationManuscriptDecorationsHidden = mode === "narration" && !narrationManuscriptDecorationsVisible;
-  const allNarrationRecordingPreviews = mode === "narration"
+  const allNarrationRecordingPreviews = mode === "narration" && !authoring
     ? createNarrationRecordingPreviewsForScene(state, scene)
     : [];
   const narrationRecordingPreviews = narrationDecorationsVisible
@@ -322,8 +325,8 @@ export function renderSceneEditorHTML(scene, {
   const narrationReviewRecording = mode === "narration"
     ? resolveNarrationReviewRecording(allNarrationRecordingPreviews, state?.narrationRecordingReview)
     : null;
-  const includeDraftProofing = mode === "manuscript" && state.draftProofMarksVisible === true;
-  const isDraftProofSelectionMode = mode === "manuscript" && hasActiveDraftProofRun(state.draftProofing);
+  const includeDraftProofing = authoring && state.draftProofMarksVisible === true;
+  const isDraftProofSelectionMode = authoring && hasActiveDraftProofRun(state.draftProofing);
   const manuScriptInfographicLaneVisible = state.editorPrefs?.manuScriptInfographicLaneVisible !== false;
   const manuScriptInfographicLanePreviews = manuScriptInfographicLaneVisible
     ? createManuScriptInfographicLanePreviewsForScene({ state, scene })
@@ -379,8 +382,8 @@ export function renderSceneEditorHTML(scene, {
         narrationDecorationControlHtml,
       })}
       ${mode === "narration" ? renderNarrationSubpanels(state) : ""}
-      ${mode === "narration" && state.narrationSubpanel === "stt" ? renderDictationPanel(state.dictationView, (state.workspace?.speech?.sessions || []).filter((record) => record.sceneId === scene.sceneId)) : ""}
-      <div class="scene-editor-masthead">
+      ${wizard ? renderSetup(state.dictationView || {}) : ""}
+      <div class="scene-editor-masthead" ${wizard ? "inert" : ""}>
         <input
           class="editor-title-input scene-editor-title-input"
           type="text"
@@ -391,8 +394,8 @@ export function renderSceneEditorHTML(scene, {
           aria-label="Scene title"
         />
       </div>
-      ${mode === "manuscript" ? `
-        <div class="scene-editor-header">
+      ${authoring ? `
+        <div class="scene-editor-header" ${wizard ? "inert" : ""}>
           <div class="scene-editor-tools">
             ${renderEditorSetting("Font", "fontFamilyId", FONT_OPTIONS.map((option) => ({
               value: option.id,
@@ -433,7 +436,7 @@ export function renderSceneEditorHTML(scene, {
 
       <div
         class="scene-editor-codeframe ${mode === "narration" ? "narration-editor-frame" : ""} ${showRevisionHighlight ? "has-revision-preview" : ""}"
-        data-scene-editor="${escapeHtml(scene.sceneId)}"
+        ${wizard ? "inert" : ""} data-scene-editor="${escapeHtml(scene.sceneId)}"
         style="${escapeHtml(buildEditorStyle())}"
       >
         <div class="editor-document-gutter" data-editor-gutter aria-hidden="true"></div>
@@ -449,12 +452,12 @@ export function renderSceneEditorHTML(scene, {
               narrationManuscriptDecorationsHidden ? "is-narration-manuscript-decorations-hidden" : "",
             ].filter(Boolean).join(" "),
             draftProofBackdropColor: includeDraftProofing ? state.draftProofing?.settings?.backdropColor ?? "" : "",
-            readOnly: mode === "narration",
+            readOnly: !authoring || wizard || Boolean(state.dictationView?.active && !state.dictationView?.testing),
           })}
         </div>
         ${renderInlinePassageDraftHTML(scene, state, getInlinePassageDraftAnchor)}
       </div>
-      <div class="scene-editor-footer">
+      <div class="scene-editor-footer" ${wizard ? "inert" : ""}>
         <span class="scene-editor-footer__selection" data-scene-editor-selection-word-count="${escapeHtml(scene.sceneId)}">${escapeHtml(formatSceneEditorSelectionWordCount(0))}</span>
         ${renderSceneEditorNextSceneButton(scene, nextScene)}
         <span class="scene-editor-footer__scene" data-scene-editor-scene-word-count="${escapeHtml(scene.sceneId)}">${escapeHtml(`Scene words: ${formatSceneEditorWordCount(sceneWordCount)}`)}</span>

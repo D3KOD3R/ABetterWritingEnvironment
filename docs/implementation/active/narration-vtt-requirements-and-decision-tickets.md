@@ -1,10 +1,14 @@
 # ABE — Voice-to-Text and Speech Architecture
 
-**Status:** Functional recording/transcript milestone authorised on 22 November 2026; automatic manuscript insertion remains gated. Historical decisions and Phase-0 instructions below are preserved.
+**Status:** Phase 02 native manuscript dictation is authorized. Historical decisions and Phase-0 instructions below are preserved.
 **Repository:** `D3KOD3R/ABetterWritingEnvironment`  
 **Revision:** 1.3 — 23 November 2026
 
-## Current execution contract — implement approved Round 2 STT UX (23 November 2026)
+## Current execution contract — Phase 02 (27 November 2026)
+
+Follow [the Phase 02 execution contract and author brief](narration-vtt-phase-02.md) for current work. The author explicitly supersedes the preview-only insertion gate and separate/double-click dictation cursor. Use the existing manuscript editor and history, a single ordinary caret, RHS configuration, guided setup and shared capture in Manuscript and STT. Only finalized utterances enter canonical text; provisional words remain projections. Protected audio, the bounded recording limit and consent requirements remain. No automatic audio cleanup, full refinement or unapproved Grill Me Decisions 14–18 are authorized. The earlier contract below remains historical scope and decision traceability; its insertion prohibition and wizard Start Dictating action no longer govern Phase 02.
+
+## Earlier execution contract — approved Round 2 STT UX (23 November 2026)
 
 **Authorization:** The author has explicitly requested Codex to **begin implementation** of Grill Me Round 2 Decisions **1–13**, documented in section 15 under `VTT-UX-01` through `VTT-UX-03`. This **supersedes the earlier publication-only prohibition for this bounded UX tranche**. Original D01–D26 requirements and the existing automatic-manuscript-insertion, shared-history, durable-audio-chunk and refinement gates remain intact. Decisions 14–18 have **not** been made and must not be treated as approved product requirements.
 

@@ -3,11 +3,11 @@ import { createDictationInputs } from "../../adapters/dictation-inputs.js";
 import { dictationReadiness } from "../../shared/dictation-readiness.js";
 import { requestDictation } from "../../adapters/dictation-client.js";
 import { startDictationCapture } from "../../adapters/dictation-capture.js";
-import { renderDictationPanel, renderEvents, renderDictationModels, renderDictationSidebar, renderDictationSettings } from "./dictation-panel.js";
+import { renderDictationPanel, renderDictationModels, renderDictationSettings, renderSetup, renderDictationTransport, dictationSetup } from "./dictation-panel.js";
 
-export function createDictationController({ state, persistence, mediaService, render, isFollowActive, request = requestDictation, beginCapture = startDictationCapture, inputFactory = createDictationInputs, log }) {
+export function createDictationController({ state, persistence, mediaService, render, isFollowActive, request = requestDictation, beginCapture = startDictationCapture, inputFactory = createDictationInputs, log, manuscript }) {
   const view = state.dictationView = { status: "Stopped", events: [], models: [], devices: [], deviceId: "", channel: 0, saveRecording: false, active: false, busy: false, sampleCount: 0, pending: null };
-  let cancelStart = false, captureFailure = "", starting;
+  let cancelStart = false, captureFailure = "", starting, saving;
   let capture, session, tail = Promise.resolve(), queued = 0, stopping, originalRoot, poll, playbackUrl;
   let importOperation, importAbort;
   let readinessSignature = "";
@@ -29,27 +29,35 @@ export function createDictationController({ state, persistence, mediaService, re
   function panel() {
     readiness();
     for (const status of document.querySelectorAll("[data-dictation-status]")) status.textContent = view.status;
-    const element = document.querySelector("[data-dictation-panel]");
-    if (element) {
-      // Runtime/model refresh must not destroy a playing recording or reset its playhead.
-      const players = [...element.querySelectorAll("[data-dictation-playback] audio")].map((audio) => ({ id: audio.parentElement.dataset.dictationPlayback, audio }));
-      element.outerHTML = renderDictationPanel(view, sessions());
-      for (const { id, audio } of players) {
-        const slot = document.querySelector(`[data-dictation-playback="${CSS.escape(id)}"]`);
-        if (slot) slot.append(audio); else audio.pause();
-      }
+    const transport = document.querySelector("[data-dictation-transport]");
+    if (transport) transport.outerHTML = renderDictationTransport(view);
+    else if (state.activePane === "manuscript" && view.settings?.setupComplete) document.querySelector(".scene-editor-context__meta--right")?.insertAdjacentHTML("beforeend", renderDictationTransport(view));
+    const wizard = document.querySelector("[data-dictation-wizard]");
+    if (wizard) { if (!view.settings?.setupComplete || view.setupOpen) wizard.outerHTML = renderSetup(view); else wizard.remove(); }
+    const lockedEditor = state.activePane === "narration" && state.narrationSubpanel === "stt" && (!view.settings?.setupComplete || view.setupOpen);
+    for (const element of document.querySelectorAll(".scene-editor-masthead, .scene-editor-header, .scene-editor-codeframe, .scene-editor-footer")) element.inert = Boolean(lockedEditor);
+    const editor = document.querySelector('textarea[data-edit-field="editor-text"]');
+    if (editor && (state.activePane === "manuscript" || state.narrationSubpanel === "stt")) editor.readOnly = Boolean(lockedEditor || manuscript?.isActive());
+    function replaceSettings(element, html, outer = false) {
+      if (!element) return;
+      const opened = [...element.querySelectorAll("details")].map(d => d.open);
+      const scroll = element.closest(".console-dock-scroll"), top = scroll?.scrollTop;
+      const players = [...element.querySelectorAll("[data-dictation-playback] audio")].map(audio => ({ id: audio.parentElement.dataset.dictationPlayback, audio }));
+      const active = document.activeElement, key = element.contains(active) ? active?.dataset?.dictationInput : null;
+      if (outer) { const parent = element.parentElement; element.outerHTML = html; element = parent.querySelector('[data-dictation-settings="user"]'); } else element.innerHTML = html;
+      [...element.querySelectorAll("details")].forEach((d,i) => { if (opened[i] !== undefined) d.open = opened[i]; });
+      for (const { id, audio } of players) element.querySelector(`[data-dictation-playback="${CSS.escape(id)}"]`)?.append(audio);
+      if (key) element.querySelector(`[data-dictation-input="${key}"]`)?.focus({ preventScroll: true });
+      if (scroll) scroll.scrollTop = top;
     }
-    const sidebar = document.querySelector("[data-dictation-sidebar]");
-    if (sidebar) sidebar.innerHTML = renderDictationSettings(view);
-    const settings = document.querySelector('[data-dictation-settings="user"]');
-    if (settings) settings.outerHTML = renderDictationSettings(view, "user");
+    replaceSettings(document.querySelector("[data-dictation-sidebar]"), renderDictationSettings(view) + renderDictationPanel(view, sessions()));
+    replaceSettings(document.querySelector('[data-dictation-settings="user"]'), renderDictationSettings(view, "user"), true);
   }
+
   function sessions() { return (state.workspace?.speech?.sessions || []).filter((x) => x.sceneId === state.selectedSceneId && x.projectId === projectId()).slice().reverse(); }
   function update() {
     for (const element of document.querySelectorAll("[data-dictation-status]")) element.textContent = view.status;
     const duration = document.querySelector("[data-dictation-duration]"); if (duration) duration.textContent = (view.sampleCount / 16000).toFixed(2);
-    const partial = document.querySelector("[data-dictation-partial]"); if (partial) partial.textContent = view.events.filter((x) => x.status === "partial").map((x) => x.text).join(" ");
-    const finals = document.querySelector("[data-dictation-finals]"); if (finals) finals.innerHTML = renderEvents(view.events);
   }
   async function refresh() {
     const signature = () => JSON.stringify([view.models, view.settings, view.model, view.runtime, view.locked, view.modelRoot, view.runtimeInstall, view.storageCopy]);
@@ -61,7 +69,7 @@ export function createDictationController({ state, persistence, mediaService, re
     if (details) { const open = details.open; details.innerHTML = `<summary>Manage speech models</summary>${renderDictationModels(view)}`; details.open = open; }
     if (!view.active && before !== signature()) panel();
     clearTimeout(poll);
-    if (state.narrationSubpanel === "stt" && state.activePane === "narration" || state.keyboardShortcutSettingsWindowOpen)
+    if (state.activePane === "manuscript" || state.narrationSubpanel === "stt" && state.activePane === "narration" || state.keyboardShortcutSettingsWindowOpen)
       poll = setTimeout(() => { if (!view.active && !view.busy && !view.settingBusy) refresh().catch(fail); else poll = setTimeout(() => refresh().catch(fail), 5000); }, 5000);
   }
   function fail(error) { trace("dictation.capture.failed", { message: String(error.message || error) }); captureFailure = String(error.message || error); view.status = `Failed: ${error.message || error}`; update(); if ((view.active || view.busy) && !stopping) void stop().catch((e) => { view.status = `Save failed: ${e.message}`; panel(); }); }
@@ -74,9 +82,10 @@ export function createDictationController({ state, persistence, mediaService, re
   async function beginStart(test) {
     if (view.active || view.busy || view.locked || view.settingBusy || session || isFollowActive()) throw new Error("Stop the current microphone workflow first.");
     if (view.pending) throw new Error("Save the previous session before starting another.");
-    if (!test && (state.activePane !== "narration" || state.narrationSubpanel !== "stt")) throw new Error("Open Narration STT first.");
+    if (!test && !(state.activePane === "manuscript" || state.activePane === "narration" && state.narrationSubpanel === "stt")) throw new Error("Open Narration STT first.");
     if (!test && state.projectFileStorageMode !== "desktop-package") throw new Error("Save this project as a folder package before recording.");
     if (!test && !readiness().ready) throw new Error(readiness().reasons.map(r => r.text).join(" "));
+    if (!test && manuscript) { if (!view.settings?.setupComplete || view.setupOpen) throw new Error("Complete speech setup first."); manuscript.begin(); }
     trace("dictation.capture.starting", { test });
     view.testing = test;
     cancelStart = false; captureFailure = ""; view.busy = true; view.status = "Starting microphone…"; panel();
@@ -84,7 +93,7 @@ export function createDictationController({ state, persistence, mediaService, re
     try {
       if (!test) session = await request("start", { projectId: projectId(), sceneId: state.selectedSceneId, activeProjectRoot: originalRoot, saveRecording: view.saveRecording });
       capture = await beginCapture({ deviceId: view.deviceId, channel: view.channel,
-        onLevel({ level, clipping }) { view.inputLevel = level; view.clipping = clipping; for (const meter of document.querySelectorAll("[data-dictation-level]")) meter.value = level; for (const label of document.querySelectorAll("[data-dictation-clipping]")) label.textContent = clipping ? " Clipping" : ""; },
+        onLevel({ level, clipping }) { if (view.testing && level > 0.005) view.inputTested = true; view.inputLevel = level; view.clipping = clipping; for (const meter of document.querySelectorAll("[data-dictation-level]")) meter.value = level; for (const label of document.querySelectorAll("[data-dictation-clipping]")) label.textContent = clipping ? " Clipping" : ""; },
         onFailure: fail,
         onFrame(frame) {
           if (test) return;
@@ -93,29 +102,40 @@ export function createDictationController({ state, persistence, mediaService, re
           queued++;
           tail = tail.then(async () => {
             const result = await request("audio", { ...frame, pcm: undefined, ...session, sampleRate: 16000, pcm16Base64: btoa(binary) });
-            view.events = result.events; view.sampleCount = result.sampleCount; view.status = view.events.some((x) => x.status === "partial") ? "Speech active · local CPU" : "Listening · microphone active"; update();
+            view.events = result.events; manuscript?.apply(result.events); view.sampleCount = result.sampleCount; view.status = view.events.some((x) => x.status === "partial") ? "Speech active · local CPU" : "Listening · microphone active"; update();
           }).catch(fail).finally(() => { queued--; });
           if (frame.endSample >= 16000 * 239.5) void stop().catch(fail);
         },
       });
       await devices();
-      view.permission = "granted"; if (test) view.inputTested = true;
+      view.permission = "granted";
       view.deviceInfo = capture.device; view.active = true; view.busy = false; if (cancelStart) return; view.status = test ? "Testing input · microphone active · no transcription" : "Listening · microphone active · local CPU"; panel();
     } catch (error) {
+      manuscript?.finish();
       await capture?.stop(); capture = null; view.active = false; view.busy = false;
       if (session) { try { await request("stop", { sessionId: session.sessionId }); await request("acknowledge", { sessionId: session.sessionId }); } catch {} session = null; }
       throw error;
     }
   }
   async function savePending() {
+    if (saving) return saving;
     if (!view.pending) return;
-    const saved = await persistence.saveDictationSession(view.pending, originalRoot);
-    await request("acknowledge", { sessionId: view.pending.id }); view.locked = false;
-    trace("dictation.session.saved", { sampleCount: saved.sampleCount, bytes: saved.recording.bytes });
-    view.pending = null; view.status = `${saved.status === "failed" ? "Saved incomplete recording" : "Saved and verified"}: ${(saved.sampleCount / 16000).toFixed(2)} s · ${saved.recording.bytes.toLocaleString()} bytes FLAC`; panel();
+    const pending = view.pending;
+    view.busy = true; panel();
+    // Repeated retry clicks share one publication; navigation must await that same operation.
+    saving = (async () => {
+      const saved = await persistence.saveDictationSession(pending, originalRoot);
+      await request("acknowledge", { sessionId: pending.id }); view.locked = false;
+      trace("dictation.session.saved", { sampleCount: saved.sampleCount, bytes: saved.recording.bytes });
+      view.pending = null;
+      // Durable audio does not imply every utterance reached the editor; preserve recovery instructions.
+      view.status = captureFailure ? `Recording saved; dictation needs recovery: ${captureFailure} Open Narration STT to copy the finalized transcript.` : `${saved.status === "failed" ? "Saved incomplete recording" : "Saved and verified"}: ${(saved.sampleCount / 16000).toFixed(2)} s · ${saved.recording.bytes.toLocaleString()} bytes FLAC`;
+    })().finally(() => { saving = null; view.busy = false; panel(); });
+    return saving;
   }
   async function stop() {
     if (importOperation) { importAbort.abort(); await importOperation; return; }
+    if (saving) await saving;
     // Navigation and Follow must wait for a pending permission/runtime start to release capture.
     if (starting) { cancelStart = true; try { await starting; } catch {} }
     if (stopping) return stopping;
@@ -127,9 +147,11 @@ export function createDictationController({ state, persistence, mediaService, re
         await tail;
         if (session) {
           const result = await request("stop", { sessionId: session.sessionId, errorMessage: captureFailure });
-          view.pending = result.record; view.events = result.record.events; session = null;
+          view.pending = result.record; view.events = result.record.events;
+          try { manuscript?.apply(result.record.events); } catch (error) { captureFailure = error.message; view.status = `Insertion stopped: ${error.message} Copy the recovered transcript.`; }
+          manuscript?.finish(); session = null;
           await savePending();
-        } else view.status = captureFailure ? `Input test stopped: ${captureFailure}` : "Input test stopped.";
+        } else { if (view.testing && view.inputTested && !view.settings?.setupComplete) await request("settings", { setupStage: Math.max(2, view.settings?.setupStage || 1) }); view.status = captureFailure ? `Input test stopped: ${captureFailure}` : "Input test stopped."; }
       } finally { view.testing = false; view.finalizationPending = Boolean(session); view.busy = false; stopping = null; panel(); }
     })();
     return stopping;
@@ -146,18 +168,17 @@ export function createDictationController({ state, persistence, mediaService, re
         if (view.active || view.busy || view.locked) throw new Error("Stop capture before setting up an input.");
         await inputs.authorize(view.deviceId); panel();
       }
-      else if (action === "dictation-setup") { view.setupOpen = true; state.activePane = "narration"; state.narrationSubpanel = "stt"; render(); await devices(); await refresh(); }
-      else if (action === "dictation-setup-next" || action === "dictation-setup-back") {
-        if (view.active || view.busy) throw new Error("Stop input testing first.");
-        const stage = view.settings?.setupStage || 1;
-        if (action.endsWith("next") && (stage === 1 ? !view.inputTested : !readiness().modelReady)) throw new Error("Complete this setup stage first.");
-        await request("settings", { setupStage: Math.max(1, Math.min(3, stage + (action.endsWith("next") ? 1 : -1))) }); await refresh();
+      else if (action === "dictation-manage-models") {
+        const surface = target?.closest?.("[data-dictation-settings]")?.dataset.dictationSettings || "sidebar";
+        view.manageOpen = true; panel();
+        const models = document.querySelector(`[data-dictation-settings="${surface}"] details`);
+        models?.setAttribute("open", ""); models?.scrollIntoView({ block: "nearest" });
       }
-      else if (action === "dictation-finish" || action === "dictation-start-setup") {
-        if (view.active || view.busy || !readiness().modelReady || view.permission !== "granted") throw new Error("Verify model and microphone readiness, then stop testing before finishing setup.");
-        if (action === "dictation-start-setup" && !readiness().ready) throw new Error(readiness().reasons.map(r => r.text).join(" "));
-        await request("settings", { setupComplete: true, setupStage: 3 }); view.setupOpen = false; await refresh();
-        if (action === "dictation-start-setup") await start();
+      else if (action === "dictation-defer-refinement") { if (!dictationSetup(view).microphone || !dictationSetup(view).model) throw new Error("Complete microphone and Live STT setup first."); view.refinementDeferred = true; await request("settings", { setupStage: 3 }); await refresh(); panel(); }
+      else if (action === "dictation-setup") { view.setupOpen = true; state.consoleDockCollapsed = false; state.activePane = "narration"; state.narrationSubpanel = "stt"; state.consoleDockCollapsed = false; render(); await devices(); await refresh(); }
+      else if (action === "dictation-finish") {
+        if (!dictationSetup(view).ready) throw new Error("Complete microphone, live model and refinement preference in the console first.");
+        await request("settings", { setupComplete: true, setupStage: 3 }); view.setupOpen = false; await refresh(); render();
       }
       else if (action === "dictation-dependencies") { view.dependencyPlan = await request("dependency-plan"); panel(); }
       else if (action === "dictation-runtime-install") {
@@ -179,7 +200,7 @@ export function createDictationController({ state, persistence, mediaService, re
         const modelId = view.consentModel; view.consentModel = null;
         await request(view.models.find(m => m.id === modelId)?.progress ? "retry" : "install", { modelId, consent: true }); await refresh();
       }
-      else if (action === "dictation-stt") { await stop(); state.narrationSubpanel = "stt"; render(); await devices(); await refresh(); }
+      else if (action === "dictation-stt") { await stop(); state.narrationSubpanel = "stt"; state.consoleDockCollapsed = false; render(); await devices(); await refresh(); }
       else if (action === "dictation-follow") { await stop(); state.narrationSubpanel = "follow"; render(); }
       else if (action === "dictation-record") await start();
       else if (action === "dictation-test") await start(true);
@@ -230,12 +251,13 @@ export function createDictationController({ state, persistence, mediaService, re
     view.settingBusy = true;
     try {
       const value = key === "channel" ? Number(target.value) - 1 : target.value;
-      await request("settings", { [key]: value });
+      // A changed input invalidates an unfinished wizard's remembered signal test.
+      await request("settings", { [key]: value, ...(!view.settings?.setupComplete && ["deviceId", "channel"].includes(key) ? { setupStage: 1 } : {}) });
       view.inputTested = false;
       if (key === "deviceId") { view.channels = null; inputs.state.channels = null; }
       await refresh();
     } finally { view.settingBusy = false; panel(); }
   }
   window.addEventListener("beforeunload", (event) => { if (view.active || view.busy || view.pending || session) { event.preventDefault(); event.returnValue = "Stop and save Dictation before closing."; } });
-  return { handle, change, stop, stopTest: async () => { if (view.testing) await stop(); }, refresh: async () => { try { await devices(); await refresh(); } catch (error) { fail(error); } }, renderSettings: () => { readiness(); return renderDictationSettings(view, "user"); }, renderSidebar: () => { readiness(); return renderDictationSidebar(view); }, isActive: () => Boolean(view.active || view.busy || session), syncContext() { readiness(); if (view.importing && (state.activePane !== "narration" || state.narrationSubpanel !== "stt")) void stop().catch(fail); if (view.testing && state.activePane !== "narration" && !state.keyboardShortcutSettingsWindowOpen) void stop().catch(fail); if (session && (projectId() !== session.projectId || state.selectedSceneId !== session.sceneId || state.activePane !== "narration" || state.narrationSubpanel !== "stt")) void stop().catch(fail); } };
+  return { handle, change, stop, stopTest: async () => { if (view.testing) await stop(); }, refresh: async () => { try { await devices(); await refresh(); } catch (error) { fail(error); } }, renderSettings: () => { readiness(); return renderDictationSettings(view, "user"); }, renderSidebar: () => { readiness(); return `<section data-dictation-sidebar>${renderDictationSettings(view)}${renderDictationPanel(view, sessions())}</section>`; }, isActive: () => Boolean(view.active || view.busy || session), syncContext() { readiness(); if (view.importing && (!(state.activePane === "manuscript" || state.activePane === "narration" && state.narrationSubpanel === "stt"))) void stop().catch(fail); if (view.testing && state.activePane !== "narration" && !state.keyboardShortcutSettingsWindowOpen) void stop().catch(fail); if (session && (projectId() !== session.projectId || state.selectedSceneId !== session.sceneId || !(state.activePane === "manuscript" || state.activePane === "narration" && state.narrationSubpanel === "stt"))) void stop().catch(fail); } };
 }
