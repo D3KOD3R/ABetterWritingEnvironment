@@ -16134,7 +16134,7 @@ aside#binder-slot {
 .dictation-microphone { border: 1px solid var(--line); border-radius: 1.1rem; padding: .5rem 1rem; font-weight: 700; background: var(--theme-control); color: var(--ink); }
 .dictation-microphone.is-ready { background: #397820; color: white; }
 .dictation-microphone.is-recording { background: #b82d34; color: white; }
-.dictation-tabs button[aria-pressed="true"] { background: var(--theme-control-hover); border-color: var(--accent); color: var(--accent-deep); box-shadow: inset 0 0 0 1px var(--accent); }
+:root .dictation-tabs button[aria-pressed="true"] { background: var(--theme-control-hover); border-color: var(--accent); color: var(--accent-deep); box-shadow: inset 0 0 0 1px var(--accent); }
 .dictation-settings button, .dictation-settings select, .dictation-settings input:not([type=checkbox]), .dictation-panel button { border: 1px solid var(--line); border-radius: .5rem; padding: .4rem .6rem; color: var(--ink); background: var(--theme-control); font: inherit; }
 .dictation-settings button:hover, .dictation-panel button:hover { background: var(--theme-control-hover); }
 .dictation-settings button:focus-visible, .dictation-microphone:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -16152,6 +16152,7 @@ aside#binder-slot {
 .dictation-steps .is-current span { border-color: var(--signal); box-shadow: 0 0 0 5px color-mix(in srgb, var(--signal) 25%, transparent); }
 .dictation-wizard-status { text-align: left; color: var(--signal); }
 .dictation-wizard-status.is-ready { color: #397820; }
+:root[data-theme="dark"] .dictation-wizard-status.is-ready { color: #97d879; }
 .dictation-attention { outline: 2px solid var(--signal); border-radius: .6rem; padding: .5rem; animation: dictation-guide 1.8s ease-in-out infinite; }
 @keyframes dictation-guide { 50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--signal) 20%, transparent); } }
 @media (prefers-reduced-motion: reduce) { .dictation-attention { animation: none; } }
