@@ -25,7 +25,12 @@ export function renderDictationPanel(view = {}, sessions = []) {
     <p data-dictation-partial class="dictation-partial" aria-label="Provisional transcription">${e((view.events || []).filter((x) => x.status === "partial").map((x) => x.text).join(" "))}</p>
     <div data-dictation-finals>${renderEvents(view.events || [])}</div>
 
+    <h4>Transcribe recorded audio</h4>
+    <p>Select audio for the chosen Live STT model. Up to 4 minutes / 50 MB; browser-supported audio formats. No microphone access. The source stays unchanged; the transcript is a temporary preview—use Copy to keep it.</p>
+    <input type="file" aria-label="Audio to transcribe" accept="audio/*,.wav,.flac,.mp3,.m4a" data-dictation-input="audioFile" ${busy || view.locked || view.pending || view.finalizationPending || !view.model?.ready ? "disabled" : ""}>
+    ${view.importing ? '<button data-action="dictation-cancel-file">Cancel file transcription</button>' : ""}
     <h4>Saved sessions</h4>
+    <button data-action="dictation-recordings-folder">Open recordings folder</button>
     ${sessions.length ? sessions.map((record) => `<article class="dictation-saved"><strong>${e(record.startedAt)}</strong><p>${(record.sampleCount / 16000).toFixed(2)} s · ${record.recording?.bytes?.toLocaleString() || 0} bytes · FLAC · ${e(record.retention)}</p><p>${e(record.recording?.projectRelativePath || "Recording unavailable")}</p>${renderEvents(record.events)}<button data-action="dictation-play" data-session-id="${e(record.id)}">Load recording for playback</button><div data-dictation-playback="${e(record.id)}"></div></article>`).join("") : "<p>No saved sessions for this scene.</p>"}
   </section>`;
 }

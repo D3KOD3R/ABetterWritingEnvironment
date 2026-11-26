@@ -1,4 +1,5 @@
 // Intent: expose the desktop HTTP surface that serves the editor, workspace data, settings, and local services.
+import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
 import { appendFile, copyFile, lstat, mkdir, open, readFile, readdir, realpath, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
@@ -283,6 +284,16 @@ export async function createDesktopResponseForRequest(
           if (!context.filePath) throw new Error(context.error);
           const manifest = JSON.parse(await readFile(join(root, "project.json"), "utf8"));
           if (!manifest.projects?.some((project: any) => project.id === projectId)) throw new Error("Project identity does not match the active package.");
+        },
+        async openRecordings(root) {
+          // Use only the explicit validated package, and reject linked audio folders before launching Explorer.
+          const context = await resolveProjectMediaRequestPath({ activeProjectRoot: root, projectRelativePath: "assets/audio/dictation-folder-probe.flac" });
+          if (!context.filePath) throw new Error(context.error);
+          const folder = dirname(context.filePath);
+          await requireRealProjectPathContainment(root, folder);
+          if (!(await stat(folder).catch(() => null))?.isDirectory()) throw new Error("No recordings folder yet. Record and save a session first.");
+          if (process.platform !== "win32") throw new Error(`Open recordings in your file manager: ${folder}`);
+          await new Promise<void>((resolve, reject) => { const child = spawn("explorer.exe", [folder], { windowsHide: true, stdio: "ignore" }); child.once("error", reject); child.once("spawn", () => { child.unref(); resolve(); }); });
         },
         async publish(root, result) {
           const recording = result.record.recording;

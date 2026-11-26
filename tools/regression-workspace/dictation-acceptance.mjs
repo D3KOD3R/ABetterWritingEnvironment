@@ -169,6 +169,14 @@ try {
  await page.locator('[data-action="dictation-record"]').scrollIntoViewIfNeeded();
  await page.screenshot({path:path.join(evidence,'stt-narrow-rhs-collapsed.png'),fullPage:true});
  result.checkpoints.push('STT controls available with collapsed RHS and keyboard focus at narrow width');
+ // External audio uses the real decoder/recognizer without opening a microphone or adding a saved session.
+ await page.locator('[data-dictation-input="audioFile"]').setInputFiles(audioFixture);
+ await page.waitForFunction(()=>window.__VTT_READ__().view.status?.startsWith('Audio transcription complete'),null,{timeout:60000});
+ const imported=await page.evaluate(()=>window.__VTT_READ__());
+ assert.equal(imported.speech.sessions.length,1);
+ assert.ok(imported.view.events.some(event=>event.status==='final' && event.text));
+ assert.equal(imported.view.active,false);
+ result.checkpoints.push('Selected external WAV transcribed locally without microphone or additional project recording');
  result.status='passed';
 } catch(e) {result.status='failed';result.failure=e.stack;console.log(e.stack);if(page){result.failureState=await page.evaluate(()=>window.__VTT_READ__?.());result.body=(await page.locator('body').innerText()).slice(-10000);await page.screenshot({path:path.join(evidence,'failure.png'),fullPage:true}).catch(()=>{});}}
 finally {await browser?.close();if(run)await run.stop();if(original)await writeFile(settingsPath,original);else await unlink(settingsPath).catch(()=>{});if(result.runs) result.runProvenance=await Promise.all(result.runs.map(async file=>{const m=JSON.parse(await readFile(file,'utf8'));return {manifest:file,status:m.runStatus,sourceIdentityUnchanged:m.sourceIdentityUnchanged,head:m.gitHeadSha};}));if(evidence)await writeFile(path.join(evidence,'vtt-acceptance.json'),JSON.stringify(result,null,2));console.log(JSON.stringify({status:result.status,failure:result.failure,evidence,manifest:prepared?.manifestPath,checkpoints:result.checkpoints}));}

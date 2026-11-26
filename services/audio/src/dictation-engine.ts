@@ -95,14 +95,15 @@ export function createDictationEngine({ openAdapter = startAdapter, encodeRecord
   let starting = false;
   return {
     isActive: () => starting || Boolean(current),
-    async start({ projectId, sceneId, lease, python = "python", privateCodec = false, saveRecording = false }: any) {
+    isPreview: () => Boolean(current?.previewOnly),
+    async start({ projectId, sceneId, lease, python = "python", privateCodec = false, previewOnly = false, saveRecording = false }: any) {
       if (starting || current) { lease.release(); throw new Error("Dictation already owns capture."); }
       starting = true;
       const rpc = openAdapter(python, [lease.path]);
       try {
         const ready = await rpc.ready;
         const identity = { sessionId: randomUUID(), projectId, sceneId, captureEpoch: randomUUID() };
-        current = { ...identity, rpc, lease, codec: privateCodec ? privateFlacCodec(python) : { encode: encodeRecording, verify: verifyRecording }, runtimeVersion: `${ready.runtime}/native-${ready.nativeVersion}`, startedAt: new Date().toISOString(), saveRecording, sequence: 0, sampleCount: 0, sourceEnd: 0, sourceSampleRate: null, busy: false, pcm: [], journal: createDictationJournal(identity), failure: null };
+        current = { ...identity, rpc, lease, previewOnly, codec: privateCodec ? privateFlacCodec(python) : { encode: encodeRecording, verify: verifyRecording }, runtimeVersion: `${ready.runtime}/native-${ready.nativeVersion}`, startedAt: new Date().toISOString(), saveRecording, sequence: 0, sampleCount: 0, sourceEnd: 0, sourceSampleRate: null, busy: false, pcm: [], journal: createDictationJournal(identity), failure: null };
         return { ...identity, runtimeVersion: current.runtimeVersion, maxSamples: DICTATION_MAX_SAMPLES };
       } catch (error) { rpc.close(); lease.release(); throw error; }
       finally { starting = false; }
@@ -143,6 +144,12 @@ export function createDictationEngine({ openAdapter = startAdapter, encodeRecord
         // Encoding can be retried without asking the already closed recognizer to finalize again.
         session.finalized = true;
         session.rpc.close();
+        // Imported audio is a transient preview: no recording asset or project session is manufactured.
+        if (session.previewOnly) {
+          const result = { events: session.journal.snapshot(), sampleCount: session.sampleCount, message: session.failure || captureFailure };
+          session.journal.close(); session.lease.release(); current = null;
+          return result;
+        }
         const pcm = Buffer.concat(session.pcm);
         const flac = await session.codec.encode(pcm);
         await session.codec.verify(flac, pcm);

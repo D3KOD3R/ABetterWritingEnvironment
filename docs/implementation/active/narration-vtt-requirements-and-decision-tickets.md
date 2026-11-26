@@ -779,3 +779,8 @@ node --experimental-strip-types tools/regression-workspace/dictation-acceptance.
 ```
 
 Run the suite and browser CASE sequentially because both own temporary desktop-settings setup. `--install-runtime` opts into real downloads to the explicitly supplied isolated runtime root; omit it to use an existing supported installation. Worktree source deltas and machine-specific evidence remain local.
+
+
+### Explicit external-audio authorization — 26 November 2026
+
+The author additionally requested access to the recordings folder and transcription of another recorded audio file. This authorizes the bounded external-file preview workflow independently of unapproved Grill Me decisions. The active project recording folder opens through package identity/containment checks. Explicit file selection decodes browser-supported audio locally, downmixes/resamples to mono 16 kHz, and sends bounded frames to the selected Live STT model without microphone permission. Up to 4 minutes/50 MB; cancel drains the recognizer and releases its model. Imported bytes and transcript remain session-only previews; Copy is required to retain text. No automatic source-file copy, recording asset, project session or manuscript insertion is created, so Save/Save As and portable schemas are unchanged. Progress and failure states are visible.

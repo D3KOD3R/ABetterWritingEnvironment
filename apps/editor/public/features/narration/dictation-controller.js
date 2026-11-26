@@ -1,3 +1,4 @@
+import { transcribeAudioFile } from "../../adapters/dictation-file.js";
 import { createDictationInputs } from "../../adapters/dictation-inputs.js";
 import { dictationReadiness } from "../../shared/dictation-readiness.js";
 import { requestDictation } from "../../adapters/dictation-client.js";
@@ -8,6 +9,7 @@ export function createDictationController({ state, persistence, mediaService, re
   const view = state.dictationView = { status: "Stopped", events: [], models: [], devices: [], deviceId: "", channel: 0, saveRecording: false, active: false, busy: false, sampleCount: 0, pending: null };
   let cancelStart = false, captureFailure = "", starting;
   let capture, session, tail = Promise.resolve(), queued = 0, stopping, originalRoot, poll, playbackUrl;
+  let importOperation, importAbort;
   let readinessSignature = "";
   function trace(event, context = {}) { log?.info("dictation", event, event, context); }
   const projectId = () => state.workspace?.project?.id;
@@ -113,6 +115,7 @@ export function createDictationController({ state, persistence, mediaService, re
     view.pending = null; view.status = `${saved.status === "failed" ? "Saved incomplete recording" : "Saved and verified"}: ${(saved.sampleCount / 16000).toFixed(2)} s · ${saved.recording.bytes.toLocaleString()} bytes FLAC`; panel();
   }
   async function stop() {
+    if (importOperation) { importAbort.abort(); await importOperation; return; }
     // Navigation and Follow must wait for a pending permission/runtime start to release capture.
     if (starting) { cancelStart = true; try { await starting; } catch {} }
     if (stopping) return stopping;
@@ -134,7 +137,12 @@ export function createDictationController({ state, persistence, mediaService, re
   async function handle(action, target) {
     try {
       trace("dictation.action", { action });
-      if (action === "dictation-authorize") {
+      if (action === "dictation-recordings-folder") {
+        if (state.projectFileStorageMode !== "desktop-package") throw new Error("Open or save a folder project first.");
+        await request("recordings-folder", { activeProjectRoot: state.projectFilePath, projectId: projectId() });
+      }
+      else if (action === "dictation-cancel-file") importAbort?.abort();
+      else if (action === "dictation-authorize") {
         if (view.active || view.busy || view.locked) throw new Error("Stop capture before setting up an input.");
         await inputs.authorize(view.deviceId); panel();
       }
@@ -203,6 +211,20 @@ export function createDictationController({ state, persistence, mediaService, re
   async function change(target) {
     if (view.active || view.busy || view.locked || view.pending || view.finalizationPending || view.settingBusy) { panel(); throw new Error("Stop and finalize capture before changing settings."); }
     const key = target.dataset.dictationInput;
+    if (key === "audioFile") {
+      const file = target.files?.[0]; if (!file) return;
+      if (isFollowActive()) throw new Error("Stop Narration Follow before transcribing a file.");
+      view.importing = true; view.busy = true; view.events = []; view.sampleCount = 0;
+      importAbort = new AbortController();
+      importOperation = (async () => {
+        try {
+          await transcribeAudioFile(file, { request, signal: importAbort.signal, progress(result) { if (result.events) view.events = result.events; if (result.sampleCount !== undefined) view.sampleCount = result.sampleCount; view.status = result.message || "Finalizing imported audio…"; update(); } });
+          view.status = "Audio transcription complete · preview only. Copy the transcript to keep it.";
+        } catch (error) { view.status = importAbort.signal.aborted ? "Audio transcription cancelled · partial preview retained." : `Audio transcription failed: ${error.message}`; trace("dictation.file.failed", { message: view.status }); }
+        finally { view.importing = false; view.busy = false; importOperation = null; panel(); }
+      })();
+      panel(); await importOperation; return;
+    }
     if (key === "saveRecording") { view.saveRecording = target.checked; return; }
     if (!["deviceId", "channel"].includes(key)) return;
     view.settingBusy = true;
@@ -215,5 +237,5 @@ export function createDictationController({ state, persistence, mediaService, re
     } finally { view.settingBusy = false; panel(); }
   }
   window.addEventListener("beforeunload", (event) => { if (view.active || view.busy || view.pending || session) { event.preventDefault(); event.returnValue = "Stop and save Dictation before closing."; } });
-  return { handle, change, stop, stopTest: async () => { if (view.testing) await stop(); }, refresh: async () => { try { await devices(); await refresh(); } catch (error) { fail(error); } }, renderSettings: () => { readiness(); return renderDictationSettings(view, "user"); }, renderSidebar: () => { readiness(); return renderDictationSidebar(view); }, isActive: () => Boolean(view.active || view.busy || session), syncContext() { readiness(); if (view.testing && state.activePane !== "narration" && !state.keyboardShortcutSettingsWindowOpen) void stop().catch(fail); if (session && (projectId() !== session.projectId || state.selectedSceneId !== session.sceneId || state.activePane !== "narration" || state.narrationSubpanel !== "stt")) void stop().catch(fail); } };
+  return { handle, change, stop, stopTest: async () => { if (view.testing) await stop(); }, refresh: async () => { try { await devices(); await refresh(); } catch (error) { fail(error); } }, renderSettings: () => { readiness(); return renderDictationSettings(view, "user"); }, renderSidebar: () => { readiness(); return renderDictationSidebar(view); }, isActive: () => Boolean(view.active || view.busy || session), syncContext() { readiness(); if (view.importing && (state.activePane !== "narration" || state.narrationSubpanel !== "stt")) void stop().catch(fail); if (view.testing && state.activePane !== "narration" && !state.keyboardShortcutSettingsWindowOpen) void stop().catch(fail); if (session && (projectId() !== session.projectId || state.selectedSceneId !== session.sceneId || state.activePane !== "narration" || state.narrationSubpanel !== "stt")) void stop().catch(fail); } };
 }

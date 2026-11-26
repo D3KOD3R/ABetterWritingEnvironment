@@ -66,8 +66,29 @@ function getStore() {
 }
 export const dictationHost = {
   isActive: locked,
-  async handle(action: string, body: any, storage: { validatePackage: (root: string, projectId: string) => Promise<void>; publish: (root: string, result: any) => Promise<void> }) {
+  async handle(action: string, body: any, storage: { validatePackage: (root: string, projectId: string) => Promise<void>; publish: (root: string, result: any) => Promise<void>; openRecordings?: (root: string) => Promise<void> }) {
     const models = getStore();
+    if (action === "recordings-folder") {
+      await storage.validatePackage(body.activeProjectRoot, body.projectId);
+      if (!storage.openRecordings) throw new Error("Recordings folder access is unavailable.");
+      await storage.openRecordings(body.activeProjectRoot); return {};
+    }
+    if (action === "file-start") {
+      if (locked()) throw new Error("Stop the active workflow before transcribing a file.");
+      starting = true;
+      try {
+        const choice = await runtimeChoice();
+        const id = createDesktopSettingsSnapshot().speech?.liveModelId;
+        if (!id) throw new Error("Select an installed Live STT model first.");
+        const lease = await models.acquire(id);
+        if (!lease.model.roles.includes("live")) { lease.release(); throw new Error("Select a compatible Live STT model."); }
+        return await engine.start({ projectId: "external-audio-preview", sceneId: "external-audio-preview", lease, ...choice, previewOnly: true });
+      } finally { starting = false; }
+    }
+    if (action === "file-finish") {
+      if (!engine.isPreview()) throw new Error("No imported audio transcription is active.");
+      return engine.stop(body.sessionId, body.cancelled ? "Transcription cancelled; partial preview only." : "");
+    }
     if (action === "dependency-plan") return runtimes.plan();
     if (action === "runtime-cancel") { const result = await runtimes.cancel(); cachedProbe = null; return result; }
     if (action === "storage-cancel") { const result = await relocation.cancel(); cachedProbe = null; return result; }
@@ -167,6 +188,7 @@ export const dictationHost = {
     }
     if (action === "audio") return engine.audio(body);
     if (action === "stop") {
+      if (engine.isPreview()) throw new Error("Finish the imported audio preview first.");
       if (!stopped || stopped.record.id !== body.sessionId) stopped = await engine.stop(body.sessionId, typeof body.errorMessage === "string" ? body.errorMessage.slice(0, 500) : "");
       pendingPublication = true;
       if (!packageContext || stopped.record.projectId !== packageContext.projectId) throw new Error("Lost original project authority.");
