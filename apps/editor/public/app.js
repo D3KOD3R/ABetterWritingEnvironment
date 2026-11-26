@@ -1549,7 +1549,10 @@ const narrationMediaService = createNarrationMediaService({
   fetchJson: fetchJsonFromDesktopApi,
   getActiveProjectRoot: () => state.projectFilePath,
 });
+// VTT acceptance runs explicitly enable the existing file-backed diagnostic source.
+if (regressionLogSession?.caseId?.startsWith("vtt-")) developerLogger.setSourceEnabled("Dictation", true);
 const dictationController = createDictationController({
+  log: developerLogger.createSource("Dictation"),
   state, persistence: projectPersistenceService, mediaService: narrationMediaService, render,
   isFollowActive: () => Boolean(narrationRecordingRuntime),
 });

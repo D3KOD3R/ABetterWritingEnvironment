@@ -4,12 +4,21 @@ import { requestDictation } from "../../adapters/dictation-client.js";
 import { startDictationCapture } from "../../adapters/dictation-capture.js";
 import { renderDictationPanel, renderEvents, renderDictationModels, renderDictationSidebar, renderDictationSettings } from "./dictation-panel.js";
 
-export function createDictationController({ state, persistence, mediaService, render, isFollowActive, request = requestDictation, beginCapture = startDictationCapture, inputFactory = createDictationInputs }) {
+export function createDictationController({ state, persistence, mediaService, render, isFollowActive, request = requestDictation, beginCapture = startDictationCapture, inputFactory = createDictationInputs, log }) {
   const view = state.dictationView = { status: "Stopped", events: [], models: [], devices: [], deviceId: "", channel: 0, saveRecording: false, active: false, busy: false, sampleCount: 0, pending: null };
   let cancelStart = false, captureFailure = "", starting;
   let capture, session, tail = Promise.resolve(), queued = 0, stopping, originalRoot, poll, playbackUrl;
+  let readinessSignature = "";
+  function trace(event, context = {}) { log?.info("dictation", event, event, context); }
   const projectId = () => state.workspace?.project?.id;
-  function readiness() { view.readiness = dictationReadiness(view, { saved: state.projectFileStorageMode === "desktop-package", scene: state.selectedSceneId, follow: isFollowActive() }); return view.readiness; }
+  function readiness() {
+    view.readiness = dictationReadiness(view, { saved: state.projectFileStorageMode === "desktop-package", scene: state.selectedSceneId, follow: isFollowActive() });
+    // Log transitions, not poll/frame traffic; exclude device IDs, paths, audio and transcript bodies.
+    const context = { ...view.readiness, storageMode: state.projectFileStorageMode, hasScene: Boolean(state.selectedSceneId), permission: view.permission, deviceCount: view.devices.length, selectedDeviceAvailable: !view.deviceId || view.devices.some(d => d.deviceId === view.deviceId), channel: view.channel, active: view.active, busy: view.busy, locked: view.locked };
+    const signature = JSON.stringify(context);
+    if (signature !== readinessSignature) { readinessSignature = signature; trace("dictation.readiness.changed", context); }
+    return view.readiness;
+  }
   const inputs = inputFactory({ changed(input) {
     Object.assign(view, { devices: input.devices, permission: input.permission, inputError: input.error, channels: input.channels });
     if (view.active && (input.permission === "denied" || (view.deviceId && !input.devices.some(d => d.deviceId === view.deviceId)))) fail(new Error("Microphone disconnected or permission revoked."));
@@ -53,7 +62,7 @@ export function createDictationController({ state, persistence, mediaService, re
     if (state.narrationSubpanel === "stt" && state.activePane === "narration" || state.keyboardShortcutSettingsWindowOpen)
       poll = setTimeout(() => { if (!view.active && !view.busy && !view.settingBusy) refresh().catch(fail); else poll = setTimeout(() => refresh().catch(fail), 5000); }, 5000);
   }
-  function fail(error) { captureFailure = String(error.message || error); view.status = `Failed: ${error.message || error}`; update(); if ((view.active || view.busy) && !stopping) void stop().catch((e) => { view.status = `Save failed: ${e.message}`; panel(); }); }
+  function fail(error) { trace("dictation.capture.failed", { message: String(error.message || error) }); captureFailure = String(error.message || error); view.status = `Failed: ${error.message || error}`; update(); if ((view.active || view.busy) && !stopping) void stop().catch((e) => { view.status = `Save failed: ${e.message}`; panel(); }); }
   async function devices() { return inputs.refresh(); }
   function start(test = false) {
     const operation = beginStart(test);
@@ -66,6 +75,7 @@ export function createDictationController({ state, persistence, mediaService, re
     if (!test && (state.activePane !== "narration" || state.narrationSubpanel !== "stt")) throw new Error("Open Narration STT first.");
     if (!test && state.projectFileStorageMode !== "desktop-package") throw new Error("Save this project as a folder package before recording.");
     if (!test && !readiness().ready) throw new Error(readiness().reasons.map(r => r.text).join(" "));
+    trace("dictation.capture.starting", { test });
     view.testing = test;
     cancelStart = false; captureFailure = ""; view.busy = true; view.status = "Starting microphone…"; panel();
     originalRoot = state.projectFilePath; view.events = []; view.sampleCount = 0; tail = Promise.resolve(); queued = 0;
@@ -99,6 +109,7 @@ export function createDictationController({ state, persistence, mediaService, re
     if (!view.pending) return;
     const saved = await persistence.saveDictationSession(view.pending, originalRoot);
     await request("acknowledge", { sessionId: view.pending.id }); view.locked = false;
+    trace("dictation.session.saved", { sampleCount: saved.sampleCount, bytes: saved.recording.bytes });
     view.pending = null; view.status = `${saved.status === "failed" ? "Saved incomplete recording" : "Saved and verified"}: ${(saved.sampleCount / 16000).toFixed(2)} s · ${saved.recording.bytes.toLocaleString()} bytes FLAC`; panel();
   }
   async function stop() {
@@ -122,6 +133,7 @@ export function createDictationController({ state, persistence, mediaService, re
   }
   async function handle(action, target) {
     try {
+      trace("dictation.action", { action });
       if (action === "dictation-authorize") {
         if (view.active || view.busy || view.locked) throw new Error("Stop capture before setting up an input.");
         await inputs.authorize(view.deviceId); panel();
@@ -186,7 +198,7 @@ export function createDictationController({ state, persistence, mediaService, re
         else await request(action.slice("dictation-".length) === "install" && view.models.find((m) => m.id === modelId)?.progress ? "retry" : action.slice("dictation-".length), { modelId });
         view.manageOpen = true; await refresh();
       }
-    } catch (error) { view.status = `Failed: ${error.message}`; panel(); }
+    } catch (error) { trace("dictation.action.failed", { action, message: error.message }); view.status = `Failed: ${error.message}`; panel(); }
   }
   async function change(target) {
     if (view.active || view.busy || view.locked || view.pending || view.finalizationPending || view.settingBusy) { panel(); throw new Error("Stop and finalize capture before changing settings."); }
