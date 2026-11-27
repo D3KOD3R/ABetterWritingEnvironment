@@ -6,6 +6,10 @@
 **Predecessor:** [Phase 02 native manuscript dictation](narration-vtt-phase-02.md) and [implementation report](narration-vtt-phase-02-report.md).
 **Decision source:** Grill Me Round 3 Decision 5 and subsequent author amendments on VAD, buffering, storage and microphone inactivity.
 
+## Phase 03 verification addendum
+
+[Developer engineering and reliability verification workbench](narration-vtt-phase-03-verification-workbench.md) is an additional Phase 03 deliverable requested by the author. Establish its telemetry contracts during milestones A–E and deliver its playback waterfall, recordings-folder access and evidence workflow during milestone F. Its WB-T01–T12 proof cases supplement ASD-T01–T15; neither replaces the repository supervisor or controlled RUN evidence. All existing Phase 03 scope, retention and authorization gates remain intact.
+
 ## 1. Objective and scope
 
 Make local dictation naturally voice-activated after the listening service is armed. ABE itself must own the physical microphone lifecycle, continuous bounded circular audio buffer, independent voice activity detection (VAD), recording segments, timers, resource release and retention decisions. Moonshine, Whisper and future transcription models are interchangeable consumers of the resulting audio; their internal VAD, buffering or endpointing must not govern the application's recording lifecycle.
