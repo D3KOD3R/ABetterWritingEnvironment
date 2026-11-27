@@ -1,8 +1,57 @@
 # ABE — Voice-to-Text and Speech Architecture
 
-**Status:** Phase 02 native manuscript dictation is authorized. Historical decisions and Phase-0 instructions below are preserved.
+**Status:** Phase 02 bounded native manuscript dictation delivered; developer verification reported, physical microphone and production reliability gates open. Phase 03 plans published. Historical decisions and Phase-0 instructions below are preserved.
 **Repository:** `D3KOD3R/ABetterWritingEnvironment`  
 **Revision:** 1.3 — 23 November 2026
+
+## Phase 02 completion audit — 27 November 2026
+
+**Status:** Bounded native dictation delivered and developer-verified; author physical-microphone acceptance and production reliability gates remain open. This overlay supersedes historical implementation-status statements only for the scope explicitly evidenced below. It does not change historical decisions, approve optional recommendations, or authorize another implementation phase.
+
+**Source identity:** [Phase 02 checkpoint](https://github.com/D3KOD3R/ABetterWritingEnvironment/commit/4f4931e4e401df76ca9c5becf5558ac9dbc4e3f2); compared with c2e869c, 4 commits / 20 files. At review, branch head 828b020ca4687dd16792ec61e3efdc6a84f5adc8 adds only Phase 03 planning documents (four further commits). Evidence source: [Phase 02 report](narration-vtt-phase-02-report.md), source and test inspection. The local supervisor and browser RUN artifacts were not independently rerun or available for direct inspection in this review. The reported FULL result is 151/151; clean-checkout browser RUNs at a581c4f used real pinned Moonshine CPU recognition on deterministic Beckett WAV via Chrome fake microphone, not physical-device speech. Reported timing in one run: Record click to visible words 4,164 ms; first canonical final 5,172 ms, including startup and fixture timing, not mouth-to-text latency. Subsequent production change is reported as dark-theme contrast CSS only.
+
+### Phase 02 authoring and UX register
+
+Status meanings: **Implemented / tested** = implementation or test source reviewed and relevant execution reported by Codex; **Partial** = bounded implementation or incomplete evidence; **Open / deferred** = not implemented or not established; **Unconfirmed** = optional recommendation or evidence not established. No inference of individual approval-register selections.
+
+| Traceability (Phase 02 brief) | Status | Evidence / remaining boundary |
+| --- | --- | --- |
+| VTT-UX-01, VTT-UX-02; A01–A03, A05–A06 | Implemented / tested, bounded | RHS and User Settings share configuration; device/channel/model lock and host rejection tested; explicit input test, role distinction and consent retained. Full shared library cutover remains open. |
+| A04 | Partial | Editor preserved during capture; sidebar refresh focus/expanded state not comprehensively verified. |
+| B01–B04 | Partial | Selected STT and theme styling implemented, contrast fix committed; light/dark and narrow console checks reported. Full visual/accessibility matrix not verified. |
+| VTT-D05, VTT-D21; C01–C05, C09–C10, C19 | Implemented / tested, bounded | Single ordinary caret supersedes dual cursor/double-click and STT-only restriction. Shared editor; real fixture recognition at start/middle/end, native undo/redo, persistence, both viewports. Word count/proofread and accelerated undo-specific evidence should be checked separately. |
+| C06–C08, C11–C15, C17 | Partial | Final utterance identity deduplication, render-only provisional text, conflict guard, selected-range rejection, surrounding text and bold author mark tested. Manual editing/undo locked during capture. Full stale-event/manual-edit interleaving, accelerated undo, rich formatting coverage, and dotted provisional underline remain open. |
+| C16, C18 | Open / deferred | Follow-caret scrolling policy and refinement range/edited-text compatibility need specific verification/implementation. |
+| D01–D07 (Phase 02 UX recommendation IDs, not original VTT-Dxx) | Implemented / tested, bounded | Raw timed feed removed; local session events/sample timing retained, optional transcript recovery/playback and folder access present; no exact word timestamps claimed. Privacy audit of all error paths remains open. |
+| VTT-UX-03; E01–E06, E10–E14 | Implemented / tested, bounded | Three-stage overlay, real readiness, signal threshold, optional refinement deferral, explicit Finish, persisted progress, collapsed console and incomplete setup reload reported. Existing device/runtime failure recovery and editing-lock edge cases need wider validation. |
+| E07–E09 | Partial | Disconnected-device deterministic test and honest refinement deferral; broader physical permission/device/runtime failure matrix remains. No refinement execution. |
+| F01–F05 | Partial | Contextual stage highlighting and console reveal implemented; exact action-level behavior, reduced motion and asynchronous guidance need specific acceptance evidence. |
+| G01–G05, G07–G08 | Partial / bounded | Ready/Record/Stop and retry states, central transport, ordinary Manuscript readiness and explicit start; repeated save retry tested. Verify transport never represents input test/start/finalization as active speech recording; complete blocker/action and accessibility evidence. |
+| G06, G09 | Unconfirmed | Elapsed timer and optional keyboard shortcut not established as delivered or approved. |
+| H01–H03, H06 | Implemented / tested, bounded | Shared capture and metadata console; navigation drains first; host/renderer lock. Verify physical release and all competing-workflow paths in next lifecycle phase. |
+| H04–H05 | Open / deferred | No concurrent manual editing, active caret moves, or uninterrupted viewport transitions; preserve current safe stop pending approved Round 3 editor changes. |
+| I01–I02, I04, I06–I07, I10 | Partial / bounded | FLAC, failed encoder/save retries, idempotent in-session recovery, cold reopen and Save As reported; audio protected even if unchecked; retention preference persistence and crash/reopen replay not established. |
+| I03, I08–I09, I11 | Partial / open | Existing cap about four minutes and bounded queue remain; continuous rollover, warnings, endurance, backpressure and complete physical resource release require Phase 03 evidence. |
+| I05 | Open — critical durability gate | No revision-bound speech-to-manuscript persistence receipt; no automatic audio deletion authorized. Do not confuse session metadata readback with a text receipt. |
+| J01–J07, J10–J12 | Implemented / tested, bounded | Four cohesive commits, reported FULL 151/151, clean browser RUNs, report/screenshot references, one timing observation; no project schema changes. Local evidence not independently inspected; hardware and full regression exit gates remain. |
+| J08–J09 | Partial | Disposable test project used; near-limit/large-manuscript endurance not verified. |
+| Preceding external-file / folder request | Implemented / tested | 19033f0 adds authorized project recordings-folder access and local external WAV transcription preview without creating another live recording or modifying manuscript. |
+
+### Original architectural decision status overlay
+
+- **VTT-D05 and D21:** superseded by the confirmed single ordinary caret and dictation in both Manuscript and STT; bounded implementation verified as described above. Do not restore the obsolete two-cursor or STT-only behavior.
+- **VTT-D02, D10–D12, D20:** partial-to-substantial delivery of live final text, safe navigation, provisional projection, native history and contextual STT; refinement, interleaved edits, accelerated history details and future subpanels not complete.
+- **VTT-D01, D16–D19, D22:** partial model role/settings/input/catalogue infrastructure; narration-alignment role, advanced imports, update/rollback, shared-library cutover, full settings hierarchy and workflow-specific profiles still need evidence or approved work.
+- **VTT-D04, D24:** partial protected recording and text persistence, completed audio portability and reopen; revision receipts, quota/warnings, retention cleanup, incremental long-session chunk publication and crash-resilient in-flight behavior not complete. Audio cleanup remains disabled.
+- **VTT-D06–D07, D23, D25:** partial/open; Phase 03 addresses independent standby/segmentation and resource lifecycle, not full future refinement scheduling or notifications.
+- **VTT-D08:** natural speech preserved; no spoken command feature added; command-like speech regression case not separately evidenced.
+- **VTT-D03, D13–D15:** refinement proposal execution, queue, edit protection and review remain deferred; no automatic replacement.
+- **VTT-D09:** future worldbuilding context remains deliberately deferred.
+- **VTT-D26:** scoped commits and reported testing delivered; retain approval gates and exact evidence traceability.
+
+### Next work and gates
+
+[Phase 03 lifecycle plan](narration-vtt-phase-03.md) and [developer verification workbench](narration-vtt-phase-03-verification-workbench.md) are published plans, not implemented features. Recommended next authorized execution is their A–F milestones: application-owned local model-independent VAD, bounded RAM pre-roll, adjustable default 5-second silence segmentation, automatic restart while explicitly armed, complete microphone release after 300 seconds without speech, protected audio and safe cap rollover where verified, synchronized actual-recording playback waveform/waterfall and measured reliability telemetry. Preserve Phase 02 and use ASD-T01–T15 and WB-T01–T12 proof cases. Generic spectral analysis should support source sample rates for later studio-analysis reuse; full studio analysis remains deferred. Round 3 decisions 1–4 (active caret reposition, dotted provisional underline, manual editing priority, protected selected-text replacement) are separately approved editor requirements, not Phase 03 completion or permission to silently expand its scope. Round 2 decisions 14–18 remain unapproved. No automatic microphone activation, deletion, refinement execution, full Follow migration, actual author-project destructive tests, or main merge. Author physical microphone test and real elapsed-time/resource measurements remain separate evidence gates.
 
 ## Current execution contract — Phase 02 (27 November 2026)
 
